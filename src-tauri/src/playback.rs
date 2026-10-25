@@ -10,13 +10,15 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use artrec_core::ArtRecReader;
 use player::{PlayState, Player, PlayerConfig, DEFAULT_KEEPALIVE_US};
 use serde::Serialize;
 use tokio::sync::mpsc;
+
+use crate::util::lock;
 
 use crate::dispatch::{DispatchTarget, Dispatcher};
 use crate::recording::Emitter;
@@ -137,11 +139,6 @@ enum Cmd {
     Loop(bool),
     Target(DispatchTarget),
     Close,
-}
-
-/// 加锁并忽略中毒。
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 struct Inner {

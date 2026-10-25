@@ -15,12 +15,14 @@ use artnet_net::artnet::PollReplyInfo;
 use artnet_net::socket::{self, DmxSender};
 use discovery::{Device, DeviceRegistry};
 use forwarding::{ForwardingTable, RateLimiter};
-use settings::{AppSettings, MergeMode as CfgMergeMode};
-use signal_engine::{MergeMode, SignalEngine, SourceStat, UniverseSnapshot};
+use settings::AppSettings;
+use signal_engine::{SignalEngine, SourceStat, UniverseSnapshot};
 
 use crate::dispatch::{DispatchTarget, Dispatcher};
 use crate::netif;
+use crate::playback::{OpenParams, PlaybackController, PlaybackStatus};
 use crate::recording::RecordingController;
+use crate::util::lock;
 
 /// 本应用固定 CID（用于 sACN 发送与发现）。
 const APP_CID: [u8; 16] = [
@@ -111,6 +113,9 @@ pub struct Runtime {
     dispatcher: Dispatcher,
     /// 回放模式：为 true 时暂停实时接收（手册 Player Mode 语义）。
     playback_mode: Arc<AtomicBool>,
+    /// 回放控制器：与录制控制器同级挂在运行时，打开节目所需的分发器 / 回放模式
+    /// 标志 / 运行时起点等均由运行时内部提供，命令层无需逐一拼装。
+    playback: PlaybackController,
     viewed: Arc<Mutex<Vec<u16>>>,
     /// Art-Net 接收是否已启用（决定能否收到 ArtPollReply）。
     artnet_enabled: Arc<AtomicBool>,
@@ -123,15 +128,6 @@ pub struct Runtime {
     forwarding_path: PathBuf,
 }
 
-/// 将配置层合并模式映射为引擎合并模式。
-fn map_mode(m: CfgMergeMode) -> MergeMode {
-    match m {
-        CfgMergeMode::Htp => MergeMode::Htp,
-        CfgMergeMode::Ltp => MergeMode::Ltp,
-        CfgMergeMode::Priority => MergeMode::Priority,
-    }
-}
-
 impl Runtime {
     /// 依据配置创建运行时，并从磁盘加载设备自定义名。
     ///
@@ -141,10 +137,7 @@ impl Runtime {
     /// * `names_path` - 设备自定义名持久化文件路径。
     #[must_use]
     pub fn new(cfg: &AppSettings, names_path: PathBuf, forwarding_path: PathBuf) -> Self {
-        let engine = SignalEngine::new(
-            map_mode(cfg.merge.mode),
-            u64::from(cfg.merge.source_timeout_ms),
-        );
+        let engine = SignalEngine::new(cfg.merge.mode, u64::from(cfg.merge.source_timeout_ms));
         let mut registry = DeviceRegistry::new();
         if let Ok(text) = std::fs::read_to_string(&names_path) {
             if let Ok(names) = serde_json::from_str::<HashMap<String, String>>(&text) {
@@ -169,6 +162,7 @@ impl Runtime {
             sender,
             dispatcher,
             playback_mode: Arc::new(AtomicBool::new(false)),
+            playback: PlaybackController::new(),
             viewed: Arc::new(Mutex::new(Vec::new())),
             artnet_enabled: Arc::new(AtomicBool::new(false)),
             scanning: Arc::new(AtomicBool::new(false)),
@@ -185,34 +179,53 @@ impl Runtime {
         &self.recording
     }
 
-    /// 输出分发器（回放复用）。
+    /// 回放控制器。
     #[must_use]
-    pub fn dispatcher(&self) -> &Dispatcher {
-        &self.dispatcher
+    pub fn playback(&self) -> &PlaybackController {
+        &self.playback
     }
 
-    /// 回放模式标志（置位时暂停实时接收）。
-    #[must_use]
-    pub fn playback_mode(&self) -> &Arc<AtomicBool> {
-        &self.playback_mode
-    }
-
-    /// 运行时起点，回放据此换算与实时链路一致的逻辑毫秒。
-    #[must_use]
-    pub fn started_at(&self) -> Instant {
-        self.start
+    /// 打开节目并进入回放：分发器 / 回放模式标志 / 运行时起点 / 录制状态均由运行时内部填充。
+    ///
+    /// # Arguments
+    ///
+    /// * `emit` - 事件发射回调。
+    /// * `path` - 已校验的 `.artrec` 路径。
+    /// * `name` - 显示名。
+    /// * `target` - 输出目标。
+    ///
+    /// # Errors
+    ///
+    /// 录制进行中、路径非法或文件无法解析时返回错误码字符串。
+    pub fn open_playback(
+        &self,
+        emit: crate::recording::Emitter,
+        path: PathBuf,
+        name: String,
+        target: DispatchTarget,
+    ) -> Result<PlaybackStatus, String> {
+        self.playback.open(OpenParams {
+            emit,
+            dispatcher: self.dispatcher.clone(),
+            mode_flag: self.playback_mode.clone(),
+            started_at: self.start,
+            path,
+            name,
+            target,
+            recording_active: self.recording.is_recording(),
+        })
     }
 
     /// 按源 IP 聚合的当前来源统计（供录制来源选择器）。
     #[must_use]
     pub fn source_stats(&self) -> Vec<SourceStat> {
-        self.engine.lock().map(|e| e.source_stats()).unwrap_or_default()
+        lock(&self.engine).source_stats()
     }
 
     /// 当前转发表。
     #[must_use]
     pub fn forwarding(&self) -> ForwardingTable {
-        self.forwarding.lock().map(|f| f.clone()).unwrap_or_default()
+        lock(&self.forwarding).clone()
     }
 
     /// 保存转发表（替换内存并持久化）。
@@ -227,34 +240,33 @@ impl Runtime {
             }
             let _ = std::fs::write(&self.forwarding_path, text);
         }
-        if let Ok(mut f) = self.forwarding.lock() {
-            *f = table;
-        }
+        *lock(&self.forwarding) = table;
+        // 目的地可能已增删，重置限速状态避免旧目的地条目残留。
+        self.dispatcher.reset_rate_limits();
     }
 
     /// 当前全部活跃 Universe 快照。
     #[must_use]
     pub fn snapshot(&self) -> Vec<UniverseSnapshot> {
-        self.engine.lock().map(|e| e.snapshot()).unwrap_or_default()
+        lock(&self.engine).snapshot()
     }
 
     /// 当前全部已发现设备。
     #[must_use]
     pub fn devices(&self) -> Vec<Device> {
-        self.registry.lock().map(|r| r.list()).unwrap_or_default()
+        lock(&self.registry).list()
     }
 
     /// 设置前端正在查看的 Universe 列表。
     pub fn set_viewed(&self, universes: Vec<u16>) {
-        if let Ok(mut v) = self.viewed.lock() {
-            *v = universes;
-        }
+        *lock(&self.viewed) = universes;
     }
 
     /// 更新合并模式与源超时。
     pub fn apply_settings(&self, cfg: &AppSettings) {
-        if let Ok(mut e) = self.engine.lock() {
-            e.set_mode(map_mode(cfg.merge.mode));
+        {
+            let mut e = lock(&self.engine);
+            e.set_mode(cfg.merge.mode);
             e.set_timeout(u64::from(cfg.merge.source_timeout_ms));
         }
     }
@@ -267,14 +279,13 @@ impl Runtime {
     /// * `name` - 自定义名（空清除）。
     pub fn set_device_name(&self, ip: &str, name: String) {
         if let Ok(addr) = ip.parse::<IpAddr>() {
-            if let Ok(mut r) = self.registry.lock() {
-                r.set_custom_name(addr, name);
-                if let Ok(text) = serde_json::to_string_pretty(&r.custom_names()) {
-                    if let Some(parent) = self.names_path.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    let _ = std::fs::write(&self.names_path, text);
+            let mut r = lock(&self.registry);
+            r.set_custom_name(addr, name);
+            if let Ok(text) = serde_json::to_string_pretty(&r.custom_names()) {
+                if let Some(parent) = self.names_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
                 }
+                let _ = std::fs::write(&self.names_path, text);
             }
         }
     }
@@ -282,13 +293,9 @@ impl Runtime {
     /// 移除全部离线设备并返回剩余设备列表。
     #[must_use]
     pub fn clear_offline_devices(&self) -> Vec<Device> {
-        self.registry
-            .lock()
-            .map(|mut r| {
-                r.clear_offline();
-                r.list()
-            })
-            .unwrap_or_default()
+        let mut r = lock(&self.registry);
+        r.clear_offline();
+        r.list()
     }
 
     /// 发起一次主动网络扫描并等待节点回复。
@@ -343,11 +350,10 @@ impl Runtime {
 
         tokio::time::sleep(SCAN_SETTLE).await;
 
-        let (responded, total_artnet) = self
-            .registry
-            .lock()
-            .map(|r| (r.count_artnet_seen_since(since_ms), r.count_artnet()))
-            .unwrap_or((0, 0));
+        let (responded, total_artnet) = {
+            let r = lock(&self.registry);
+            (r.count_artnet_seen_since(since_ms), r.count_artnet())
+        };
         Ok(ScanSummary {
             targets: targets.len(),
             sent,
@@ -429,7 +435,7 @@ impl Runtime {
 
                 // 摄取并取合并输出
                 let merged = {
-                    let Ok(mut e) = engine.lock() else { continue };
+                    let mut e = lock(&engine);
                     e.ingest(&frame, now_ms);
                     e.merged_output(universe)
                 };
@@ -452,9 +458,7 @@ impl Runtime {
         tauri::async_runtime::spawn(async move {
             while let Some(info) = reply_rx.recv().await {
                 let now_ms = start2.elapsed().as_millis() as u64;
-                if let Ok(mut r) = registry.lock() {
-                    r.upsert_artnet(&info, now_ms);
-                }
+                lock(&registry).upsert_artnet(&info, now_ms);
             }
         });
 
@@ -476,13 +480,15 @@ impl Runtime {
 
                 // 来源统计约 4Hz 推送一次（录制来源选择器用，无需跟随 UI 刷新率）
                 let emit_sources = last_sources_emit.elapsed() >= Duration::from_millis(250);
+                // 先在 engine 锁外取当前查看列表，避免在持有 engine 锁期间再嵌套 viewed 锁，
+                // 缩短 engine 临界区、降低与帧摄取循环的锁竞争。
+                let view = lock(&viewed).clone();
                 let (snapshot, total, channels, sources) = {
-                    let Ok(mut e) = engine.lock() else { continue };
+                    let mut e = lock(&engine);
                     e.prune(now_ms);
                     let snap = e.snapshot();
                     let total = e.total_packets();
                     let sources = emit_sources.then(|| e.source_stats());
-                    let view = viewed.lock().map(|v| v.clone()).unwrap_or_default();
                     let ch: Vec<ChannelsPayload> = view
                         .iter()
                         .filter_map(|&u| {
@@ -498,7 +504,7 @@ impl Runtime {
 
                 // 被动设备发现：从快照源 IP 更新注册表
                 let devices = {
-                    let Ok(mut r) = registry.lock() else { continue };
+                    let mut r = lock(&registry);
                     for u in &snapshot {
                         let proto = u.protocol;
                         for ip_str in &u.source_ips {

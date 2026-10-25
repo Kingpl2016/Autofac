@@ -68,6 +68,48 @@ impl ArtRecReader<File> {
     }
 }
 
+/// 读取并校验 ArtRec 文件头（A 区）与 Universe 描述表（B 区）。
+///
+/// 自身用 `seek` 探测总长度，仅校验 B 区边界；帧索引（C 区）由各调用方按需处理。
+/// 随机访问读取器与孤儿录制恢复共用此函数，避免重复的"读头 + 解表"胶水代码。
+///
+/// # Arguments
+///
+/// * `src` - 数据源（`File`、`Cursor` 等均可）。
+///
+/// # Returns
+///
+/// `(文件总字节数, 文件头, Universe 描述表)`。
+///
+/// # Errors
+///
+/// 文件头非法见 [`FileHeader::from_bytes`]；B 区越界返回 [`ArtRecError::Truncated`]。
+pub fn read_header_and_unis<R: Read + Seek>(
+    src: &mut R,
+) -> Result<(u64, FileHeader, Vec<UniDesc>)> {
+    let len = src.seek(SeekFrom::End(0))?;
+    let head_len = len.min(u64::from(HEADER_SIZE)) as usize;
+    let mut head = vec![0u8; head_len];
+    src.seek(SeekFrom::Start(0))?;
+    src.read_exact(&mut head)?;
+    let header = FileHeader::from_bytes(&head)?;
+
+    // 区域越界检查先于分配，避免恶意计数字段导致巨量内存申请。
+    let b_off = u64::from(header.universe_desc_offset);
+    let b_len = u64::from(header.universe_count) * u64::from(UNIDESC_SIZE);
+    if b_off + b_len > len {
+        return Err(ArtRecError::Truncated("Universe 描述表越界"));
+    }
+    let mut b = vec![0u8; b_len as usize];
+    src.seek(SeekFrom::Start(b_off))?;
+    src.read_exact(&mut b)?;
+    let unis = b
+        .chunks_exact(UNIDESC_SIZE as usize)
+        .map(UniDesc::from_bytes)
+        .collect::<Result<Vec<_>>>()?;
+    Ok((len, header, unis))
+}
+
 impl<R: Read + Seek> ArtRecReader<R> {
     /// 从任意 `Read + Seek` 数据源解析文件头、Universe 表与帧索引。
     ///
@@ -85,32 +127,14 @@ impl<R: Read + Seek> ArtRecReader<R> {
     /// - 帧索引非升序返回 [`ArtRecError::UnsortedIndex`]。
     /// - 数据截断（含计数字段声明的区域越界）返回 [`ArtRecError::Truncated`]。
     pub fn from_reader(mut src: R) -> Result<Self> {
-        let len = src.seek(SeekFrom::End(0))?;
-        let head_len = len.min(u64::from(HEADER_SIZE)) as usize;
-        let mut head = vec![0u8; head_len];
-        src.seek(SeekFrom::Start(0))?;
-        src.read_exact(&mut head)?;
-        let header = FileHeader::from_bytes(&head)?;
+        let (len, header, unis) = read_header_and_unis(&mut src)?;
 
-        // 区域越界检查先于分配，避免恶意计数字段导致巨量内存申请。
-        let b_off = u64::from(header.universe_desc_offset);
-        let b_len = u64::from(header.universe_count) * u64::from(UNIDESC_SIZE);
-        if b_off + b_len > len {
-            return Err(ArtRecError::Truncated("Universe 描述表越界"));
-        }
+        // 帧索引（C 区）为 reader 独有，孤儿恢复路径不读此区。
         let c_off = u64::from(header.frame_index_offset);
         let c_len = u64::from(header.frame_count) * u64::from(FRAMEINDEX_SIZE);
         if c_off + c_len > len {
             return Err(ArtRecError::Truncated("帧索引表越界"));
         }
-
-        let mut b = vec![0u8; b_len as usize];
-        src.seek(SeekFrom::Start(b_off))?;
-        src.read_exact(&mut b)?;
-        let unis = b
-            .chunks_exact(UNIDESC_SIZE as usize)
-            .map(UniDesc::from_bytes)
-            .collect::<Result<Vec<_>>>()?;
 
         let mut c = vec![0u8; c_len as usize];
         src.seek(SeekFrom::Start(c_off))?;

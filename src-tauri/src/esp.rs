@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
+use crate::util::lock;
+
 /// 核心板连接配置与状态（前端 DTO，camelCase）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,7 +47,7 @@ impl EspHandle {
     /// 读取当前配置快照。
     #[must_use]
     pub fn config(&self) -> EspConfig {
-        self.cfg.lock().map(|c| c.clone()).unwrap_or_default()
+        lock(&self.cfg).clone()
     }
 
     /// 设置目标地址。
@@ -56,17 +58,14 @@ impl EspHandle {
     /// * `tcp_port` - 控制端口。
     /// * `http_port` - 文件服务端口。
     pub fn set_target(&self, host: String, tcp_port: u16, http_port: u16) {
-        if let Ok(mut c) = self.cfg.lock() {
-            c.host = host;
-            c.tcp_port = tcp_port;
-            c.http_port = http_port;
-        }
+        let mut c = lock(&self.cfg);
+        c.host = host;
+        c.tcp_port = tcp_port;
+        c.http_port = http_port;
     }
 
     /// 更新连接状态。
     pub fn set_connected(&self, connected: bool) {
-        if let Ok(mut c) = self.cfg.lock() {
-            c.connected = connected;
-        }
+        lock(&self.cfg).connected = connected;
     }
 }

@@ -37,5 +37,5 @@ pub use model::{
 pub use payload::{
     apply_diff, assemble_full, decode_diff, encode_diff, split_full, DiffChange,
 };
-pub use reader::ArtRecReader;
+pub use reader::{read_header_and_unis, ArtRecReader};
 pub use writer::{ArtRecWriter, MAX_DIFF_CHANGES};

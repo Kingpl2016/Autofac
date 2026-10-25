@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { isTauri } from "@/shared/tauri/invoke";
+import { saveTextFile } from "@/shared/tauri/files";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import type { Device, DeviceCategory } from "@/shared/domain/device";
 import { DeviceRow } from "./DeviceRow";
@@ -195,14 +196,7 @@ export function DiscoveryView() {
   };
 
   const handleExport = () => {
-    const json = JSON.stringify(filtered, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "art-net-devices.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    void saveTextFile("art-net-devices.json", JSON.stringify(filtered, null, 2));
   };
 
   const handleRename = (ip: string, name: string) => {

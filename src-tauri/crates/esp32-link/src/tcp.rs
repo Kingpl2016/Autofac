@@ -38,17 +38,9 @@ pub async fn send_command(
 ) -> Result<Option<Frame>> {
     let dur = Duration::from_millis(timeout_ms);
     let fut = async {
-        let mut stream = TcpStream::connect((host, port))
-            .await
-            .map_err(|e| EspError::Io(e.to_string()))?;
-        stream
-            .write_all(frame)
-            .await
-            .map_err(|e| EspError::Io(e.to_string()))?;
-        stream
-            .flush()
-            .await
-            .map_err(|e| EspError::Io(e.to_string()))?;
+        let mut stream = TcpStream::connect((host, port)).await?;
+        stream.write_all(frame).await?;
+        stream.flush().await?;
 
         if !expect_response {
             return Ok(None);
@@ -57,10 +49,7 @@ pub async fn send_command(
         let mut buf = Vec::with_capacity(64);
         let mut chunk = [0u8; 512];
         loop {
-            let n = stream
-                .read(&mut chunk)
-                .await
-                .map_err(|e| EspError::Io(e.to_string()))?;
+            let n = stream.read(&mut chunk).await?;
             if n == 0 {
                 return Err(EspError::Truncated);
             }

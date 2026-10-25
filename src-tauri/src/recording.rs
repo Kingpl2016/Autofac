@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -19,7 +19,9 @@ use recorder::{
 };
 use serde::{Deserialize, Serialize};
 use settings::{AppSettings, RecordingCompression};
-use signal_engine::{MergeMode, UniverseSnapshot};
+use signal_engine::UniverseSnapshot;
+
+use crate::util::lock;
 
 
 /// 录制线程的写帧节拍（约 45Hz，略高于 44Hz 的 DMX 上限以免漏帧）。
@@ -121,24 +123,11 @@ pub struct RecordingResult {
     pub dropped: u64,
 }
 
-/// 加锁并忽略中毒（录制线程 panic 后仍要能停止与查询状态）。
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
 
 fn unix_micros() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_micros() as u64)
-}
-
-/// 将配置层合并模式映射为引擎合并模式。
-fn map_merge(m: settings::MergeMode) -> (MergeMode, &'static str) {
-    match m {
-        settings::MergeMode::Htp => (MergeMode::Htp, "htp"),
-        settings::MergeMode::Ltp => (MergeMode::Ltp, "ltp"),
-        settings::MergeMode::Priority => (MergeMode::Priority, "priority"),
-    }
 }
 
 /// 解析录制目录：配置非空用配置，否则用 `默认目录`。
@@ -372,7 +361,7 @@ impl RecordingController {
             return Err(ERR_NO_UNIVERSES.to_string());
         }
 
-        let (merge_mode, merge_name) = map_merge(cfg.merge.mode);
+        let merge_mode = cfg.merge.mode;
         let algo = match cfg.recording.compression {
             RecordingCompression::Zstd => artrec_core::CompressAlgo::Zstd,
             RecordingCompression::None => artrec_core::CompressAlgo::None,
@@ -405,7 +394,7 @@ impl RecordingController {
             notes: args.notes,
             created_unix_ms: unix_micros() / 1000,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
-            merge_mode: merge_name.to_string(),
+            merge_mode: merge_mode.as_str().to_string(),
             source_timeout_ms: u64::from(cfg.merge.source_timeout_ms),
         };
 
@@ -681,7 +670,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use artnet_net::DmxFrame;
+    use artnet_net::{Bytes, DmxFrame};
     use artrec_core::ArtRecReader;
     use settings::AppSettings;
 
@@ -721,7 +710,7 @@ mod tests {
         DmxFrame {
             protocol: Protocol::ArtNet,
             universe,
-            data: vec![v; 8],
+            data: Bytes::from(vec![v; 8]),
             source: Some(ip.parse().unwrap()),
             sequence: 0,
             received_at: Instant::now(),
@@ -841,7 +830,7 @@ mod tests {
                     let tick = Instant::now();
                     for u in 0..50u16 {
                         let mut f = dmx(u, "10.0.0.1", (i % 250) as u8 + 1);
-                        f.data = vec![(i % 250) as u8 + 1; 512];
+                        f.data = Bytes::from(vec![(i % 250) as u8 + 1; 512]);
                         ctl.offer(&f);
                     }
                     if let Some(rest) = Duration::from_millis(22).checked_sub(tick.elapsed()) {

@@ -228,10 +228,10 @@ impl DeviceRegistry {
     /// 返回全部设备（按 IP 升序）。
     #[must_use]
     pub fn list(&self) -> Vec<Device> {
-        let mut v: Vec<(IpAddr, Device)> =
-            self.devices.iter().map(|(k, d)| (*k, d.clone())).collect();
-        v.sort_by_key(|(ip, _)| *ip);
-        v.into_iter().map(|(_, d)| d).collect()
+        // 先按 IP（数值序）对引用排序，最后再克隆，避免中间持有整份 Device 拷贝。
+        let mut refs: Vec<(&IpAddr, &Device)> = self.devices.iter().collect();
+        refs.sort_by_key(|(ip, _)| **ip);
+        refs.into_iter().map(|(_, d)| d.clone()).collect()
     }
 }
 

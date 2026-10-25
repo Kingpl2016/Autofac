@@ -120,7 +120,7 @@ impl RecordFilter {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use artnet_net::{DmxFrame, Protocol};
+    use artnet_net::{Bytes, DmxFrame, Protocol};
 
     use super::{RecordFilter, UniverseRange};
 
@@ -128,7 +128,7 @@ mod tests {
         DmxFrame {
             protocol,
             universe,
-            data: vec![0; 4],
+            data: Bytes::from_static(&[0; 4]),
             source: ip.map(|o| IpAddr::V4(Ipv4Addr::from(o))),
             sequence: 0,
             received_at: std::time::Instant::now(),

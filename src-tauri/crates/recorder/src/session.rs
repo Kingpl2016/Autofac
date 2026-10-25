@@ -345,7 +345,7 @@ mod tests {
     use std::io::Cursor;
     use std::net::{IpAddr, Ipv4Addr};
 
-    use artnet_net::{DmxFrame, Protocol};
+    use artnet_net::{Bytes, DmxFrame, Protocol};
     use artrec_core::ArtRecReader;
     use signal_engine::MergeMode;
 
@@ -361,7 +361,7 @@ mod tests {
         DmxFrame {
             protocol: Protocol::ArtNet,
             universe,
-            data: data.to_vec(),
+            data: Bytes::copy_from_slice(data),
             source: Some(ip(src)),
             sequence: 0,
             received_at: std::time::Instant::now(),

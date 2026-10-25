@@ -7,8 +7,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use artnet_net::socket::DmxSender;
+use artnet_net::Bytes;
 use forwarding::{ForwardProtocol, ForwardingTable, RateLimiter, MIN_INTERVAL_MS_44HZ};
 use serde::{Deserialize, Serialize};
+
+use crate::util::lock;
 
 /// 一次待发送任务。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,8 +26,24 @@ pub struct ForwardJob {
     pub target_universe: u16,
     /// 延迟（毫秒），0 为立即发送。
     pub delay_ms: u16,
-    /// 通道数据。
-    pub data: Vec<u8>,
+    /// 通道数据（多目标共享引用计数缓冲，避免每目标深拷贝整帧）。
+    pub data: Bytes,
+}
+
+/// 一条解析后的路由（`plan` 的中间表示，字段具名以替代易错的位置元组）。
+struct Route {
+    /// 限速键（目的地 id 或 `direct:ip:port`）。
+    id: String,
+    /// 输出协议。
+    protocol: ForwardProtocol,
+    /// 目标 IP 字符串。
+    target_ip: String,
+    /// 目标端口。
+    port: u16,
+    /// 目标 Universe。
+    target_universe: u16,
+    /// 延迟（毫秒）。
+    delay_ms: u16,
 }
 
 /// 输出目标。
@@ -79,6 +98,11 @@ impl Dispatcher {
         }
     }
 
+    /// 清空限速状态（转发表变更后调用，避免已删除目的地的条目残留）。
+    pub fn reset_rate_limits(&self) {
+        lock(&self.limiter).clear();
+    }
+
     /// 当前启用的转发目的地数量（回放走转发表时用于提示"没有可用目的地"）。
     ///
     /// # Returns
@@ -86,9 +110,11 @@ impl Dispatcher {
     /// 转发表中 `enabled` 为 `true` 的目的地个数；转发表锁中毒时返回 `0`。
     #[must_use]
     pub fn enabled_destinations(&self) -> usize {
-        self.forwarding
-            .lock()
-            .map_or(0, |f| f.destinations.iter().filter(|d| d.enabled).count())
+        lock(&self.forwarding)
+            .destinations
+            .iter()
+            .filter(|d| d.enabled)
+            .count()
     }
 
     /// 为一帧数据解析发送任务。
@@ -114,62 +140,56 @@ impl Dispatcher {
         target: &DispatchTarget,
         rate_limited: bool,
     ) -> Vec<ForwardJob> {
-        // (限速键, 协议, 目标 IP, 端口, 目标 Universe, 延迟)
-        let routes: Vec<(String, ForwardProtocol, String, u16, u16, u16)> = match target {
+        let routes: Vec<Route> = match target {
             DispatchTarget::Forwarding => {
-                let Ok(table) = self.forwarding.lock() else {
-                    return Vec::new();
-                };
+                let table = lock(&self.forwarding);
                 table
                     .routes_for(universe)
                     .into_iter()
-                    .map(|(d, r)| {
-                        (
-                            d.id.clone(),
-                            d.protocol,
-                            d.target_ip.clone(),
-                            d.port,
-                            r.target_universe,
-                            r.delay_ms,
-                        )
+                    .map(|(d, r)| Route {
+                        id: d.id.clone(),
+                        protocol: d.protocol,
+                        target_ip: d.target_ip.clone(),
+                        port: d.port,
+                        target_universe: r.target_universe,
+                        delay_ms: r.delay_ms,
                     })
                     .collect()
             }
-            DispatchTarget::Direct { ip, protocol, port } => vec![(
-                format!("direct:{ip}:{port}"),
-                *protocol,
-                ip.clone(),
-                *port,
-                universe,
-                0,
-            )],
+            DispatchTarget::Direct { ip, protocol, port } => vec![Route {
+                id: format!("direct:{ip}:{port}"),
+                protocol: *protocol,
+                target_ip: ip.clone(),
+                port: *port,
+                target_universe: universe,
+                delay_ms: 0,
+            }],
         };
         if routes.is_empty() {
             return Vec::new();
         }
 
+        // 多目标共享同一份负载：Bytes clone 仅增减引用计数，避免每目标 to_vec 深拷贝。
+        let payload = Bytes::copy_from_slice(data);
         let mut jobs = Vec::with_capacity(routes.len());
         let mut limiter = if rate_limited {
-            match self.limiter.lock() {
-                Ok(l) => Some(l),
-                Err(_) => return Vec::new(),
-            }
+            Some(lock(&self.limiter))
         } else {
             None
         };
-        for (id, protocol, target_ip, port, target_universe, delay_ms) in routes {
+        for route in routes {
             let allowed = match limiter.as_mut() {
-                Some(l) => l.allow(&id, target_universe, now_ms, MIN_INTERVAL_MS_44HZ),
+                Some(l) => l.allow(&route.id, route.target_universe, now_ms, MIN_INTERVAL_MS_44HZ),
                 None => true,
             };
             if allowed {
                 jobs.push(ForwardJob {
-                    protocol,
-                    target_ip,
-                    port,
-                    target_universe,
-                    delay_ms,
-                    data: data.to_vec(),
+                    protocol: route.protocol,
+                    target_ip: route.target_ip,
+                    port: route.port,
+                    target_universe: route.target_universe,
+                    delay_ms: route.delay_ms,
+                    data: payload.clone(),
                 });
             }
         }

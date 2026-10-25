@@ -15,6 +15,7 @@ use crate::recording::{
     RecordingStatus,
 };
 use crate::state::AppState;
+use crate::util::lock;
 
 /// 默认录制目录：文档目录下的 `ArtNet Studio Recordings`，取不到时回落到应用数据目录。
 fn default_dir(app: &AppHandle) -> PathBuf {
@@ -56,10 +57,7 @@ pub fn recording_dir(app: &AppHandle, configured: &str) -> PathBuf {
 /// 配置锁中毒时返回错误字符串。
 #[tauri::command]
 pub fn get_recording_dir(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    let cfg = state.settings.lock().map_err(|e| e.to_string())?;
-    Ok(recording_dir(&app, &cfg.recording.directory)
-        .to_string_lossy()
-        .into_owned())
+    Ok(resolved_dir(&app, &state).to_string_lossy().into_owned())
 }
 
 /// 当前来源（按 IP 聚合）统计，供录制来源选择器初始渲染。
@@ -99,7 +97,7 @@ pub fn recording_start(
     args: RecordingStartArgs,
 ) -> Result<RecordingStartResult, String> {
     crate::playback_commands::ensure_not_playing(&state)?;
-    let cfg = state.settings.lock().map_err(|e| e.to_string())?.clone();
+    let cfg = lock(&state.settings).clone();
     let dir = recording_dir(&app, &cfg.recording.directory);
     let snapshot = state.runtime.snapshot();
     let emit: Emitter = Arc::new(move |name, payload| {
@@ -163,10 +161,14 @@ fn lib_err(e: LibraryError) -> String {
     }
 }
 
-/// 读取当前配置里的录制目录（解析后）。
-fn current_dir(app: &AppHandle, state: &State<'_, AppState>) -> Result<PathBuf, String> {
-    let cfg = state.settings.lock().map_err(|e| e.to_string())?;
-    Ok(recording_dir(app, &cfg.recording.directory))
+/// 解析当前生效的录制目录：锁配置并在配置为空时回落默认目录。
+///
+/// 所有"需要知道录制目录"的命令（节目库列举/重命名/删除、回放路径校验、上传核心板）
+/// 统一走此函数，避免分散的"锁配置 → 解析目录"样板。
+#[must_use]
+pub fn resolved_dir(app: &AppHandle, state: &State<'_, AppState>) -> PathBuf {
+    let cfg = lock(&state.settings);
+    recording_dir(app, &cfg.recording.directory)
 }
 
 /// 列出节目库（按修改时间从新到旧）。
@@ -188,7 +190,7 @@ pub fn recordings_list(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<LibraryEntry>, String> {
-    let dir = current_dir(&app, &state)?;
+    let dir = resolved_dir(&app, &state);
     Ok(recorder::list_library(&dir))
 }
 
@@ -216,7 +218,7 @@ pub fn recordings_rename(
     path: String,
     new_name: String,
 ) -> Result<String, String> {
-    let dir = current_dir(&app, &state)?;
+    let dir = resolved_dir(&app, &state);
     recorder::rename_recording(&dir, std::path::Path::new(&path), &new_name)
         .map(|p| p.to_string_lossy().into_owned())
         .map_err(lib_err)
@@ -239,7 +241,7 @@ pub fn recordings_delete(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<(), String> {
-    let dir = current_dir(&app, &state)?;
+    let dir = resolved_dir(&app, &state);
     recorder::delete_recording(&dir, std::path::Path::new(&path)).map_err(lib_err)
 }
 

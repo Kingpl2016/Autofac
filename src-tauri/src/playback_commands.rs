@@ -10,9 +10,9 @@ use player::{Overview, SeriesError};
 use tauri::{AppHandle, Emitter as _, State};
 
 use crate::dispatch::DispatchTarget;
-use crate::playback::{OpenParams, PlaybackStatus};
+use crate::playback::PlaybackStatus;
 use crate::recording::Emitter;
-use crate::recording_commands::recording_dir;
+use crate::recording_commands::resolved_dir;
 use crate::state::AppState;
 
 /// 错误码：录制目录里找不到该节目或路径非法。
@@ -26,10 +26,7 @@ fn checked_path(
     state: &State<'_, AppState>,
     path: &str,
 ) -> Result<PathBuf, String> {
-    let dir = {
-        let cfg = state.settings.lock().map_err(|e| e.to_string())?;
-        recording_dir(app, &cfg.recording.directory)
-    };
+    let dir = resolved_dir(app, state);
     recorder::resolve_in_dir(&dir, Path::new(path)).map_err(|_| ERR_BAD_PATH.to_string())
 }
 
@@ -69,17 +66,9 @@ pub fn player_open(
             let _ = app.emit(name, payload);
         }
     });
-    let runtime = &state.runtime;
-    state.playback.open(OpenParams {
-        emit,
-        dispatcher: runtime.dispatcher().clone(),
-        mode_flag: runtime.playback_mode().clone(),
-        started_at: runtime.started_at(),
-        path: file,
-        name,
-        target: target.unwrap_or_default(),
-        recording_active: runtime.recording().is_recording(),
-    })
+    state
+        .runtime
+        .open_playback(emit, file, name, target.unwrap_or_default())
 }
 
 /// 播放 / 继续。
@@ -93,7 +82,7 @@ pub fn player_open(
 /// 没有已打开的节目（`no_player`）。
 #[tauri::command]
 pub fn player_play(state: State<'_, AppState>) -> Result<(), String> {
-    state.playback.play()
+    state.runtime.playback().play()
 }
 
 /// 暂停。
@@ -107,7 +96,7 @@ pub fn player_play(state: State<'_, AppState>) -> Result<(), String> {
 /// 没有已打开的节目（`no_player`）。
 #[tauri::command]
 pub fn player_pause(state: State<'_, AppState>) -> Result<(), String> {
-    state.playback.pause()
+    state.runtime.playback().pause()
 }
 
 /// 停止并回到开头（节目保持打开）。
@@ -121,7 +110,7 @@ pub fn player_pause(state: State<'_, AppState>) -> Result<(), String> {
 /// 没有已打开的节目（`no_player`）。
 #[tauri::command]
 pub fn player_stop(state: State<'_, AppState>) -> Result<(), String> {
-    state.playback.stop()
+    state.runtime.playback().stop()
 }
 
 /// 关闭节目并退出回放模式（恢复实时接收）。
@@ -131,7 +120,7 @@ pub fn player_stop(state: State<'_, AppState>) -> Result<(), String> {
 /// * `state` - 应用状态。
 #[tauri::command]
 pub fn player_close(state: State<'_, AppState>) {
-    state.playback.close();
+    state.runtime.playback().close();
 }
 
 /// 跳转到指定位置（微秒）。
@@ -146,7 +135,7 @@ pub fn player_close(state: State<'_, AppState>) {
 /// 没有已打开的节目（`no_player`）。
 #[tauri::command]
 pub fn player_seek(state: State<'_, AppState>, pos_us: u64) -> Result<(), String> {
-    state.playback.seek(pos_us)
+    state.runtime.playback().seek(pos_us)
 }
 
 /// 设置倍速（千分之一，1000 = 1.0x）。
@@ -161,7 +150,7 @@ pub fn player_seek(state: State<'_, AppState>, pos_us: u64) -> Result<(), String
 /// 没有已打开的节目（`no_player`）。
 #[tauri::command]
 pub fn player_set_speed(state: State<'_, AppState>, speed_milli: u32) -> Result<(), String> {
-    state.playback.set_speed(speed_milli)
+    state.runtime.playback().set_speed(speed_milli)
 }
 
 /// 设置循环播放。
@@ -176,7 +165,7 @@ pub fn player_set_speed(state: State<'_, AppState>, speed_milli: u32) -> Result<
 /// 没有已打开的节目（`no_player`）。
 #[tauri::command]
 pub fn player_set_loop(state: State<'_, AppState>, looping: bool) -> Result<(), String> {
-    state.playback.set_loop(looping)
+    state.runtime.playback().set_loop(looping)
 }
 
 /// 切换输出目标（转发表 / 指定 IP）。
@@ -194,7 +183,7 @@ pub fn player_set_target(
     state: State<'_, AppState>,
     target: DispatchTarget,
 ) -> Result<(), String> {
-    state.playback.set_target(target)
+    state.runtime.playback().set_target(target)
 }
 
 /// 设置前端正在查看的 Universe（决定推送哪些 `player:channels`）。
@@ -205,7 +194,7 @@ pub fn player_set_target(
 /// * `universes` - 前端正在查看的 Universe 编号列表。
 #[tauri::command]
 pub fn player_set_viewed(state: State<'_, AppState>, universes: Vec<u16>) {
-    state.playback.set_viewed(universes);
+    state.runtime.playback().set_viewed(universes);
 }
 
 /// 当前回放状态快照。
@@ -219,7 +208,7 @@ pub fn player_set_viewed(state: State<'_, AppState>, universes: Vec<u16>) {
 /// 当前的 [`PlaybackStatus`]。
 #[tauri::command]
 pub fn player_status(state: State<'_, AppState>) -> PlaybackStatus {
-    state.playback.status()
+    state.runtime.playback().status()
 }
 
 /// 读取（必要时生成并缓存）节目的时间线概览。
@@ -347,7 +336,7 @@ pub struct SeriesQuery {
 ///
 /// 回放模式中返回 [`ERR_PLAYBACK_ACTIVE`]。
 pub fn ensure_not_playing(state: &State<'_, AppState>) -> Result<(), String> {
-    if state.playback.is_loaded() {
+    if state.runtime.playback().is_loaded() {
         Err(ERR_PLAYBACK_ACTIVE.to_string())
     } else {
         Ok(())

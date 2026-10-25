@@ -13,3 +13,4 @@ doc_markdown = "allow"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+signal-engine = { path = "../signal-engine" }

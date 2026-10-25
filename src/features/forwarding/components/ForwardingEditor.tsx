@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Plus,
@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/shared/components/PageHeader";
+import { openTextFile, saveTextFile } from "@/shared/tauri/files";
 import { DestinationDialog } from "./DestinationDialog";
 import { useForwardingDraft } from "../hooks/useForwarding";
 import {
@@ -35,23 +36,19 @@ export function ForwardingEditor({ initial }: ForwardingEditorProps) {
   const { destinations, upsert, remove, toggle, duplicate, replaceAll } =
     useForwardingDraft(initial);
   const [editing, setEditing] = useState<ForwardDestination | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const handleExport = () => {
-    const json = JSON.stringify(destinations, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "art-net-studio-forwarding.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    void saveTextFile(
+      "art-net-studio-forwarding.json",
+      JSON.stringify(destinations, null, 2),
+    );
   };
 
-  const handleImport = async (file: File) => {
+  const handleImport = async () => {
     try {
-      const list = JSON.parse(await file.text()) as ForwardDestination[];
-      replaceAll(list);
+      const text = await openTextFile();
+      if (text === null) return;
+      replaceAll(JSON.parse(text) as ForwardDestination[]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     }
@@ -64,18 +61,7 @@ export function ForwardingEditor({ initial }: ForwardingEditorProps) {
         subtitle={t("forwarding.subtitle")}
         actions={
           <>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleImport(f);
-                e.target.value = "";
-              }}
-            />
-            <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
+            <Button variant="outline" size="sm" onClick={() => void handleImport()}>
               <Upload />
               {t("common.import")}
             </Button>

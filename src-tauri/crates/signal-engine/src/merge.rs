@@ -1,9 +1,11 @@
 //! 多源合并算法（HTP / LTP / Priority）与冲突检测。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// 合并模式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// 全工程唯一定义：配置层（settings）与引擎层共用此类型，避免重复定义与手工转换。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MergeMode {
     /// 最高值优先（逐通道取最大）。
@@ -12,6 +14,18 @@ pub enum MergeMode {
     Ltp,
     /// 优先级优先（最高优先级胜出，平级回落 HTP）。
     Priority,
+}
+
+impl MergeMode {
+    /// 稳定的小写标识符（用于录制元数据等需要字符串表示的场合）。
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Htp => "htp",
+            Self::Ltp => "ltp",
+            Self::Priority => "priority",
+        }
+    }
 }
 
 /// 参与合并的单个源快照（只读视图）。
@@ -54,16 +68,13 @@ pub fn merge(sources: &[SourceView<'_>], mode: MergeMode) -> MergeResult {
     let conflict_channels = count_conflicts(sources, width);
 
     let data = match mode {
-        MergeMode::Htp => htp(sources, width),
+        MergeMode::Htp => htp(sources.iter(), width),
         MergeMode::Ltp => ltp(sources, width),
         MergeMode::Priority => {
+            // 仅最高优先级的源参与 HTP，平级回落。直接按优先级过滤迭代，
+            // 避免为中间集合额外分配 `Vec<SourceView>`。
             let top = sources.iter().map(|s| s.priority).max().unwrap_or(0);
-            let filtered: Vec<SourceView<'_>> = sources
-                .iter()
-                .filter(|s| s.priority == top)
-                .cloned()
-                .collect();
-            htp(&filtered, width)
+            htp(sources.iter().filter(|s| s.priority == top), width)
         }
     };
 
@@ -74,13 +85,14 @@ pub fn merge(sources: &[SourceView<'_>], mode: MergeMode) -> MergeResult {
     }
 }
 
-fn htp(sources: &[SourceView<'_>], width: usize) -> Vec<u8> {
+/// 逐通道取最大（HTP）。接受迭代器以便 Priority 过滤复用而不额外分配。
+fn htp<'a, 'b: 'a>(sources: impl Iterator<Item = &'a SourceView<'b>>, width: usize) -> Vec<u8> {
     let mut out = vec![0u8; width];
     for s in sources {
-        for (i, &v) in s.data.iter().enumerate() {
-            if v > out[i] {
-                out[i] = v;
-            }
+        // 无分支逐元素取 max，zip 自动按较短长度（源宽度 ≤ 输出宽度）收敛，
+        // 便于编译器向量化。
+        for (slot, &v) in out.iter_mut().zip(s.data.iter()) {
+            *slot = (*slot).max(v);
         }
     }
     out

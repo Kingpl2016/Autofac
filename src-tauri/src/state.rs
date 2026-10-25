@@ -6,7 +6,6 @@ use std::sync::Mutex;
 use settings::AppSettings;
 
 use crate::esp::EspHandle;
-use crate::playback::PlaybackController;
 use crate::runtime::Runtime;
 
 /// 应用全局状态：当前配置快照、持久化路径与运行时句柄。
@@ -15,10 +14,8 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     /// 配置文件路径。
     pub settings_path: PathBuf,
-    /// 应用运行时（信号引擎 + 设备发现 + 转发）。
+    /// 应用运行时（信号引擎 + 设备发现 + 转发 + 录制 / 回放控制器）。
     pub runtime: Runtime,
-    /// 录制节目回放控制器。
-    pub playback: PlaybackController,
     /// ESP32-P4 核心板连接句柄。
     pub esp: EspHandle,
 }
@@ -44,7 +41,6 @@ impl AppState {
             settings: Mutex::new(loaded),
             settings_path,
             runtime,
-            playback: PlaybackController::new(),
             esp: EspHandle::new(),
         }
     }

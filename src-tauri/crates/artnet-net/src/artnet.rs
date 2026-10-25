@@ -119,18 +119,14 @@ pub fn build_dmx(port_address: u16, sequence: u8, data: &[u8]) -> Vec<u8> {
     }
     let mut buf = Vec::with_capacity(18 + len);
     buf.extend_from_slice(ARTNET_ID);
-    let mut op = [0u8; 2];
-    LittleEndian::write_u16(&mut op, OP_OUTPUT);
-    buf.extend_from_slice(&op);
-    buf.push((PROT_VER >> 8) as u8);
-    buf.push((PROT_VER & 0xFF) as u8);
+    // OpCode 小端，其余多字节字段大端（Art-Net 规范内混合字节序）。
+    buf.extend_from_slice(&OP_OUTPUT.to_le_bytes());
+    buf.extend_from_slice(&PROT_VER.to_be_bytes());
     buf.push(sequence);
     buf.push(0); // physical
     buf.push(sub_uni_of(port_address));
     buf.push(net_of(port_address));
-    let mut ln = [0u8; 2];
-    BigEndian::write_u16(&mut ln, len as u16);
-    buf.extend_from_slice(&ln);
+    buf.extend_from_slice(&(len as u16).to_be_bytes());
     buf.extend_from_slice(&data[..data.len().min(len)]);
     buf.resize(18 + len, 0); // 不足偶数长度补 0
     buf
@@ -145,11 +141,8 @@ pub fn build_dmx(port_address: u16, sequence: u8, data: &[u8]) -> Vec<u8> {
 pub fn build_poll() -> Vec<u8> {
     let mut buf = Vec::with_capacity(14);
     buf.extend_from_slice(ARTNET_ID);
-    let mut op = [0u8; 2];
-    LittleEndian::write_u16(&mut op, OP_POLL);
-    buf.extend_from_slice(&op);
-    buf.push((PROT_VER >> 8) as u8);
-    buf.push((PROT_VER & 0xFF) as u8);
+    buf.extend_from_slice(&OP_POLL.to_le_bytes());
+    buf.extend_from_slice(&PROT_VER.to_be_bytes());
     buf.push(0); // TalkToMe
     buf.push(0); // Priority
     buf

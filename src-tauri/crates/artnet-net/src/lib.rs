@@ -10,4 +10,5 @@ pub mod frame;
 pub mod sacn;
 pub mod socket;
 
+pub use bytes::Bytes;
 pub use frame::{DmxFrame, Protocol};

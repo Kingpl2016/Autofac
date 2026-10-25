@@ -10,8 +10,6 @@
 //!
 //! 二者文档未明确，若固件不同只需改本模块的 [`checksum`] 与字节序读写。
 
-use byteorder::{BigEndian, ByteOrder};
-
 use crate::error::{EspError, Result};
 
 /// 帧头固定值。
@@ -110,12 +108,8 @@ pub fn encode(opcode: OpCode, register: u16, data: &[u8]) -> Vec<u8> {
     buf.push(FRAME_HEADER);
     // 通信定义：bit7=0 单数据传输，bit6~4=操作码，bit3~0=0
     buf.push((opcode as u8) << 4);
-    let mut len = [0u8; 2];
-    BigEndian::write_u16(&mut len, payload_len as u16);
-    buf.extend_from_slice(&len);
-    let mut reg = [0u8; 2];
-    BigEndian::write_u16(&mut reg, register);
-    buf.extend_from_slice(&reg);
+    buf.extend_from_slice(&(payload_len as u16).to_be_bytes());
+    buf.extend_from_slice(&register.to_be_bytes());
     buf.extend_from_slice(data);
     let cs = checksum(&buf);
     buf.push(cs);
@@ -146,12 +140,12 @@ pub fn decode(buf: &[u8]) -> Result<Frame> {
         return Err(EspError::BadHeader(buf[0]));
     }
     let opcode = OpCode::from_u8((buf[1] >> 4) & 0x07).ok_or(EspError::BadOpcode(buf[1]))?;
-    let payload_len = BigEndian::read_u16(&buf[2..4]) as usize;
+    let payload_len = u16::from_be_bytes([buf[2], buf[3]]) as usize;
     let frame_len = 5 + payload_len;
     if buf.len() < frame_len || payload_len < 2 {
         return Err(EspError::Truncated);
     }
-    let register = BigEndian::read_u16(&buf[4..6]);
+    let register = u16::from_be_bytes([buf[4], buf[5]]);
     let data = buf[6..4 + payload_len].to_vec();
     let expected = buf[frame_len - 1];
     let actual = checksum(&buf[..frame_len - 1]);
@@ -185,7 +179,7 @@ pub fn try_decode_stream(buf: &[u8]) -> Result<Option<(Frame, usize)>> {
     if buf[0] != FRAME_HEADER {
         return Err(EspError::BadHeader(buf[0]));
     }
-    let payload_len = BigEndian::read_u16(&buf[2..4]) as usize;
+    let payload_len = u16::from_be_bytes([buf[2], buf[3]]) as usize;
     let frame_len = 5 + payload_len;
     if buf.len() < frame_len {
         return Ok(None);

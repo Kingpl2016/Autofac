@@ -34,8 +34,7 @@ export function EspFilesView() {
 
   const handleUpload = async (file: File) => {
     try {
-      const data = [...new Uint8Array(await file.arrayBuffer())];
-      await espApi.uploadFile(file.name, data);
+      await espApi.uploadFile(file.name, await file.arrayBuffer());
       toast.success(t("esp.sent"));
       refetch();
     } catch (e) {

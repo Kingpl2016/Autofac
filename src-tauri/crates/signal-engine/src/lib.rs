@@ -14,7 +14,7 @@ pub use state::{unknown_source, SourceEntry, SourceKey, UniverseState};
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use artnet_net::{DmxFrame, Protocol};
+    use artnet_net::{Bytes, DmxFrame, Protocol};
 
     use super::{MergeMode, SignalEngine};
 
@@ -22,7 +22,7 @@ mod tests {
         DmxFrame {
             protocol: Protocol::ArtNet,
             universe,
-            data,
+            data: Bytes::from(data),
             source: Some(IpAddr::V4(Ipv4Addr::from(ip))),
             sequence: 0,
             received_at: std::time::Instant::now(),

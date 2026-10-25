@@ -14,6 +14,26 @@ use crate::sacn::{self, SACN_PORT};
 /// 接收缓冲区大小（足够容纳最大 Art-Net/sACN 包）。
 const RECV_BUF: usize = 2048;
 
+/// 判定一次 `recv_from` 错误是否为致命错误（需终止接收任务）。
+///
+/// UDP 上存在可恢复的瞬时错误：典型如 Windows 在先前 `send_to` 收到 ICMP
+/// "端口不可达" 后，会让后续 `recv_from` 返回 `WSAECONNRESET`
+/// （[`ErrorKind::ConnectionReset`]）。这类错误若直接 `break` 会导致接收任务
+/// 永久退出、静默丢失该协议后续所有帧。此处将其与其他连接类/瞬时错误一并视为
+/// 可恢复（继续接收），仅把真正无法继续的错误（如绑定地址失效）判为致命。
+fn is_fatal_recv_error(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    !matches!(
+        e.kind(),
+        ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionRefused
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::WouldBlock
+            | ErrorKind::Interrupted
+            | ErrorKind::TimedOut
+    )
+}
+
 /// 以 `SO_REUSEADDR`（及可用时 `SO_REUSEPORT`）创建并绑定一个 UDP 套接字。
 ///
 /// # Arguments
@@ -96,7 +116,7 @@ pub fn spawn_artnet_receiver(
                         let frame = DmxFrame {
                             protocol: Protocol::ArtNet,
                             universe: port_address,
-                            data,
+                            data: data.into(),
                             source: Some(src.ip()),
                             sequence,
                             received_at,
@@ -112,7 +132,13 @@ pub fn spawn_artnet_receiver(
                     }
                     _ => {}
                 },
-                Err(_) => break,
+                Err(e) => {
+                    if is_fatal_recv_error(&e) {
+                        tracing::warn!(error = %e, "Art-Net 接收致命错误，终止接收任务");
+                        break;
+                    }
+                    tracing::debug!(error = %e, "Art-Net 接收瞬时错误，已忽略");
+                }
             }
         }
     }))
@@ -151,7 +177,7 @@ pub fn spawn_sacn_receiver(
                         let frame = DmxFrame {
                             protocol: Protocol::Sacn,
                             universe: d.universe,
-                            data: d.data,
+                            data: d.data.into(),
                             source: Some(src.ip()),
                             sequence: d.sequence,
                             received_at,
@@ -161,7 +187,13 @@ pub fn spawn_sacn_receiver(
                         }
                     }
                 }
-                Err(_) => break,
+                Err(e) => {
+                    if is_fatal_recv_error(&e) {
+                        tracing::warn!(error = %e, "sACN 接收致命错误，终止接收任务");
+                        break;
+                    }
+                    tracing::debug!(error = %e, "sACN 接收瞬时错误，已忽略");
+                }
             }
         }
     }))
@@ -272,5 +304,36 @@ impl DmxSender {
         });
         self.socket.send_to(&buf, addr).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_fatal_recv_error;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn connection_reset_is_recoverable() {
+        // Windows WSAECONNRESET：先前 send 收到 ICMP 不可达后 recv 返回，应可恢复
+        assert!(!is_fatal_recv_error(&Error::from(ErrorKind::ConnectionReset)));
+    }
+
+    #[test]
+    fn transient_kinds_are_recoverable() {
+        for k in [
+            ErrorKind::ConnectionRefused,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::WouldBlock,
+            ErrorKind::Interrupted,
+            ErrorKind::TimedOut,
+        ] {
+            assert!(!is_fatal_recv_error(&Error::from(k)), "{k:?} 应为可恢复");
+        }
+    }
+
+    #[test]
+    fn addr_not_available_is_fatal() {
+        // 绑定地址失效等无法继续的错误应终止接收任务
+        assert!(is_fatal_recv_error(&Error::from(ErrorKind::AddrNotAvailable)));
     }
 }

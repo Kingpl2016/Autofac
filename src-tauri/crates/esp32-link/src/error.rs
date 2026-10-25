@@ -26,13 +26,13 @@ pub enum EspError {
         actual: u8,
     },
 
-    /// 底层 IO / 网络错误。
+    /// 底层 IO / 网络错误（保留源错误以便诊断）。
     #[error("网络错误：{0}")]
-    Io(String),
+    Io(#[from] std::io::Error),
 
-    /// HTTP 文件传输错误。
+    /// HTTP 文件传输错误（保留源错误以便诊断）。
     #[error("文件传输错误：{0}")]
-    Http(String),
+    Http(#[from] reqwest::Error),
 
     /// 操作超时。
     #[error("操作超时")]

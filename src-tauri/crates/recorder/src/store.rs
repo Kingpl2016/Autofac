@@ -14,8 +14,8 @@ use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use artrec_core::{
-    ArtRecError, ArtRecWriter, ChunkHdr, FileHeader, FrameIndex, UniDesc, CHUNKHDR_SIZE,
-    FRAMEINDEX_SIZE, HEADER_SIZE, UNIDESC_SIZE,
+    read_header_and_unis, ArtRecError, ArtRecWriter, ChunkHdr, FrameIndex, CHUNKHDR_SIZE,
+    FRAMEINDEX_SIZE, HEADER_SIZE,
 };
 use serde::Serialize;
 
@@ -434,9 +434,8 @@ fn recover_one(part: &Path) -> Result<RecoveryOutcome, StoreError> {
     let idx_path = dir.join(format!("{stem}{JOURNAL_SUFFIX}"));
 
     let mut f = File::open(part)?;
-    let len = f.metadata()?.len();
     // 头部都没落盘就崩溃：日志不可能引用任何 Chunk，没有可恢复的内容
-    if len < u64::from(HEADER_SIZE) {
+    if f.metadata()?.len() < u64::from(HEADER_SIZE) {
         drop(f);
         let _ = fs::remove_file(part);
         let _ = fs::remove_file(&idx_path);
@@ -444,22 +443,8 @@ fn recover_one(part: &Path) -> Result<RecoveryOutcome, StoreError> {
             part: part.to_path_buf(),
         });
     }
-    let mut head = vec![0u8; len.min(u64::from(HEADER_SIZE)) as usize];
-    f.read_exact(&mut head)?;
-    let header = FileHeader::from_bytes(&head)?;
-
-    let b_off = u64::from(header.universe_desc_offset);
-    let b_len = u64::from(header.universe_count) * u64::from(UNIDESC_SIZE);
-    if b_off + b_len > len {
-        return Err(ArtRecError::Truncated("Universe 描述表不完整").into());
-    }
-    let mut b = vec![0u8; b_len as usize];
-    f.seek(SeekFrom::Start(b_off))?;
-    f.read_exact(&mut b)?;
-    let unis = b
-        .chunks_exact(UNIDESC_SIZE as usize)
-        .map(UniDesc::from_bytes)
-        .collect::<Result<Vec<_>, _>>()?;
+    // 文件头与 Universe 表的读取/校验与随机访问读取器共用 artrec-core 的实现
+    let (len, header, unis) = read_header_and_unis(&mut f)?;
 
     // 取日志中"连续、时间非降、且 Chunk 头一致"的最长前缀
     let pool_off = u64::from(header.chunk_pool_offset);
@@ -569,7 +554,7 @@ pub fn list_artrec_files(dir: &Path) -> Vec<PathBuf> {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use artnet_net::{DmxFrame, Protocol};
+    use artnet_net::{Bytes, DmxFrame, Protocol};
     use artrec_core::ArtRecReader;
     use signal_engine::MergeMode;
 
@@ -610,7 +595,7 @@ mod tests {
         DmxFrame {
             protocol: Protocol::ArtNet,
             universe,
-            data: vec![v, v, v],
+            data: Bytes::from(vec![v, v, v]),
             source: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
             sequence: 0,
             received_at: std::time::Instant::now(),

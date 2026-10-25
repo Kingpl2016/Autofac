@@ -23,6 +23,20 @@ pub enum BoardOp {
     Test = 2,
 }
 
+impl TryFrom<u8> for BoardOp {
+    type Error = ();
+
+    /// 由值还原核心板操作码；超出 0~2 返回 `Err(())`。
+    fn try_from(v: u8) -> Result<Self, ()> {
+        Ok(match v {
+            0 => Self::Reset,
+            1 => Self::Factory,
+            2 => Self::Test,
+            _ => return Err(()),
+        })
+    }
+}
+
 /// 节目文件操作（寄存器 0x0002）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -39,6 +53,23 @@ pub enum ProgramAction {
     Delete = 4,
     /// 录制。
     Record = 5,
+}
+
+impl TryFrom<u8> for ProgramAction {
+    type Error = ();
+
+    /// 由值还原节目操作；超出 0~5 返回 `Err(())`。
+    fn try_from(v: u8) -> Result<Self, ()> {
+        Ok(match v {
+            0 => Self::Stop,
+            1 => Self::Pause,
+            2 => Self::PlayOnce,
+            3 => Self::Loop,
+            4 => Self::Delete,
+            5 => Self::Record,
+            _ => return Err(()),
+        })
+    }
 }
 
 /// DMX 核心板工作模式（寄存器 0x0003）。
@@ -180,5 +211,19 @@ mod tests {
     fn work_mode_from_u8() {
         assert_eq!(WorkMode::from_u8(1), Some(WorkMode::ArtnetForward));
         assert_eq!(WorkMode::from_u8(9), None);
+    }
+
+    #[test]
+    fn board_op_try_from() {
+        assert_eq!(BoardOp::try_from(0), Ok(BoardOp::Reset));
+        assert_eq!(BoardOp::try_from(2), Ok(BoardOp::Test));
+        assert_eq!(BoardOp::try_from(3), Err(()));
+    }
+
+    #[test]
+    fn program_action_try_from() {
+        assert_eq!(ProgramAction::try_from(0), Ok(ProgramAction::Stop));
+        assert_eq!(ProgramAction::try_from(5), Ok(ProgramAction::Record));
+        assert_eq!(ProgramAction::try_from(6), Err(()));
     }
 }

@@ -29,7 +29,7 @@ pub struct NicConfig {
 
 /// 网络设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct NetworkSettings {
     /// 工作模式。
     pub mode: NetworkMode,
@@ -51,7 +51,7 @@ impl Default for NetworkSettings {
 
 /// 协议设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ProtocolSettings {
     /// 是否接收 Art-Net。
     pub artnet_enabled: bool,
@@ -119,7 +119,7 @@ pub enum ValueFormat {
 
 /// 显示设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct DisplaySettings {
     /// 界面刷新率（fps）：15 / 30 / 60。
     pub ui_update_rate: u16,
@@ -142,21 +142,12 @@ impl Default for DisplaySettings {
     }
 }
 
-/// 合并模式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MergeMode {
-    /// 最高值优先。
-    Htp,
-    /// 最新值优先。
-    Ltp,
-    /// 优先级选择。
-    Priority,
-}
+/// 合并模式（复用引擎层定义，配置与引擎共用同一类型）。
+pub use signal_engine::MergeMode;
 
 /// 合并设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct MergeSettings {
     /// 全局合并模式。
     pub mode: MergeMode,
@@ -223,7 +214,7 @@ pub enum UpdateChannel {
 
 /// 更新设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct UpdateSettings {
     /// 更新通道。
     pub channel: UpdateChannel,
@@ -239,7 +230,7 @@ impl Default for UpdateSettings {
 
 /// 应用总配置。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     /// 网络设置。
     pub network: NetworkSettings,

@@ -8,6 +8,7 @@ use settings::AppSettings;
 
 use crate::netif::{self, NetworkInterfaceDto};
 use crate::state::AppState;
+use crate::util::lock;
 
 /// 读取当前配置快照。
 ///
@@ -24,8 +25,7 @@ use crate::state::AppState;
 /// 状态锁中毒时返回错误字符串。
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
-    let guard = state.settings.lock().map_err(|e| e.to_string())?;
-    Ok(guard.clone())
+    Ok(lock(&state.settings).clone())
 }
 
 /// 保存配置：规范化后更新内存并持久化到磁盘。
@@ -48,11 +48,18 @@ pub fn save_settings(
     mut settings: AppSettings,
 ) -> Result<AppSettings, String> {
     settings.normalize();
-    settings::save(&state.settings_path, &settings).map_err(|e| e.to_string())?;
-    state.runtime.apply_settings(&settings);
-    let mut guard = state.settings.lock().map_err(|e| e.to_string())?;
-    *guard = settings.clone();
+    persist_and_apply(&state, &settings)?;
     Ok(settings)
+}
+
+/// 持久化配置到磁盘、应用到运行时并更新内存快照。
+///
+/// `save_settings` 与 `import_settings` 的公共落地路径。
+fn persist_and_apply(state: &State<'_, AppState>, settings: &AppSettings) -> Result<(), String> {
+    settings::save(&state.settings_path, settings).map_err(|e| e.to_string())?;
+    state.runtime.apply_settings(settings);
+    *lock(&state.settings) = settings.clone();
+    Ok(())
 }
 
 /// 从 JSON 文本导入配置并保存。
@@ -75,10 +82,7 @@ pub fn import_settings(
     json: String,
 ) -> Result<AppSettings, String> {
     let settings = settings::from_json(&json).map_err(|e| e.to_string())?;
-    settings::save(&state.settings_path, &settings).map_err(|e| e.to_string())?;
-    state.runtime.apply_settings(&settings);
-    let mut guard = state.settings.lock().map_err(|e| e.to_string())?;
-    *guard = settings.clone();
+    persist_and_apply(&state, &settings)?;
     Ok(settings)
 }
 
@@ -97,8 +101,7 @@ pub fn import_settings(
 /// 锁中毒或序列化失败时返回错误字符串。
 #[tauri::command]
 pub fn export_settings(state: State<'_, AppState>) -> Result<String, String> {
-    let guard = state.settings.lock().map_err(|e| e.to_string())?;
-    settings::to_json(&guard).map_err(|e| e.to_string())
+    settings::to_json(&lock(&state.settings)).map_err(|e| e.to_string())
 }
 
 /// 枚举本机网络接口。

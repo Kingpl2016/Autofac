@@ -87,6 +87,27 @@ mod tests {
     }
 
     #[test]
+    fn missing_sections_fall_back_to_default() {
+        // 配置文件缺少整个 section（如旧版本没有 merge/update）时，应逐节回落默认，
+        // 而非整体解析失败。验证所有顶层 section 均带 #[serde(default)]。
+        let s = from_json("{}").unwrap();
+        assert_eq!(s, AppSettings::default());
+
+        // 仅提供部分 section，其余缺失的仍回落默认
+        let partial = serde_json::json!({
+            "protocol": { "artnetPort": 6460 }
+        });
+        let s = from_json(&partial.to_string()).unwrap();
+        assert_eq!(s.protocol.artnet_port, 6460);
+        // 缺失字段回落默认
+        assert!(s.protocol.artnet_enabled);
+        // 缺失 section 回落默认
+        assert_eq!(s.merge, MergeSettings::default());
+        assert_eq!(s.display, DisplaySettings::default());
+        assert_eq!(s.network, NetworkSettings::default());
+    }
+
+    #[test]
     fn recording_values_are_clamped() {
         let mut s = AppSettings::default();
         s.recording.zstd_level = 0;

@@ -3,6 +3,7 @@
 use std::net::IpAddr;
 use std::time::Instant;
 
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 /// 灯光信号协议类型。
@@ -23,7 +24,10 @@ pub struct DmxFrame {
     /// Universe 编号：Art-Net 为 15 位 Port-Address，sACN 为 1~63999。
     pub universe: u16,
     /// 通道数据（不含 START Code）。
-    pub data: Vec<u8>,
+    ///
+    /// 使用 [`Bytes`] 以便一帧被接收、录制旁路与合并引擎多方共享时，`clone`
+    /// 仅为引用计数增减而非整段 DMX 数据（最多 512 字节）的深拷贝。
+    pub data: Bytes,
     /// 源地址（若已知）。
     pub source: Option<IpAddr>,
     /// 序列号（用于丢包/乱序检测；无则为 0）。

@@ -14,6 +14,7 @@ mod recording;
 mod recording_commands;
 mod runtime;
 mod state;
+mod util;
 
 use tauri::Manager;
 
@@ -44,13 +45,15 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // 配置目录
             let config_dir = app.path().app_config_dir()?;
             let state = AppState::new(config_dir);
 
             // 以当前配置启动接收引擎、设备发现与事件推送
-            let cfg = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
+            let cfg = crate::util::lock(&state.settings).clone();
             state.runtime.spawn(app.handle().clone(), &cfg);
 
             // 恢复上次异常退出遗留的录制（必须在任何新录制开始之前执行）

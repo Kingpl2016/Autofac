@@ -40,8 +40,10 @@ export const espApi = {
   readChannels: (start: number, unitCount: number, unitRun: number) =>
     invoke<number[]>("esp_read_channels", { start, unitCount, unitRun }),
   listFiles: () => invoke<FileEntry[]>("esp_list_files"),
-  downloadFile: (name: string) => invoke<number[]>("esp_download_file", { name }),
-  uploadFile: (name: string, data: number[]) =>
+  // 下载返回原始字节（ArrayBuffer，走 IPC 二进制通道），避免 JSON 数字数组膨胀。
+  downloadFile: (name: string) => invoke<ArrayBuffer>("esp_download_file", { name }),
+  // 上传直接传 ArrayBuffer，Tauri 以二进制通道传输，避免 number[] 膨胀。
+  uploadFile: (name: string, data: ArrayBuffer) =>
     invoke<void>("esp_upload_file", { name, data }),
   deleteFile: (name: string) => invoke<void>("esp_delete_file", { name }),
   renameFile: (from: string, to: string) =>

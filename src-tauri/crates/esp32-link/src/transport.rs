@@ -18,7 +18,7 @@
 
 use async_trait::async_trait;
 
-use crate::error::{EspError, Result};
+use crate::error::Result;
 use crate::model::FileEntry;
 
 /// 核心板文件传输抽象（list / read / write / delete / rename）。
@@ -115,72 +115,54 @@ impl HttpTransport {
         }
         b
     }
-}
 
-fn http_err<E: std::fmt::Display>(e: E) -> EspError {
-    EspError::Http(e.to_string())
+    /// 发送请求并要求响应为 2xx，统一错误处理。
+    async fn send_ok(&self, b: reqwest::RequestBuilder) -> Result<reqwest::Response> {
+        Ok(b.send().await?.error_for_status()?)
+    }
 }
 
 #[async_trait]
 impl DeviceTransport for HttpTransport {
     async fn list_files(&self) -> Result<Vec<FileEntry>> {
         let url = format!("{}/files", self.base);
-        self.req(reqwest::Method::GET, url)
-            .send()
-            .await
-            .map_err(http_err)?
+        Ok(self
+            .send_ok(self.req(reqwest::Method::GET, url))
+            .await?
             .json::<Vec<FileEntry>>()
-            .await
-            .map_err(http_err)
+            .await?)
     }
 
     async fn read_file(&self, name: &str) -> Result<Vec<u8>> {
         let url = format!("{}/files/{}", self.base, name);
-        let bytes = self
-            .req(reqwest::Method::GET, url)
-            .send()
-            .await
-            .map_err(http_err)?
-            .error_for_status()
-            .map_err(http_err)?
+        Ok(self
+            .send_ok(self.req(reqwest::Method::GET, url))
+            .await?
             .bytes()
-            .await
-            .map_err(http_err)?;
-        Ok(bytes.to_vec())
+            .await?
+            .to_vec())
     }
 
     async fn write_file(&self, name: &str, bytes: Vec<u8>) -> Result<()> {
         let url = format!("{}/files/{}", self.base, name);
-        self.req(reqwest::Method::PUT, url)
-            .body(bytes)
-            .send()
-            .await
-            .map_err(http_err)?
-            .error_for_status()
-            .map_err(http_err)?;
+        self.send_ok(self.req(reqwest::Method::PUT, url).body(bytes))
+            .await?;
         Ok(())
     }
 
     async fn delete_file(&self, name: &str) -> Result<()> {
         let url = format!("{}/files/{}", self.base, name);
-        self.req(reqwest::Method::DELETE, url)
-            .send()
-            .await
-            .map_err(http_err)?
-            .error_for_status()
-            .map_err(http_err)?;
+        self.send_ok(self.req(reqwest::Method::DELETE, url)).await?;
         Ok(())
     }
 
     async fn rename_file(&self, from: &str, to: &str) -> Result<()> {
         let url = format!("{}/rename", self.base);
-        self.req(reqwest::Method::POST, url)
-            .json(&serde_json::json!({ "from": from, "to": to }))
-            .send()
-            .await
-            .map_err(http_err)?
-            .error_for_status()
-            .map_err(http_err)?;
+        self.send_ok(
+            self.req(reqwest::Method::POST, url)
+                .json(&serde_json::json!({ "from": from, "to": to })),
+        )
+        .await?;
         Ok(())
     }
 }
