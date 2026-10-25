@@ -67,7 +67,7 @@ export function PlayerTargetPicker({
   return (
     <div className="grid gap-3">
       <div className="grid gap-1.5 md:max-w-xs">
-        <Label htmlFor="player-target-kind">{t("player.target")}</Label>
+        <Label htmlFor="player-target-kind" className="text-xs font-medium text-muted-foreground">{t("player.target")}</Label>
         <Select value={kind} onValueChange={(v) => setKind(v as PlayerTarget["kind"])}>
           <SelectTrigger id="player-target-kind">
             <SelectValue />
@@ -88,7 +88,7 @@ export function PlayerTargetPicker({
           }
         >
           <div className="grid content-start gap-1.5">
-            <Label htmlFor="player-target-ip">{t("player.targetIp")}</Label>
+            <Label htmlFor="player-target-ip" className="text-xs font-medium text-muted-foreground">{t("player.targetIp")}</Label>
             <Input
               id="player-target-ip"
               className="tabular"
@@ -100,7 +100,7 @@ export function PlayerTargetPicker({
           </div>
           {sacnEnabled && (
             <div className="grid content-start gap-1.5">
-              <Label htmlFor="player-target-proto">{t("player.targetProtocol")}</Label>
+              <Label htmlFor="player-target-proto" className="text-xs font-medium text-muted-foreground">{t("player.targetProtocol")}</Label>
               <Select
                 value={protocol}
                 onValueChange={(v) => {
@@ -120,7 +120,7 @@ export function PlayerTargetPicker({
             </div>
           )}
           <div className="grid content-start gap-1.5">
-            <Label htmlFor="player-target-port">{t("player.targetPort")}</Label>
+            <Label htmlFor="player-target-port" className="text-xs font-medium text-muted-foreground">{t("player.targetPort")}</Label>
             <Input
               id="player-target-port"
               type="number"

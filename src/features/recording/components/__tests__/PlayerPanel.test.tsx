@@ -144,6 +144,81 @@ describe("PlayerPanel", () => {
   });
 });
 
+describe("PlayerPanel 键盘快捷键", () => {
+  const press = (key: string, init: KeyboardEventInit = {}, target: Element = document.body) =>
+    fireEvent.keyDown(target, { key, ...init });
+
+  it("空格在停止态播放，在播放态暂停", async () => {
+    usePlayerStore.setState({ status: loaded() });
+    const { rerenderPanel } = renderPanel();
+    press(" ");
+    await waitFor(() => expect(api.playerPlay).toHaveBeenCalledTimes(1));
+
+    usePlayerStore.setState({ status: loaded({ state: "playing" }) });
+    rerenderPanel();
+    press(" ");
+    await waitFor(() => expect(api.playerPause).toHaveBeenCalledTimes(1));
+  });
+
+  it("方向键前后跳 5 秒，Shift 为 1 秒，并限制在节目范围内", async () => {
+    usePlayerStore.setState({ status: loaded({ posUs: 10_000_000 }) });
+    renderPanel();
+    press("ArrowRight");
+    await waitFor(() => expect(api.playerSeek).toHaveBeenLastCalledWith(15_000_000));
+    press("ArrowLeft", { shiftKey: true });
+    await waitFor(() => expect(api.playerSeek).toHaveBeenLastCalledWith(9_000_000));
+  });
+
+  it("接近开头 / 结尾时钳制位置", async () => {
+    usePlayerStore.setState({ status: loaded({ posUs: 2_000_000 }) });
+    const { rerenderPanel } = renderPanel();
+    press("ArrowLeft");
+    await waitFor(() => expect(api.playerSeek).toHaveBeenLastCalledWith(0));
+
+    usePlayerStore.setState({ status: loaded({ posUs: 58_000_000 }) });
+    rerenderPanel();
+    press("ArrowRight");
+    await waitFor(() => expect(api.playerSeek).toHaveBeenLastCalledWith(60_000_000));
+  });
+
+  it("L 切换循环", async () => {
+    usePlayerStore.setState({ status: loaded() });
+    renderPanel();
+    press("l");
+    await waitFor(() => expect(api.playerSetLoop).toHaveBeenCalledWith(true));
+  });
+
+  it("焦点在输入框 / 按钮 / 滑杆上时不触发全局快捷键", async () => {
+    usePlayerStore.setState({ status: loaded() });
+    renderPanel();
+    const bar = screen.getByRole("slider", { name: "播放进度" });
+    press(" ", {}, bar);
+    press("ArrowRight", {}, bar);
+    const stop = screen.getByRole("button", { name: "停止" });
+    press(" ", {}, stop);
+    const channels = screen.getByLabelText(/^通道/);
+    press("l", {}, channels);
+    // 给异步路径一点时间，确认确实没有任何命令发出
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.playerPlay).not.toHaveBeenCalled();
+    expect(api.playerSeek).not.toHaveBeenCalled();
+    expect(api.playerSetLoop).not.toHaveBeenCalled();
+  });
+
+  it("面板不可见（active=false）时不响应", async () => {
+    usePlayerStore.setState({ status: loaded() });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <PlayerPanel onGoLibrary={() => {}} active={false} />
+      </QueryClientProvider>,
+    );
+    press(" ");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.playerPlay).not.toHaveBeenCalled();
+  });
+});
+
 describe("PlayerPanel 时间线", () => {
   const timeline = () => screen.findByRole("slider", { name: /^时间线/ });
 

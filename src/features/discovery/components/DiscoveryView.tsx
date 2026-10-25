@@ -20,7 +20,7 @@ import { ScanStatusBar } from "./ScanStatusBar";
 import type { SegmentOption } from "../../../shared/components/SegmentedControl";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useDiscoveryPrefs } from "../stores/useDiscoveryPrefs";
-import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useMediaQuery } from "../../../shared/hooks/useMediaQuery";
 import { useNetworkScan } from "../hooks/useNetworkScan";
 import { useNewDevices } from "../hooks/useNewDevices";
 import {

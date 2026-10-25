@@ -8,6 +8,7 @@ import { useOverview } from "../hooks/useOverview";
 import { formatDurationUs } from "../lib/filter";
 import { drawHeatmap, heatmapCells, rowHeightFor, summarizeOverview } from "../lib/heatmap";
 import { timeToX, xToTimeUs } from "../lib/overview";
+import { themeColor } from "../lib/themeColor";
 
 /** 拖动时向后端发送 seek 的最小间隔（毫秒）。 */
 const SEEK_THROTTLE_MS = 60;
@@ -15,6 +16,15 @@ const SEEK_THROTTLE_MS = 60;
 const KEY_STEP_RATIO = 0.01;
 /** 标尺刻度数（含两端）。 */
 const RULER_TICKS = 5;
+/** 热力色阶（冷 → 暖）对应的主题变量。 */
+const HEAT_VARS = ["--heat-0", "--heat-1", "--heat-2", "--heat-3", "--heat-4"] as const;
+const HEAT_SWATCH = [
+  "bg-heat-0",
+  "bg-heat-1",
+  "bg-heat-2",
+  "bg-heat-3",
+  "bg-heat-4",
+] as const;
 
 interface TimelineHeatmapProps {
   /** 节目路径 */
@@ -29,12 +39,6 @@ interface TimelineHeatmapProps {
   onSeek: (posUs: number) => void;
   /** 点击行标签：切换该 Universe 的查看状态 */
   onToggleUniverse: (universe: number) => void;
-}
-
-/** 读取主题变量解析后的颜色。 */
-function themeColor(el: Element, name: string, fallback: string): string {
-  const v = getComputedStyle(el).getPropertyValue(name).trim();
-  return v || fallback;
 }
 
 /**
@@ -60,6 +64,8 @@ export function TimelineHeatmap({
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(0);
+  /** 指针悬停位置占宽度的比例（0..1），用于标尺上的时间气泡 */
+  const [hover, setHover] = useState<number | null>(null);
 
   const data = overview.data;
   const rows = data?.universes.length ?? 0;
@@ -96,7 +102,7 @@ export function TimelineHeatmap({
       cells,
       rowHeight,
       width,
-      themeColor(canvas, "--primary", "currentColor"),
+      HEAT_VARS.map((v) => themeColor(canvas, v, "currentColor")),
       themeColor(canvas, "--muted", "transparent"),
     );
     // theme / accent 只用于触发重绘：颜色变量变化后重新取色
@@ -168,20 +174,38 @@ export function TimelineHeatmap({
     );
   }
 
-  const playheadX = timeToX(posUs, 100, durationUs);
+  const playheadPx = timeToX(posUs, width, durationUs);
+
+  const updateHover = (clientX: number) => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    setHover(Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)));
+  };
 
   return (
     <div className="grid gap-2">
-      {/* 标尺 */}
-      <div className="ml-14 flex justify-between text-[0.7rem] text-muted-foreground tabular" aria-hidden>
-        {Array.from({ length: RULER_TICKS }, (_, i) => (
-          <span key={i}>{formatDurationUs((durationUs * i) / (RULER_TICKS - 1))}</span>
-        ))}
+      {/* 标尺：刻度 + 悬停时间气泡 */}
+      <div className="relative ml-14 h-5" aria-hidden>
+        <div className="tabular flex justify-between text-[0.7rem] text-muted-foreground">
+          {Array.from({ length: RULER_TICKS }, (_, i) => (
+            <span key={i}>{formatDurationUs((durationUs * i) / (RULER_TICKS - 1))}</span>
+          ))}
+        </div>
+        {hover !== null && (
+          <span
+            className="tabular absolute top-0 -translate-x-1/2 rounded bg-surface-3 px-1.5 py-0.5 text-[0.7rem] font-medium text-foreground shadow-sm"
+            style={{ left: `${hover * 100}%` }}
+          >
+            {formatDurationUs(hover * durationUs)}
+          </span>
+        )}
       </div>
 
-      <div className="flex max-h-80 overflow-y-auto rounded-md border border-border">
+      <div className="flex max-h-80 overflow-y-auto rounded-lg border border-border bg-surface-1">
         {/* 行标签：点击切换通道栅格的查看状态 */}
-        <ul className="w-14 shrink-0 border-r border-border bg-card">
+        <ul className="w-14 shrink-0 border-r border-border bg-surface-2">
           {data.universes.map((u) => (
             <li key={u} style={{ height: rowHeight }}>
               <button
@@ -222,8 +246,10 @@ export function TimelineHeatmap({
             seekFromEvent(e.clientX, false);
           }}
           onPointerMove={(e) => {
+            updateHover(e.clientX);
             if (dragging.current) seekFromEvent(e.clientX, false);
           }}
+          onPointerLeave={() => setHover(null)}
           onPointerUp={(e) => {
             if (!dragging.current) return;
             dragging.current = false;
@@ -234,12 +260,24 @@ export function TimelineHeatmap({
           }}
         >
           <canvas ref={canvasRef} className="block size-full" aria-hidden />
+          {/* 播放头：只用 transform 移动，30Hz 更新不触发布局 */}
           <div
-            className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-foreground"
-            style={{ left: `${playheadX}%` }}
+            className="pointer-events-none absolute inset-y-0 left-0 w-0.5 -translate-x-1/2 bg-foreground glow-primary will-change-transform"
+            style={{ transform: `translateX(${playheadPx}px)` }}
             aria-hidden
           />
         </div>
+      </div>
+
+      {/* 色阶图例：低 → 高（离散色块，不依赖单一颜色表达强度） */}
+      <div className="flex items-center justify-end gap-2 text-[0.7rem] text-muted-foreground" aria-hidden>
+        <span>{t("player.legendLow")}</span>
+        <span className="flex overflow-hidden rounded-sm">
+          {HEAT_SWATCH.map((c) => (
+            <span key={c} className={cn("h-2 w-5", c)} />
+          ))}
+        </span>
+        <span>{t("player.legendHigh")}</span>
       </div>
 
       {data.skippedFrames > 0 && (

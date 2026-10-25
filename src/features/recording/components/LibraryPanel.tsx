@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, Play, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import { Check, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { controllerUploadRecording, useControllerStatus } from "@/features/controller";
+import { SurfacePanel } from "./console/SurfacePanel";
+import { ProgramThumb } from "./ProgramThumb";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import {
@@ -37,20 +39,30 @@ import {
 } from "../lib/types";
 
 const LIBRARY_KEY = ["recordings"] as const;
+/** 入场交错的最大档位与步长（毫秒），超过后不再递增以免长列表显得迟钝。 */
+const STAGGER_MAX_STEPS = 8;
+const STAGGER_STEP_MS = 30;
 
 /** 把任意异常规整为字符串。 */
 function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** 节目是否匹配搜索词（名称 / 文件名 / 备注 / 来源）。 */
+function matchesQuery(e: LibraryEntry, q: string): boolean {
+  if (!q) return true;
+  const hay = [e.name, e.fileName, e.notes, ...e.sources].join("\n").toLowerCase();
+  return hay.includes(q);
+}
+
 interface LibraryPanelProps {
-  /** 节目成功打开进入回放后调用（父组件据此切换到回放标签页） */
+  /** 节目成功打开进入回放后调用（父组件据此切换到回放模式） */
   onPlayed?: () => void;
 }
 
 /**
- * 节目库：列出录制目录里的 `.artrec` 节目，支持回放（进入回放模式前确认）、
- * 重命名、删除（二次确认）与上传到核心板。
+ * 节目库侧栏：以卡片列出录制目录里的 `.artrec` 节目（含迷你热力图缩略图），
+ * 支持搜索、回放（进入回放模式前确认）、重命名、删除（二次确认）与上传到核心板。
  */
 export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { t } = useTranslation();
@@ -59,9 +71,11 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const lastResult = useRecordingStore((s) => s.last);
   const recording = useRecordingStore((s) => s.status.recording);
   const playbackLoaded = usePlayerStore((s) => s.status.loaded);
+  const playingPath = usePlayerStore((s) => (s.status.loaded ? s.status.path : ""));
   const [toPlay, setToPlay] = useState<LibraryEntry | null>(null);
   const [opening, setOpening] = useState(false);
 
+  const [query, setQuery] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [toDelete, setToDelete] = useState<LibraryEntry | null>(null);
@@ -148,51 +162,88 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
     }
   };
 
-  const entries = list.data ?? [];
+  // 刚结束的这次录制产生的文件，在列表里标出“刚录制”
+  const freshPaths = useMemo(
+    () => new Set(lastResult?.files.map((f) => f.path.replaceAll("\\", "/")) ?? []),
+    [lastResult],
+  );
+  const entries = useMemo(() => list.data ?? [], [list.data]);
+  const needle = query.trim().toLowerCase();
+  const shown = useMemo(
+    () => entries.filter((e) => matchesQuery(e, needle)),
+    [entries, needle],
+  );
 
   return (
     <>
-      <Card>
-        <CardContent className="pt-8">
-          <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-            <span>{t("recording.libSummary", { n: entries.length })}</span>
+      <SurfacePanel
+        title={t("recording.tabLibrary")}
+        actions={
+          <>
+            <span className="text-xs text-muted-foreground">
+              {t("recording.libSummary", { n: entries.length })}
+            </span>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
+              className="size-9"
               onClick={refresh}
               aria-label={t("recording.libRefresh")}
+              title={t("recording.libRefresh")}
             >
               <RefreshCw />
-              {t("recording.libRefresh")}
             </Button>
-          </div>
+          </>
+        }
+      >
+        <div className="relative mb-3">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            className="pl-9"
+            value={query}
+            placeholder={t("recording.libSearch")}
+            aria-label={t("recording.libSearch")}
+            onChange={(ev) => setQuery(ev.target.value)}
+          />
+        </div>
 
-          <div className="grid grid-cols-[1fr_6rem_5rem_6rem_5rem_12rem] gap-x-4 border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-            <span>{t("recording.libColName")}</span>
-            <span className="text-right">{t("recording.statDuration")}</span>
-            <span className="text-right">{t("recording.statFrames")}</span>
-            <span className="text-right">{t("recording.statSize")}</span>
-            <span className="text-right">{t("recording.statUniverses")}</span>
-            <span className="text-right">{t("recording.libColActions")}</span>
+        {entries.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            {t("recording.libEmpty")}
           </div>
-
-          {entries.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              {t("recording.libEmpty")}
-            </div>
-          ) : (
-            <ul className="divide-y divide-border">
-              {entries.map((e) => (
+        ) : shown.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            {t("recording.libNoMatch")}
+          </div>
+        ) : (
+          <ul className="grid max-h-[calc(100dvh-16rem)] gap-3 overflow-y-auto pr-1">
+            {shown.map((e, i) => {
+              const isPlaying = e.path === playingPath;
+              return (
                 <li
                   key={e.path}
-                  className="grid grid-cols-[1fr_6rem_5rem_6rem_5rem_12rem] items-center gap-x-5 py-4.5 text-sm"
+                  className={cn(
+                    "group animate-fade-up grid gap-2.5 rounded-xl border bg-surface-1/60 p-2.5 transition-colors hover:bg-surface-3/50",
+                    isPlaying ? "border-success/50 glow-success" : "border-transparent",
+                  )}
+                  style={{ animationDelay: `${Math.min(i, STAGGER_MAX_STEPS) * STAGGER_STEP_MS}ms` }}
                 >
+                  <ProgramThumb path={e.path} valid={e.valid}>
+                    <span className="num absolute right-1.5 bottom-1.5 rounded bg-background/80 px-1.5 py-0.5 text-[0.7rem] font-semibold">
+                      {formatDurationUs(e.durationUs)}
+                    </span>
+                  </ProgramThumb>
+
                   <div className="min-w-0">
                     {renaming === e.path ? (
                       <div className="flex items-center gap-1.5">
                         <Input
                           autoFocus
-                          className="h-7"
+                          className="h-9"
                           aria-label={t("recording.libRename")}
                           value={draft}
                           onChange={(ev) => setDraft(ev.target.value)}
@@ -204,7 +255,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-7"
+                          className="size-9 shrink-0"
                           aria-label={t("common.ok")}
                           onClick={() => void commitRename(e)}
                         >
@@ -213,7 +264,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-7"
+                          className="size-9 shrink-0"
                           aria-label={t("common.cancel")}
                           onClick={() => setRenaming(null)}
                         >
@@ -222,10 +273,14 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-medium" title={e.fileName}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold" title={e.fileName}>
                             {e.name}
                           </span>
+                          {isPlaying && <Badge variant="success">{t("player.live")}</Badge>}
+                          {freshPaths.has(e.path.replaceAll("\\", "/")) && (
+                            <Badge>{t("recording.libNew")}</Badge>
+                          )}
                           {!e.valid && (
                             <Badge variant="destructive">{t("recording.libInvalid")}</Badge>
                           )}
@@ -241,20 +296,27 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       </>
                     )}
                   </div>
-                  <span className="tabular text-right">{formatDurationUs(e.durationUs)}</span>
-                  <span className="tabular text-right">{e.frames}</span>
-                  <span className="tabular text-right">{formatBytes(e.bytes)}</span>
-                  <span className="tabular text-right">{e.universes.length}</span>
-                  <span className="flex justify-end gap-1">
+
+                  <p className="num text-xs text-muted-foreground">
+                    {t("recording.libMeta", {
+                      frames: e.frames,
+                      size: formatBytes(e.bytes),
+                      n: e.universes.length,
+                    })}
+                  </p>
+
+                  <div className="flex items-center gap-1">
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      size="sm"
+                      variant="secondary"
+                      className="mr-auto group-hover:bg-primary group-hover:text-primary-foreground group-focus-within:bg-primary group-focus-within:text-primary-foreground"
                       aria-label={t("player.playProgram")}
                       title={t("player.playProgram")}
                       disabled={!e.valid || opening}
                       onClick={() => requestPlay(e)}
                     >
-                      <Play className="size-4" />
+                      <Play className="fill-current" />
+                      {t("recording.tabPlayer")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -274,6 +336,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       variant="ghost"
                       size="icon"
                       aria-label={t("recording.libRename")}
+                      title={t("recording.libRename")}
                       onClick={() => {
                         setDraft(e.name);
                         setRenaming(e.path);
@@ -285,20 +348,21 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       variant="ghost"
                       size="icon"
                       aria-label={t("common.delete")}
+                      title={t("common.delete")}
                       onClick={() => setToDelete(e)}
                     >
                       <Trash2 className="size-4" />
                     </Button>
-                  </span>
+                  </div>
                 </li>
-              ))}
-            </ul>
-          )}
-          {recording && (
-            <p className="mt-3 text-xs text-muted-foreground">{t("recording.libRecordingNote")}</p>
-          )}
-        </CardContent>
-      </Card>
+              );
+            })}
+          </ul>
+        )}
+        {recording && (
+          <p className="mt-3 text-xs text-muted-foreground">{t("recording.libRecordingNote")}</p>
+        )}
+      </SurfacePanel>
 
       <Dialog open={toPlay !== null} onOpenChange={(o) => !o && setToPlay(null)}>
         <DialogContent>

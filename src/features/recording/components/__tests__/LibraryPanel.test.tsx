@@ -134,6 +134,55 @@ describe("LibraryPanel", () => {
   });
 });
 
+describe("LibraryPanel 搜索与高亮", () => {
+  it("按名称搜索过滤节目，无匹配时给出提示", async () => {
+    api.recordingsList.mockResolvedValue([
+      entry(),
+      entry({ path: "D:/rec/b.artrec", fileName: "b.artrec", name: "收尾曲" }),
+    ]);
+    renderPanel();
+    await screen.findByText("开场秀");
+    expect(screen.getByText("收尾曲")).toBeTruthy();
+
+    const box = screen.getByRole("searchbox", { name: "搜索节目" });
+    fireEvent.change(box, { target: { value: "收尾" } });
+    expect(screen.queryByText("开场秀")).toBeNull();
+    expect(screen.getByText("收尾曲")).toBeTruthy();
+
+    fireEvent.change(box, { target: { value: "不存在的节目" } });
+    expect(screen.getByText("没有匹配的节目")).toBeTruthy();
+  });
+
+  it("刚结束的录制在列表里带“刚录制”标记，其余节目没有", async () => {
+    api.recordingsList.mockResolvedValue([
+      entry({ path: "D:\\rec\\new.artrec", name: "新录的" }),
+      entry({ path: "D:/rec/old.artrec", name: "旧的" }),
+    ]);
+    useRecordingStore.setState({
+      last: {
+        files: [{ path: "D:/rec/new.artrec", durationUs: 1, frames: 1, bytes: 1, sources: [] }],
+        error: null,
+        dropped: 0,
+      },
+    });
+    renderPanel();
+    await screen.findByText("新录的");
+    expect(screen.getAllByText("刚录制")).toHaveLength(1);
+    const card = screen.getByText("新录的").closest("li")!;
+    expect(card.textContent).toContain("刚录制");
+    useRecordingStore.setState({ last: null });
+  });
+
+  it("正在回放的节目带“回放中”标记", async () => {
+    usePlayerStore.setState({
+      status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/show.artrec" },
+    });
+    renderPanel();
+    await screen.findByText("开场秀");
+    expect(screen.getByText("回放中")).toBeTruthy();
+  });
+});
+
 describe("LibraryPanel 回放入口", () => {
   it("首次回放需确认进入回放模式，确认后打开节目并通知父组件", async () => {
     api.playerOpen.mockResolvedValue(undefined);

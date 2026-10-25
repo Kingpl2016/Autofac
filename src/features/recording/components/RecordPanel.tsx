@@ -1,19 +1,18 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Circle, Loader2, Square, TriangleAlert } from "lucide-react";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useProtocolFlags } from "@/features/settings";
 import type { Protocol } from "@/shared/domain/engine";
+import { SurfacePanel } from "./console/SurfacePanel";
+import { RecordConsole } from "./RecordConsole";
 import { SourcePicker } from "./SourcePicker";
-import { RecordStats } from "./RecordStats";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import { recordingStart, recordingStop } from "../lib/api";
@@ -26,15 +25,10 @@ import {
 import { describeRecordingError } from "../lib/recordControl";
 import type { RecordFilter } from "../lib/types";
 
-/** 列表过长时截断显示。 */
-function summarize(list: number[], max = 12): string {
-  return list.length <= max
-    ? list.join(", ")
-    : `${list.slice(0, max).join(", ")} … (+${list.length - max})`;
-}
+const FIELD_LABEL = "text-xs font-medium text-muted-foreground";
 
 /**
- * 录制面板：选择来源设备 / Universe / 协议过滤，预览将录制的 Universe，开始与停止录制。
+ * 录制面板：录制舱（节目信息、主控、实时指标、Universe 预览 / 活动）+ 来源设备 + 过滤条件。
  */
 export function RecordPanel() {
   const { t } = useTranslation();
@@ -131,205 +125,109 @@ export function RecordPanel() {
   };
 
   return (
-    <div className="grid gap-(--density-gutter) xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <div className="grid gap-(--density-gutter)">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("recording.settingsCard")}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="rec-name">{t("recording.name")}</Label>
-                <Input
-                  id="rec-name"
-                  value={name}
-                  disabled={recording}
-                  placeholder={t("recording.namePlaceholder")}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="rec-notes">{t("recording.notes")}</Label>
-                <Input
-                  id="rec-notes"
-                  value={notes}
-                  disabled={recording}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
-            </div>
+    <div className="grid gap-(--density-gap)">
+      <RecordConsole
+        status={status}
+        last={last}
+        busy={busy}
+        playbackLoaded={playbackLoaded}
+        snapshots={universes}
+        plan={plan}
+        sourceCount={sources.length}
+        name={name}
+        notes={notes}
+        onNameChange={setName}
+        onNotesChange={setNotes}
+        onStart={() => void handleStart()}
+        onStop={() => void handleStop()}
+      />
 
-            <section className="grid gap-2" aria-labelledby="rec-sources">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 id="rec-sources" className="text-sm font-medium">
-                  {t("recording.sourcesTitle")}
-                </h3>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Switch
-                    checked={exclude}
-                    disabled={recording}
-                    onCheckedChange={setExclude}
-                  />
-                  {t("recording.excludeMode")}
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {selectedIps.length === 0
-                  ? t("recording.sourcesAll")
-                  : exclude
-                    ? t("recording.sourcesExcluding", { n: selectedIps.length })
-                    : t("recording.sourcesOnly", { n: selectedIps.length })}
-              </p>
-              <SourcePicker
-                sources={sources}
-                devices={devices}
-                selected={selectedIps}
-                onToggle={toggleIp}
+      <div className="grid items-start gap-(--density-gap) lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <SurfacePanel
+          title={t("recording.sourcesTitle")}
+          actions={
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Switch checked={exclude} disabled={recording} onCheckedChange={setExclude} />
+              {t("recording.excludeMode")}
+            </label>
+          }
+        >
+          <p className="mb-3 text-xs text-muted-foreground">
+            {selectedIps.length === 0
+              ? t("recording.sourcesAll")
+              : exclude
+                ? t("recording.sourcesExcluding", { n: selectedIps.length })
+                : t("recording.sourcesOnly", { n: selectedIps.length })}
+          </p>
+          <SourcePicker
+            sources={sources}
+            devices={devices}
+            selected={selectedIps}
+            onToggle={toggleIp}
+            disabled={recording}
+          />
+        </SurfacePanel>
+
+        <SurfacePanel title={t("recording.filterTitle")}>
+          <div className="grid gap-5">
+            <div className="grid content-start gap-1.5">
+              <Label htmlFor="rec-range" className={FIELD_LABEL}>
+                {t("recording.universeFilter")}
+              </Label>
+              <Input
+                id="rec-range"
+                className="num"
+                value={rangeText}
                 disabled={recording}
+                placeholder="0-3, 10"
+                onChange={(e) => setRangeText(e.target.value)}
               />
-            </section>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="rec-range">{t("recording.universeFilter")}</Label>
-                <Input
-                  id="rec-range"
-                  className="tabular"
-                  value={rangeText}
-                  disabled={recording}
-                  placeholder="0-3, 10"
-                  onChange={(e) => setRangeText(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("recording.universeFilterHint")}
-                </p>
-              </div>
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="rec-extra">{t("recording.extraUniverses")}</Label>
-                <Input
-                  id="rec-extra"
-                  className="tabular"
-                  value={extraText}
-                  disabled={recording}
-                  placeholder="5, 8-9"
-                  onChange={(e) => setExtraText(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("recording.extraUniversesHint")}
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">{t("recording.universeFilterHint")}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <Label htmlFor="rec-extra" className={FIELD_LABEL}>
+                {t("recording.extraUniverses")}
+              </Label>
+              <Input
+                id="rec-extra"
+                className="num"
+                value={extraText}
+                disabled={recording}
+                placeholder="5, 8-9"
+                onChange={(e) => setExtraText(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t("recording.extraUniversesHint")}</p>
             </div>
 
             {sacnEnabled && (
               <fieldset className="grid gap-2" disabled={recording}>
-                <legend className="mb-1 text-sm font-medium">
-                  {t("recording.protocolFilter")}
-                </legend>
-                <div className="flex gap-5 text-sm">
+                <legend className={cn(FIELD_LABEL, "mb-1")}>{t("recording.protocolFilter")}</legend>
+                <div className="flex gap-2">
                   {(["artNet", "sacn"] as const).map((p) => (
-                    <label key={p} className="flex items-center gap-2">
+                    <label
+                      key={p}
+                      className={cn(
+                        "flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border px-4 text-sm transition-colors",
+                        "has-checked:border-primary/60 has-checked:bg-primary/10 has-checked:text-primary",
+                        "has-focus-visible:ring-2 has-focus-visible:ring-ring",
+                        "has-disabled:cursor-not-allowed has-disabled:opacity-50",
+                      )}
+                    >
                       <input
                         type="checkbox"
-                        className="size-4 accent-primary"
+                        className="sr-only"
                         checked={protocols[p]}
                         onChange={() => toggleProtocol(p)}
                       />
+                      {protocols[p] && <Check className="size-4" aria-hidden />}
                       {p === "artNet" ? "Art-Net" : "sACN"}
                     </label>
                   ))}
                 </div>
               </fieldset>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="grid gap-4 pt-8">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={plan.accepted.length > 0 ? "default" : "warning"}>
-                {plan.accepted.length > 0
-                  ? t("recording.previewCount", { n: plan.accepted.length })
-                  : t("recording.previewNone")}
-              </Badge>
-              {plan.accepted.length > 0 && (
-                <span className="tabular text-xs text-muted-foreground">
-                  {summarize(plan.accepted)}
-                </span>
-              )}
-            </div>
-            {plan.rejectedOutOfRange.length > 0 && (
-              <p className="flex items-start gap-2 text-xs text-warning">
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                {t("recording.rejectedOutOfRange", {
-                  list: summarize(plan.rejectedOutOfRange, 8),
-                })}
-              </p>
-            )}
-            {plan.rejectedOverCapacity.length > 0 && (
-              <p className="flex items-start gap-2 text-xs text-warning">
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                {t("recording.rejectedOverCapacity", {
-                  list: summarize(plan.rejectedOverCapacity, 8),
-                })}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t("recording.fixedSetNote")}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid content-start gap-(--density-gutter)">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {recording ? (
-                <>
-                  <Circle
-                    className="size-3 animate-pulse fill-recording text-recording"
-                    aria-hidden
-                  />
-                  {t("recording.recording")}
-                </>
-              ) : (
-                t("recording.idle")
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {recording ? (
-              <Button
-                variant="destructive"
-                onClick={() => void handleStop()}
-                disabled={busy === "stop"}
-                aria-busy={busy === "stop"}
-              >
-                {busy === "stop" ? <Loader2 className="animate-spin" /> : <Square />}
-                {busy === "stop" ? t("recording.saving") : t("recording.stop")}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => void handleStart()}
-                disabled={busy === "start" || playbackLoaded}
-                aria-busy={busy === "start"}
-                className="bg-recording text-recording-foreground hover:bg-recording/90"
-              >
-                {busy === "start" ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Circle className="fill-current" />
-                )}
-                {t("recording.start")}
-              </Button>
-            )}
-            {playbackLoaded && (
-              <p className="text-xs text-warning">{t("recording.playbackBlocks")}</p>
-            )}
-            <RecordStats status={status} active={recording} last={last} />
-          </CardContent>
-        </Card>
+          </div>
+        </SurfacePanel>
       </div>
     </div>
   );

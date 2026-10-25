@@ -73,7 +73,8 @@
 
   /* 字体 */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+  /* Windows 上没有 JetBrains Mono 时先落到 Cascadia / Consolas，避免回退到 Courier 衬线体 */
+  --font-mono: "JetBrains Mono", "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
 .dark {
@@ -300,5 +301,169 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/*
+ * 控台风（Pro Console）扩展令牌：表面分层、热力色阶、状态发光、动效时长。
+ * 仅追加，不改动上面已有的令牌值；颜色全部由语义令牌派生，不写死 hex，不用渐变。
+ */
+:root {
+  /* 表面层级：1 = 凹陷（轨道 / 输入底），2 = 面板，3 = 抬升（悬停 / 选中） */
+  --surface-1: oklch(0.965 0.004 260);
+  --surface-2: oklch(1 0 0);
+  --surface-3: oklch(0.975 0.006 var(--accent-h));
+
+  /*
+   * 热力 / 电平色阶：以强调色的明度递增表达“有多亮”，只有最高档才转暖色，
+   * 避免整块画面被彩虹色铺满。
+   */
+  --heat-0: color-mix(in oklab, var(--primary) 22%, var(--surface-1));
+  --heat-1: color-mix(in oklab, var(--primary) 45%, var(--surface-1));
+  --heat-2: color-mix(in oklab, var(--primary) 75%, var(--surface-1));
+  --heat-3: color-mix(in oklab, var(--primary) 60%, var(--foreground));
+  --heat-4: var(--chart-4);
+
+  /* 状态发光：细描边 + 柔和外发光 */
+  --glow-recording:
+    0 0 0 1px color-mix(in oklab, var(--recording) 45%, transparent),
+    0 0 20px color-mix(in oklab, var(--recording) 22%, transparent);
+  --glow-success:
+    0 0 0 1px color-mix(in oklab, var(--success) 40%, transparent),
+    0 0 18px color-mix(in oklab, var(--success) 20%, transparent);
+  --glow-primary:
+    0 0 0 1px color-mix(in oklab, var(--primary) 45%, transparent),
+    0 0 16px color-mix(in oklab, var(--primary) 25%, transparent);
+
+  --panel-pad: 1.25rem;
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+}
+
+.dark {
+  /* 深色下“越亮越靠近用户”：井(1) < 背景 < 面板(2) < 抬升(3) */
+  --surface-1: oklch(0.135 0.004 260);
+  --surface-2: oklch(0.215 0.006 260);
+  --surface-3: oklch(0.28 0.012 var(--accent-h));
+  --glow-recording:
+    0 0 0 1px color-mix(in oklab, var(--recording) 55%, transparent),
+    0 0 28px color-mix(in oklab, var(--recording) 30%, transparent);
+  --glow-success:
+    0 0 0 1px color-mix(in oklab, var(--success) 50%, transparent),
+    0 0 24px color-mix(in oklab, var(--success) 26%, transparent);
+  --glow-primary:
+    0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent),
+    0 0 22px color-mix(in oklab, var(--primary) 30%, transparent);
+}
+
+@theme inline {
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-heat-0: var(--heat-0);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-heat-4: var(--heat-4);
+}
+
+/* 数字：无衬线 + 等宽数字，时间码 / 指标用它，不依赖系统是否装了等宽字体 */
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 面板顶部 1px 高光，让深色面板从背景里“浮”出来 */
+@utility panel-edge {
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+@utility glow-recording {
+  box-shadow: var(--glow-recording);
+}
+
+@utility glow-success {
+  box-shadow: var(--glow-success);
+}
+
+@utility glow-primary {
+  box-shadow: var(--glow-primary);
+}
+
+/* 录制脉冲环：只动 transform / opacity */
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@utility animate-pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+/* 模式切换 / 卡片入场：淡入 + 8px 位移 */
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-fade-up {
+  animation: fade-up var(--dur-base) ease-out both;
+}
+
+/*
+ * 进度滑杆：轨道透明（填充由下层 DOM 绘制），只美化滑块。
+ * 原生 <input type="range"> 保留，键盘与读屏语义不变。
+ */
+@layer components {
+  .scrub-range {
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .scrub-range::-webkit-slider-runnable-track {
+    height: 1.5rem;
+    background: transparent;
+  }
+
+  .scrub-range::-moz-range-track {
+    height: 1.5rem;
+    background: transparent;
+  }
+
+  .scrub-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 0.875rem;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    background: var(--foreground);
+    border: 2px solid var(--background);
+    box-shadow: var(--glow-primary);
+  }
+
+  .scrub-range::-moz-range-thumb {
+    width: 0.875rem;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    background: var(--foreground);
+    border: 2px solid var(--background);
+    box-shadow: var(--glow-primary);
+  }
+
+  .scrub-range:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }

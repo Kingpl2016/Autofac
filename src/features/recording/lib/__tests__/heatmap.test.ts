@@ -92,4 +92,24 @@ describe("drawHeatmap", () => {
     expect(alphas[1]).toBeLessThan(alphas[0]);
     expect(ctx.globalAlpha).toBe(1);
   });
+
+  it("传入色阶数组时按强度分档取色（冷 → 暖）", () => {
+    const fills: Array<{ style: unknown; alpha: number }> = [];
+    const ctx: HeatmapContext = {
+      fillStyle: "",
+      globalAlpha: 1,
+      clearRect: () => {},
+      fillRect: () => fills.push({ style: ctx.fillStyle, alpha: ctx.globalAlpha }),
+    };
+    const ramp = ["C0", "C1", "C2", "C3", "C4"];
+    // 一行 5 个单元格，强度依次落在 5 个档位里；1 会被钳制到最后一档
+    drawHeatmap(ctx, [Float32Array.from([0.1, 0.3, 0.5, 0.7, 1])], 10, 5, ramp, "BG");
+
+    const fg = fills.filter((f) => f.style !== "BG");
+    expect(fg.map((f) => f.style)).toEqual(ramp);
+    // 多色阶下颜色本身表达强度，透明度只保证可见（不低于 0.5），强度越高越不透明
+    expect(fg[0].alpha).toBeGreaterThanOrEqual(0.5);
+    expect(fg[4].alpha).toBeCloseTo(1, 5);
+    expect(fg[0].alpha).toBeLessThan(fg[4].alpha);
+  });
 });

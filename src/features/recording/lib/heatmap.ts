@@ -90,7 +90,7 @@ export interface HeatmapContext {
  * @param cells `heatmapCells` 的结果。
  * @param rowHeight 每行像素高度。
  * @param columns 像素列数。
- * @param color 前景色（CSS 颜色，取自主题变量）。
+ * @param color 前景色（CSS 颜色，取自主题变量）；传入色阶数组（冷 → 暖）时按强度分档取色。
  * @param track 行底色（CSS 颜色，取自主题变量）。
  */
 export function drawHeatmap(
@@ -98,23 +98,26 @@ export function drawHeatmap(
   cells: Float32Array[],
   rowHeight: number,
   columns: number,
-  color: string,
+  color: string | readonly string[],
   track: string,
 ): void {
   ctx.clearRect(0, 0, columns, cells.length * rowHeight);
+  const ramp = typeof color === "string" ? [color] : color;
+  // 多色阶时颜色本身已表达强度，透明度只需保证可见；单色时全靠透明度表达强度
+  const minAlpha = ramp.length > 1 ? 0.85 : 0.15;
   const gap = rowHeight > 6 ? 1 : 0;
   for (let r = 0; r < cells.length; r += 1) {
     const y = r * rowHeight;
     ctx.globalAlpha = 1;
     ctx.fillStyle = track;
     ctx.fillRect(0, y, columns, rowHeight - gap);
-    ctx.fillStyle = color;
     const row = cells[r];
     for (let c = 0; c < row.length; c += 1) {
       const v = row[c];
       if (v <= 0) continue;
+      ctx.fillStyle = ramp[Math.min(ramp.length - 1, Math.floor(v * ramp.length))];
       // 保留一个最低可见度，避免低电平 / 稀疏变化被背景吞没
-      ctx.globalAlpha = 0.15 + 0.85 * v;
+      ctx.globalAlpha = minAlpha + (1 - minAlpha) * v;
       ctx.fillRect(c, y, 1, rowHeight - gap);
     }
   }

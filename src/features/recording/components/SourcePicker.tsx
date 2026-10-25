@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Check } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -67,7 +68,7 @@ export function SourcePicker({
   }
 
   return (
-    <ul className="divide-y divide-border rounded-md border border-border">
+    <ul className="grid gap-2">
       {rows.map((s) => {
         const checked = selected.includes(s.ip);
         const name = names.get(s.ip);
@@ -75,32 +76,47 @@ export function SourcePicker({
           <li key={s.ip}>
             <label
               className={cn(
-                "grid cursor-pointer grid-cols-[1.25rem_1fr_auto_auto_auto] items-center gap-x-4 px-3 py-2 text-sm",
-                "hover:bg-accent/50",
+                "flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-border px-3.5 py-2.5 text-sm transition-colors",
+                "hover:bg-surface-3",
+                "has-checked:border-primary/60 has-checked:bg-primary/10",
+                "has-focus-visible:ring-2 has-focus-visible:ring-ring",
                 disabled && "cursor-not-allowed opacity-60",
               )}
             >
               <input
                 type="checkbox"
-                className="size-4 accent-primary"
+                className="peer sr-only"
                 checked={checked}
                 disabled={disabled}
                 onChange={() => onToggle(s.ip)}
               />
-              <span className="min-w-0">
-                <span className="tabular font-medium">{s.ip}</span>
+              <span
+                className="flex size-5 shrink-0 items-center justify-center rounded border border-input text-primary-foreground peer-checked:border-primary peer-checked:bg-primary"
+                aria-hidden
+              >
+                {checked && <Check className="size-3.5" />}
+              </span>
+              <span
+                className={cn(
+                  "size-2 shrink-0 rounded-full",
+                  s.offline ? "bg-offline" : "bg-online",
+                )}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1">
+                <span className="num block font-medium">{s.ip}</span>
                 {name && (
-                  <span className="ml-2 truncate text-muted-foreground">{name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{name}</span>
                 )}
               </span>
-              <Badge variant={s.offline ? "outline" : "secondary"}>
-                {s.offline ? t("recording.sourceOffline") : protocolLabel(s.protocol)}
-              </Badge>
-              <span className="tabular w-28 text-right text-xs text-muted-foreground">
-                {t("recording.sourceUniverses", { n: s.universes.length })}
-              </span>
-              <span className="tabular w-24 text-right text-xs text-muted-foreground">
-                {t("recording.sourcePackets", { n: s.packets })}
+              <span className="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                <span className="num text-xs text-muted-foreground">
+                  {t("recording.sourceUniverses", { n: s.universes.length })} ·{" "}
+                  {t("recording.sourcePackets", { n: s.packets })}
+                </span>
+                <Badge variant={s.offline ? "outline" : "secondary"}>
+                  {s.offline ? t("recording.sourceOffline") : protocolLabel(s.protocol)}
+                </Badge>
               </span>
             </label>
           </li>

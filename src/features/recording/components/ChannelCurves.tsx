@@ -24,6 +24,7 @@ import {
   type CurveWindow,
 } from "../lib/curves";
 import { formatDurationUs } from "../lib/filter";
+import { themeColor } from "../lib/themeColor";
 
 /** 曲线区高度（像素）。 */
 const CANVAS_HEIGHT = 176;
@@ -39,12 +40,6 @@ interface ChannelCurvesProps {
   posUs: number;
   /** 节目内的 Universe 编号 */
   universes: number[];
-}
-
-/** 读取主题变量解析后的颜色。 */
-function themeColor(el: Element, name: string, fallback: string): string {
-  const v = getComputedStyle(el).getPropertyValue(name).trim();
-  return v || fallback;
 }
 
 /**
@@ -117,7 +112,7 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
     <div className="grid gap-4">
       <div className="grid gap-3 md:grid-cols-[10rem_1fr_12rem]">
         <div className="grid content-start gap-1.5">
-          <Label htmlFor="curve-universe">{t("player.curveUniverse")}</Label>
+          <Label htmlFor="curve-universe" className="text-xs font-medium text-muted-foreground">{t("player.curveUniverse")}</Label>
           <Select
             value={universe === null ? "" : String(universe)}
             onValueChange={(v) => setUniverseChoice(Number(v))}
@@ -135,7 +130,7 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
           </Select>
         </div>
         <div className="grid content-start gap-1.5">
-          <Label htmlFor="curve-channels">{t("player.curveChannels")}</Label>
+          <Label htmlFor="curve-channels" className="text-xs font-medium text-muted-foreground">{t("player.curveChannels")}</Label>
           <Input
             id="curve-channels"
             className="tabular"
@@ -145,7 +140,7 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
           />
         </div>
         <div className="grid content-start gap-1.5">
-          <Label htmlFor="curve-window">{t("player.curveWindow")}</Label>
+          <Label htmlFor="curve-window" className="text-xs font-medium text-muted-foreground">{t("player.curveWindow")}</Label>
           <Select value={mode} onValueChange={(v) => setMode(v as CurveWindow)}>
             <SelectTrigger id="curve-window">
               <SelectValue />
@@ -173,7 +168,7 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
             </div>
             <div
               ref={wrapRef}
-              className="relative min-w-0 flex-1 rounded-md border border-border bg-muted/30"
+              className="relative min-w-0 flex-1 rounded-lg border border-border bg-surface-1"
               style={{ height: CANVAS_HEIGHT }}
               role="img"
               aria-label={t("player.curveAria", {
@@ -215,11 +210,14 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
 
       {/* 图例：颜色 + 线型 + 通道号 */}
       {series && series.length > 0 && (
-        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <ul className="flex flex-wrap gap-2 text-xs">
           {series.map((s, i) => {
             const st = curveStyle(i);
             return (
-              <li key={s.channel} className="tabular flex items-center gap-1.5">
+              <li
+                key={s.channel}
+                className="tabular flex items-center gap-1.5 rounded-full bg-surface-1 px-2.5 py-1"
+              >
                 <svg width="22" height="8" aria-hidden>
                   <line
                     x1="0"
