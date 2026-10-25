@@ -154,6 +154,20 @@
   --accent-c: 0.2;
 }
 
+/* 不确定进度条：只动 transform（不触发布局），仅用于“扫描中”这类加载指示 */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@utility animate-indeterminate {
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
 /* 暴露给 Tailwind v4 的语义 token 映射 */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);

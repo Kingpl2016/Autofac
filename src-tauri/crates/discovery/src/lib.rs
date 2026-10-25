@@ -4,13 +4,16 @@
 //! 反向 DNS 与 ARP MAC 为平台相关的尽力而为增强，由宿主层注入；本 crate
 //! 只维护设备注册表的合并与分类逻辑（纯逻辑，便于测试）。
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 
 use serde::Serialize;
 
-use artnet_net::artnet::PollReplyInfo;
+use artnet_net::artnet::{NodePort, PollReplyInfo};
 use artnet_net::Protocol;
+
+/// 每个 bind 在端口序号上占用的槽位数（Art-Net 规范：每个 bind 最多 4 个端口）。
+const PORTS_PER_BIND: u8 = 4;
 
 /// 设备类别。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -42,12 +45,35 @@ pub struct Device {
     pub mac: Option<String>,
     /// 设备类别。
     pub category: DeviceCategory,
-    /// Art-Net 端口/Universe 数量。
+    /// Art-Net 端口/Universe 数量（多 bind 设备为各 bind 之和）。
     pub artnet_ports: Option<u16>,
     /// 是否在线（最近有活动）。
     pub online: bool,
     /// 最后活动逻辑时间（毫秒）。
     pub last_seen_ms: u64,
+    /// Art-Net 短名（`ShortName`）。
+    pub short_name: Option<String>,
+    /// 节点运行状态文本（`NodeReport`）。
+    pub node_report: Option<String>,
+    /// 固件版本，形如 `"1.23"`；节点未上报时为 `None`。
+    pub firmware: Option<String>,
+    /// 厂商标识：ESTA 码可读为两个 ASCII 字母时显示字母，否则为十六进制。
+    pub manufacturer: Option<String>,
+    /// OEM 码；节点未上报时为 `None`。
+    pub oem: Option<u16>,
+    /// 设备样式：`node` / `controller` / `media` / `route` / `backup` / `config` / `visual`。
+    pub style: Option<String>,
+    /// 端口列表（多 bind 设备已合并，`index` 为跨 bind 的唯一序号）。
+    pub ports: Vec<NodePort>,
+}
+
+/// 单个 bind 的端口状态（同一 IP 的多 bind 设备会分别回复）。
+#[derive(Debug, Clone, Default)]
+struct BindState {
+    /// 该 bind 上报的端口数。
+    num_ports: u16,
+    /// 该 bind 上报的端口（`index` 为 bind 内序号 0~3）。
+    ports: Vec<NodePort>,
 }
 
 /// 设备注册表：合并多来源的发现信息。
@@ -55,6 +81,8 @@ pub struct Device {
 pub struct DeviceRegistry {
     devices: HashMap<IpAddr, Device>,
     custom_names: HashMap<IpAddr, String>,
+    /// 多 bind 设备各 bind 的端口状态：IP → bind 序号 → 端口状态。
+    binds: HashMap<IpAddr, BTreeMap<u8, BindState>>,
 }
 
 impl DeviceRegistry {
@@ -97,6 +125,13 @@ impl DeviceRegistry {
             artnet_ports: None,
             online: true,
             last_seen_ms: now_ms,
+            short_name: None,
+            node_report: None,
+            firmware: None,
+            manufacturer: None,
+            oem: None,
+            style: None,
+            ports: Vec::new(),
         })
     }
 
@@ -109,22 +144,61 @@ impl DeviceRegistry {
     pub fn upsert_artnet(&mut self, info: &PollReplyInfo, now_ms: u64) {
         let ip = IpAddr::from(info.ip);
         let mac = format_mac(&info.mac);
-        let long = if info.long_name.is_empty() {
-            None
-        } else {
-            Some(info.long_name.clone())
-        };
-        let ports = info.num_ports;
+        let long = non_empty(&info.long_name);
+
+        // 多 bind 设备（如 8 口节点拆成两个 bind）会从同一 IP 分别回复，
+        // 端口需按 bind 序号累积合并，不能互相覆盖。
+        let binds = self.binds.entry(ip).or_default();
+        binds.insert(
+            info.bind_index.max(1),
+            BindState {
+                num_ports: info.num_ports,
+                ports: info.ports.clone(),
+            },
+        );
+        let total_ports = binds
+            .values()
+            .fold(0u16, |acc, b| acc.saturating_add(b.num_ports));
+        let merged_ports: Vec<NodePort> = binds
+            .iter()
+            .flat_map(|(bind, state)| {
+                state.ports.iter().map(move |p| NodePort {
+                    index: (bind - 1).saturating_mul(PORTS_PER_BIND).saturating_add(p.index),
+                    ..*p
+                })
+            })
+            .collect();
+
         let dev = self.entry(ip, now_ms);
         dev.category = DeviceCategory::ArtNet;
         dev.online = true;
         dev.last_seen_ms = now_ms;
-        dev.artnet_ports = Some(ports);
+        dev.artnet_ports = Some(total_ports);
+        dev.ports = merged_ports;
         if dev.hostname.is_none() {
             dev.hostname = long;
         }
         if mac.is_some() {
             dev.mac = mac;
+        }
+        // 名称 / 状态类字段只在新回复非空时更新，避免被其它 bind 的空字段抹掉。
+        if let Some(v) = non_empty(&info.short_name) {
+            dev.short_name = Some(v);
+        }
+        if let Some(v) = non_empty(&info.node_report) {
+            dev.node_report = Some(v);
+        }
+        if let Some(v) = firmware_string(info.version) {
+            dev.firmware = Some(v);
+        }
+        if let Some(v) = manufacturer_string(info.esta_code) {
+            dev.manufacturer = Some(v);
+        }
+        if info.oem != 0 {
+            dev.oem = Some(info.oem);
+        }
+        if let Some(v) = style_name(info.style) {
+            dev.style = Some(v.to_string());
         }
     }
 
@@ -200,7 +274,14 @@ impl DeviceRegistry {
     pub fn clear_offline(&mut self) -> usize {
         let before = self.devices.len();
         self.devices.retain(|_, d| d.online);
+        self.prune_binds();
         before - self.devices.len()
+    }
+
+    /// 丢弃已不在注册表中的设备的 bind 缓存，避免设备再次出现时混入旧端口。
+    fn prune_binds(&mut self) {
+        let devices = &self.devices;
+        self.binds.retain(|ip, _| devices.contains_key(ip));
     }
 
     /// 移除指定类别的全部设备（如关闭 sACN 时清掉 sACN 源）。
@@ -217,6 +298,7 @@ impl DeviceRegistry {
     pub fn remove_category(&mut self, category: DeviceCategory) -> usize {
         let before = self.devices.len();
         self.devices.retain(|_, d| d.category != category);
+        self.prune_binds();
         before - self.devices.len()
     }
 
@@ -252,6 +334,78 @@ impl DeviceRegistry {
     }
 }
 
+/// 非空字符串转 `Some`，空串转 `None`。
+fn non_empty(s: &str) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
+/// 把固件版本字节（高、低）格式化为 `"高.低"`；两字节均为 0 返回 `None`。
+///
+/// # Arguments
+///
+/// * `version` - ArtPollReply 的 `VersInfo`（高字节、低字节）。
+///
+/// # Returns
+///
+/// 形如 `"1.23"` 的版本字符串；节点未上报时为 `None`。
+#[must_use]
+pub fn firmware_string(version: [u8; 2]) -> Option<String> {
+    if version == [0, 0] {
+        return None;
+    }
+    Some(format!("{}.{}", version[0], version[1]))
+}
+
+/// 把 ESTA 厂商码转成可读标识。
+///
+/// # Arguments
+///
+/// * `code` - ArtPollReply 的 `EstaMan`。
+///
+/// # Returns
+///
+/// 两个字节都是 ASCII 字母数字时返回这两个字符（高字节在前），否则返回
+/// `0xXXXX` 形式的十六进制；`0` 返回 `None`。
+#[must_use]
+pub fn manufacturer_string(code: u16) -> Option<String> {
+    if code == 0 {
+        return None;
+    }
+    let [hi, lo] = code.to_be_bytes();
+    if hi.is_ascii_alphanumeric() && lo.is_ascii_alphanumeric() {
+        Some(format!("{}{}", char::from(hi), char::from(lo)))
+    } else {
+        Some(format!("0x{code:04X}"))
+    }
+}
+
+/// 把 Art-Net `Style` 码映射为稳定的小写标识。
+///
+/// # Arguments
+///
+/// * `style` - ArtPollReply 的 `Style` 字节。
+///
+/// # Returns
+///
+/// 规范定义的 0~6 返回对应标识，其余返回 `None`。
+#[must_use]
+pub fn style_name(style: u8) -> Option<&'static str> {
+    match style {
+        0 => Some("node"),
+        1 => Some("controller"),
+        2 => Some("media"),
+        3 => Some("route"),
+        4 => Some("backup"),
+        5 => Some("config"),
+        6 => Some("visual"),
+        _ => None,
+    }
+}
+
 /// 将 6 字节 MAC 格式化为 `AA:BB:CC:DD:EE:FF`；全 0 返回 `None`。
 #[must_use]
 pub fn format_mac(mac: &[u8; 6]) -> Option<String> {
@@ -270,10 +424,12 @@ pub fn format_mac(mac: &[u8; 6]) -> Option<String> {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use artnet_net::artnet::PollReplyInfo;
+    use artnet_net::artnet::{NodePort, PollReplyInfo, PortDirection};
     use artnet_net::Protocol;
 
-    use super::{DeviceCategory, DeviceRegistry};
+    use super::{
+        firmware_string, manufacturer_string, style_name, DeviceCategory, DeviceRegistry,
+    };
 
     fn ip(a: u8) -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(192, 168, 1, a))
@@ -288,6 +444,7 @@ mod tests {
             long_name: "Node Long".into(),
             mac: [1, 2, 3, 4, 5, 6],
             num_ports: 4,
+            ..PollReplyInfo::default()
         };
         reg.upsert_artnet(&info, 0);
         let d = &reg.list()[0];
@@ -309,10 +466,8 @@ mod tests {
         let mut reg = DeviceRegistry::new();
         let info = PollReplyInfo {
             ip: [192, 168, 1, 30],
-            short_name: String::new(),
-            long_name: String::new(),
-            mac: [0; 6],
             num_ports: 1,
+            ..PollReplyInfo::default()
         };
         reg.upsert_artnet(&info, 0);
         reg.upsert_source(ip(30), Protocol::ArtNet, 1);
@@ -379,10 +534,8 @@ mod tests {
         let mut reg = DeviceRegistry::new();
         let mk = |last: u8| PollReplyInfo {
             ip: [192, 168, 1, last],
-            short_name: String::new(),
-            long_name: String::new(),
-            mac: [0; 6],
             num_ports: 1,
+            ..PollReplyInfo::default()
         };
         reg.upsert_artnet(&mk(80), 100);
         reg.upsert_artnet(&mk(81), 900);
@@ -391,6 +544,148 @@ mod tests {
         assert_eq!(reg.count_artnet(), 2);
         assert_eq!(reg.count_artnet_seen_since(500), 1);
         assert_eq!(reg.count_artnet_seen_since(0), 2);
+    }
+
+    fn port(index: u8, direction: PortDirection, universe: u16) -> NodePort {
+        NodePort {
+            index,
+            direction,
+            universe,
+            active: false,
+        }
+    }
+
+    #[test]
+    fn multi_bind_ports_are_merged_not_overwritten() {
+        let mut reg = DeviceRegistry::new();
+        let bind = |bind_index: u8, uni: u16| PollReplyInfo {
+            ip: [192, 168, 1, 100],
+            num_ports: 4,
+            bind_index,
+            ports: vec![
+                port(0, PortDirection::Output, uni),
+                port(1, PortDirection::Output, uni + 1),
+            ],
+            ..PollReplyInfo::default()
+        };
+        reg.upsert_artnet(&bind(1, 0), 10);
+        reg.upsert_artnet(&bind(2, 4), 20);
+        // 同一 bind 重复回复不应重复计数
+        reg.upsert_artnet(&bind(2, 4), 30);
+
+        let d = &reg.list()[0];
+        assert_eq!(d.artnet_ports, Some(8));
+        let idx: Vec<u8> = d.ports.iter().map(|p| p.index).collect();
+        assert_eq!(idx, vec![0, 1, 4, 5]);
+        let uni: Vec<u16> = d.ports.iter().map(|p| p.universe).collect();
+        assert_eq!(uni, vec![0, 1, 4, 5]);
+    }
+
+    #[test]
+    fn bind_index_zero_is_treated_as_root() {
+        let mut reg = DeviceRegistry::new();
+        let info = PollReplyInfo {
+            ip: [192, 168, 1, 101],
+            num_ports: 2,
+            bind_index: 0,
+            ports: vec![port(1, PortDirection::Input, 7)],
+            ..PollReplyInfo::default()
+        };
+        reg.upsert_artnet(&info, 0);
+        let d = &reg.list()[0];
+        assert_eq!(d.ports[0].index, 1);
+        assert_eq!(d.artnet_ports, Some(2));
+    }
+
+    #[test]
+    fn clear_offline_resets_bind_cache() {
+        let mut reg = DeviceRegistry::new();
+        let info = PollReplyInfo {
+            ip: [192, 168, 1, 102],
+            num_ports: 4,
+            bind_index: 1,
+            ports: vec![port(0, PortDirection::Output, 1)],
+            ..PollReplyInfo::default()
+        };
+        reg.upsert_artnet(&info, 0);
+        reg.mark_stale_offline(10_000, 5000);
+        assert_eq!(reg.clear_offline(), 1);
+
+        // 再次出现时只带自己的新端口，不残留旧 bind
+        let again = PollReplyInfo {
+            num_ports: 2,
+            ports: vec![port(0, PortDirection::Output, 9)],
+            ..info
+        };
+        reg.upsert_artnet(&again, 20_000);
+        let d = &reg.list()[0];
+        assert_eq!(d.artnet_ports, Some(2));
+        assert_eq!(d.ports.len(), 1);
+        assert_eq!(d.ports[0].universe, 9);
+    }
+
+    #[test]
+    fn extra_fields_are_filled_and_not_wiped_by_empty_reply() {
+        let mut reg = DeviceRegistry::new();
+        let full = PollReplyInfo {
+            ip: [192, 168, 1, 103],
+            short_name: "Short".into(),
+            node_report: "#0001 [0001] OK".into(),
+            version: [2, 5],
+            oem: 0x1234,
+            esta_code: 0x4C58,
+            style: 0,
+            num_ports: 1,
+            bind_index: 1,
+            ..PollReplyInfo::default()
+        };
+        reg.upsert_artnet(&full, 0);
+        // 其它 bind 的回复不带名称 / 状态
+        let sparse = PollReplyInfo {
+            ip: [192, 168, 1, 103],
+            num_ports: 1,
+            bind_index: 2,
+            ..PollReplyInfo::default()
+        };
+        reg.upsert_artnet(&sparse, 1);
+
+        let d = &reg.list()[0];
+        assert_eq!(d.short_name.as_deref(), Some("Short"));
+        assert_eq!(d.node_report.as_deref(), Some("#0001 [0001] OK"));
+        assert_eq!(d.firmware.as_deref(), Some("2.5"));
+        assert_eq!(d.manufacturer.as_deref(), Some("LX"));
+        assert_eq!(d.oem, Some(0x1234));
+        assert_eq!(d.style.as_deref(), Some("node"));
+    }
+
+    #[test]
+    fn helper_formatters_cover_edge_cases() {
+        assert_eq!(firmware_string([0, 0]), None);
+        assert_eq!(firmware_string([1, 23]).as_deref(), Some("1.23"));
+        assert_eq!(manufacturer_string(0), None);
+        assert_eq!(manufacturer_string(0x0102).as_deref(), Some("0x0102"));
+        assert_eq!(style_name(1), Some("controller"));
+        assert_eq!(style_name(99), None);
+    }
+
+    #[test]
+    fn device_serializes_new_fields_as_camel_case() {
+        let mut reg = DeviceRegistry::new();
+        reg.upsert_artnet(
+            &PollReplyInfo {
+                ip: [192, 168, 1, 104],
+                short_name: "S".into(),
+                num_ports: 1,
+                ports: vec![port(0, PortDirection::Input, 3)],
+                ..PollReplyInfo::default()
+            },
+            0,
+        );
+        let json = serde_json::to_value(&reg.list()[0]).unwrap();
+        assert_eq!(json["shortName"], "S");
+        assert_eq!(json["ports"][0]["direction"], "input");
+        assert_eq!(json["ports"][0]["universe"], 3);
+        assert!(json.get("nodeReport").is_some());
     }
 
     #[test]

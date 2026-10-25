@@ -1,367 +1,308 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  RadarIcon,
-  RefreshCw,
-  Download,
-  Trash2,
-  Search,
-  Loader2,
-} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Loader2, Radar as RadarIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { isTauri } from "@/shared/tauri/invoke";
 import { saveTextFile } from "@/shared/tauri/files";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useProtocolFlags } from "@/features/settings";
-import type { Device, DeviceCategory } from "@/shared/domain/device";
-import { DeviceRow } from "./DeviceRow";
+import { FORWARDING_PATH, forwardingPrefillState } from "@/features/forwarding";
+import type { Device } from "@/shared/domain/device";
+import { ClearOfflineDialog } from "./ClearOfflineDialog";
+import { DeviceDetailPanel } from "./DeviceDetailPanel";
+import { DeviceTable, type DeviceTableHandle } from "./DeviceTable";
+import { DiscoveryEmptyState } from "./DiscoveryEmptyState";
+import { DiscoveryToolbar } from "./DiscoveryToolbar";
+import { ScanStatusBar } from "./ScanStatusBar";
+import type { SegmentOption } from "./SegmentedControl";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+import { useDiscoveryPrefs } from "../hooks/useDiscoveryPrefs";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useNetworkScan } from "../hooks/useNetworkScan";
+import { useNewDevices } from "../hooks/useNewDevices";
 import {
-  clearOfflineDevices,
-  getDevices,
-  SCAN_ERR_ARTNET_DISABLED,
-  SCAN_ERR_IN_PROGRESS,
-  scanNetwork,
-  setDeviceName,
-} from "../lib/api";
+  countByCategory,
+  filterDevices,
+  isFiltering,
+  nextSort,
+  sortDevices,
+  type CategoryFilter,
+  type SortKey,
+} from "../lib/filters";
+import { clearOfflineDevices, getDevices, setDeviceName } from "../lib/api";
 
-type FilterKey = "all" | DeviceCategory;
-type SortKey = "status" | "ip" | "name" | "lastSeen";
-
-const FILTERS: { key: FilterKey; labelKey: string }[] = [
-  { key: "all", labelKey: "discovery.filterAll" },
-  { key: "artNet", labelKey: "discovery.filterArtNet" },
-  { key: "sacn", labelKey: "discovery.filterSacn" },
-  { key: "cluster", labelKey: "discovery.filterCluster" },
-  { key: "computer", labelKey: "discovery.filterComputer" },
-  { key: "network", labelKey: "discovery.filterNetwork" },
+/** 分类筛选的显示顺序与文案键。 */
+const CATEGORY_ORDER: { value: CategoryFilter; labelKey: string }[] = [
+  { value: "all", labelKey: "discovery.filterAll" },
+  { value: "artNet", labelKey: "discovery.filterArtNet" },
+  { value: "sacn", labelKey: "discovery.filterSacn" },
+  { value: "cluster", labelKey: "discovery.filterCluster" },
+  { value: "computer", labelKey: "discovery.filterComputer" },
+  { value: "network", labelKey: "discovery.filterNetwork" },
 ];
 
-const SORTS: { key: SortKey; labelKey: string }[] = [
-  { key: "status", labelKey: "discovery.sortStatus" },
-  { key: "ip", labelKey: "discovery.sortIp" },
-  { key: "name", labelKey: "discovery.sortName" },
-  { key: "lastSeen", labelKey: "discovery.sortLastSeen" },
-];
-
-/** 用于按 IP 自然排序的数值化。 */
-function ipToNumber(ip: string): number {
-  return ip
-    .split(".")
-    .reduce((acc, part) => acc * 256 + (Number.parseInt(part, 10) || 0), 0);
-}
-
-function deviceName(d: Device): string {
-  return (d.customName || d.hostname || d.ip).toLowerCase();
+/** 判断键盘事件是否发生在可输入元素里（此时不触发全局快捷键）。 */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
 }
 
 /**
- * 设备发现页：左侧过滤 / 在线筛选，右侧搜索 / 排序 / 刷新 / 导出 / 清理。
+ * 设备发现页：扫描状态条 + 筛选工具栏 + 设备表格，选中设备后右侧并排显示详情面板。
+ * 分类 / 在线状态 / 排序会经 Tauri Store 保存，下次打开自动恢复；搜索词与选中项不保存。
  */
 export function DiscoveryView() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const copy = useCopyToClipboard();
   const devices = useEngineDataStore((s) => s.devices);
   const setDevices = useEngineDataStore((s) => s.setDevices);
-  // 设备的 lastSeenMs 与引擎运行时长同一时间基准
-  const nowMs = useEngineDataStore((s) => s.stats.uptimeSec) * 1000;
   const { sacnEnabled } = useProtocolFlags();
-  const [rawFilter, setFilter] = useState<FilterKey>("all");
+  const { scanning, last, showNoReply, scan, dismissNoReply } = useNetworkScan();
+  const freshIps = useNewDevices();
+  const wide = useMediaQuery("(min-width: 1280px)");
+
+  const rawCategory = useDiscoveryPrefs((s) => s.category);
+  const status = useDiscoveryPrefs((s) => s.status);
+  const sort = useDiscoveryPrefs((s) => s.sort);
+  const setCategory = useDiscoveryPrefs((s) => s.setCategory);
+  const setStatus = useDiscoveryPrefs((s) => s.setStatus);
+  const setSort = useDiscoveryPrefs((s) => s.setSort);
+  const clearPrefFilters = useDiscoveryPrefs((s) => s.clearFilters);
   // sACN 关闭后其筛选标签消失：停在该标签上时回落到“全部”
-  const filter: FilterKey = !sacnEnabled && rawFilter === "sacn" ? "all" : rawFilter;
-  const filters = useMemo(
-    () => FILTERS.filter((f) => sacnEnabled || f.key !== "sacn"),
-    [sacnEnabled],
-  );
+  const category: CategoryFilter =
+    !sacnEnabled && rawCategory === "sacn" ? "all" : rawCategory;
+
   const [query, setQuery] = useState("");
-  const [onlineOnly, setOnlineOnly] = useState(false);
-  const [sort, setSort] = useState<SortKey>("status");
-  const [scanning, setScanning] = useState(false);
+  const [selectedIp, setSelectedIp] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const tableRef = useRef<DeviceTableHandle>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const counts = useMemo(() => {
-    const base: Record<FilterKey, number> = {
-      all: devices.length,
-      artNet: 0,
-      sacn: 0,
-      cluster: 0,
-      computer: 0,
-      network: 0,
+  // `/` 聚焦搜索框（不在输入框里、没有修饰键时）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
     };
-    for (const d of devices) base[d.category] += 1;
-    return base;
-  }, [devices]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  const onlineCount = useMemo(
-    () => devices.filter((d) => d.online).length,
-    [devices],
+  const counts = useMemo(() => countByCategory(devices), [devices]);
+  const onlineCount = useMemo(() => devices.filter((d) => d.online).length, [devices]);
+  const offlineCount = devices.length - onlineCount;
+
+  const categoryOptions = useMemo<SegmentOption<CategoryFilter>[]>(
+    () =>
+      CATEGORY_ORDER.filter((c) => sacnEnabled || c.value !== "sacn").map((c) => ({
+        value: c.value,
+        label: t(c.labelKey),
+        count: counts[c.value],
+      })),
+    [sacnEnabled, counts, t],
   );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = devices.filter((d) => {
-      if (filter !== "all" && d.category !== filter) return false;
-      if (onlineOnly && !d.online) return false;
-      if (!q) return true;
-      return (
-        d.ip.toLowerCase().includes(q) ||
-        (d.hostname ?? "").toLowerCase().includes(q) ||
-        (d.customName ?? "").toLowerCase().includes(q) ||
-        (d.mac ?? "").toLowerCase().includes(q)
-      );
-    });
+  const filter = useMemo(() => ({ category, status, query }), [category, status, query]);
+  const filtering = isFiltering(filter);
+  const visible = useMemo(
+    () => sortDevices(filterDevices(devices, filter), sort.key, sort.dir),
+    [devices, filter, sort],
+  );
+  const selected = useMemo(
+    () => devices.find((d) => d.ip === selectedIp) ?? null,
+    [devices, selectedIp],
+  );
 
-    return [...list].sort((a, b) => {
-      switch (sort) {
-        case "ip":
-          return ipToNumber(a.ip) - ipToNumber(b.ip);
-        case "name":
-          return deviceName(a).localeCompare(deviceName(b));
-        case "lastSeen":
-          return b.lastSeenMs - a.lastSeenMs;
-        case "status":
-        default:
-          if (a.online !== b.online) return a.online ? -1 : 1;
-          return ipToNumber(a.ip) - ipToNumber(b.ip);
-      }
-    });
-  }, [devices, filter, query, onlineOnly, sort]);
+  const handleSelect = useCallback((ip: string | null) => {
+    setSelectedIp(ip);
+    setRenaming(false);
+  }, []);
 
-  /** 把后端扫描错误码 / 异常转换为用户可读文案。 */
-  const describeScanError = (e: unknown): string => {
-    const raw = e instanceof Error ? e.message : String(e);
-    if (raw === SCAN_ERR_ARTNET_DISABLED) return t("discovery.scanErrArtnetDisabled");
-    if (raw === SCAN_ERR_IN_PROGRESS) return t("discovery.scanErrInProgress");
-    return t("discovery.scanFailed", { reason: raw });
+  const handleRenameRequest = useCallback((ip: string) => {
+    setSelectedIp(ip);
+    setRenaming(true);
+  }, []);
+
+  const handleClosePanel = () => {
+    const ip = selectedIp;
+    handleSelect(null);
+    // 把焦点还给原来的行，键盘用户不会丢失位置
+    if (ip) requestAnimationFrame(() => tableRef.current?.focusRow(ip));
   };
 
-  const handleScan = async () => {
-    if (scanning) return;
-    if (!isTauri()) {
-      toast.info(t("discovery.scanDesktopOnly"));
-      return;
-    }
-    setScanning(true);
-    try {
-      const result = await scanNetwork();
-      if (result.responded > 0) {
-        toast.success(
-          t("discovery.scanDone", {
-            responded: result.responded,
-            total: result.totalArtnet,
-          }),
-        );
-      } else {
-        toast.warning(t("discovery.scanNoReply"));
-      }
-      if (result.errors.length > 0) {
-        toast.warning(
-          t("discovery.scanPartial", { reason: result.errors.join("; ") }),
-        );
-      }
-    } catch (e: unknown) {
-      toast.error(describeScanError(e));
-    } finally {
-      setScanning(false);
-    }
+  const handleSort = (key: SortKey) => setSort(nextSort(sort, key));
+
+  const clearFilters = () => {
+    clearPrefFilters();
+    setQuery("");
   };
 
   const handleRefresh = () => {
     if (!isTauri()) return;
     void getDevices()
       .then(setDevices)
-      .catch((e: unknown) =>
-        toast.error(e instanceof Error ? e.message : String(e)),
-      );
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
   };
 
   const handleClearOffline = () => {
-    const offline = devices.filter((d) => !d.online).length;
+    const n = offlineCount;
     if (!isTauri()) {
       setDevices(devices.filter((d) => d.online));
-      toast.success(t("discovery.clearedOffline", { n: offline }));
+      toast.success(t("discovery.clearedOffline", { n }));
       return;
     }
     void clearOfflineDevices()
       .then((left) => {
         setDevices(left);
-        toast.success(t("discovery.clearedOffline", { n: offline }));
+        toast.success(t("discovery.clearedOffline", { n }));
       })
-      .catch((e: unknown) =>
-        toast.error(e instanceof Error ? e.message : String(e)),
-      );
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
   };
 
   const handleExport = () => {
-    void saveTextFile("art-net-devices.json", JSON.stringify(filtered, null, 2));
+    void saveTextFile("art-net-devices.json", JSON.stringify(visible, null, 2));
   };
 
   const handleRename = (ip: string, name: string) => {
+    // 先本地更新，界面立即反映；后端持久化失败时再提示
+    setDevices(devices.map((d) => (d.ip === ip ? { ...d, customName: name || null } : d)));
     void setDeviceName(ip, name).catch((e: unknown) =>
       toast.error(e instanceof Error ? e.message : String(e)),
     );
   };
 
-  const hasOffline = devices.some((d) => !d.online);
+  const handleAddToForwarding = (d: Device) => {
+    navigate(FORWARDING_PATH, {
+      state: forwardingPrefillState({
+        name: d.customName || d.hostname || d.shortName || "",
+        targetIp: d.ip,
+      }),
+    });
+  };
+
+  // 窄窗口或打开详情时隐藏 MAC 列（详情里有完整信息），保证主要列不被挤压
+  const showMac = wide && !selected;
 
   return (
-    <div>
+    <div className="flex h-full min-h-[28rem] flex-col gap-4">
       <PageHeader
+        className="mb-0"
         title={t("discovery.title")}
         subtitle={t(sacnEnabled ? "discovery.subtitle" : "discovery.subtitleArtnetOnly")}
         actions={
-          <Button
-            size="sm"
-            onClick={() => void handleScan()}
-            disabled={scanning}
-            aria-busy={scanning}
-          >
+          <Button size="sm" onClick={() => void scan()} disabled={scanning} aria-busy={scanning}>
             {scanning ? <Loader2 className="animate-spin" /> : <RadarIcon />}
             {scanning ? t("discovery.scanning") : t("discovery.networkScan")}
           </Button>
         }
       />
 
-      <div className="mb-(--density-gutter) flex flex-wrap items-center gap-x-6 gap-y-4">
-        {/* 左侧：分类过滤 + 在线筛选 */}
-        <div className="flex flex-wrap items-center gap-1">
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                filter === f.key
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:bg-accent",
-              )}
-            >
-              {t(f.labelKey)}
-              <span className="tabular text-[0.7rem] opacity-70">
-                {counts[f.key]}
-              </span>
-            </button>
-          ))}
-        </div>
+      <ScanStatusBar
+        scanning={scanning}
+        last={last}
+        showNoReply={showNoReply}
+        onDismissNoReply={dismissNoReply}
+      />
 
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Switch checked={onlineOnly} onCheckedChange={setOnlineOnly} />
-          {t("discovery.onlineOnly")}
-        </label>
+      <DiscoveryToolbar
+        query={query}
+        onQueryChange={setQuery}
+        searchRef={searchRef}
+        categoryOptions={categoryOptions}
+        category={category}
+        onCategoryChange={setCategory}
+        statusCounts={{ all: devices.length, online: onlineCount, offline: offlineCount }}
+        status={status}
+        onStatusChange={setStatus}
+        canExport={visible.length > 0}
+        onExport={handleExport}
+        offlineCount={offlineCount}
+        onClearOffline={() => setClearOpen(true)}
+        onRefresh={handleRefresh}
+      />
 
-        {/* 右侧：搜索 + 排序 + 操作 */}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="relative w-56">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("discovery.searchPlaceholder")}
-              className="pl-8"
-            />
-          </div>
-
-          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-            <SelectTrigger className="w-36" aria-label={t("discovery.sortBy")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SORTS.map((s) => (
-                <SelectItem key={s.key} value={s.key}>
-                  {t(s.labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleRefresh}
-            aria-label={t("discovery.refresh")}
-            title={t("discovery.refresh")}
-          >
-            <RefreshCw />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleExport}
-            disabled={filtered.length === 0}
-            aria-label={t("common.export")}
-            title={t("common.export")}
-          >
-            <Download />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleClearOffline}
-            disabled={!hasOffline}
-            aria-label={t("discovery.clearOffline")}
-            title={t("discovery.clearOffline")}
-          >
-            <Trash2 />
-          </Button>
-        </div>
-      </div>
-
-      <Card>
-        <CardContent className="pt-8">
-          <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {t("discovery.summary", {
-                total: devices.length,
-                online: onlineCount,
-              })}
-            </span>
-            {filtered.length !== devices.length && (
-              <span className="tabular">
-                {t("discovery.shown", { n: filtered.length })}
-              </span>
+      <div className="flex min-h-0 flex-1 gap-4">
+        <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+          <div className="min-h-0 flex-1 overflow-auto">
+            {devices.length === 0 ? (
+              <DiscoveryEmptyState
+                kind="none"
+                scanning={scanning}
+                onScan={() => void scan()}
+                onClearFilters={clearFilters}
+              />
+            ) : visible.length === 0 ? (
+              <DiscoveryEmptyState
+                kind="filtered"
+                scanning={scanning}
+                onScan={() => void scan()}
+                onClearFilters={clearFilters}
+              />
+            ) : (
+              <DeviceTable
+                ref={tableRef}
+                devices={visible}
+                sort={sort}
+                onSort={handleSort}
+                selectedIp={selected?.ip ?? null}
+                onSelect={handleSelect}
+                freshIps={freshIps}
+                showMac={showMac}
+                onRename={handleRenameRequest}
+              />
             )}
           </div>
 
-          <div className="grid grid-cols-[5rem_8rem_1fr_9rem_6rem_6rem_7rem] gap-x-4 border-b border-border pb-3 text-xs font-medium text-muted-foreground">
-            <span>{t("discovery.colStatus")}</span>
-            <span>{t("discovery.colIp")}</span>
-            <span>{t("discovery.colHostname")}</span>
-            <span>{t("discovery.colMac")}</span>
-            <span>{t("discovery.colCategory")}</span>
-            <span className="text-right">{t("discovery.colArtnet")}</span>
-            <span className="text-right">{t("discovery.colLastSeen")}</span>
-          </div>
-          {filtered.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              {t("discovery.noDevices")}
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {filtered.map((d) => (
-                <DeviceRow
-                  key={d.ip}
-                  device={d}
-                  nowMs={nowMs}
-                  onRename={handleRename}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <footer className="flex min-h-10 items-center justify-between gap-4 border-t border-border px-4 text-xs text-muted-foreground">
+            <span>
+              {t("discovery.summary", { total: devices.length, online: onlineCount })}
+            </span>
+            {filtering && devices.length > 0 && (
+              <span className="flex items-center gap-2">
+                <span className="tabular">
+                  {t("discovery.filtered", { shown: visible.length, total: devices.length })}
+                </span>
+                <Button variant="link" className="h-auto p-0 text-xs" onClick={clearFilters}>
+                  {t("discovery.clearFilters")}
+                </Button>
+              </span>
+            )}
+          </footer>
+        </section>
+
+        {selected && (
+          <DeviceDetailPanel
+            key={selected.ip}
+            device={selected}
+            renaming={renaming}
+            onRenamingChange={setRenaming}
+            onRename={handleRename}
+            onCopy={copy}
+            onAddToForwarding={handleAddToForwarding}
+            onClose={handleClosePanel}
+          />
+        )}
+      </div>
+
+      <ClearOfflineDialog
+        open={clearOpen}
+        count={offlineCount}
+        onOpenChange={setClearOpen}
+        onConfirm={handleClearOffline}
+      />
     </div>
   );
 }

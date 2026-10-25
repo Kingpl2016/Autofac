@@ -13,3 +13,6 @@ cast_possible_truncation = "allow"
 [dependencies]
 serde = { workspace = true }
 artnet-net = { path = "../artnet-net" }
+
+[dev-dependencies]
+serde_json = { workspace = true }

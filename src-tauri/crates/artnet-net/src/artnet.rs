@@ -5,6 +5,9 @@
 //! 以便调用方（`socket`、`discovery` 等）无感知。
 
 use artnet_protocol::{ArtCommand, Output, Poll, PollReply, PortAddress};
+use serde::Serialize;
+
+use crate::frame::port_address;
 
 /// Art-Net 默认 UDP 端口。
 pub const ARTNET_PORT: u16 = 6454;
@@ -32,8 +35,32 @@ pub enum ArtNetPacket {
     Other,
 }
 
+/// 节点端口方向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PortDirection {
+    /// 输入口：把外部 DMX 送上 Art-Net 网络。
+    Input,
+    /// 输出口：把 Art-Net 数据输出为 DMX。
+    Output,
+}
+
+/// ArtPollReply 中一个端口的信息（面向前端 DTO，camelCase）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodePort {
+    /// 端口序号（从 0 起，对应节点的第 1~4 口）。
+    pub index: u8,
+    /// 端口方向。
+    pub direction: PortDirection,
+    /// 该端口的 15 位 Port-Address。
+    pub universe: u16,
+    /// 是否有数据流（输入口为正在接收，输出口为正在发送）。
+    pub active: bool,
+}
+
 /// ArtPollReply 中用于设备发现的关键字段。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PollReplyInfo {
     /// 节点 IPv4（4 字节）。
     pub ip: [u8; 4],
@@ -45,6 +72,20 @@ pub struct PollReplyInfo {
     pub mac: [u8; 6],
     /// 输入/输出端口数。
     pub num_ports: u16,
+    /// 固件版本（高字节、低字节）。
+    pub version: [u8; 2],
+    /// OEM 厂商与功能码。
+    pub oem: u16,
+    /// ESTA 厂商码。
+    pub esta_code: u16,
+    /// 设备样式码（`Style`）。
+    pub style: u8,
+    /// 节点运行状态文本（`NodeReport`）。
+    pub node_report: String,
+    /// 多 bind 设备的 bind 序号（`1` 为根设备；`0` 视同 `1`）。
+    pub bind_index: u8,
+    /// 本条回复上报的端口（每个输入或输出方向各一项）。
+    pub ports: Vec<NodePort>,
 }
 
 /// 解析 Art-Net 数据包。
@@ -138,7 +179,45 @@ fn poll_reply_info(reply: &PollReply) -> PollReplyInfo {
         long_name: cstr(&reply.long_name),
         mac: reply.mac,
         num_ports: u16::from_be_bytes(reply.num_ports),
+        version: reply.version,
+        oem: u16::from_be_bytes(reply.oem),
+        esta_code: reply.esta_code,
+        style: reply.style,
+        node_report: cstr(&reply.node_report),
+        bind_index: reply.bind_index,
+        ports: poll_reply_ports(reply),
     }
+}
+
+/// 依据 `PortTypes` / `SwIn` / `SwOut` / `GoodInput` / `GoodOutput` 展开端口列表。
+///
+/// `PortTypes` 的 bit7 表示可输出（Art-Net → DMX），bit6 表示可输入（DMX → Art-Net）；
+/// `Good*` 的 bit7 表示当前有数据流。规范说明 `NumPorts` 可被忽略，故直接遍历 4 个槽位。
+fn poll_reply_ports(reply: &PollReply) -> Vec<NodePort> {
+    let net = reply.port_address[0] & 0x7F;
+    let sub = reply.port_address[1] & 0x0F;
+    let mut ports = Vec::new();
+    for i in 0..4usize {
+        let kind = reply.port_types[i];
+        let index = i as u8;
+        if kind & 0x40 != 0 {
+            ports.push(NodePort {
+                index,
+                direction: PortDirection::Input,
+                universe: port_address(net, (sub << 4) | (reply.swin[i] & 0x0F)),
+                active: reply.good_input[i] & 0x80 != 0,
+            });
+        }
+        if kind & 0x80 != 0 {
+            ports.push(NodePort {
+                index,
+                direction: PortDirection::Output,
+                universe: port_address(net, (sub << 4) | (reply.swout[i] & 0x0F)),
+                active: reply.good_output[i] & 0x80 != 0,
+            });
+        }
+    }
+    ports
 }
 
 /// 读取定长字段中的以 NUL 结尾字符串。
@@ -149,7 +228,7 @@ fn cstr(raw: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_dmx, build_poll, parse, parse_poll_reply, ArtNetPacket};
+    use super::{build_dmx, build_poll, parse, parse_poll_reply, ArtNetPacket, PortDirection};
     use crate::frame::{net_of, port_address, sub_uni_of};
 
     #[test]
@@ -216,5 +295,74 @@ mod tests {
         assert_eq!(info.long_name, "LongNod");
         assert_eq!(info.mac, [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
         assert_eq!(info.num_ports, 4);
+    }
+
+    /// 构造一份最小的 ArtPollReply 报文（239 字节），供扩展字段测试复用。
+    fn raw_poll_reply() -> Vec<u8> {
+        let mut buf = vec![0u8; 239];
+        buf[0..8].copy_from_slice(b"Art-Net\0");
+        buf[8..10].copy_from_slice(&0x2100u16.to_le_bytes());
+        buf[10..14].copy_from_slice(&[10, 0, 0, 9]);
+        buf[14..16].copy_from_slice(&6454u16.to_le_bytes());
+        buf
+    }
+
+    #[test]
+    fn poll_reply_extended_fields() {
+        let mut buf = raw_poll_reply();
+        buf[16..18].copy_from_slice(&[1, 23]); // VersInfo 高/低
+        buf[20..22].copy_from_slice(&[0x12, 0x34]); // Oem 高/低
+        buf[24..26].copy_from_slice(&0x4C58u16.to_le_bytes()); // EstaMan 小端
+        buf[108..120].copy_from_slice(b"#0001 [0001]"); // NodeReport
+        buf[200] = 1; // Style: Controller
+        buf[211] = 2; // BindIndex
+
+        let info = parse_poll_reply(&buf).unwrap();
+        assert_eq!(info.version, [1, 23]);
+        assert_eq!(info.oem, 0x1234);
+        assert_eq!(info.esta_code, 0x4C58);
+        assert_eq!(info.node_report, "#0001 [0001]");
+        assert_eq!(info.style, 1);
+        assert_eq!(info.bind_index, 2);
+    }
+
+    #[test]
+    fn poll_reply_ports_expand_direction_and_universe() {
+        let mut buf = raw_poll_reply();
+        buf[18] = 0x02; // NetSwitch = 2
+        buf[19] = 0x01; // SubSwitch = 1
+        // 口 1：仅输出；口 2：输入+输出；口 3、4 未使用
+        buf[174..178].copy_from_slice(&[0x80, 0xC0, 0x00, 0x00]);
+        buf[178..182].copy_from_slice(&[0x00, 0x80, 0x00, 0x00]); // GoodInput：口 2 有数据
+        buf[182..186].copy_from_slice(&[0x80, 0x00, 0x00, 0x00]); // GoodOutput：口 1 有数据
+        buf[186..190].copy_from_slice(&[0x00, 0x05, 0x00, 0x00]); // SwIn
+        buf[190..194].copy_from_slice(&[0x03, 0x04, 0x00, 0x00]); // SwOut
+
+        let ports = parse_poll_reply(&buf).unwrap().ports;
+        assert_eq!(ports.len(), 3);
+
+        // 口 1 输出：2:1:3 = (2<<8)|(1<<4)|3
+        assert_eq!(ports[0].index, 0);
+        assert_eq!(ports[0].direction, PortDirection::Output);
+        assert_eq!(ports[0].universe, (2 << 8) | (1 << 4) | 3);
+        assert!(ports[0].active);
+
+        // 口 2 输入：2:1:5，有数据
+        assert_eq!(ports[1].index, 1);
+        assert_eq!(ports[1].direction, PortDirection::Input);
+        assert_eq!(ports[1].universe, (2 << 8) | (1 << 4) | 5);
+        assert!(ports[1].active);
+
+        // 口 2 输出：2:1:4，无数据
+        assert_eq!(ports[2].direction, PortDirection::Output);
+        assert_eq!(ports[2].universe, (2 << 8) | (1 << 4) | 4);
+        assert!(!ports[2].active);
+    }
+
+    #[test]
+    fn poll_reply_without_ports_yields_empty_list() {
+        let info = parse_poll_reply(&raw_poll_reply()).unwrap();
+        assert!(info.ports.is_empty());
+        assert!(info.node_report.is_empty());
     }
 }

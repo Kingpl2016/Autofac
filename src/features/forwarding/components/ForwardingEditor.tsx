@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Plus,
@@ -19,6 +19,7 @@ import { useProtocolFlags } from "@/features/settings";
 import { openTextFile, saveTextFile } from "@/shared/tauri/files";
 import { DestinationDialog } from "./DestinationDialog";
 import { useForwardingDraft } from "../hooks/useForwarding";
+import type { ForwardingPrefill } from "../lib/prefill";
 import {
   newDestination,
   type ForwardDestination,
@@ -27,16 +28,34 @@ import {
 
 interface ForwardingEditorProps {
   initial: ForwardingTable;
+  /** 来自其它页面的预填信息：该 IP 已有目的地则直接编辑它，否则预填一个新目的地 */
+  prefill?: ForwardingPrefill | null;
 }
 
 /**
  * 转发编辑器：目的地列表（启停/编辑/复制/删除）+ 新增 + 导入导出。
  */
-export function ForwardingEditor({ initial }: ForwardingEditorProps) {
+export function ForwardingEditor({ initial, prefill = null }: ForwardingEditorProps) {
   const { t } = useTranslation();
   const { destinations, upsert, remove, toggle, duplicate, replaceAll } =
     useForwardingDraft(initial);
-  const [editing, setEditing] = useState<ForwardDestination | null>(null);
+  // 预填只在挂载时消费一次：命中已有目的地就编辑它，避免对同一设备建出重复目的地
+  const [editing, setEditing] = useState<ForwardDestination | null>(() => {
+    if (!prefill) return null;
+    const existing = initial.destinations.find((d) => d.targetIp === prefill.targetIp);
+    return existing ?? { ...newDestination(), name: prefill.name, targetIp: prefill.targetIp };
+  });
+  const prefillToasted = useRef(false);
+  useEffect(() => {
+    if (!prefill || prefillToasted.current) return;
+    prefillToasted.current = true;
+    const exists = initial.destinations.some((d) => d.targetIp === prefill.targetIp);
+    toast.info(
+      t(exists ? "forwarding.prefillExisting" : "forwarding.prefillFromDiscovery", {
+        ip: prefill.targetIp,
+      }),
+    );
+  }, [prefill, initial.destinations, t]);
   const { sacnEnabled } = useProtocolFlags();
   // 只在渲染时过滤：sACN 目的地的数据仍保留在转发表里（保存 / 导出不受影响），重新开启后恢复显示
   const visible = sacnEnabled

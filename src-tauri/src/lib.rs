@@ -39,6 +39,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // 键值持久化：前端界面偏好（如设备发现的筛选 / 排序）落盘到 app_data_dir。
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(host_core::init())
         .setup(|app| {
             // 外接控制器句柄（默认未配置）。

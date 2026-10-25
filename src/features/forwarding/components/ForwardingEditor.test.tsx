@@ -90,6 +90,42 @@ describe("ForwardingEditor 的 sACN 开关", () => {
   });
 });
 
+describe("ForwardingEditor 的设备发现预填", () => {
+  const table = { destinations: [dest("已有灯", "artNet")] }; // targetIp 10.0.0.5
+
+  it("新 IP：直接打开预填好名称与目标 IP 的对话框，并提示", () => {
+    render(
+      <ForwardingEditor
+        initial={table}
+        prefill={{ name: "舞台左", targetIp: "10.0.0.99" }}
+      />,
+    );
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect((screen.getByDisplayValue("舞台左") as HTMLInputElement).value).toBe("舞台左");
+    expect(screen.getByDisplayValue("10.0.0.99")).toBeTruthy();
+    expect(toast.info).toHaveBeenCalledTimes(1);
+    expect(toast.info.mock.calls[0][0]).toContain("10.0.0.99");
+  });
+
+  it("该 IP 已有目的地：打开它编辑，而不是新建重复项", () => {
+    render(
+      <ForwardingEditor initial={table} prefill={{ name: "别名", targetIp: "10.0.0.5" }} />,
+    );
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByDisplayValue("已有灯")).toBeTruthy();
+    expect(screen.queryByDisplayValue("别名")).toBeNull();
+    expect(toast.info.mock.calls[0][0]).toContain("已有转发目的地");
+  });
+
+  it("没有预填时不打开对话框", () => {
+    render(<ForwardingEditor initial={table} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+});
+
 describe("DestinationDialog 的 sACN 开关", () => {
   const renderDialog = () =>
     render(
