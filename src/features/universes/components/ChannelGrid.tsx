@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 
+import { cn } from "@/lib/utils";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import type { ValueFormat } from "@/features/settings";
 import { formatChannelValue, levelColor } from "../lib/format";
@@ -13,6 +14,14 @@ interface ChannelGridProps {
    * 显式提供通道数据（如回放输出）。省略时读取实时引擎的合并输出。
    */
   data?: number[];
+  /** 高亮的通道号（1 到 512）。 */
+  selectedChannel?: number;
+  /**
+   * 提供后，点击色块会以通道号（1 到 512）回调。
+   *
+   * 这只是指针便利：键盘与读屏用户应有等价的输入途径（如通道号输入框），色块本身不进入 Tab 序列。
+   */
+  onChannelClick?: (channel: number) => void;
 }
 
 const CHANNELS = 512;
@@ -22,7 +31,13 @@ const CHANNELS = 512;
  *
  * 数据来源默认是实时引擎；传入 `data` 即可复用同一栅格显示回放等其它来源。
  */
-export function ChannelGrid({ universe, valueFormat, data: provided }: ChannelGridProps) {
+export function ChannelGrid({
+  universe,
+  valueFormat,
+  data: provided,
+  selectedChannel,
+  onChannelClick,
+}: ChannelGridProps) {
   const { t } = useTranslation();
   const live = useEngineDataStore((s) => s.channels[universe]);
   const data = provided ?? live;
@@ -38,13 +53,26 @@ export function ChannelGrid({ universe, valueFormat, data: provided }: ChannelGr
         style={{ gridTemplateColumns: "repeat(32, minmax(0, 1fr))" }}
         role="grid"
         aria-label={`Universe ${universe} ${t("universes.channel")}`}
+        onClick={
+          onChannelClick &&
+          ((e) => {
+            const cell = (e.target as HTMLElement).closest<HTMLElement>("[data-ch]");
+            if (cell) onChannelClick(Number(cell.dataset.ch));
+          })
+        }
       >
         {Array.from({ length: CHANNELS }, (_, i) => {
           const v = data?.[i] ?? 0;
           return (
             <div
               key={i}
-              className="flex aspect-square items-center justify-center text-[0.5rem] leading-none"
+              data-ch={i + 1}
+              data-selected={selectedChannel === i + 1 ? "true" : undefined}
+              className={cn(
+                "flex aspect-square items-center justify-center text-[0.5rem] leading-none",
+                onChannelClick && "cursor-pointer",
+                selectedChannel === i + 1 && "relative z-10 ring-2 ring-primary ring-inset",
+              )}
               style={{
                 backgroundColor: v === 0 ? "var(--card)" : levelColor(v),
                 color: v > 128 ? "#0a0a0a" : "rgba(200,220,255,0.55)",

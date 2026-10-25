@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "signal-checker",
+  "description": "信号检测器窗口权限集：只需要事件、窗口标题与偏好存储，不开放文件系统等能力",
+  "windows": ["signal-checker"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "store:default",
+    "log:default"
+  ]
+}

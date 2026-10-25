@@ -40,9 +40,12 @@
     "sectionProgram": "节目",
     "sectionDevice": "核心板",
     "sectionSystem": "系统",
+    "sectionTools": "工具",
     "collapse": "收起侧栏",
     "expand": "展开侧栏",
-    "pausedInPlayer": "播放器模式下已暂停"
+    "pausedInPlayer": "播放器模式下已暂停",
+    "signalChecker": "信号检测器",
+    "signalCheckerHint": "打开信号检测器（{{key}}）"
   },
   "header": {
     "networkInterface": "网络接口",
@@ -661,5 +664,163 @@
     "stay": "继续使用",
     "quit": "停止并退出",
     "failed": "退出前收尾失败：{{reason}}"
+  },
+  "signalChecker": {
+    "title": "信号检测器",
+    "windowTitle": "信号检测器",
+    "subtitle": "向指定地址发送 Art-Net / sACN 测试图案，用来验证信号链路",
+    "openFailed": "无法打开信号检测器：{{reason}}",
+    "connection": "连接",
+    "targetIp": "目标 IP",
+    "targetIpPlaceholder": "127.0.0.1",
+    "pickTarget": "选择目标",
+    "port": "端口",
+    "protocol": "协议",
+    "universes": "Universe 范围",
+    "universesPlaceholder": "0-50",
+    "universesHint": "如 0-50，或 0-20,30,40-45；一次最多 {{max}} 个",
+    "universeCount": "共 {{n}} 个 Universe",
+    "start": "开始发送",
+    "stop": "停止发送",
+    "stopping": "正在停止…",
+    "starting": "正在启动…",
+    "apply": "应用",
+    "applyHint": "发送中修改连接设置后，点“应用”才会生效",
+    "sending": "发送中",
+    "idle": "未发送",
+    "packets": "{{n}} 包",
+    "rate": "{{hz}}Hz · {{n}} uni",
+    "targetLocal": "本机回环",
+    "targetLocalHint": "发给本机，用来自测整条信号链路",
+    "targetInterfaces": "本机网卡",
+    "targetDevices": "已发现设备",
+    "targetBroadcasts": "广播地址",
+    "targetLimitedBroadcast": "受限广播（全部网卡）",
+    "targetDirectedBroadcast": "子网广播",
+    "targetEmpty": "没有可用的目标",
+    "targetOffline": "离线",
+    "footerTarget": "{{protocol}} → {{ip}}:{{port}}",
+    "footerUniverses": "Uni {{range}}",
+    "errInvalidIp": "“{{value}}”不是合法的 IPv4 地址",
+    "errInvalidPort": "端口须是 1 到 65535 的整数",
+    "errEmptyRange": "请填写 Universe 范围",
+    "errInvalidRange": "无法识别“{{fragment}}”，请写成 0-50 或 0-20,30 这样",
+    "errOutOfRange": "Universe {{universe}} 超出 {{protocol}} 允许的 {{min}} 到 {{max}}",
+    "errTooMany": "一次最多发送 {{max}} 个 Universe，当前是 {{count}} 个",
+    "errSocket": "无法创建发送套接字：{{message}}",
+    "errChannel": "通道号 {{channel}} 超出 1 到 512",
+    "sendError": "发送失败{{where}}：{{message}}",
+    "sendErrorWhere": "（Universe {{universe}}）",
+    "dismissError": "关闭错误提示",
+    "modeLabel": "发送模式",
+    "modeAuto": "自动模式",
+    "modeManual": "手动模式",
+    "patternsTitle": "测试图案",
+    "patternFlashing": "高频闪烁",
+    "group": {
+      "basic": "基础",
+      "wave": "波形",
+      "sweep": "扫描",
+      "stress": "压力"
+    },
+    "patterns": {
+      "full-on": {
+        "name": "全亮",
+        "desc": "全部通道 255"
+      },
+      "blackout": {
+        "name": "全黑",
+        "desc": "全部通道 0"
+      },
+      "gradient": {
+        "name": "渐变",
+        "desc": "静态渐变：ch1 为 0，ch512 为 255"
+      },
+      "sine": {
+        "name": "正弦波",
+        "desc": "平滑起伏，全通道同值，周期 2 秒"
+      },
+      "square": {
+        "name": "方波",
+        "desc": "1 秒全亮、1 秒全黑"
+      },
+      "triangle": {
+        "name": "三角波",
+        "desc": "线性升到最亮再降回，周期 2 秒"
+      },
+      "ramp-up": {
+        "name": "上升斜坡",
+        "desc": "从 0 线性升到 255 后瞬间复位，周期 2 秒"
+      },
+      "ramp-down": {
+        "name": "下降斜坡",
+        "desc": "从 255 线性降到 0 后瞬间复位，周期 2 秒"
+      },
+      "pulse": {
+        "name": "脉冲",
+        "desc": "瞬间全亮后指数衰减，周期 2 秒"
+      },
+      "chase": {
+        "name": "追逐",
+        "desc": "9 通道宽的亮点从 ch1 扫到 ch512，4 秒一轮"
+      },
+      "rainbow": {
+        "name": "彩虹",
+        "desc": "每 3 通道一组 RGB，色相旋转；相邻 Universe 错开相位"
+      },
+      "odd-even": {
+        "name": "奇偶交替",
+        "desc": "奇数号与偶数号通道每 0.5 秒交替点亮"
+      },
+      "binary": {
+        "name": "二进制计数",
+        "desc": "计数值的低 16 位显示在 ch1 到 ch16，每 0.1 秒加一"
+      },
+      "random": {
+        "name": "随机",
+        "desc": "每 0.5 秒换一组随机值，各 Universe 互不相同"
+      },
+      "strobe": {
+        "name": "频闪",
+        "desc": "0.1 秒全亮、0.1 秒全黑"
+      }
+    },
+    "speed": "速度",
+    "speedValue": "{{x}}×",
+    "speedStatic": "静态图案与时间无关，速度不起作用",
+    "previewTitle": "发送预览",
+    "previewUniverse": "查看 Universe",
+    "previewHint": "显示该 Universe 当前发出的 512 个通道",
+    "manualTitle": "手动设值",
+    "manualNote": "手动模式发送下面设置的值；没有设置过的 Universe 发送全 0。",
+    "universe": "Universe",
+    "channel": "通道（1-512）",
+    "value": "数值（0-255）",
+    "valueSlider": "数值滑块",
+    "valuePercent": "约 {{pct}}%",
+    "quickValues": "快捷值",
+    "setChannel": "设置 ch{{channel}}",
+    "setAll": "整个 Universe 设为 {{value}}",
+    "clearUniverse": "清除此 Universe",
+    "clearAll": "清除全部",
+    "gridHint": "当前输出，点击色块可选中通道",
+    "footerPattern": "图案：{{name}}",
+    "confirmStartTitle": "确认开始发送？",
+    "confirmSwitchTitle": "确认切换到频闪？",
+    "confirmDesc": "测试信号会真实发到网络上，请先确认：",
+    "confirmStart": "仍然开始发送",
+    "confirmSwitch": "仍然切换",
+    "reasonRemote": "目标 {{ip}} 不是本机：收到信号的灯具会真实响应这些测试信号",
+    "reasonForwarding": "转发表里有 {{count}} 个启用的目的地：发给本机的测试信号会被转发到它们",
+    "reasonStrobe": "频闪的高频明暗闪烁可能诱发光敏性癫痫：请确认现场没有光敏人员，并已告知在场人员",
+    "strobeWarning": "频闪约每秒闪烁 {{hz}} 次，速度越快越密。请确认现场没有光敏人员。",
+    "hintsLabel": "提示",
+    "hintPlayerMode": "播放器模式下实时接收已停止，发给本机的测试信号不会被接收，也不会出现在 Universe 视图里",
+    "hintReceiverBinding": "接收端绑定在 {{ip}}，收不到发往 127.0.0.1 的信号：请把目标改成 {{ip}}，或在设置里把接收网卡设为“全部接口”",
+    "hintReceiverBindingMulti": "多网卡模式下接收端绑定在各网卡自己的 IP 上，收不到发往 127.0.0.1 的信号：请把目标改成本机某块网卡的 IP",
+    "hintForwarding": "转发表里有 {{count}} 个启用的目的地，发给本机的测试信号会被转发出去；需要时可先在“信号转发”里关闭它们",
+    "announceStarted": "已开始发送：{{protocol}} → {{ip}}:{{port}}",
+    "announceStopped": "已停止发送",
+    "hotkeyHint": "空格键 开始 / 停止"
   }
 }

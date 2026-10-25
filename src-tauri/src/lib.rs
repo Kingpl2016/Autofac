@@ -9,6 +9,7 @@ mod app_mode_commands;
 mod controller_commands;
 mod playback_commands;
 mod recording_commands;
+mod signal_checker_commands;
 
 use tauri::Manager;
 
@@ -67,6 +68,8 @@ pub fn run() {
         .setup(|app| {
             // 外接控制器句柄（默认未配置）。
             app.manage(controller::ControllerHandle::default());
+            // 信号检测器（测试信号发生器）：发送器常驻，窗口按需打开。
+            app.manage(signal_checker_commands::SignalCheckerState::new(app.handle()));
 
             // 恢复上次异常退出遗留的录制（配置与录制控制器均来自 host-core，已先行 setup）。
             let cfg = app.settings_snapshot();
@@ -101,11 +104,8 @@ pub fn run() {
             Ok(())
         })
         // 关闭窗口：录制或播放进行中先拦下，交给前端确认（见 `app_quit`）；否则直接关闭。
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() != "main" {
-                    return;
-                }
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 let app = window.app_handle();
                 let core = app.artnet_core();
                 let recording = core.recording().is_recording();
@@ -120,6 +120,9 @@ pub fn run() {
                     );
                 }
             }
+            // 主窗口销毁时一并关掉信号检测器；检测器窗口销毁时停止发送并清零
+            tauri::WindowEvent::Destroyed => signal_checker_commands::on_window_destroyed(window),
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
@@ -180,6 +183,23 @@ pub fn run() {
             controller_commands::controller_delete_file,
             controller_commands::controller_rename_file,
             controller_commands::controller_upload_recording,
+            signal_checker_commands::signal_checker_open,
+            signal_checker_commands::signal_checker_status,
+            signal_checker_commands::signal_checker_validate,
+            signal_checker_commands::signal_checker_configure,
+            signal_checker_commands::signal_checker_start,
+            signal_checker_commands::signal_checker_stop,
+            signal_checker_commands::signal_checker_set_mode,
+            signal_checker_commands::signal_checker_set_pattern,
+            signal_checker_commands::signal_checker_set_speed,
+            signal_checker_commands::signal_checker_set_channel,
+            signal_checker_commands::signal_checker_set_all,
+            signal_checker_commands::signal_checker_clear,
+            signal_checker_commands::signal_checker_list_patterns,
+            signal_checker_commands::signal_checker_set_preview,
+            signal_checker_commands::signal_checker_frame,
+            signal_checker_commands::signal_checker_targets,
+            signal_checker_commands::signal_checker_context,
         ])
         .build(tauri::generate_context!())
         .expect("启动 Tauri 应用失败")

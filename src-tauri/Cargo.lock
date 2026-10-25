@@ -81,10 +81,13 @@ dependencies = [
  "controller",
  "host-core",
  "log",
+ "netif",
  "player",
  "recorder",
  "serde",
  "serde_json",
+ "settings",
+ "signal-gen",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -3873,6 +3876,19 @@ version = "0.1.0"
 dependencies = [
  "artnet-net",
  "serde",
+]
+
+[[package]]
+name = "signal-gen"
+version = "0.1.0"
+dependencies = [
+ "artnet-net",
+ "forwarding",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

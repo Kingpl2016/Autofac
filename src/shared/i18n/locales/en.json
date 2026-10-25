@@ -40,9 +40,12 @@
     "sectionProgram": "Program",
     "sectionDevice": "Board",
     "sectionSystem": "System",
+    "sectionTools": "Tools",
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
-    "pausedInPlayer": "paused in Player mode"
+    "pausedInPlayer": "paused in Player mode",
+    "signalChecker": "Signal Checker",
+    "signalCheckerHint": "Open Signal Checker ({{key}})"
   },
   "header": {
     "networkInterface": "Network interface",
@@ -661,5 +664,163 @@
     "stay": "Keep using",
     "quit": "Stop and quit",
     "failed": "Could not finish cleanly before quitting: {{reason}}"
+  },
+  "signalChecker": {
+    "title": "Signal Checker",
+    "windowTitle": "Signal Checker",
+    "subtitle": "Send Art-Net / sACN test patterns to an address to verify the signal path",
+    "openFailed": "Could not open Signal Checker: {{reason}}",
+    "connection": "Connection",
+    "targetIp": "Target IP",
+    "targetIpPlaceholder": "127.0.0.1",
+    "pickTarget": "Choose a target",
+    "port": "Port",
+    "protocol": "Protocol",
+    "universes": "Universe range",
+    "universesPlaceholder": "0-50",
+    "universesHint": "e.g. 0-50, or 0-20,30,40-45; up to {{max}} at a time",
+    "universeCount": "{{n}} universe(s)",
+    "start": "Start sending",
+    "stop": "Stop sending",
+    "stopping": "Stopping…",
+    "starting": "Starting…",
+    "apply": "Apply",
+    "applyHint": "While sending, connection changes only take effect after you click Apply",
+    "sending": "Sending",
+    "idle": "Not sending",
+    "packets": "{{n}} pkts",
+    "rate": "{{hz}}Hz · {{n}} uni",
+    "targetLocal": "This machine (loopback)",
+    "targetLocalHint": "Send to this machine to test the whole signal path",
+    "targetInterfaces": "Local interfaces",
+    "targetDevices": "Discovered devices",
+    "targetBroadcasts": "Broadcast addresses",
+    "targetLimitedBroadcast": "Limited broadcast (all interfaces)",
+    "targetDirectedBroadcast": "Subnet broadcast",
+    "targetEmpty": "No targets available",
+    "targetOffline": "Offline",
+    "footerTarget": "{{protocol}} → {{ip}}:{{port}}",
+    "footerUniverses": "Uni {{range}}",
+    "errInvalidIp": "“{{value}}” is not a valid IPv4 address",
+    "errInvalidPort": "The port must be an integer from 1 to 65535",
+    "errEmptyRange": "Enter a universe range",
+    "errInvalidRange": "Could not read “{{fragment}}”; use a form like 0-50 or 0-20,30",
+    "errOutOfRange": "Universe {{universe}} is outside the {{min}} to {{max}} that {{protocol}} allows",
+    "errTooMany": "At most {{max}} universes can be sent at once; you entered {{count}}",
+    "errSocket": "Could not create the send socket: {{message}}",
+    "errChannel": "Channel {{channel}} is outside 1 to 512",
+    "sendError": "Send failed{{where}}: {{message}}",
+    "sendErrorWhere": " (universe {{universe}})",
+    "dismissError": "Dismiss error",
+    "modeLabel": "Send mode",
+    "modeAuto": "Auto mode",
+    "modeManual": "Manual mode",
+    "patternsTitle": "Test patterns",
+    "patternFlashing": "Rapid flashing",
+    "group": {
+      "basic": "Basic",
+      "wave": "Waves",
+      "sweep": "Sweeps",
+      "stress": "Stress"
+    },
+    "patterns": {
+      "full-on": {
+        "name": "Full on",
+        "desc": "All channels at 255"
+      },
+      "blackout": {
+        "name": "Blackout",
+        "desc": "All channels at 0"
+      },
+      "gradient": {
+        "name": "Gradient",
+        "desc": "Static gradient: ch1 is 0, ch512 is 255"
+      },
+      "sine": {
+        "name": "Sine wave",
+        "desc": "Smooth swell, same value on every channel, 2 s period"
+      },
+      "square": {
+        "name": "Square wave",
+        "desc": "1 s full on, 1 s blackout"
+      },
+      "triangle": {
+        "name": "Triangle wave",
+        "desc": "Rises linearly to full then falls back, 2 s period"
+      },
+      "ramp-up": {
+        "name": "Ramp up",
+        "desc": "Linear 0 to 255, then snaps back, 2 s period"
+      },
+      "ramp-down": {
+        "name": "Ramp down",
+        "desc": "Linear 255 to 0, then snaps back, 2 s period"
+      },
+      "pulse": {
+        "name": "Pulse",
+        "desc": "Instant full flash, then exponential decay, 2 s period"
+      },
+      "chase": {
+        "name": "Chase",
+        "desc": "A 9-channel spot sweeps ch1 to ch512 in 4 s"
+      },
+      "rainbow": {
+        "name": "Rainbow",
+        "desc": "RGB per 3 channels with rotating hue; universes are phase-shifted"
+      },
+      "odd-even": {
+        "name": "Odd / even",
+        "desc": "Odd- and even-numbered channels alternate every 0.5 s"
+      },
+      "binary": {
+        "name": "Binary count",
+        "desc": "Low 16 bits of a counter on ch1 to ch16, +1 every 0.1 s"
+      },
+      "random": {
+        "name": "Random",
+        "desc": "New random values every 0.5 s, different per universe"
+      },
+      "strobe": {
+        "name": "Strobe",
+        "desc": "0.1 s full on, 0.1 s blackout"
+      }
+    },
+    "speed": "Speed",
+    "speedValue": "{{x}}×",
+    "speedStatic": "Static patterns do not depend on time, so speed has no effect",
+    "previewTitle": "Output preview",
+    "previewUniverse": "Universe to view",
+    "previewHint": "The 512 channels currently being sent for this universe",
+    "manualTitle": "Manual values",
+    "manualNote": "Manual mode sends the values set below; universes you have not set send all zeros.",
+    "universe": "Universe",
+    "channel": "Channel (1-512)",
+    "value": "Value (0-255)",
+    "valueSlider": "Value slider",
+    "valuePercent": "about {{pct}}%",
+    "quickValues": "Quick values",
+    "setChannel": "Set ch{{channel}}",
+    "setAll": "Set whole universe to {{value}}",
+    "clearUniverse": "Clear this universe",
+    "clearAll": "Clear all",
+    "gridHint": "Current output; click a cell to select its channel",
+    "footerPattern": "Pattern: {{name}}",
+    "confirmStartTitle": "Start sending?",
+    "confirmSwitchTitle": "Switch to the strobe pattern?",
+    "confirmDesc": "These test signals really go out on the network. Please check first:",
+    "confirmStart": "Start anyway",
+    "confirmSwitch": "Switch anyway",
+    "reasonRemote": "{{ip}} is not this machine: fixtures that receive the signal will really respond to it",
+    "reasonForwarding": "The forwarding table has {{count}} enabled destination(s): test signals sent to this machine will be forwarded to them",
+    "reasonStrobe": "Rapid strobing can trigger photosensitive seizures: make sure no one at the venue is sensitive, and that everyone present has been told",
+    "strobeWarning": "The strobe flashes about {{hz}} times per second, faster at higher speeds. Make sure no one at the venue is photosensitive.",
+    "hintsLabel": "Notes",
+    "hintPlayerMode": "In Player mode live reception is stopped, so test signals sent to this machine are not received and will not show in the Universe view",
+    "hintReceiverBinding": "The receiver is bound to {{ip}} and will not get signals sent to 127.0.0.1: set the target to {{ip}}, or set the receive interface to “All interfaces” in Settings",
+    "hintReceiverBindingMulti": "In multi-NIC mode the receivers are bound to each NIC's own IP and will not get signals sent to 127.0.0.1: set the target to the IP of one of this machine's NICs",
+    "hintForwarding": "The forwarding table has {{count}} enabled destination(s); test signals sent to this machine will be forwarded on. Turn them off in Forwarding first if needed",
+    "announceStarted": "Started sending: {{protocol}} → {{ip}}:{{port}}",
+    "announceStopped": "Stopped sending",
+    "hotkeyHint": "Space to start / stop"
   }
 }

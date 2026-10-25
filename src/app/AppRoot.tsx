@@ -1,17 +1,11 @@
-import { useEffect } from "react";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 
 import { router } from "./router";
-import i18n from "@/shared/i18n";
-import {
-  usePrefsStore,
-  applyThemeClass,
-  applyAccent,
-  applyLanguageAttr,
-} from "@/shared/stores/prefsStore";
+import { usePrefsStore } from "@/shared/stores/prefsStore";
 import { LiveAnnouncer } from "@/shared/components/LiveAnnouncer";
+import { useAppearanceSync } from "@/shared/hooks/useAppearanceSync";
 import { useEngineListeners } from "@/shared/hooks/useEngineListeners";
 import { useSystemLog } from "@/shared/hooks/useSystemLog";
 import { useAppModeListeners } from "@/features/app-mode";
@@ -32,27 +26,13 @@ const queryClient = new QueryClient({
  */
 export function AppRoot() {
   const theme = usePrefsStore((s) => s.theme);
-  const accent = usePrefsStore((s) => s.accent);
-  const language = usePrefsStore((s) => s.language);
+  useAppearanceSync();
   useSystemLog();
   useEngineListeners();
   useRecordingListeners();
   usePlayerListeners();
   useAppModeListeners();
   useRecordingHotkeys();
-
-  useEffect(() => {
-    applyThemeClass(theme);
-  }, [theme]);
-
-  useEffect(() => {
-    applyAccent(accent);
-  }, [accent]);
-
-  useEffect(() => {
-    applyLanguageAttr(language);
-    if (i18n.language !== language) void i18n.changeLanguage(language);
-  }, [language]);
 
   return (
     <QueryClientProvider client={queryClient}>

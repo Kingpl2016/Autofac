@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 
 import { CloseGuardDialog, ModeConfirmDialog } from "@/features/app-mode";
+import { useSignalCheckerHotkey } from "@/features/signal-checker";
 import { Sidebar } from "./Sidebar";
 import { HeaderBar } from "./HeaderBar";
 import { StatusLogBar } from "./StatusLogBar";
@@ -9,6 +10,8 @@ import { StatusLogBar } from "./StatusLogBar";
  * 应用主布局：左侧导航 + 顶部状态条 + 内容区 + 底部日志条。
  */
 export function MainLayout() {
+  // 主窗口内 Ctrl+Shift+T 打开信号检测器
+  useSignalCheckerHotkey();
   return (
     <div className="flex h-full w-full overflow-hidden bg-background">
       <Sidebar />

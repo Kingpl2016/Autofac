@@ -44,6 +44,10 @@ recorder = { path = "crates/recorder" }
 player = { path = "crates/player" }
 controller = { path = "crates/controller" }
 host-core = { path = "crates/host-core" }
+# 信号检测器：测试信号发生器核心与目标地址候选（网卡 / 广播地址）。
+signal-gen = { path = "crates/signal-gen" }
+netif = { path = "crates/netif" }
+settings = { path = "crates/settings" }
 
 [workspace]
 members = ["crates/*"]

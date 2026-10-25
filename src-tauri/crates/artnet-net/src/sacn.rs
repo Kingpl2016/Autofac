@@ -115,6 +115,9 @@ pub fn parse(buf: &[u8]) -> Option<SacnData> {
     })
 }
 
+/// Framing 层 Options 字节中的 Stream_Terminated 位：通知接收端该源已停止发送该 Universe。
+pub const OPT_STREAM_TERMINATED: u8 = 0x40;
+
 /// 构造一个 sACN E1.31 数据包。
 ///
 /// # Arguments
@@ -128,7 +131,7 @@ pub fn parse(buf: &[u8]) -> Option<SacnData> {
 ///
 /// # Returns
 ///
-/// 完整 sACN 数据包字节缓冲。
+/// 完整 sACN 数据包字节缓冲（Options 为 0）。
 #[must_use]
 pub fn build(
     universe: u16,
@@ -137,6 +140,63 @@ pub fn build(
     source_name: &str,
     priority: u8,
     sequence: u8,
+) -> Vec<u8> {
+    build_with_options(universe, data, cid, source_name, priority, sequence, 0x00)
+}
+
+/// 构造带 Stream_Terminated 标志的 sACN 数据包（源停止发送某 Universe 时发出，规范建议连发 3 次）。
+///
+/// # Arguments
+///
+/// 与 [`build`] 相同。
+///
+/// # Returns
+///
+/// 完整 sACN 数据包字节缓冲（Options 的 Stream_Terminated 位置 1）。
+#[must_use]
+pub fn build_terminated(
+    universe: u16,
+    data: &[u8],
+    cid: &[u8; 16],
+    source_name: &str,
+    priority: u8,
+    sequence: u8,
+) -> Vec<u8> {
+    build_with_options(
+        universe,
+        data,
+        cid,
+        source_name,
+        priority,
+        sequence,
+        OPT_STREAM_TERMINATED,
+    )
+}
+
+/// 构造 sACN E1.31 数据包，并显式指定 Framing 层 Options 字节。
+///
+/// # Arguments
+///
+/// * `universe` - Universe 编号。
+/// * `data` - 通道数据（不含 START Code，最多 512）。
+/// * `cid` - 发送者 CID。
+/// * `source_name` - 源名称（截断/补齐到 64 字节）。
+/// * `priority` - 优先级（0~200）。
+/// * `sequence` - 序列号。
+/// * `options` - Framing 层 Options 字节（如 [`OPT_STREAM_TERMINATED`]）。
+///
+/// # Returns
+///
+/// 完整 sACN 数据包字节缓冲。
+#[must_use]
+pub fn build_with_options(
+    universe: u16,
+    data: &[u8],
+    cid: &[u8; 16],
+    source_name: &str,
+    priority: u8,
+    sequence: u8,
+    options: u8,
 ) -> Vec<u8> {
     let channels = data.len().min(512);
     let prop_count = (channels + 1) as u16; // 含 START Code
@@ -168,7 +228,7 @@ pub fn build(
     buf.push(priority);
     buf.extend_from_slice(&[0x00, 0x00]); // Sync Address
     buf.push(sequence);
-    buf.push(0x00); // Options
+    buf.push(options); // Options
     let mut uni = [0u8; 2];
     BigEndian::write_u16(&mut uni, universe);
     buf.extend_from_slice(&uni);
@@ -198,7 +258,31 @@ fn push_flags_len(buf: &mut Vec<u8>, len: u16) {
 
 #[cfg(test)]
 mod tests {
-    use super::{build, multicast_addr, parse};
+    use super::{
+        build, build_terminated, build_with_options, multicast_addr, parse, OPT_STREAM_TERMINATED,
+    };
+
+    /// Framing 层 Options 字节在包内的偏移。
+    const OPTIONS_OFFSET: usize = 112;
+
+    #[test]
+    fn options_byte_defaults_to_zero_and_terminated_sets_bit_six() {
+        let plain = build(1, &[1, 2, 3], &[0u8; 16], "x", 100, 1);
+        assert_eq!(plain[OPTIONS_OFFSET], 0x00);
+
+        let term = build_terminated(1, &[1, 2, 3], &[0u8; 16], "x", 100, 1);
+        assert_eq!(term[OPTIONS_OFFSET], 0x40);
+        assert_eq!(term[OPTIONS_OFFSET], OPT_STREAM_TERMINATED);
+
+        // 除 Options 一个字节外，两种包完全相同，且终止包仍可被正常解析
+        assert_eq!(plain.len(), term.len());
+        let diff: Vec<usize> = (0..plain.len()).filter(|&i| plain[i] != term[i]).collect();
+        assert_eq!(diff, vec![OPTIONS_OFFSET]);
+        assert_eq!(parse(&term), parse(&plain));
+
+        let custom = build_with_options(1, &[], &[0u8; 16], "x", 100, 1, 0x80);
+        assert_eq!(custom[OPTIONS_OFFSET], 0x80);
+    }
 
     #[test]
     fn sacn_roundtrip() {

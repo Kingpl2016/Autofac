@@ -11,7 +11,7 @@ pub use model::{
     ForwardDestination, ForwardMode, ForwardProtocol, OverrideAction, ResolvedRoute,
     UniverseOverride,
 };
-pub use range::{format_range, parse_range};
+pub use range::{format_range, parse_range, try_parse_range, RangeError};
 pub use ratelimit::{RateLimiter, MIN_INTERVAL_MS_44HZ};
 
 use serde::{Deserialize, Serialize};
@@ -103,6 +103,29 @@ mod tests {
         assert_eq!(parse_range("0-3,10,12-13"), vec![0, 1, 2, 3, 10, 12, 13]);
         assert_eq!(parse_range(" 5 , 5 , 4 "), vec![4, 5]);
         assert_eq!(parse_range("8-6"), vec![6, 7, 8]); // 反序自动纠正
+    }
+
+    #[test]
+    fn try_parse_range_accepts_what_parse_range_accepts() {
+        for text in ["0-3,10,12-13", " 5 , 5 , 4 ", "8-6", "", "1,,2,", "7"] {
+            assert_eq!(try_parse_range(text).unwrap(), parse_range(text), "{text:?}");
+        }
+        assert_eq!(try_parse_range("0-50").unwrap().len(), 51);
+        assert_eq!(try_parse_range("65535").unwrap(), vec![65535]);
+    }
+
+    #[test]
+    fn try_parse_range_reports_the_bad_fragment() {
+        let bad = |t: &str| try_parse_range(t).unwrap_err().fragment;
+        assert_eq!(bad("0-5,abc"), "abc");
+        assert_eq!(bad("1, -3"), "-3"); // 负数不是合法 Universe
+        assert_eq!(bad("1.5"), "1.5");
+        assert_eq!(bad("70000"), "70000"); // 超过 u16
+        assert_eq!(bad("3-x"), "3-x");
+        assert_eq!(bad("0-5-9"), "0-5-9");
+        // 宽松版跳过同样的输入，严格版必须报错
+        assert_eq!(parse_range("0-5,abc"), vec![0, 1, 2, 3, 4, 5]);
+        assert!(try_parse_range("abc").unwrap_err().to_string().contains("abc"));
     }
 
     #[test]

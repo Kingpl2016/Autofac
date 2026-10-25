@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+
+const invoke = vi.hoisted(() => vi.fn());
+vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 
 import i18n from "@/shared/i18n";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
@@ -18,6 +21,8 @@ function renderSidebar() {
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
+  invoke.mockReset();
+  invoke.mockResolvedValue(undefined);
   usePrefsStore.setState({ sidebarCollapsed: false });
   useEngineStatusStore.setState({ appMode: "live" });
 });
@@ -52,6 +57,31 @@ describe("Sidebar 与播放器模式", () => {
     // 转发、信号流等不依赖实时信号的页面不受影响
     expect(screen.getByRole("link", { name: "信号转发" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "信号流" })).toBeTruthy();
+  });
+});
+
+describe("Sidebar 的“工具”分组", () => {
+  it("信号检测器是按钮而不是页面链接：点击打开独立窗口", () => {
+    renderSidebar();
+    expect(screen.getByText("工具")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "信号检测器" })).toBeNull();
+
+    const button = screen.getByRole("button", { name: "信号检测器" });
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+T");
+    fireEvent.click(button);
+    expect(invoke).toHaveBeenCalledWith("signal_checker_open");
+  });
+
+  it("折叠后按钮仍可访问，样式与导航链接一致（图标位置不跳）", () => {
+    renderSidebar();
+    const link = screen.getAllByRole("link")[0];
+    const button = screen.getByRole("button", { name: "信号检测器" });
+    fireEvent.click(screen.getByRole("button", { name: "收起侧栏" }));
+    expect(screen.getByRole("button", { name: "信号检测器" })).toBe(button);
+    for (const token of ["flex", "items-center", "gap-3", "px-2.5", "overflow-hidden"]) {
+      expect(button.className.split(/\s+/)).toContain(token);
+      expect(link.className.split(/\s+/)).toContain(token);
+    }
   });
 });
 

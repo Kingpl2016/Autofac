@@ -14,6 +14,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // 多页面：主应用 + 信号检测器独立窗口（由 Rust 侧以 signal-checker.html 打开）
+    rolldownOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        "signal-checker": path.resolve(__dirname, "signal-checker.html"),
+      },
+    },
+  },
   // Tauri 期望固定端口，失败则直接报错
   clearScreen: false,
   server: {

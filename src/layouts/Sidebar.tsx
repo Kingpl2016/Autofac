@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, ChevronRight, CirclePause, Waypoints } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, CirclePause, Waypoints } from "lucide-react";
 
 import {
   Tooltip,
@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { openSignalChecker, SIGNAL_CHECKER_HOTKEY } from "@/features/signal-checker";
 import { cn } from "@/lib/utils";
 import {
   NAV_ITEMS,
@@ -16,6 +17,17 @@ import {
 } from "@/shared/navigation/items";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
+
+/**
+ * 导航项（链接与"工具"按钮共用）的样式。
+ * nav px-3 + 项 px-2.5：图标左缘 22px、宽 20px，中心 32px，恰为折叠宽度 64px 的正中。
+ */
+const NAV_ITEM_CLASS = cn(
+  "flex w-full items-center gap-3 overflow-hidden rounded-md px-2.5 py-2 text-sm font-medium transition-colors tall:py-2.5 taller:py-3",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+  "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+  "aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground",
+);
 
 /**
  * 左侧导航栏：按分组列出全部功能页面。折叠按钮是贴在侧栏右边缘的圆形把手，
@@ -78,24 +90,11 @@ export function Sidebar() {
               if (items.length === 0) return null;
               return (
                 <div key={section} className="mb-1 tall:mb-1.5 taller:mb-2">
-                  {/* 分组标题：展开时显示文字，折叠时显示一条分隔线，高度恒定 */}
-                  <div className="relative h-6 tall:h-7 taller:h-8" role="presentation">
-                    <span
-                      className={cn(
-                        fade,
-                        "absolute inset-y-0 left-2.5 flex items-center text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground",
-                      )}
-                      aria-hidden={collapsed}
-                    >
-                      {t(NAV_SECTION_LABELS[section])}
-                    </span>
-                    <div
-                      className={cn(
-                        "absolute inset-x-2 top-1/2 border-t border-sidebar-border transition-opacity duration-150 motion-reduce:transition-none",
-                        collapsed ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                  </div>
+                  <SectionHeading
+                    label={t(NAV_SECTION_LABELS[section])}
+                    collapsed={collapsed}
+                    fade={fade}
+                  />
                   <ul className="flex flex-col gap-0.5 tall:gap-1 taller:gap-1.5">
                     {items.map((item) => {
                       const paused = playerMode && item.liveOnly === true;
@@ -115,13 +114,7 @@ export function Sidebar() {
                                 // 必须传字符串：外层 TooltipTrigger asChild 的 Radix Slot 会把函数形式的
                                 // className 直接 toString() 成垃圾类名，导致整个链接样式失效。
                                 // 选中态改用 NavLink 自动设置的 aria-current="page" 来驱动样式。
-                                className={cn(
-                                  // nav px-3 + 链接 px-2.5：图标左缘 22px、宽 20px，中心 32px，恰为折叠宽度 64px 的正中
-                                  "flex items-center gap-3 overflow-hidden rounded-md px-2.5 py-2 text-sm font-medium transition-colors tall:py-2.5 taller:py-3",
-                                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                                  "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                                  "aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground",
-                                )}
+                                className={NAV_ITEM_CLASS}
                               >
                                 <Icon className="size-5 shrink-0" aria-hidden />
                                 <span className={cn(fade, "truncate")} aria-hidden={collapsed}>
@@ -146,6 +139,34 @@ export function Sidebar() {
                 </div>
               );
             })}
+
+            {/* 工具：打开独立窗口的操作，不是页面，所以是按钮而不是链接 */}
+            <div className="mb-1 tall:mb-1.5 taller:mb-2">
+              <SectionHeading label={t("nav.sectionTools")} collapsed={collapsed} fade={fade} />
+              <ul className="flex flex-col gap-0.5 tall:gap-1 taller:gap-1.5">
+                <li>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={cn(NAV_ITEM_CLASS, "text-left")}
+                        aria-label={t("nav.signalChecker")}
+                        aria-keyshortcuts="Control+Shift+T"
+                        onClick={() => void openSignalChecker()}
+                      >
+                        <Activity className="size-5 shrink-0" aria-hidden />
+                        <span className={cn(fade, "truncate")} aria-hidden={collapsed}>
+                          {t("nav.signalChecker")}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {t("nav.signalCheckerHint", { key: SIGNAL_CHECKER_HOTKEY })}
+                    </TooltipContent>
+                  </Tooltip>
+                </li>
+              </ul>
+            </div>
           </nav>
         </div>
 
@@ -175,5 +196,38 @@ export function Sidebar() {
         </Tooltip>
       </aside>
     </TooltipProvider>
+  );
+}
+
+/**
+ * 分组标题：展开时显示文字，折叠时显示一条分隔线，高度恒定。
+ */
+function SectionHeading({
+  label,
+  collapsed,
+  fade,
+}: {
+  label: string;
+  collapsed: boolean;
+  fade: string;
+}) {
+  return (
+    <div className="relative h-6 tall:h-7 taller:h-8" role="presentation">
+      <span
+        className={cn(
+          fade,
+          "absolute inset-y-0 left-2.5 flex items-center text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground",
+        )}
+        aria-hidden={collapsed}
+      >
+        {label}
+      </span>
+      <div
+        className={cn(
+          "absolute inset-x-2 top-1/2 border-t border-sidebar-border transition-opacity duration-150 motion-reduce:transition-none",
+          collapsed ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </div>
   );
 }
