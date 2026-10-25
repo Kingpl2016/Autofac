@@ -1,0 +1,19 @@
+[package]
+name = "artrec-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "ArtRec (.artrec) 灯光节目录制文件格式编解码（格式权威，纯逻辑无 IO 依赖）"
+
+[lints.clippy]
+pedantic = "warn"
+# 领域专有名词（ArtRec/DMX/Universe/Zstd 等）无需反引号，关闭噪音项
+doc_markdown = "allow"
+# 二进制格式字段大量使用 as 转换，且 u16/u32 语义明确
+cast_possible_truncation = "allow"
+
+[dependencies]
+thiserror = { workspace = true }
+crc = { workspace = true }
+zstd = { workspace = true }
+byteorder = { workspace = true }

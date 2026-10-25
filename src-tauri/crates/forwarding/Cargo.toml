@@ -1,0 +1,15 @@
+[package]
+name = "forwarding"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "信号转发：目的地路由、per-universe 覆盖、偏移/延迟、范围记法与 44Hz 限速"
+
+[lints.clippy]
+pedantic = "warn"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

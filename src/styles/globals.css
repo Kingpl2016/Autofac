@@ -1,0 +1,290 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* 深色为默认主题：现场操作员多在暗环境作业 */
+@custom-variant dark (&:is(.dark *));
+
+/* 窗口高度分档：侧栏等纵向排布在高屏上自动放松，矮屏保持紧凑以免出现滚动条 */
+@custom-variant tall (@media (min-height: 900px));
+@custom-variant taller (@media (min-height: 1000px));
+
+/*
+ * 设计系统令牌（源自 ui-ux-pro-max：Data-Dense Dashboard + Dark Mode OLED + Swiss Style）
+ * 所有颜色走语义 OKLCH 令牌，组件禁止写死 hex。
+ */
+:root {
+  --radius: 0.5rem;
+
+  /* 强调色色相 / 彩度：由 <html data-accent="..."> 覆盖（见文件下方预设） */
+  --accent-h: 255;
+  --accent-c: 0.2;
+
+  /* 浅色主题（可选） */
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.18 0.01 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 260);
+  --primary: oklch(0.55 var(--accent-c) var(--accent-h));
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.005 260);
+  --secondary-foreground: oklch(0.22 0.01 260);
+  --muted: oklch(0.96 0.005 260);
+  --muted-foreground: oklch(0.52 0.01 260);
+  --accent: oklch(0.95 0.01 var(--accent-h));
+  --accent-foreground: oklch(0.22 0.01 260);
+  --destructive: oklch(0.58 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.9 0.005 260);
+  --input: oklch(0.9 0.005 260);
+  --ring: oklch(0.55 var(--accent-c) var(--accent-h));
+
+  /* 状态语义色（录制/在线/暂停/告警），务必配图标+文字使用 */
+  --success: oklch(0.65 0.17 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.75 0.16 75);
+  --warning-foreground: oklch(0.2 0.03 75);
+  --recording: oklch(0.58 0.22 25);
+  --recording-foreground: oklch(0.99 0 0);
+  --online: oklch(0.65 0.17 150);
+  --offline: oklch(0.55 0.01 260);
+
+  /* 图表 / DMX 电平刻度（冷→暖） */
+  --chart-1: oklch(0.55 var(--accent-c) var(--accent-h));
+  --chart-2: oklch(0.6 0.16 195);
+  --chart-3: oklch(0.65 0.17 150);
+  --chart-4: oklch(0.75 0.16 75);
+  --chart-5: oklch(0.6 0.22 25);
+
+  /* 侧栏 */
+  --sidebar: oklch(0.97 0.005 260);
+  --sidebar-foreground: oklch(0.2 0.01 260);
+  --sidebar-primary: oklch(0.55 var(--accent-c) var(--accent-h));
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.95 0.01 var(--accent-h));
+  --sidebar-accent-foreground: oklch(0.22 0.01 260);
+  --sidebar-border: oklch(0.9 0.005 260);
+  --sidebar-ring: oklch(0.55 var(--accent-c) var(--accent-h));
+
+  /* 密度令牌（宽松留白：页面边距与区块间距） */
+  --density-gutter: 3rem;
+  --density-gap: 2rem;
+
+  /* 字体 */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+.dark {
+  /* OLED 友好深色基底 */
+  --background: oklch(0.16 0.004 260);
+  --foreground: oklch(0.95 0.005 260);
+  --card: oklch(0.19 0.005 260);
+  --card-foreground: oklch(0.95 0.005 260);
+  --popover: oklch(0.2 0.006 260);
+  --popover-foreground: oklch(0.95 0.005 260);
+  --primary: oklch(0.7 calc(var(--accent-c) * 0.8) var(--accent-h));
+  --primary-foreground: oklch(0.16 0.01 260);
+  --secondary: oklch(0.26 0.008 260);
+  --secondary-foreground: oklch(0.95 0.005 260);
+  --muted: oklch(0.24 0.006 260);
+  --muted-foreground: oklch(0.68 0.01 260);
+  --accent: oklch(0.28 0.02 var(--accent-h));
+  --accent-foreground: oklch(0.95 0.005 260);
+  --destructive: oklch(0.65 0.21 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.28 0.006 260);
+  --input: oklch(0.3 0.006 260);
+  --ring: oklch(0.7 calc(var(--accent-c) * 0.8) var(--accent-h));
+
+  --success: oklch(0.72 0.17 150);
+  --success-foreground: oklch(0.16 0.02 150);
+  --warning: oklch(0.8 0.16 75);
+  --warning-foreground: oklch(0.2 0.03 75);
+  --recording: oklch(0.65 0.21 25);
+  --recording-foreground: oklch(0.98 0 0);
+  --online: oklch(0.72 0.17 150);
+  --offline: oklch(0.5 0.01 260);
+
+  --chart-1: oklch(0.7 calc(var(--accent-c) * 0.8) var(--accent-h));
+  --chart-2: oklch(0.72 0.14 195);
+  --chart-3: oklch(0.75 0.16 150);
+  --chart-4: oklch(0.82 0.15 75);
+  --chart-5: oklch(0.7 0.2 25);
+
+  --sidebar: oklch(0.18 0.005 260);
+  --sidebar-foreground: oklch(0.92 0.005 260);
+  --sidebar-primary: oklch(0.7 calc(var(--accent-c) * 0.8) var(--accent-h));
+  --sidebar-primary-foreground: oklch(0.16 0.01 260);
+  --sidebar-accent: oklch(0.28 0.02 var(--accent-h));
+  --sidebar-accent-foreground: oklch(0.95 0.005 260);
+  --sidebar-border: oklch(0.26 0.006 260);
+  --sidebar-ring: oklch(0.7 calc(var(--accent-c) * 0.8) var(--accent-h));
+}
+
+/* 强调色预设：只改色相 / 彩度，状态语义色（成功/告警/录制）保持不变 */
+[data-accent="blue"] {
+  --accent-h: 255;
+  --accent-c: 0.2;
+}
+
+[data-accent="cyan"] {
+  --accent-h: 205;
+  --accent-c: 0.13;
+}
+
+[data-accent="green"] {
+  --accent-h: 150;
+  --accent-c: 0.15;
+}
+
+[data-accent="orange"] {
+  --accent-h: 50;
+  --accent-c: 0.17;
+}
+
+[data-accent="violet"] {
+  --accent-h: 295;
+  --accent-c: 0.2;
+}
+
+[data-accent="rose"] {
+  --accent-h: 5;
+  --accent-c: 0.2;
+}
+
+/* 暴露给 Tailwind v4 的语义 token 映射 */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-recording: var(--recording);
+  --color-recording-foreground: var(--recording-foreground);
+  --color-online: var(--online);
+  --color-offline: var(--offline);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+
+  /* 让原生控件（滚动条、表单控件）跟随主题，避免深色下出现亮色滚动条 */
+  html {
+    color-scheme: light;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root {
+    height: 100%;
+  }
+
+  /* 统一细滚动条：Firefox 标准属性 + Chromium/WebView2 的 webkit 伪元素 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* 等宽数字：DMX 值 / 时间码 / 偏移对齐 */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 尊重 reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

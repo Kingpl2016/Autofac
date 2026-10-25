@@ -1,0 +1,149 @@
+import { invoke } from "@/shared/tauri/invoke";
+
+import { decodeOverview } from "./overview";
+import type {
+  ChannelSeries,
+  LibraryEntry,
+  Overview,
+  OverviewDto,
+  PlaybackStatus,
+  PlayerTarget,
+  RecordingResult,
+  RecordingStartArgs,
+  RecordingStartResult,
+  RecordingStatus,
+  RecoveryOutcome,
+  SeriesQuery,
+  SourceStat,
+} from "./types";
+
+/** 当前生效的录制目录（配置为空时为默认目录）。 */
+export function getRecordingDir(): Promise<string> {
+  return invoke<string>("get_recording_dir");
+}
+
+/** 当前来源（按 IP 聚合）统计。 */
+export function getSourceStats(): Promise<SourceStat[]> {
+  return invoke<SourceStat[]>("get_source_stats");
+}
+
+/** 开始录制。 */
+export function recordingStart(
+  args: RecordingStartArgs,
+): Promise<RecordingStartResult> {
+  return invoke<RecordingStartResult>("recording_start", { args });
+}
+
+/** 停止录制并等待文件收尾。 */
+export function recordingStop(): Promise<RecordingResult> {
+  return invoke<RecordingResult>("recording_stop");
+}
+
+/** 读取录制状态快照。 */
+export function recordingStatus(): Promise<RecordingStatus> {
+  return invoke<RecordingStatus>("recording_status");
+}
+
+/** 列出节目库（按修改时间从新到旧）。 */
+export function recordingsList(): Promise<LibraryEntry[]> {
+  return invoke<LibraryEntry[]>("recordings_list");
+}
+
+/** 重命名节目，返回新路径。 */
+export function recordingsRename(path: string, newName: string): Promise<string> {
+  return invoke<string>("recordings_rename", { path, newName });
+}
+
+/** 删除节目及其 sidecar。 */
+export function recordingsDelete(path: string): Promise<void> {
+  return invoke<void>("recordings_delete", { path });
+}
+
+/** 把节目上传到核心板 SD 卡，返回上传后的文件名。 */
+export function espUploadRecording(path: string): Promise<string> {
+  return invoke<string>("esp_upload_recording", { path });
+}
+
+/** 取走应用启动时恢复出的孤立录制结果（取走后清空）。 */
+export function recordingTakeRecovered(): Promise<RecoveryOutcome[]> {
+  return invoke<RecoveryOutcome[]>("recording_take_recovered");
+}
+
+// ---------------------------------------------------------------------------
+// 回放
+// ---------------------------------------------------------------------------
+
+/** 打开节目并进入回放模式（暂停实时接收）。 */
+export function playerOpen(
+  path: string,
+  target?: PlayerTarget,
+): Promise<PlaybackStatus> {
+  return invoke<PlaybackStatus>("player_open", { path, target: target ?? null });
+}
+
+/** 播放 / 继续。 */
+export function playerPlay(): Promise<void> {
+  return invoke<void>("player_play");
+}
+
+/** 暂停。 */
+export function playerPause(): Promise<void> {
+  return invoke<void>("player_pause");
+}
+
+/** 停止并回到开头（节目保持打开）。 */
+export function playerStop(): Promise<void> {
+  return invoke<void>("player_stop");
+}
+
+/** 关闭节目并退出回放模式（恢复实时接收）。 */
+export function playerClose(): Promise<void> {
+  return invoke<void>("player_close");
+}
+
+/** 跳转到指定位置（微秒）。 */
+export function playerSeek(posUs: number): Promise<void> {
+  return invoke<void>("player_seek", { posUs: Math.max(0, Math.round(posUs)) });
+}
+
+/** 设置倍速（千分之一，1000 = 1.0x）。 */
+export function playerSetSpeed(speedMilli: number): Promise<void> {
+  return invoke<void>("player_set_speed", { speedMilli });
+}
+
+/** 设置循环播放。 */
+export function playerSetLoop(looping: boolean): Promise<void> {
+  return invoke<void>("player_set_loop", { looping });
+}
+
+/** 切换输出目标。 */
+export function playerSetTarget(target: PlayerTarget): Promise<void> {
+  return invoke<void>("player_set_target", { target });
+}
+
+/** 设置前端正在查看的 Universe（决定推送哪些 `player:channels`）。 */
+export function playerSetViewed(universes: number[]): Promise<void> {
+  return invoke<void>("player_set_viewed", { universes });
+}
+
+/** 读取回放状态快照。 */
+export function playerStatus(): Promise<PlaybackStatus> {
+  return invoke<PlaybackStatus>("player_status");
+}
+
+/** 读取（必要时生成）节目的时间线概览，矩阵已解码。 */
+export async function playerOverview(
+  path: string,
+  buckets?: number,
+): Promise<Overview> {
+  const dto = await invoke<OverviewDto>("player_overview", {
+    path,
+    buckets: buckets ?? null,
+  });
+  return decodeOverview(dto);
+}
+
+/** 查询选定通道的降采样曲线。 */
+export function playerSeries(query: SeriesQuery): Promise<ChannelSeries[]> {
+  return invoke<ChannelSeries[]>("player_series", { query });
+}

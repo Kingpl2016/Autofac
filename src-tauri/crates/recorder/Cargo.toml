@@ -1,0 +1,21 @@
+[package]
+name = "recorder"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "ArtRec 录制核心：来源过滤、变更检测、差分/全量帧策略、崩溃安全落盘（纯逻辑，无 Tauri 依赖）"
+
+[lints.clippy]
+pedantic = "warn"
+# 领域专有名词（ArtRec/DMX/Universe/Zstd 等）无需反引号，关闭噪音项
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+module_name_repetitions = "allow"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+artrec-core = { path = "../artrec-core" }
+artnet-net = { path = "../artnet-net" }
+signal-engine = { path = "../signal-engine" }

@@ -1,0 +1,19 @@
+[package]
+name = "artnet-net"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Art-Net 4 与 sACN (E1.31) 数据包编解码及 UDP 收发"
+
+[lints.clippy]
+pedantic = "warn"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+byteorder = { workspace = true }
+if-addrs = { workspace = true }
+socket2 = { workspace = true }

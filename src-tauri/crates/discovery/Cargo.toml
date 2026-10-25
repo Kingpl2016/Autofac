@@ -1,0 +1,15 @@
+[package]
+name = "discovery"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "网络设备发现：Art-Net 节点回复合并、被动源识别、分类与自定义名"
+
+[lints.clippy]
+pedantic = "warn"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+
+[dependencies]
+serde = { workspace = true }
+artnet-net = { path = "../artnet-net" }

@@ -1,0 +1,49 @@
+# 依赖
+node_modules
+dist
+dist-ssr
+
+# 日志
+*.log
+npm-debug.log*
+
+# 编辑器 / 系统
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# TypeScript / Vite 构建缓存
+*.tsbuildinfo
+.vite
+
+# Rust / Tauri
+src-tauri/target
+# tauri-build 每次构建自动生成的 ACL / 能力 schema
+src-tauri/gen
+
+# 环境变量与密钥（不要提交）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 测试与缓存
+coverage
+.tmp
+*.local
+.eslintcache
+
+# 录制产物（本地录制目录、崩溃残留文件，不属于源码）
+*.artrec.part
+*.artrec.idx
+*.artrec.part.bad
+*.artrec.json.tmp
+ArtNet Studio Recordings/
+
+# Kiro：skills 为外部安装的第三方内容（体积大且可重新安装），steering / specs / hooks 仍纳入版本管理
+.kiro/skills/
