@@ -25,7 +25,7 @@ afterEach(() => cleanup());
 describe("Sidebar", () => {
   it("展开时为宽栏并显示导航文字", () => {
     const { container } = renderSidebar();
-    expect(container.querySelector("aside")?.className).toContain("w-72");
+    expect(container.querySelector("aside")?.className).toContain("w-60");
     expect(screen.getByText("仪表盘")).toBeTruthy();
   });
 
@@ -118,6 +118,6 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "收起侧栏" }));
     fireEvent.click(screen.getByRole("button", { name: "展开侧栏" }));
     expect(usePrefsStore.getState().sidebarCollapsed).toBe(false);
-    expect(container.querySelector("aside")?.className).toContain("w-72");
+    expect(container.querySelector("aside")?.className).toContain("w-60");
   });
 });

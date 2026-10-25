@@ -32,8 +32,8 @@
     "thingModel": "物模型",
     "loops": "回路配置",
     "scenes": "场景队列",
-    "espControl": "核心板控制",
-    "espFiles": "核心板文件",
+    "controllerControl": "核心板控制",
+    "controllerFiles": "核心板文件",
     "settings": "设置",
     "sectionSignal": "信号",
     "sectionProgram": "节目",
@@ -114,7 +114,7 @@
     "perfWarning": "同时显示 16 个以上 Universe 可能影响性能",
     "mergeConflictChannels": "个冲突通道"
   },
-  "esp": {
+  "controller": {
     "controlTitle": "核心板控制",
     "controlSubtitle": "ESP32-P4 连接与指令控制（TCP 1227）",
     "filesTitle": "核心板文件",
@@ -168,6 +168,7 @@
   "discovery": {
     "title": "设备发现",
     "subtitle": "自动发现网络上的 Art-Net / sACN 节点与设备",
+    "subtitleArtnetOnly": "自动发现网络上的 Art-Net 节点与设备",
     "networkScan": "网络扫描",
     "searchPlaceholder": "按 IP / 主机名 / MAC 搜索",
     "filterAll": "全部",
@@ -314,6 +315,7 @@
     "sourcesExcluding": "录制除所选 {{n}} 个设备之外的全部来源",
     "excludeMode": "排除所选设备",
     "noSources": "尚未检测到信号来源。请确认设备正在发送 Art-Net / sACN。",
+    "noSourcesArtnetOnly": "尚未检测到信号来源。请确认设备正在发送 Art-Net。",
     "sourceOffline": "已离线",
     "sourceUniverses": "{{n}} 个 Universe",
     "sourcePackets": "{{n}} 包",
@@ -368,7 +370,7 @@
     "libRecovered": "已恢复",
     "libRename": "重命名",
     "libUpload": "上传到核心板",
-    "libUploadNeedsEsp": "需要先连接核心板",
+    "libUploadNeedsController": "需要先连接核心板",
     "libUploaded": "已上传到核心板：{{name}}",
     "libUploadFailed": "上传失败：{{reason}}",
     "libDeleted": "已删除节目“{{name}}”",

@@ -1,0 +1,15 @@
+[package]
+name = "netif"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "本机网络接口枚举与 Art-Net 广播目标计算"
+
+[lints.clippy]
+pedantic = "warn"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+
+[dependencies]
+serde = { workspace = true }
+if-addrs = { workspace = true }

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { isTauri } from "@/shared/tauri/invoke";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
+import { useProtocolFlags } from "@/features/settings";
 import type { Protocol } from "@/shared/domain/engine";
 import { SourcePicker } from "./SourcePicker";
 import { RecordStats } from "./RecordStats";
@@ -48,6 +49,7 @@ function summarize(list: number[], max = 12): string {
  */
 export function RecordPanel() {
   const { t } = useTranslation();
+  const { sacnEnabled } = useProtocolFlags();
   const universes = useEngineDataStore((s) => s.universes);
   const devices = useEngineDataStore((s) => s.devices);
   const sources = useRecordingStore((s) => s.sources);
@@ -76,10 +78,11 @@ export function RecordPanel() {
       sources: selectedIps,
       excludeSources: exclude,
       universes: parseUniverseRanges(rangeText),
-      // 全选等价于不限制
-      protocols: chosen.length === 2 ? [] : chosen,
+      // 全选等价于不限制；sACN 关闭时协议过滤界面已隐藏，一律不限制，
+      // 避免此前取消勾选 Art-Net 的状态在看不见的地方继续生效
+      protocols: !sacnEnabled || chosen.length === 2 ? [] : chosen,
     };
-  }, [selectedIps, exclude, rangeText, protocols]);
+  }, [selectedIps, exclude, rangeText, protocols, sacnEnabled]);
 
   const extra = useMemo(
     () => expandRanges(parseUniverseRanges(extraText)),
@@ -239,24 +242,26 @@ export function RecordPanel() {
               </div>
             </div>
 
-            <fieldset className="grid gap-2" disabled={recording}>
-              <legend className="mb-1 text-sm font-medium">
-                {t("recording.protocolFilter")}
-              </legend>
-              <div className="flex gap-5 text-sm">
-                {(["artNet", "sacn"] as const).map((p) => (
-                  <label key={p} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className="size-4 accent-primary"
-                      checked={protocols[p]}
-                      onChange={() => toggleProtocol(p)}
-                    />
-                    {p === "artNet" ? "Art-Net" : "sACN"}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            {sacnEnabled && (
+              <fieldset className="grid gap-2" disabled={recording}>
+                <legend className="mb-1 text-sm font-medium">
+                  {t("recording.protocolFilter")}
+                </legend>
+                <div className="flex gap-5 text-sm">
+                  {(["artNet", "sacn"] as const).map((p) => (
+                    <label key={p} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        checked={protocols[p]}
+                        onChange={() => toggleProtocol(p)}
+                      />
+                      {p === "artNet" ? "Art-Net" : "sACN"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
           </CardContent>
         </Card>
 

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Device } from "@/shared/domain/device";
+import { useProtocolFlags } from "@/features/settings";
 import type { SourceStat } from "../lib/types";
 
 interface SourcePickerProps {
@@ -37,6 +38,7 @@ export function SourcePicker({
   disabled = false,
 }: SourcePickerProps) {
   const { t } = useTranslation();
+  const { sacnEnabled } = useProtocolFlags();
   const names = new Map(
     devices.map((d) => [d.ip, d.customName || d.hostname || ""] as const),
   );
@@ -59,7 +61,7 @@ export function SourcePicker({
   if (rows.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-        {t("recording.noSources")}
+        {t(sacnEnabled ? "recording.noSources" : "recording.noSourcesArtnetOnly")}
       </div>
     );
   }

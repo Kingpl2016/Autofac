@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useProtocolFlags } from "@/features/settings";
 import {
   parseRange,
   type ForwardDestination,
@@ -44,6 +45,7 @@ export function DestinationDialog({
   onSave,
 }: DestinationDialogProps) {
   const { t } = useTranslation();
+  const { sacnEnabled } = useProtocolFlags();
   const [draft, setDraft] = useState<ForwardDestination>(initial);
   const [rangeText, setRangeText] = useState("");
 
@@ -105,26 +107,28 @@ export function DestinationDialog({
               onChange={(e) => patch({ targetIp: e.target.value })}
             />
           </div>
-          <div className="grid gap-1.5">
-            <Label>{t("forwarding.protocol")}</Label>
-            <Select
-              value={draft.protocol}
-              onValueChange={(v) =>
-                patch({
-                  protocol: v as ForwardDestination["protocol"],
-                  port: v === "sacn" ? 5568 : 6454,
-                })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="artNet">Art-Net</SelectItem>
-                <SelectItem value="sacn">sACN</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {sacnEnabled && (
+            <div className="grid gap-1.5">
+              <Label>{t("forwarding.protocol")}</Label>
+              <Select
+                value={draft.protocol}
+                onValueChange={(v) =>
+                  patch({
+                    protocol: v as ForwardDestination["protocol"],
+                    port: v === "sacn" ? 5568 : 6454,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="artNet">Art-Net</SelectItem>
+                  <SelectItem value="sacn">sACN</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid gap-1.5">
             <Label>{t("forwarding.port")}</Label>
             <Input

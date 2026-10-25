@@ -13,8 +13,8 @@ import RecordingPage from "@/pages/RecordingPage";
 import ThingModelPage from "@/pages/ThingModelPage";
 import LoopsPage from "@/pages/LoopsPage";
 import ScenesPage from "@/pages/ScenesPage";
-import EspControlPage from "@/pages/EspControlPage";
-import EspFilesPage from "@/pages/EspFilesPage";
+import ControllerControlPage from "@/pages/ControllerControlPage";
+import ControllerFilesPage from "@/pages/ControllerFilesPage";
 import SettingsPage from "@/pages/SettingsPage";
 
 /**
@@ -41,8 +41,8 @@ export const router = createBrowserRouter([
       { path: "thing-model", element: <ThingModelPage /> },
       { path: "loops", element: <LoopsPage /> },
       { path: "scenes", element: <ScenesPage /> },
-      { path: "esp-control", element: <EspControlPage /> },
-      { path: "esp-files", element: <EspFilesPage /> },
+      { path: "controller-control", element: <ControllerControlPage /> },
+      { path: "controller-files", element: <ControllerFilesPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

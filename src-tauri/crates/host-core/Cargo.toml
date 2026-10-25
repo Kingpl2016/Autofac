@@ -1,0 +1,32 @@
+[package]
+name = "host-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "核心插件：应用配置 + 信号引擎 + 设备发现 + 转发 + 录制/回放控制器，经 ArtnetCoreExt / SettingsExt 暴露"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+too_many_lines = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+artnet-net = { path = "../artnet-net" }
+signal-engine = { path = "../signal-engine" }
+discovery = { path = "../discovery" }
+forwarding = { path = "../forwarding" }
+settings = { path = "../settings" }
+recorder = { path = "../recorder" }
+player = { path = "../player" }
+artrec-core = { path = "../artrec-core" }
+netif = { path = "../netif" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

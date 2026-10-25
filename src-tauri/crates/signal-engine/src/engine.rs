@@ -93,11 +93,8 @@ impl SignalEngine {
         self.order_counter += 1;
         self.total_packets += 1;
         let src = frame.source.unwrap_or_else(unknown_source);
-        let priority = match frame.protocol {
-            Protocol::ArtNet => ARTNET_DEFAULT_PRIORITY,
-            // sACN 优先级在帧层暂未透传，统一按默认处理（后续可扩展）
-            Protocol::Sacn => ARTNET_DEFAULT_PRIORITY,
-        };
+        // Art-Net 与 sACN 目前统一按默认优先级处理（sACN 优先级在帧层暂未透传，后续可扩展）
+        let priority = ARTNET_DEFAULT_PRIORITY;
         self.universes
             .entry(frame.universe)
             .or_default()
@@ -141,6 +138,26 @@ impl SignalEngine {
     #[must_use]
     pub fn merged_output(&self, universe: u16) -> Option<Vec<u8>> {
         self.universes.get(&universe).map(|st| st.merged(self.mode).data)
+    }
+
+    /// 移除最近一次更新来自指定协议的全部 Universe（如关闭 sACN 时清掉残留数据）。
+    ///
+    /// 来源按 IP 聚合、不区分协议，所以以 Universe 最近一次更新的协议为准。
+    /// 若同一 Universe 编号同时有另一协议的来源，该 Universe 也会被移除，
+    /// 但另一协议的后续帧会立即重建它。
+    ///
+    /// # Arguments
+    ///
+    /// * `protocol` - 要清除的协议。
+    ///
+    /// # Returns
+    ///
+    /// 被移除的 Universe 数。
+    pub fn purge_protocol(&mut self, protocol: Protocol) -> usize {
+        let before = self.universes.len();
+        self.universes
+            .retain(|_, st| st.last_protocol != Some(protocol));
+        before - self.universes.len()
     }
 
     /// 当前活跃 Universe 数量。

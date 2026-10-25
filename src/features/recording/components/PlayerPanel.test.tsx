@@ -30,6 +30,7 @@ vi.mock("sonner", () => ({ toast }));
 vi.mock("@/shared/tauri/invoke", () => tauri);
 vi.mock("@/features/settings", () => ({
   useSettingsQuery: () => ({ data: { display: { valueFormat: "decimal" } } }),
+  useProtocolFlags: () => ({ sacnEnabled: false }),
 }));
 vi.mock("../lib/api", async (orig) => ({
   ...(await orig<typeof import("../lib/api")>()),

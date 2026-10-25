@@ -70,7 +70,8 @@ impl Default for ProtocolSettings {
         Self {
             artnet_enabled: true,
             artnet_port: 6454,
-            sacn_enabled: true,
+            // sACN 默认关闭，需要时在设置页手动开启
+            sacn_enabled: false,
             sacn_port: 5568,
             sacn_universes: vec![1],
         }
@@ -228,10 +229,33 @@ impl Default for UpdateSettings {
     }
 }
 
+/// 当前配置结构版本。
+///
+/// - 0：无版本号的旧文件；
+/// - 1：sACN 默认关闭（旧文件加载时一次性关闭 sACN）。
+pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+/// 缺失 `schemaVersion` 的旧文件视为版本 0。
+///
+/// 必须是字段级默认：结构体级 `#[serde(default)]` 会用 `Default`（当前版本）
+/// 填充缺失字段，旧文件就永远不会触发迁移。
+fn legacy_schema_version() -> u32 {
+    0
+}
+
+/// sACN 合法 Universe 范围（E1.31：1~63999）。
+const SACN_UNIVERSE_MIN: u16 = 1;
+const SACN_UNIVERSE_MAX: u16 = 63999;
+/// sACN 默认监听端口。
+const SACN_DEFAULT_PORT: u16 = 5568;
+
 /// 应用总配置。
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
+    /// 配置结构版本，用于一次性迁移。
+    #[serde(default = "legacy_schema_version")]
+    pub schema_version: u32,
     /// 网络设置。
     pub network: NetworkSettings,
     /// 协议设置。
@@ -246,12 +270,37 @@ pub struct AppSettings {
     pub update: UpdateSettings,
 }
 
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SCHEMA_VERSION,
+            network: NetworkSettings::default(),
+            protocol: ProtocolSettings::default(),
+            display: DisplaySettings::default(),
+            merge: MergeSettings::default(),
+            recording: RecordingSettings::default(),
+            update: UpdateSettings::default(),
+        }
+    }
+}
+
 impl AppSettings {
+    /// 把旧版本配置迁移到当前版本（幂等）。
+    ///
+    /// - 版本 0 → 1：关闭 sACN。用户之后手动开启并保存的配置已是版本 1，不会再被改回。
+    pub fn migrate(&mut self) {
+        if self.schema_version < 1 {
+            self.protocol.sacn_enabled = false;
+        }
+        self.schema_version = CURRENT_SCHEMA_VERSION;
+    }
+
     /// 规范化并钳制非法取值，保证配置始终处于合法范围。
     ///
     /// - UI 刷新率回落到最接近的 15/30/60；
     /// - 源超时钳制到 1000~60000ms；
-    /// - sACN Universe 去重并升序。
+    /// - sACN 端口为 0 时回落默认 5568；
+    /// - sACN Universe 只保留 1~63999，去重并升序。
     pub fn normalize(&mut self) {
         self.display.ui_update_rate = match self.display.ui_update_rate {
             0..=22 => 15,
@@ -261,6 +310,12 @@ impl AppSettings {
         self.merge.source_timeout_ms = self.merge.source_timeout_ms.clamp(1000, 60000);
         self.recording.zstd_level = self.recording.zstd_level.clamp(1, 9);
         self.recording.split_minutes = self.recording.split_minutes.min(24 * 60);
+        if self.protocol.sacn_port == 0 {
+            self.protocol.sacn_port = SACN_DEFAULT_PORT;
+        }
+        self.protocol
+            .sacn_universes
+            .retain(|u| (SACN_UNIVERSE_MIN..=SACN_UNIVERSE_MAX).contains(u));
         self.protocol.sacn_universes.sort_unstable();
         self.protocol.sacn_universes.dedup();
     }

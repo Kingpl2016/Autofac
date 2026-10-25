@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/shared/components/PageHeader";
+import { useProtocolFlags } from "@/features/settings";
 import { openTextFile, saveTextFile } from "@/shared/tauri/files";
 import { DestinationDialog } from "./DestinationDialog";
 import { useForwardingDraft } from "../hooks/useForwarding";
@@ -36,6 +37,11 @@ export function ForwardingEditor({ initial }: ForwardingEditorProps) {
   const { destinations, upsert, remove, toggle, duplicate, replaceAll } =
     useForwardingDraft(initial);
   const [editing, setEditing] = useState<ForwardDestination | null>(null);
+  const { sacnEnabled } = useProtocolFlags();
+  // 只在渲染时过滤：sACN 目的地的数据仍保留在转发表里（保存 / 导出不受影响），重新开启后恢复显示
+  const visible = sacnEnabled
+    ? destinations
+    : destinations.filter((d) => d.protocol !== "sacn");
 
   const handleExport = () => {
     void saveTextFile(
@@ -77,22 +83,24 @@ export function ForwardingEditor({ initial }: ForwardingEditorProps) {
         }
       />
 
-      {destinations.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
           {t("forwarding.noDestinations")}
         </div>
       ) : (
         <div className="grid gap-3">
-          {destinations.map((d) => (
+          {visible.map((d) => (
             <Card key={d.id}>
               <CardContent className="flex items-center gap-4 p-5">
                 <Switch checked={d.enabled} onCheckedChange={() => toggle(d.id)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{d.name || "—"}</span>
-                    <Badge variant={d.protocol === "sacn" ? "secondary" : "default"}>
-                      {d.protocol === "sacn" ? "sACN" : "Art-Net"}
-                    </Badge>
+                    {sacnEnabled && (
+                      <Badge variant={d.protocol === "sacn" ? "secondary" : "default"}>
+                        {d.protocol === "sacn" ? "sACN" : "Art-Net"}
+                      </Badge>
+                    )}
                     <Badge variant="outline">
                       {d.mode === "all" ? t("forwarding.modeAll") : t("forwarding.modeSelected")}
                     </Badge>

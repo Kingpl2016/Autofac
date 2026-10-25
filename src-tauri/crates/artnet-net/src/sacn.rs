@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn sacn_roundtrip() {
-        let data: Vec<u8> = (0..512).map(|i| (i % 256) as u8).collect();
+        let data: Vec<u8> = (0..512u16).map(|i| (i % 256) as u8).collect();
         let cid = [1u8; 16];
         let buf = build(100, &data, &cid, "Art-Net Studio", 100, 42);
         let p = parse(&buf).unwrap();

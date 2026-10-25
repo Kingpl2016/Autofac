@@ -29,11 +29,13 @@ export function listNetworkInterfaces(): Promise<NetworkInterface[]> {
 
 /** 默认配置（非 Tauri 预览环境下的回退值）。 */
 export const DEFAULT_SETTINGS: AppSettings = {
+  schemaVersion: 1,
   network: { mode: "single", interface: "0.0.0.0", multiNic: [] },
   protocol: {
     artnetEnabled: true,
     artnetPort: 6454,
-    sacnEnabled: true,
+    // sACN 默认关闭，与后端 ProtocolSettings::default 一致
+    sacnEnabled: false,
     sacnPort: 5568,
     sacnUniverses: [1],
   },

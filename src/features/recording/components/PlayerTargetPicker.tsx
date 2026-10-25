@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useProtocolFlags } from "@/features/settings";
 import { isValidIpv4 } from "../lib/ip";
 import type { PlayerTarget } from "../lib/types";
 
@@ -36,13 +37,20 @@ export function PlayerTargetPicker({
   onApply,
 }: PlayerTargetPickerProps) {
   const { t } = useTranslation();
+  const { sacnEnabled } = useProtocolFlags();
   const direct = target.kind === "direct" ? target : null;
+  // sACN 关闭时，已有的 sACN 直发目标不能沿用其协议与端口，回落到 Art-Net 默认值
+  const keepDirect = direct !== null && (sacnEnabled || direct.protocol !== "sacn");
   const [kind, setKind] = useState<PlayerTarget["kind"]>(target.kind);
   const [ip, setIp] = useState(direct?.ip ?? "");
   const [protocol, setProtocol] = useState<"artNet" | "sacn">(
-    direct?.protocol ?? "artNet",
+    keepDirect ? direct.protocol : "artNet",
   );
-  const [port, setPort] = useState(String(direct?.port ?? DEFAULT_PORT.artNet));
+  const [port, setPort] = useState(
+    String(keepDirect ? direct.port : DEFAULT_PORT.artNet),
+  );
+  // 关闭 sACN 后即使本地状态仍是 sacn，也只会按 Art-Net 应用
+  const effectiveProtocol = sacnEnabled ? protocol : "artNet";
 
   const ipOk = isValidIpv4(ip);
   const portNum = Number(port);
@@ -52,7 +60,7 @@ export function PlayerTargetPicker({
     if (kind === "forwarding") {
       onApply({ kind: "forwarding" });
     } else if (ipOk && portOk) {
-      onApply({ kind: "direct", ip: ip.trim(), protocol, port: portNum });
+      onApply({ kind: "direct", ip: ip.trim(), protocol: effectiveProtocol, port: portNum });
     }
   };
 
@@ -72,7 +80,13 @@ export function PlayerTargetPicker({
       </div>
 
       {kind === "direct" && (
-        <div className="grid gap-3 md:grid-cols-[1fr_9rem_7rem]">
+        <div
+          className={
+            sacnEnabled
+              ? "grid gap-3 md:grid-cols-[1fr_9rem_7rem]"
+              : "grid gap-3 md:grid-cols-[1fr_7rem]"
+          }
+        >
           <div className="grid content-start gap-1.5">
             <Label htmlFor="player-target-ip">{t("player.targetIp")}</Label>
             <Input
@@ -84,25 +98,27 @@ export function PlayerTargetPicker({
               onChange={(e) => setIp(e.target.value)}
             />
           </div>
-          <div className="grid content-start gap-1.5">
-            <Label htmlFor="player-target-proto">{t("player.targetProtocol")}</Label>
-            <Select
-              value={protocol}
-              onValueChange={(v) => {
-                const p = v as "artNet" | "sacn";
-                setProtocol(p);
-                setPort(String(DEFAULT_PORT[p]));
-              }}
-            >
-              <SelectTrigger id="player-target-proto">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="artNet">Art-Net</SelectItem>
-                <SelectItem value="sacn">sACN</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {sacnEnabled && (
+            <div className="grid content-start gap-1.5">
+              <Label htmlFor="player-target-proto">{t("player.targetProtocol")}</Label>
+              <Select
+                value={protocol}
+                onValueChange={(v) => {
+                  const p = v as "artNet" | "sacn";
+                  setProtocol(p);
+                  setPort(String(DEFAULT_PORT[p]));
+                }}
+              >
+                <SelectTrigger id="player-target-proto">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="artNet">Art-Net</SelectItem>
+                  <SelectItem value="sacn">sACN</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid content-start gap-1.5">
             <Label htmlFor="player-target-port">{t("player.targetPort")}</Label>
             <Input

@@ -32,8 +32,8 @@
     "thingModel": "Thing Model",
     "loops": "Loops",
     "scenes": "Scene Queue",
-    "espControl": "Board Control",
-    "espFiles": "Board Files",
+    "controllerControl": "Board Control",
+    "controllerFiles": "Board Files",
     "settings": "Settings",
     "sectionSignal": "Signal",
     "sectionProgram": "Program",
@@ -114,7 +114,7 @@
     "perfWarning": "Showing more than 16 universes at once may affect performance",
     "mergeConflictChannels": "conflicting channels"
   },
-  "esp": {
+  "controller": {
     "controlTitle": "Board Control",
     "controlSubtitle": "ESP32-P4 connection and command control (TCP 1227)",
     "filesTitle": "Board Files",
@@ -168,6 +168,7 @@
   "discovery": {
     "title": "Discovery",
     "subtitle": "Automatically discover Art-Net / sACN nodes and devices on the network",
+    "subtitleArtnetOnly": "Automatically discover Art-Net nodes and devices on the network",
     "networkScan": "Network scan",
     "searchPlaceholder": "Search by IP / hostname / MAC",
     "filterAll": "All",
@@ -314,6 +315,7 @@
     "sourcesExcluding": "Record every source except the {{n}} selected devices",
     "excludeMode": "Exclude selected devices",
     "noSources": "No signal sources detected yet. Make sure devices are sending Art-Net / sACN.",
+    "noSourcesArtnetOnly": "No signal sources detected yet. Make sure devices are sending Art-Net.",
     "sourceOffline": "Offline",
     "sourceUniverses": "{{n}} universes",
     "sourcePackets": "{{n}} pkts",
@@ -368,7 +370,7 @@
     "libRecovered": "Recovered",
     "libRename": "Rename",
     "libUpload": "Upload to board",
-    "libUploadNeedsEsp": "Connect to the board first",
+    "libUploadNeedsController": "Connect to the board first",
     "libUploaded": "Uploaded to board: {{name}}",
     "libUploadFailed": "Upload failed: {{reason}}",
     "libDeleted": "Deleted program “{{name}}”",

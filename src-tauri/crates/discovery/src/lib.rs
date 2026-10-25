@@ -203,6 +203,23 @@ impl DeviceRegistry {
         before - self.devices.len()
     }
 
+    /// 移除指定类别的全部设备（如关闭 sACN 时清掉 sACN 源）。
+    ///
+    /// 用户自定义名保留，设备再次出现时会恢复。
+    ///
+    /// # Arguments
+    ///
+    /// * `category` - 要移除的设备类别。
+    ///
+    /// # Returns
+    ///
+    /// 被移除的设备数量。
+    pub fn remove_category(&mut self, category: DeviceCategory) -> usize {
+        let before = self.devices.len();
+        self.devices.retain(|_, d| d.category != category);
+        before - self.devices.len()
+    }
+
     /// 统计在 `since_ms` 及之后有过活动的 Art-Net 节点数量。
     ///
     /// # Arguments
@@ -300,6 +317,24 @@ mod tests {
         reg.upsert_artnet(&info, 0);
         reg.upsert_source(ip(30), Protocol::ArtNet, 1);
         assert_eq!(reg.list()[0].category, DeviceCategory::ArtNet);
+    }
+
+    #[test]
+    fn remove_category_drops_sacn_but_keeps_names() {
+        let mut reg = DeviceRegistry::new();
+        reg.upsert_source(ip(90), Protocol::Sacn, 0);
+        reg.upsert_source(ip(91), Protocol::ArtNet, 0);
+        reg.set_custom_name(ip(90), "舞台右".into());
+
+        assert_eq!(reg.remove_category(DeviceCategory::Sacn), 1);
+        let left = reg.list();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].category, DeviceCategory::ArtNet);
+
+        // 自定义名保留，设备再次出现时恢复
+        reg.upsert_source(ip(90), Protocol::Sacn, 5);
+        let back = reg.list().into_iter().find(|d| d.ip == "192.168.1.90").unwrap();
+        assert_eq!(back.custom_name.as_deref(), Some("舞台右"));
     }
 
     #[test]

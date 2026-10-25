@@ -30,6 +30,23 @@ mod tests {
     }
 
     #[test]
+    fn purge_protocol_removes_only_that_protocol() {
+        let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
+        eng.ingest(&frame(1, [10, 0, 0, 1], vec![1]), 0);
+        let mut sacn = frame(2, [10, 0, 0, 2], vec![2]);
+        sacn.protocol = Protocol::Sacn;
+        eng.ingest(&sacn, 0);
+        assert_eq!(eng.active_universe_count(), 2);
+
+        assert_eq!(eng.purge_protocol(Protocol::Sacn), 1);
+        let snap = eng.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].universe, 1, "Art-Net 的 Universe 应保留");
+        // 重复清理是幂等的
+        assert_eq!(eng.purge_protocol(Protocol::Sacn), 0);
+    }
+
+    #[test]
     fn ingest_and_snapshot() {
         let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
         eng.ingest(&frame(1, [10, 0, 0, 1], vec![0, 255, 0]), 0);

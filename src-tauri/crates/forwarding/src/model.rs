@@ -122,15 +122,11 @@ impl ForwardDestination {
             return None;
         }
 
-        let target = match ov.and_then(|o| o.target_universe) {
-            Some(t) => t,
-            None => {
-                let v = i32::from(source_universe) + self.universe_offset;
-                if !(0..=0xFFFF).contains(&v) {
-                    return None; // 偏移越界
-                }
-                v as u16
-            }
+        let target = if let Some(t) = ov.and_then(|o| o.target_universe) {
+            t
+        } else {
+            // 偏移越界（含变为负数）→ 不转发
+            u16::try_from(i32::from(source_universe) + self.universe_offset).ok()?
         };
         let delay = ov.and_then(|o| o.delay_ms).unwrap_or(self.default_delay_ms);
 

@@ -17,9 +17,13 @@ const api = vi.hoisted(() => ({
   setDeviceName: vi.fn(),
 }));
 const tauri = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
+const flags = vi.hoisted(() => ({ sacnEnabled: false }));
 
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/shared/tauri/invoke", () => tauri);
+vi.mock("@/features/settings", () => ({
+  useProtocolFlags: () => ({ sacnEnabled: flags.sacnEnabled }),
+}));
 vi.mock("../lib/api", async (orig) => ({
   ...(await orig<typeof import("../lib/api")>()),
   ...api,
@@ -41,6 +45,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
   tauri.isTauri.mockReturnValue(true);
+  flags.sacnEnabled = false;
   useEngineDataStore.setState({ devices: [] });
 });
 
@@ -92,5 +97,24 @@ describe("DiscoveryView 网络扫描", () => {
 
     expect(api.scanNetwork).not.toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DiscoveryView sACN 开关", () => {
+  it("sACN 关闭时不显示 sACN 筛选标签，副标题只提 Art-Net", () => {
+    flags.sacnEnabled = false;
+    render(<DiscoveryView />);
+
+    expect(screen.queryByRole("button", { name: /sACN/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Art-Net/ })).toBeTruthy();
+    expect(screen.queryByText(/sACN/)).toBeNull();
+  });
+
+  it("sACN 开启时显示 sACN 筛选标签与完整副标题", () => {
+    flags.sacnEnabled = true;
+    render(<DiscoveryView />);
+
+    expect(screen.getByRole("button", { name: /sACN/ })).toBeTruthy();
+    expect(screen.getByText(/Art-Net \/ sACN/)).toBeTruthy();
   });
 });

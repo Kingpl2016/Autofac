@@ -1,24 +1,16 @@
 //! Art-Net Studio 的 Tauri 宿主入口。
 //!
-//! 装配窗口、插件、状态与命令；具体领域逻辑位于各 workspace 库 crate
-//! （`artrec-core`、`settings` 等），宿主层只做提取 → 调用领域 → 返回 DTO。
+//! 装配窗口与插件。配置与实时子系统由 `host-core` 插件承载（配置/信号引擎/发现/转发/录制/回放），
+//! 外接控制器为 `controller` 库 + 宿主侧薄命令（见 [`controller_commands`]）。
+//! 宿主层只做装配与命令注册。
 
-mod commands;
-mod dispatch;
-mod esp;
-mod esp_commands;
-mod netif;
-mod playback;
+mod controller_commands;
 mod playback_commands;
-mod recording;
 mod recording_commands;
-mod runtime;
-mod state;
-mod util;
 
 use tauri::Manager;
 
-use crate::state::AppState;
+use host_core::{ArtnetCoreExt, SettingsExt};
 
 /// 返回应用版本号（来自 Cargo 包版本）。
 ///
@@ -47,18 +39,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(host_core::init())
         .setup(|app| {
-            // 配置目录
-            let config_dir = app.path().app_config_dir()?;
-            let state = AppState::new(config_dir);
+            // 外接控制器句柄（默认未配置）。
+            app.manage(controller::ControllerHandle::default());
 
-            // 以当前配置启动接收引擎、设备发现与事件推送
-            let cfg = crate::util::lock(&state.settings).clone();
-            state.runtime.spawn(app.handle().clone(), &cfg);
-
-            // 恢复上次异常退出遗留的录制（必须在任何新录制开始之前执行）
+            // 恢复上次异常退出遗留的录制（配置与录制控制器均来自 host-core，已先行 setup）。
+            let cfg = app.settings_snapshot();
             let rec_dir = recording_commands::recording_dir(app.handle(), &cfg.recording.directory);
-            let controller = state.runtime.recording().clone();
+            let controller = app.artnet_core().recording().clone();
             std::thread::spawn(move || {
                 let outcomes = recorder::recover_orphans(&rec_dir);
                 if !outcomes.is_empty() {
@@ -66,27 +55,25 @@ pub fn run() {
                     controller.set_recovered(outcomes);
                 }
             });
-
-            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
-            commands::get_settings,
-            commands::save_settings,
-            commands::import_settings,
-            commands::export_settings,
-            commands::list_network_interfaces,
-            commands::get_universe_snapshot,
-            commands::set_viewed_universes,
-            commands::get_devices,
-            commands::scan_network,
-            commands::clear_offline_devices,
-            commands::set_device_name,
-            commands::get_forwarding,
-            commands::save_forwarding,
+            host_core::commands::get_settings,
+            host_core::commands::save_settings,
+            host_core::commands::import_settings,
+            host_core::commands::export_settings,
+            host_core::commands::list_network_interfaces,
+            host_core::commands::get_universe_snapshot,
+            host_core::commands::set_viewed_universes,
+            host_core::commands::get_source_stats,
+            host_core::commands::get_devices,
+            host_core::commands::scan_network,
+            host_core::commands::clear_offline_devices,
+            host_core::commands::set_device_name,
+            host_core::commands::get_forwarding,
+            host_core::commands::save_forwarding,
             recording_commands::get_recording_dir,
-            recording_commands::get_source_stats,
             recording_commands::recording_start,
             recording_commands::recording_stop,
             recording_commands::recording_status,
@@ -94,7 +81,6 @@ pub fn run() {
             recording_commands::recordings_list,
             recording_commands::recordings_rename,
             recording_commands::recordings_delete,
-            esp_commands::esp_upload_recording,
             playback_commands::player_open,
             playback_commands::player_play,
             playback_commands::player_pause,
@@ -108,20 +94,21 @@ pub fn run() {
             playback_commands::player_status,
             playback_commands::player_overview,
             playback_commands::player_series,
-            esp_commands::esp_get_status,
-            esp_commands::esp_connect,
-            esp_commands::esp_disconnect,
-            esp_commands::esp_board_op,
-            esp_commands::esp_set_work_mode,
-            esp_commands::esp_get_work_mode,
-            esp_commands::esp_program_op,
-            esp_commands::esp_write_channels,
-            esp_commands::esp_read_channels,
-            esp_commands::esp_list_files,
-            esp_commands::esp_download_file,
-            esp_commands::esp_upload_file,
-            esp_commands::esp_delete_file,
-            esp_commands::esp_rename_file,
+            controller_commands::controller_get_status,
+            controller_commands::controller_connect,
+            controller_commands::controller_disconnect,
+            controller_commands::controller_board_op,
+            controller_commands::controller_set_work_mode,
+            controller_commands::controller_get_work_mode,
+            controller_commands::controller_program_op,
+            controller_commands::controller_write_channels,
+            controller_commands::controller_read_channels,
+            controller_commands::controller_list_files,
+            controller_commands::controller_download_file,
+            controller_commands::controller_upload_file,
+            controller_commands::controller_delete_file,
+            controller_commands::controller_rename_file,
+            controller_commands::controller_upload_recording,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

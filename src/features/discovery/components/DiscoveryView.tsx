@@ -26,6 +26,7 @@ import { PageHeader } from "@/shared/components/PageHeader";
 import { isTauri } from "@/shared/tauri/invoke";
 import { saveTextFile } from "@/shared/tauri/files";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
+import { useProtocolFlags } from "@/features/settings";
 import type { Device, DeviceCategory } from "@/shared/domain/device";
 import { DeviceRow } from "./DeviceRow";
 import {
@@ -76,7 +77,14 @@ export function DiscoveryView() {
   const setDevices = useEngineDataStore((s) => s.setDevices);
   // 设备的 lastSeenMs 与引擎运行时长同一时间基准
   const nowMs = useEngineDataStore((s) => s.stats.uptimeSec) * 1000;
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const { sacnEnabled } = useProtocolFlags();
+  const [rawFilter, setFilter] = useState<FilterKey>("all");
+  // sACN 关闭后其筛选标签消失：停在该标签上时回落到“全部”
+  const filter: FilterKey = !sacnEnabled && rawFilter === "sacn" ? "all" : rawFilter;
+  const filters = useMemo(
+    () => FILTERS.filter((f) => sacnEnabled || f.key !== "sacn"),
+    [sacnEnabled],
+  );
   const [query, setQuery] = useState("");
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>("status");
@@ -211,7 +219,7 @@ export function DiscoveryView() {
     <div>
       <PageHeader
         title={t("discovery.title")}
-        subtitle={t("discovery.subtitle")}
+        subtitle={t(sacnEnabled ? "discovery.subtitle" : "discovery.subtitleArtnetOnly")}
         actions={
           <Button
             size="sm"
@@ -228,7 +236,7 @@ export function DiscoveryView() {
       <div className="mb-(--density-gutter) flex flex-wrap items-center gap-x-6 gap-y-4">
         {/* 左侧：分类过滤 + 在线筛选 */}
         <div className="flex flex-wrap items-center gap-1">
-          {FILTERS.map((f) => (
+          {filters.map((f) => (
             <button
               key={f.key}
               type="button"

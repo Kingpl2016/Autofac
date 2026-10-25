@@ -1,0 +1,19 @@
+[package]
+name = "controller"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "外接控制器（当前实现 ESP32-P4 核心板）：TCP 1227 指令协议、文件 CRUD 传输，以及带连接状态的异步客户端句柄"
+
+[lints.clippy]
+pedantic = "warn"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+async-trait = "0.1"

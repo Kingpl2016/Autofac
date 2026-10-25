@@ -59,9 +59,9 @@ export function recordingsDelete(path: string): Promise<void> {
   return invoke<void>("recordings_delete", { path });
 }
 
-/** 把节目上传到核心板 SD 卡，返回上传后的文件名。 */
-export function espUploadRecording(path: string): Promise<string> {
-  return invoke<string>("esp_upload_recording", { path });
+/** 把节目上传到控制器 SD 卡，返回上传后的文件名。 */
+export function controllerUploadRecording(path: string): Promise<string> {
+  return invoke<string>("controller_upload_recording", { path });
 }
 
 /** 取走应用启动时恢复出的孤立录制结果（取走后清空）。 */

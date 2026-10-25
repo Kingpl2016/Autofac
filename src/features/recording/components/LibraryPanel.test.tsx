@@ -15,20 +15,20 @@ const api = vi.hoisted(() => ({
   recordingsList: vi.fn(),
   recordingsRename: vi.fn(),
   recordingsDelete: vi.fn(),
-  espUploadRecording: vi.fn(),
+  controllerUploadRecording: vi.fn(),
   playerOpen: vi.fn(),
   recordingStop: vi.fn(),
 }));
 const tauri = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
-const esp = vi.hoisted(() => ({
+const controller = vi.hoisted(() => ({
   connected: true,
 }));
 
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/shared/tauri/invoke", () => tauri);
-vi.mock("@/features/esp", () => ({
-  useEspStatus: () => ({
-    status: { host: "", tcpPort: 1227, httpPort: 80, connected: esp.connected },
+vi.mock("@/features/controller", () => ({
+  useControllerStatus: () => ({
+    status: { host: "", tcpPort: 1227, httpPort: 80, connected: controller.connected },
     refresh: vi.fn(),
   }),
 }));
@@ -71,7 +71,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
   tauri.isTauri.mockReturnValue(true);
-  esp.connected = true;
+  controller.connected = true;
   usePlayerStore.setState({ status: EMPTY_PLAYBACK });
   useRecordingStore.setState({ status: EMPTY_STATUS });
   api.recordingsList.mockResolvedValue([entry(), entry({ path: "D:/rec/bad.artrec", name: "bad", valid: false })]);
@@ -90,7 +90,7 @@ describe("LibraryPanel", () => {
   });
 
   it("未连接核心板时禁用上传", async () => {
-    esp.connected = false;
+    controller.connected = false;
     renderPanel();
     await screen.findByText("开场秀");
     const uploads = screen.getAllByRole("button", { name: "上传到核心板" }) as HTMLButtonElement[];
@@ -126,7 +126,7 @@ describe("LibraryPanel", () => {
   });
 
   it("上传成功后提示文件名", async () => {
-    api.espUploadRecording.mockResolvedValue("show.artrec");
+    api.controllerUploadRecording.mockResolvedValue("show.artrec");
     renderPanel();
     await screen.findByText("开场秀");
 

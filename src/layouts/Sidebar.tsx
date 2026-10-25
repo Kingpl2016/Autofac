@@ -43,7 +43,7 @@ export function Sidebar() {
         className={cn(
           "relative h-full shrink-0 border-r border-sidebar-border bg-sidebar",
           "transition-[width] duration-200 motion-reduce:transition-none",
-          collapsed ? "w-20" : "w-72",
+          collapsed ? "w-20" : "w-60",
         )}
       >
         {/* 内容层裁剪溢出；把手在它之外，才能半悬在侧栏右边缘 */}

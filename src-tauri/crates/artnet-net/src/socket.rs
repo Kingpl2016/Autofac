@@ -58,26 +58,56 @@ pub fn bind_reuse(bind_ip: Ipv4Addr, port: u16) -> std::io::Result<UdpSocket> {
     UdpSocket::from_std(sock.into())
 }
 
-/// 在指定接口上加入一组 sACN Universe 的组播分组。
+/// 一次组播加入的结果汇总。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SacnJoinReport {
+    /// 成功加入的（网卡, Universe）组数。
+    pub joined: usize,
+    /// 加入失败的组及原因（形如 `192.168.1.5 / U3: 错误信息`）。
+    pub failed: Vec<String>,
+}
+
+impl SacnJoinReport {
+    /// 尝试加入的总组数。
+    #[must_use]
+    pub fn attempted(&self) -> usize {
+        self.joined + self.failed.len()
+    }
+}
+
+/// 在若干网卡上逐个加入 sACN Universe 的组播分组。
+///
+/// 单个（网卡, Universe）加入失败不会中止其余：多网卡下回环、已断开的网卡，
+/// 或系统对单套接字组播成员数的上限（如 Linux 默认 20）都可能导致个别失败。
 ///
 /// # Arguments
 ///
-/// * `socket` - 已绑定 5568 端口的套接字。
-/// * `iface` - 加入组播所用的本地接口 IPv4。
+/// * `socket` - 已绑定 sACN 端口的套接字。
+/// * `ifaces` - 加入组播所用的本地接口 IPv4 列表。
 /// * `universes` - 需要接收的 Universe 列表。
 ///
-/// # Errors
+/// # Returns
 ///
-/// 加入任一组播分组失败时返回 [`std::io::Error`]。
+/// 成功与失败的汇总，失败只记录 `warn` 日志。
 pub fn join_sacn_multicast(
     socket: &UdpSocket,
-    iface: Ipv4Addr,
+    ifaces: &[Ipv4Addr],
     universes: &[u16],
-) -> std::io::Result<()> {
-    for &u in universes {
-        socket.join_multicast_v4(sacn::multicast_addr(u), iface)?;
+) -> SacnJoinReport {
+    let mut report = SacnJoinReport::default();
+    for &iface in ifaces {
+        for &u in universes {
+            match socket.join_multicast_v4(sacn::multicast_addr(u), iface) {
+                Ok(()) => report.joined += 1,
+                Err(e) => {
+                    let msg = format!("{iface} / U{u}: {e}");
+                    tracing::warn!(error = %msg, "sACN 加入组播失败");
+                    report.failed.push(msg);
+                }
+            }
+        }
     }
-    Ok(())
+    report
 }
 
 /// 启动一个 Art-Net 接收任务，将解析出的 ArtDmx 帧送入返回的通道。
@@ -144,29 +174,55 @@ pub fn spawn_artnet_receiver(
     }))
 }
 
-/// 启动一个 sACN 接收任务（已加入指定 Universe 组播）。
+/// 运行中的 sACN 接收任务及其绑定结果。
+#[derive(Debug)]
+pub struct SacnReceiver {
+    /// 后台任务句柄；`abort()` 会丢弃套接字并退出全部组播分组。
+    pub handle: tokio::task::JoinHandle<()>,
+    /// 实际绑定的本地端口（传入端口 0 时为系统分配的端口）。
+    pub local_port: u16,
+    /// 成功加入的（网卡, Universe）组数。
+    pub joined: usize,
+    /// 加入失败的组及原因。
+    pub failed: Vec<String>,
+}
+
+/// 启动一个 sACN 接收任务。
+///
+/// 套接字绑定 `0.0.0.0:port`（绑定到具体网卡 IP 的套接字收不到组播），
+/// 再对 `ifaces` 中每块网卡逐个加入 `universes` 的组播。因此网卡列表只决定
+/// 组播订阅；发往本机的单播 sACN 从任何网卡进来都会被收到。
 ///
 /// # Arguments
 ///
-/// * `bind_ip` - 绑定接口 IPv4。
+/// * `port` - 监听端口（标准为 5568）。
+/// * `ifaces` - 加入组播的本地网卡 IPv4 列表。
 /// * `universes` - 订阅的 Universe 列表。
 /// * `tx` - 帧发送端。
 ///
 /// # Returns
 ///
-/// 后台任务句柄。
+/// 接收任务句柄与加入结果。
 ///
 /// # Errors
 ///
-/// 绑定或加入组播失败时返回 [`std::io::Error`]。
+/// 绑定失败，或需要加入的组播分组全部失败时返回 [`std::io::Error`]。
 pub fn spawn_sacn_receiver(
-    bind_ip: Ipv4Addr,
-    universes: Vec<u16>,
+    port: u16,
+    ifaces: &[Ipv4Addr],
+    universes: &[u16],
     tx: mpsc::Sender<DmxFrame>,
-) -> std::io::Result<tokio::task::JoinHandle<()>> {
-    let socket = bind_reuse(Ipv4Addr::UNSPECIFIED, SACN_PORT)?;
-    join_sacn_multicast(&socket, bind_ip, &universes)?;
-    Ok(tokio::spawn(async move {
+) -> std::io::Result<SacnReceiver> {
+    let socket = bind_reuse(Ipv4Addr::UNSPECIFIED, port)?;
+    let local_port = socket.local_addr()?.port();
+    let report = join_sacn_multicast(&socket, ifaces, universes);
+    if report.attempted() > 0 && report.joined == 0 {
+        return Err(std::io::Error::other(format!(
+            "sACN 组播全部加入失败: {}",
+            report.failed.join("; ")
+        )));
+    }
+    let handle = tokio::spawn(async move {
         let mut buf = vec![0u8; RECV_BUF];
         loop {
             let recv = socket.recv_from(&mut buf).await;
@@ -196,7 +252,13 @@ pub fn spawn_sacn_receiver(
                 }
             }
         }
-    }))
+    });
+    Ok(SacnReceiver {
+        handle,
+        local_port,
+        joined: report.joined,
+        failed: report.failed,
+    })
 }
 
 /// UDP 发送器：向目标地址发送 ArtDmx 或 sACN 数据包。
@@ -309,8 +371,59 @@ impl DmxSender {
 
 #[cfg(test)]
 mod tests {
-    use super::is_fatal_recv_error;
+    use super::{bind_reuse, is_fatal_recv_error, join_sacn_multicast, spawn_sacn_receiver};
+    use crate::frame::Protocol;
+    use crate::sacn;
     use std::io::{Error, ErrorKind};
+    use std::net::Ipv4Addr;
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn sacn_receiver_gets_unicast_on_custom_port() {
+        let (tx, mut rx) = mpsc::channel(8);
+        // 端口 0：由系统分配，避免与本机其它实例冲突；不订阅组播，仅验证单播接收
+        let r = spawn_sacn_receiver(0, &[], &[], tx).expect("绑定应成功");
+        assert_ne!(r.local_port, 0, "应返回系统分配的实际端口");
+        assert_eq!((r.joined, r.failed.len()), (0, 0));
+
+        let sender = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let pkt = sacn::build(3, &[1, 2, 3], &[7u8; 16], "t", 100, 9);
+        sender
+            .send_to(&pkt, (Ipv4Addr::LOCALHOST, r.local_port))
+            .await
+            .unwrap();
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("2 秒内应收到帧")
+            .expect("通道未关闭");
+        assert_eq!(frame.protocol, Protocol::Sacn);
+        assert_eq!(frame.universe, 3);
+        assert_eq!(&frame.data[..3], &[1, 2, 3]);
+        r.handle.abort();
+    }
+
+    #[tokio::test]
+    async fn join_failures_are_collected_not_fatal() {
+        let sock = bind_reuse(Ipv4Addr::UNSPECIFIED, 0).unwrap();
+        // 192.0.2.x 为文档保留网段，本机不可能有这块网卡，加入应失败但不能 panic
+        let ifaces = [Ipv4Addr::new(192, 0, 2, 1), Ipv4Addr::new(192, 0, 2, 2)];
+        let report = join_sacn_multicast(&sock, &ifaces, &[1, 2]);
+        assert_eq!(report.attempted(), 4, "每个（网卡, Universe）都应被尝试");
+        assert_eq!(report.joined + report.failed.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn all_joins_failing_is_an_error() {
+        let (tx, _rx) = mpsc::channel(1);
+        let res = spawn_sacn_receiver(0, &[Ipv4Addr::new(192, 0, 2, 1)], &[1], tx);
+        // 平台若允许加入保留网段则不会失败，此时只要求句柄可用
+        match res {
+            Err(e) => assert!(e.to_string().contains("全部加入失败")),
+            Ok(r) => r.handle.abort(),
+        }
+    }
 
     #[test]
     fn connection_reset_is_recoverable() {

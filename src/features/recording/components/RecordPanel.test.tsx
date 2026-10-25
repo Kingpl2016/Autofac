@@ -15,9 +15,13 @@ const api = vi.hoisted(() => ({
   recordingStop: vi.fn(),
 }));
 const tauri = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
+const flags = vi.hoisted(() => ({ sacnEnabled: false }));
 
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/shared/tauri/invoke", () => tauri);
+vi.mock("@/features/settings", () => ({
+  useProtocolFlags: () => ({ sacnEnabled: flags.sacnEnabled }),
+}));
 vi.mock("../lib/api", async (orig) => ({
   ...(await orig<typeof import("../lib/api")>()),
   ...api,
@@ -42,6 +46,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
   tauri.isTauri.mockReturnValue(true);
+  flags.sacnEnabled = false;
   useEngineDataStore.setState({
     universes: [universe(1, ["10.0.0.1"]), universe(2, ["10.0.0.2"])],
     devices: [],
@@ -125,6 +130,47 @@ describe("RecordPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "停止录制" }));
     await waitFor(() => expect(api.recordingStop).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it("sACN 关闭时不显示协议过滤，空来源提示只提 Art-Net", () => {
+    useRecordingStore.setState({ sources: [] });
+    render(<RecordPanel />);
+
+    expect(screen.queryByRole("checkbox", { name: "sACN" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Art-Net" })).toBeNull();
+    expect(screen.queryByText(/sACN/)).toBeNull();
+  });
+
+  it("sACN 开启时显示协议过滤，取消 Art-Net 后只提交 sACN", async () => {
+    flags.sacnEnabled = true;
+    api.recordingStart.mockResolvedValue({
+      path: "x.artrec",
+      plan: { accepted: [1], rejectedOutOfRange: [], rejectedOverCapacity: [] },
+    });
+    render(<RecordPanel />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Art-Net" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始录制" }));
+
+    await waitFor(() => expect(api.recordingStart).toHaveBeenCalledTimes(1));
+    expect(api.recordingStart.mock.calls[0][0].filter.protocols).toEqual(["sacn"]);
+  });
+
+  it("关闭 sACN 后，此前在隐藏界面里取消的协议选择不再生效", async () => {
+    flags.sacnEnabled = true;
+    api.recordingStart.mockResolvedValue({
+      path: "x.artrec",
+      plan: { accepted: [1], rejectedOutOfRange: [], rejectedOverCapacity: [] },
+    });
+    const { rerender } = render(<RecordPanel />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Art-Net" }));
+
+    flags.sacnEnabled = false;
+    rerender(<RecordPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "开始录制" }));
+
+    await waitFor(() => expect(api.recordingStart).toHaveBeenCalledTimes(1));
+    expect(api.recordingStart.mock.calls[0][0].filter.protocols).toEqual([]);
   });
 
   it("非桌面环境直接提示而不调用后端", () => {

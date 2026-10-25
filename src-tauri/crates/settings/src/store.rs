@@ -24,6 +24,7 @@ pub fn load(path: &Path) -> Result<AppSettings> {
     }
     let text = std::fs::read_to_string(path)?;
     let mut settings: AppSettings = serde_json::from_str(&text)?;
+    settings.migrate();
     settings.normalize();
     Ok(settings)
 }
@@ -64,6 +65,7 @@ pub fn save(path: &Path, settings: &AppSettings) -> Result<()> {
 /// JSON 解析失败返回 [`crate::SettingsError::Json`]。
 pub fn from_json(json: &str) -> Result<AppSettings> {
     let mut settings: AppSettings = serde_json::from_str(json)?;
+    settings.migrate();
     settings.normalize();
     Ok(settings)
 }

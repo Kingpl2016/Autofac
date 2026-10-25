@@ -66,6 +66,8 @@ export interface UpdateSettings {
 }
 
 export interface AppSettings {
+  /** 配置结构版本（后端用于一次性迁移，前端原样回传即可） */
+  schemaVersion: number;
   network: NetworkSettings;
   protocol: ProtocolSettings;
   display: DisplaySettings;

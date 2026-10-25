@@ -42,8 +42,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/thing-model", labelKey: "nav.thingModel", icon: Boxes, section: "program" },
   { to: "/loops", labelKey: "nav.loops", icon: Cable, section: "program" },
   { to: "/scenes", labelKey: "nav.scenes", icon: ListVideo, section: "program" },
-  { to: "/esp-control", labelKey: "nav.espControl", icon: Cpu, section: "device" },
-  { to: "/esp-files", labelKey: "nav.espFiles", icon: FolderCog, section: "device" },
+  { to: "/controller-control", labelKey: "nav.controllerControl", icon: Cpu, section: "device" },
+  { to: "/controller-files", labelKey: "nav.controllerFiles", icon: FolderCog, section: "device" },
   { to: "/settings", labelKey: "nav.settings", icon: Settings, section: "system" },
 ];
 

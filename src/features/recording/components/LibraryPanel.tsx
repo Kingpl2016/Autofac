@@ -17,11 +17,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isTauri } from "@/shared/tauri/invoke";
-import { useEspStatus } from "@/features/esp";
+import { useControllerStatus } from "@/features/controller";
 import { usePlayerStore } from "../hooks/usePlayerStore";
 import { useRecordingStore } from "../hooks/useRecordingStore";
 import {
-  espUploadRecording,
+  controllerUploadRecording,
   playerOpen,
   recordingStop,
   recordingsDelete,
@@ -57,7 +57,7 @@ interface LibraryPanelProps {
 export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const { status: esp } = useEspStatus();
+  const { status: controller } = useControllerStatus();
   const lastResult = useRecordingStore((s) => s.last);
   const recording = useRecordingStore((s) => s.status.recording);
   const playbackLoaded = usePlayerStore((s) => s.status.loaded);
@@ -143,7 +143,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const upload = async (entry: LibraryEntry) => {
     setUploading(entry.path);
     try {
-      const name = await espUploadRecording(entry.path);
+      const name = await controllerUploadRecording(entry.path);
       toast.success(t("recording.libUploaded", { name }));
     } catch (e: unknown) {
       toast.error(t("recording.libUploadFailed", { reason: describeError(e) }));
@@ -265,11 +265,11 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       size="icon"
                       aria-label={t("recording.libUpload")}
                       title={
-                        esp.connected
+                        controller.connected
                           ? t("recording.libUpload")
-                          : t("recording.libUploadNeedsEsp")
+                          : t("recording.libUploadNeedsController")
                       }
-                      disabled={!esp.connected || !e.valid || uploading === e.path}
+                      disabled={!controller.connected || !e.valid || uploading === e.path}
                       onClick={() => void upload(e)}
                     >
                       <Upload className="size-4" />

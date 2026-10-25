@@ -9,7 +9,7 @@ mod store;
 
 pub use error::{Result, SettingsError};
 pub use model::{
-    AppSettings, ChannelFormat, DisplaySettings, MergeMode, MergeSettings, NetworkMode,
+    AppSettings, ChannelFormat, DisplaySettings, CURRENT_SCHEMA_VERSION, MergeMode, MergeSettings, NetworkMode,
     NetworkSettings, NicConfig, ProtocolSettings, RecordingCompression, RecordingSettings,
     UniverseFormat,
     UpdateChannel, UpdateSettings, ValueFormat,
@@ -34,6 +34,8 @@ mod tests {
         assert_eq!(s.protocol.artnet_port, 6454);
         assert_eq!(s.protocol.sacn_port, 5568);
         assert!(s.protocol.artnet_enabled);
+        assert!(!s.protocol.sacn_enabled, "sACN 默认应关闭");
+        assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(s.protocol.sacn_universes, vec![1]);
         assert_eq!(s.display.ui_update_rate, 30);
         assert_eq!(s.merge.mode, MergeMode::Htp);
@@ -105,6 +107,46 @@ mod tests {
         assert_eq!(s.merge, MergeSettings::default());
         assert_eq!(s.display, DisplaySettings::default());
         assert_eq!(s.network, NetworkSettings::default());
+    }
+
+    #[test]
+    fn legacy_file_without_version_turns_sacn_off() {
+        // 旧文件：保存过 sacnEnabled=true 且没有 schemaVersion
+        let legacy = serde_json::json!({
+            "protocol": { "sacnEnabled": true, "sacnPort": 5570 }
+        });
+        let s = from_json(&legacy.to_string()).unwrap();
+        assert!(!s.protocol.sacn_enabled);
+        assert_eq!(s.protocol.sacn_port, 5570, "迁移只关开关，不动其他字段");
+        assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn migrated_file_keeps_user_choice() {
+        // 迁移后用户手动开启并保存（版本 1），再次加载不能被改回
+        let mut s = from_json(r#"{"protocol":{"sacnEnabled":true}}"#).unwrap();
+        s.protocol.sacn_enabled = true;
+        let json = to_json(&s).unwrap();
+        let back = from_json(&json).unwrap();
+        assert!(back.protocol.sacn_enabled);
+    }
+
+    #[test]
+    fn load_migrates_legacy_file_from_disk() {
+        let path = std::env::temp_dir().join("artnet-studio-settings-legacy.json");
+        std::fs::write(&path, r#"{"protocol":{"sacnEnabled":true}}"#).unwrap();
+        assert!(!load(&path).unwrap().protocol.sacn_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn normalize_fixes_sacn_port_and_universes() {
+        let mut s = AppSettings::default();
+        s.protocol.sacn_port = 0;
+        s.protocol.sacn_universes = vec![0, 5, 64000, 5, 63999, 2];
+        s.normalize();
+        assert_eq!(s.protocol.sacn_port, 5568);
+        assert_eq!(s.protocol.sacn_universes, vec![2, 5, 63999]);
     }
 
     #[test]

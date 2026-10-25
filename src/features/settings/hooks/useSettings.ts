@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -10,12 +10,15 @@ import type { AppSettings } from "../lib/types";
 /** 自动保存防抖延迟（毫秒）。 */
 const AUTOSAVE_DELAY = 2000;
 
+/** 配置查询缓存键。 */
+const SETTINGS_QUERY_KEY = ["settings"] as const;
+
 /**
  * 查询当前配置（非 Tauri 预览环境回退默认值）。
  */
 export function useSettingsQuery() {
   return useQuery({
-    queryKey: ["settings"],
+    queryKey: SETTINGS_QUERY_KEY,
     queryFn: getSettings,
     initialData: isTauri() ? undefined : DEFAULT_SETTINGS,
   });
@@ -30,19 +33,28 @@ export function useSettingsQuery() {
  */
 export function useSettingsDraft(initial: AppSettings) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [draft, setDraft] = useState<AppSettings>(initial);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const persist = useCallback(
     (next: AppSettings) => {
-      if (!isTauri()) return;
+      if (!isTauri()) {
+        // 浏览器预览没有后端：直接更新缓存，让依赖设置的界面（如 sACN 开关）即时响应
+        queryClient.setQueryData(SETTINGS_QUERY_KEY, next);
+        return;
+      }
       void saveSettings(next)
-        .then(() => toast.success(t("settings.saved")))
+        .then((saved) => {
+          // 用后端规范化后的结果刷新缓存，全站读取设置的地方立即生效
+          queryClient.setQueryData(SETTINGS_QUERY_KEY, saved);
+          toast.success(t("settings.saved"));
+        })
         .catch((e: unknown) =>
           toast.error(e instanceof Error ? e.message : String(e)),
         );
     },
-    [t],
+    [t, queryClient],
   );
 
   const scheduleSave = useCallback(

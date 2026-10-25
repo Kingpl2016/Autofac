@@ -19,12 +19,21 @@ interface SettingsFormProps {
   update: (updater: (prev: AppSettings) => AppSettings) => void;
 }
 
-/** 解析逗号分隔的 Universe 文本为去重升序的数字数组。 */
+/** sACN 标准监听端口。 */
+const DEFAULT_SACN_PORT = 5568;
+
+/** sACN 合法 Universe 范围（E1.31：1~63999），与后端 normalize 一致。 */
+const SACN_UNIVERSE_MIN = 1;
+const SACN_UNIVERSE_MAX = 63999;
+
+/** 解析逗号分隔的 Universe 文本为去重升序的数字数组（只保留 sACN 合法范围）。 */
 function parseUniverses(text: string): number[] {
   const set = new Set<number>();
   for (const part of text.split(",")) {
     const n = Number.parseInt(part.trim(), 10);
-    if (Number.isFinite(n) && n >= 0) set.add(n);
+    if (Number.isFinite(n) && n >= SACN_UNIVERSE_MIN && n <= SACN_UNIVERSE_MAX) {
+      set.add(n);
+    }
   }
   return [...set].sort((a, b) => a - b);
 }
@@ -35,6 +44,8 @@ function parseUniverses(text: string): number[] {
 export function SettingsForm({ settings, update }: SettingsFormProps) {
   const { t } = useTranslation();
   const { data: interfaces = [] } = useNetworkInterfaces();
+  // 取草稿而非已保存值：开关一拨动，相关配置项就即时显示 / 隐藏
+  const sacnOn = settings.protocol.sacnEnabled;
 
   return (
     <div className="grid gap-(--density-gutter) pb-10">
@@ -115,13 +126,15 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
                         onCheckedChange={(v) => setNic({ artnetEnabled: v })}
                       />
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs">
-                      sACN
-                      <Switch
-                        checked={cfg.sacnEnabled}
-                        onCheckedChange={(v) => setNic({ sacnEnabled: v })}
-                      />
-                    </label>
+                    {sacnOn && (
+                      <label className="flex items-center gap-1.5 text-xs">
+                        sACN
+                        <Switch
+                          checked={cfg.sacnEnabled}
+                          onCheckedChange={(v) => setNic({ sacnEnabled: v })}
+                        />
+                      </label>
+                    )}
                   </div>
                 </SettingRow>
               );
@@ -168,34 +181,49 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             }
           />
         </SettingRow>
-        <SettingRow label={t("settings.sacnPort")}>
-          <Input
-            type="number"
-            className="tabular w-28"
-            value={settings.protocol.sacnPort}
-            onChange={(e) =>
-              update((s) => ({
-                ...s,
-                protocol: { ...s.protocol, sacnPort: Number(e.target.value) || 0 },
-              }))
-            }
-          />
-        </SettingRow>
-        <SettingRow label={t("settings.sacnUniverses")}>
-          <Input
-            className="tabular"
-            defaultValue={settings.protocol.sacnUniverses.join(",")}
-            onBlur={(e) =>
-              update((s) => ({
-                ...s,
-                protocol: {
-                  ...s.protocol,
-                  sacnUniverses: parseUniverses(e.target.value),
-                },
-              }))
-            }
-          />
-        </SettingRow>
+        {sacnOn && (
+          <>
+            <SettingRow label={t("settings.sacnPort")}>
+              <Input
+                type="number"
+                min={1}
+                max={65535}
+                className="tabular w-28"
+                value={settings.protocol.sacnPort}
+                onChange={(e) =>
+                  update((s) => ({
+                    ...s,
+                    protocol: { ...s.protocol, sacnPort: Number(e.target.value) },
+                  }))
+                }
+                // 输入中允许暂时为空；离开输入框时回落到合法值（端口 0 会让系统分配随机端口）
+                onBlur={() => {
+                  const p = settings.protocol.sacnPort;
+                  if (Number.isInteger(p) && p >= 1 && p <= 65535) return;
+                  update((s) => ({
+                    ...s,
+                    protocol: { ...s.protocol, sacnPort: DEFAULT_SACN_PORT },
+                  }));
+                }}
+              />
+            </SettingRow>
+            <SettingRow label={t("settings.sacnUniverses")}>
+              <Input
+                className="tabular"
+                defaultValue={settings.protocol.sacnUniverses.join(",")}
+                onBlur={(e) =>
+                  update((s) => ({
+                    ...s,
+                    protocol: {
+                      ...s.protocol,
+                      sacnUniverses: parseUniverses(e.target.value),
+                    },
+                  }))
+                }
+              />
+            </SettingRow>
+          </>
+        )}
       </SettingsSection>
 
       {/* 显示 */}

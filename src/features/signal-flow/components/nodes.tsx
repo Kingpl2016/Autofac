@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Radio, Grid3x3, Forward, Boxes, Film } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useProtocolFlags } from "@/features/settings";
 
 const CARD =
   "rounded-md border bg-card px-3 py-2 text-xs shadow-sm w-44";
@@ -78,6 +79,7 @@ export function DestinationNode({ data }: NodeProps) {
     mode: string;
     enabled: boolean;
   };
+  const { sacnEnabled } = useProtocolFlags();
   return (
     <div
       className={cn(
@@ -90,7 +92,7 @@ export function DestinationNode({ data }: NodeProps) {
         <span className="truncate">{d.name || "—"}</span>
       </div>
       <div className="tabular mt-0.5 text-muted-foreground">
-        {d.ip} · {d.protocol === "sacn" ? "sACN" : "Art-Net"}
+        {sacnEnabled ? `${d.ip} · ${d.protocol === "sacn" ? "sACN" : "Art-Net"}` : d.ip}
       </div>
       <Handle type="target" position={Position.Left} />
     </div>

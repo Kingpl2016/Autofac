@@ -18,6 +18,7 @@ import { PageHeader } from "@/shared/components/PageHeader";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useForwardingQuery } from "@/features/forwarding/hooks/useForwarding";
 import { usePlayerStore } from "@/features/recording";
+import { useProtocolFlags } from "@/features/settings";
 import { nodeTypes } from "../lib/nodeTypes";
 import { playerDestinations, playerUniverses } from "../lib/playerSource";
 import { buildGraph } from "../lib/graphModel";
@@ -56,6 +57,7 @@ export function SignalFlowView() {
   const liveUniverses = useEngineDataStore((s) => s.universes);
   const playback = usePlayerStore((s) => s.status);
   const forwarding = useForwardingQuery();
+  const { sacnEnabled } = useProtocolFlags();
   const forwardingDestinations = useMemo(
     () => forwarding.data?.destinations ?? [],
     [forwarding.data],
@@ -69,13 +71,13 @@ export function SignalFlowView() {
     () => (inPlayback ? playerUniverses(playback) : liveUniverses),
     [inPlayback, playback, liveUniverses],
   );
-  const destinations = useMemo(
-    () =>
-      inPlayback
-        ? playerDestinations(playback, forwardingDestinations)
-        : forwardingDestinations,
-    [inPlayback, playback, forwardingDestinations],
-  );
+  const destinations = useMemo(() => {
+    const all = inPlayback
+      ? playerDestinations(playback, forwardingDestinations)
+      : forwardingDestinations;
+    // sACN 关闭时后端不会向 sACN 目的地发送，图上也不显示
+    return sacnEnabled ? all : all.filter((d) => d.protocol !== "sacn");
+  }, [inPlayback, playback, forwardingDestinations, sacnEnabled]);
   // 暂停 / 停止的回放不应有流动动画
   const animateEdges = !reduced && (!inPlayback || playback.state === "playing");
 
