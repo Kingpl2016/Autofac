@@ -47,3 +47,4 @@ ArtNet Studio Recordings/
 
 # Kiro：skills 为外部安装的第三方内容（体积大且可重新安装），steering / specs / hooks 仍纳入版本管理
 .kiro/skills/
+/doc/app.asar

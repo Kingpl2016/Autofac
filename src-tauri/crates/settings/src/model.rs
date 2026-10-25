@@ -229,6 +229,16 @@ impl Default for UpdateSettings {
     }
 }
 
+/// 播放器模式设置。
+///
+/// 整个结构带 `#[serde(default)]`：没有该分区的旧配置文件照常加载，缺失字段回落默认。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PlayerSettings {
+    /// 启动时直接进入播放器模式（给无人值守的节目播放机用）；默认关闭，即始终以实时模式启动。
+    pub start_in_player_mode: bool,
+}
+
 /// 当前配置结构版本。
 ///
 /// - 0：无版本号的旧文件；
@@ -266,6 +276,8 @@ pub struct AppSettings {
     pub merge: MergeSettings,
     /// 录制设置。
     pub recording: RecordingSettings,
+    /// 播放器模式设置。
+    pub player: PlayerSettings,
     /// 更新设置。
     pub update: UpdateSettings,
 }
@@ -279,6 +291,7 @@ impl Default for AppSettings {
             display: DisplaySettings::default(),
             merge: MergeSettings::default(),
             recording: RecordingSettings::default(),
+            player: PlayerSettings::default(),
             update: UpdateSettings::default(),
         }
     }

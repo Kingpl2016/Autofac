@@ -27,7 +27,8 @@ vi.mock("@/shared/tauri/tauriStorage", () => ({
 }));
 vi.mock("../../lib/api", () => api);
 
-import "@/shared/i18n";
+import i18n from "@/shared/i18n";
+import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore, DEFAULT_RECORD_HOTKEYS } from "@/shared/stores/prefsStore";
 import { useRecordingStore } from "../../stores/useRecordingStore";
 import { usePlayerStore } from "../../stores/usePlayerStore";
@@ -46,6 +47,7 @@ beforeEach(() => {
   usePrefsStore.setState({ recordHotkeys: { ...DEFAULT_RECORD_HOTKEYS } });
   useRecordingStore.setState({ status: EMPTY_STATUS });
   usePlayerStore.setState({ status: EMPTY_PLAYBACK, channels: {} });
+  useEngineStatusStore.setState({ appMode: "live" });
   api.recordingStart.mockResolvedValue({ plan: { accepted: [1, 2] } });
   api.recordingStop.mockResolvedValue({ files: [{ frames: 10 }] });
 });
@@ -78,6 +80,14 @@ describe("useRecordingHotkeys", () => {
     handlerFor(DEFAULT_RECORD_HOTKEYS.start)();
     expect(api.recordingStart).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledTimes(1);
+  });
+
+  it("播放器模式下开始热键不录制（实时接收已停止，没有东西可录），给出原因", () => {
+    useEngineStatusStore.setState({ appMode: "player" });
+    renderHook(() => useRecordingHotkeys());
+    handlerFor(DEFAULT_RECORD_HOTKEYS.start)();
+    expect(api.recordingStart).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith(i18n.t("mode.guardRecord"));
   });
 
   it("录制中停止热键停止录制，未录制时忽略", async () => {

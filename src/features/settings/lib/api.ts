@@ -52,5 +52,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     zstdLevel: 3,
     splitMinutes: 0,
   },
+  player: { startInPlayerMode: false },
   update: { channel: "stable" },
 };

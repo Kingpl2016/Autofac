@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
@@ -16,14 +16,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useAppModeStore, useModeActions } from "@/features/app-mode";
 import { controllerUploadRecording, useControllerStatus } from "@/features/controller";
-import { SurfacePanel } from "./console/SurfacePanel";
+import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { ProgramThumb } from "./ProgramThumb";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import {
   playerOpen,
-  recordingStop,
   recordingsDelete,
   recordingsList,
   recordingsRename,
@@ -33,6 +33,7 @@ import {
   LIB_ERR_EXISTS,
   LIB_ERR_NOT_FOUND,
   LIB_ERR_OUTSIDE,
+  LIB_ERR_TRASH,
   PLAYER_ERR_BAD_PATH,
   PLAYER_ERR_RECORDING_ACTIVE,
   type LibraryEntry,
@@ -62,7 +63,10 @@ interface LibraryPanelProps {
 
 /**
  * 节目库侧栏：以卡片列出录制目录里的 `.artrec` 节目（含迷你热力图缩略图），
- * 支持搜索、回放（进入回放模式前确认）、重命名、删除（二次确认）与上传到核心板。
+ * 支持搜索、回放、重命名、删除（二次确认）与上传到核心板。
+ *
+ * 回放走统一的模式切换（`useModeActions`）：实时模式下点击回放会先弹出“进入播放器模式？”确认，
+ * 确认后（必要时先停止录制）由后端 `player_open` 自动进入播放器模式；已在播放器模式则直接切换节目。
  */
 export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { t } = useTranslation();
@@ -70,10 +74,10 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { status: controller } = useControllerStatus();
   const lastResult = useRecordingStore((s) => s.last);
   const recording = useRecordingStore((s) => s.status.recording);
-  const playbackLoaded = usePlayerStore((s) => s.status.loaded);
+  const transitioning = useAppModeStore((s) => s.transitioning);
+  const { requestMode } = useModeActions();
   const playingPath = usePlayerStore((s) => (s.status.loaded ? s.status.path : ""));
-  const [toPlay, setToPlay] = useState<LibraryEntry | null>(null);
-  const [opening, setOpening] = useState(false);
+  const repeat = usePlayerStore((s) => (s.status.loaded ? s.status.repeat : "off"));
 
   const [query, setQuery] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -98,6 +102,10 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
     if (raw === LIB_ERR_EXISTS) return t("recording.libErrExists");
     if (raw === LIB_ERR_OUTSIDE) return t("recording.libErrOutside");
     if (raw === LIB_ERR_NOT_FOUND) return t("recording.libErrNotFound");
+    // 后端格式为 `trash_failed: <系统给出的原因>`；此时文件原样保留，不会被永久删除
+    if (raw.startsWith(LIB_ERR_TRASH)) {
+      return t("recording.libErrTrash", { reason: raw.slice(LIB_ERR_TRASH.length).replace(/^:\s*/, "") });
+    }
     return raw;
   };
 
@@ -126,29 +134,23 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
     }
   };
 
-  /** 请求回放：已在回放模式时直接切换节目，否则先确认（进入回放会暂停实时接收）。 */
-  const requestPlay = (entry: LibraryEntry) => {
-    if (playbackLoaded && !recording) void doPlay(entry);
-    else setToPlay(entry);
+  /** 把打开节目失败的原因说得比“切换模式失败”更具体。 */
+  const describeOpenError = (e: unknown): string => {
+    const raw = messageOf(e);
+    if (raw === PLAYER_ERR_RECORDING_ACTIVE) return t("player.errRecordingActive");
+    if (raw === PLAYER_ERR_BAD_PATH) return t("recording.libErrOutside");
+    return t("player.openFailed", { reason: describeError(e) });
   };
 
-  const doPlay = async (entry: LibraryEntry) => {
-    setToPlay(null);
-    setOpening(true);
-    try {
-      // 录制进行中：先停止并保存，再进入回放
-      if (recording) await recordingStop();
-      await playerOpen(entry.path);
-      onPlayed?.();
-    } catch (e: unknown) {
-      const raw = messageOf(e);
-      if (raw === PLAYER_ERR_RECORDING_ACTIVE) toast.error(t("player.errRecordingActive"));
-      else if (raw === PLAYER_ERR_BAD_PATH) toast.error(t("recording.libErrOutside"));
-      else toast.error(t("player.openFailed", { reason: describeError(e) }));
-    } finally {
-      setOpening(false);
-    }
-  };
+  /** 请求回放：统一走模式切换（实时模式下先确认；已在播放器模式则直接换节目）。 */
+  const requestPlay = (entry: LibraryEntry) =>
+    requestMode("player", {
+      run: async () => {
+        await playerOpen(entry.path);
+        onPlayed?.();
+      },
+      describeError: describeOpenError,
+    });
 
   const upload = async (entry: LibraryEntry) => {
     setUploading(entry.path);
@@ -168,6 +170,23 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
     [lastResult],
   );
   const entries = useMemo(() => list.data ?? [], [list.data]);
+  // 连播时的“下一个”：与后端 `next_in_library` 同序（列表里紧随其后的有效节目）
+  const nextPath = useMemo(() => {
+    if (repeat !== "playlist" || !playingPath) return "";
+    const i = entries.findIndex((e) => e.path === playingPath);
+    if (i < 0) return "";
+    return entries.slice(i + 1).find((e) => e.valid)?.path ?? "";
+  }, [repeat, playingPath, entries]);
+
+  // 切换到新节目（含连播自动切换）时，把播放中的卡片滚进可视区；不抢焦点，尊重减少动效偏好
+  const itemRefs = useRef(new Map<string, HTMLLIElement>());
+  useEffect(() => {
+    if (!playingPath) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    itemRefs.current
+      .get(playingPath)
+      ?.scrollIntoView?.({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [playingPath]);
   const needle = query.trim().toLowerCase();
   const shown = useMemo(
     () => entries.filter((e) => matchesQuery(e, needle)),
@@ -226,6 +245,10 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
               return (
                 <li
                   key={e.path}
+                  ref={(el) => {
+                    if (el) itemRefs.current.set(e.path, el);
+                    else itemRefs.current.delete(e.path);
+                  }}
                   className={cn(
                     "group animate-fade-up grid gap-2.5 rounded-xl border bg-surface-1/60 p-2.5 transition-colors hover:bg-surface-3/50",
                     isPlaying ? "border-success/50 glow-success" : "border-transparent",
@@ -278,6 +301,9 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                             {e.name}
                           </span>
                           {isPlaying && <Badge variant="success">{t("player.live")}</Badge>}
+                          {e.path === nextPath && (
+                            <Badge variant="outline">{t("recording.libNext")}</Badge>
+                          )}
                           {freshPaths.has(e.path.replaceAll("\\", "/")) && (
                             <Badge>{t("recording.libNew")}</Badge>
                           )}
@@ -312,7 +338,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       className="mr-auto group-hover:bg-primary group-hover:text-primary-foreground group-focus-within:bg-primary group-focus-within:text-primary-foreground"
                       aria-label={t("player.playProgram")}
                       title={t("player.playProgram")}
-                      disabled={!e.valid || opening}
+                      disabled={!e.valid || transitioning}
                       onClick={() => requestPlay(e)}
                     >
                       <Play className="fill-current" />
@@ -363,25 +389,6 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
           <p className="mt-3 text-xs text-muted-foreground">{t("recording.libRecordingNote")}</p>
         )}
       </SurfacePanel>
-
-      <Dialog open={toPlay !== null} onOpenChange={(o) => !o && setToPlay(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("player.enterTitle")}</DialogTitle>
-            <DialogDescription>
-              {recording ? t("player.enterDescRecording") : t("player.enterDesc")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setToPlay(null)}>
-              {t("common.cancel")}
-            </Button>
-            <Button onClick={() => toPlay && void doPlay(toPlay)}>
-              {recording ? t("player.enterStopAndPlay") : t("player.enterConfirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={toDelete !== null} onOpenChange={(o) => !o && setToDelete(null)}>
         <DialogContent>

@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { MetricChip } from "../MetricChip";
-import { Segmented } from "../Segmented";
-import { StatusPill, type StatusTone } from "../StatusPill";
+import { Segmented } from "../../../../../shared/components/Segmented";
+import { StatusPill, type StatusTone } from "../../../../../shared/components/StatusPill";
 import { TimeCode } from "../TimeCode";
 
 afterEach(() => cleanup());
@@ -62,6 +62,51 @@ describe("Segmented", () => {
     expect(onChange).toHaveBeenLastCalledWith("a");
   });
 
+  it("manual 激活：方向键只移动焦点，Enter / Space（点击）才触发切换", () => {
+    const onChange = vi.fn();
+    render(
+      <Segmented
+        ariaLabel="模式"
+        activation="manual"
+        value="a"
+        options={OPTIONS}
+        onChange={onChange}
+      />,
+    );
+    const radios = () => screen.getAllByRole("radio") as HTMLButtonElement[];
+
+    radios()[0].focus();
+    fireEvent.keyDown(radios()[0], { key: "ArrowRight" });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(radios()[1]);
+    // 焦点移到 B 后，Tab 停靠点跟随焦点，已选项仍是 A
+    expect(radios().map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
+    expect(radios()[0].getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(radios()[1]);
+    expect(onChange).toHaveBeenCalledWith("b");
+  });
+
+  it("忙碌时整组禁用并声明 aria-busy；禁用项被方向键跳过", () => {
+    const { rerender } = render(
+      <Segmented ariaLabel="模式" busy value="a" options={OPTIONS} onChange={() => {}} />,
+    );
+    expect(screen.getByRole("radiogroup").getAttribute("aria-busy")).toBe("true");
+    for (const r of screen.getAllByRole("radio")) expect((r as HTMLButtonElement).disabled).toBe(true);
+
+    const onChange = vi.fn();
+    rerender(
+      <Segmented
+        ariaLabel="模式"
+        value="a"
+        options={[OPTIONS[0], { ...OPTIONS[1], disabled: true }, OPTIONS[2]]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.keyDown(screen.getAllByRole("radio")[0], { key: "ArrowRight" });
+    expect(onChange).toHaveBeenLastCalledWith("c");
+  });
+
   it("点击直接选中", () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
@@ -85,7 +130,16 @@ describe("TimeCode", () => {
 });
 
 describe("StatusPill", () => {
-  const tones: StatusTone[] = ["recording", "playing", "paused", "idle", "warning"];
+  const tones: StatusTone[] = [
+    "recording",
+    "playing",
+    "paused",
+    "idle",
+    "warning",
+    "player",
+    "ready",
+    "error",
+  ];
 
   it.each(tones)("%s 状态同时有图标和文字（不只靠颜色）", (tone) => {
     const { container } = render(<StatusPill tone={tone}>状态文字</StatusPill>);

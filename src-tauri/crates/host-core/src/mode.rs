@@ -14,12 +14,18 @@ use crate::util::lock;
 
 /// 录制与回放的互斥仲裁：二者不能同时进行。
 ///
-/// 接收循环据 [`RuntimeMode::is_playback`] 决定是否丢弃实时帧；录制与回放各自在进入/退出时
-/// 置位对应标志，并在进入前检查对方是否已激活。
+/// 接收循环据 [`RuntimeMode::is_playback`] 与 [`RuntimeMode::is_player`] 决定是否丢弃实时帧；
+/// 录制与回放各自在进入/退出时置位对应标志，并在进入前检查对方是否已激活。
+///
+/// 三个标志含义不同：
+/// - `playback`：已打开节目（输出由回放任务产生）；
+/// - `player`：处于**播放器模式**（实时接收已被整体停止，接收任务已拆除）；
+/// - `recording`：正在录制。
 #[derive(Debug, Default)]
 pub struct RuntimeMode {
     playback: AtomicBool,
     recording: AtomicBool,
+    player: AtomicBool,
 }
 
 impl RuntimeMode {
@@ -39,6 +45,24 @@ impl RuntimeMode {
     #[must_use]
     pub fn is_recording(&self) -> bool {
         self.recording.load(Ordering::Acquire)
+    }
+
+    /// 是否处于播放器模式。
+    ///
+    /// 播放器模式下接收任务已被拆除；接收循环仍据此丢弃通道里残留的迟到帧，
+    /// 避免它们在清空之后又被摄取、录制或转发。
+    #[must_use]
+    pub fn is_player(&self) -> bool {
+        self.player.load(Ordering::Acquire)
+    }
+
+    /// 置位播放器模式标志（进入/退出播放器模式时调用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `on` - `true` 表示进入播放器模式。
+    pub fn set_player(&self, on: bool) {
+        self.player.store(on, Ordering::Release);
     }
 
     /// 置位回放标志（进入/退出回放时调用）。

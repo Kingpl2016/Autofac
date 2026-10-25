@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
+import { LiveOnly } from "@/features/app-mode";
 import { MainLayout } from "@/layouts/MainLayout";
 
 // 重依赖（React Flow）懒加载，避免进入首屏同步包
@@ -10,6 +11,7 @@ import UniversesPage from "@/pages/UniversesPage";
 import DiscoveryPage from "@/pages/DiscoveryPage";
 import ForwardingPage from "@/pages/ForwardingPage";
 import RecordingPage from "@/pages/RecordingPage";
+import PlayerModePage from "@/pages/PlayerModePage";
 import ThingModelPage from "@/pages/ThingModelPage";
 import LoopsPage from "@/pages/LoopsPage";
 import ScenesPage from "@/pages/ScenesPage";
@@ -27,8 +29,8 @@ export const router = createBrowserRouter([
     element: <MainLayout />,
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: "universes", element: <UniversesPage /> },
-      { path: "discovery", element: <DiscoveryPage /> },
+      { path: "universes", element: <LiveOnly><UniversesPage /></LiveOnly> },
+      { path: "discovery", element: <LiveOnly><DiscoveryPage /></LiveOnly> },
       { path: "forwarding", element: <ForwardingPage /> },
       {
         path: "signal-flow",
@@ -39,6 +41,7 @@ export const router = createBrowserRouter([
         ),
       },
       { path: "recording", element: <RecordingPage /> },
+      { path: "player", element: <PlayerModePage /> },
       { path: "thing-model", element: <ThingModelPage /> },
       { path: "loops", element: <LoopsPage /> },
       { path: "scenes", element: <ScenesPage /> },

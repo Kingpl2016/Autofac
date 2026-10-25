@@ -10,6 +10,7 @@
 //! 时间戳均为"相对录制起点的微秒"，由宿主层在 socket 接收点用单调时钟取得，
 //! 因此录制期间系统时间被调整不会影响时间轴。
 
+pub mod disk;
 pub mod encoder;
 pub mod filter;
 pub mod library;
@@ -19,13 +20,18 @@ pub mod store;
 #[cfg(test)]
 mod testutil;
 
+pub use disk::{
+    can_start, classify, DiskGuard, DiskLevel, CRITICAL_FREE_BYTES, MIN_START_FREE_BYTES,
+    WARN_FREE_BYTES,
+};
 pub use encoder::{
     Encoded, EncoderConfig, FrameEncoder, FrameKind, DEFAULT_DIFF_RATIO_DIV,
     DEFAULT_KEYFRAME_INTERVAL_US,
 };
 pub use filter::{RecordFilter, UniverseRange};
 pub use library::{
-    delete_recording, list_library, rename_recording, resolve_in_dir, LibraryEntry, LibraryError,
+    delete_recording, delete_recording_with, list_library, rename_recording, resolve_in_dir,
+    trash_paths, LibraryEntry, LibraryError, TrashFn,
 };
 pub use session::{
     plan_universes, RecorderSession, SessionConfig, SessionStats, UniversePlan, DMX_LEN,

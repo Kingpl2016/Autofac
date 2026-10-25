@@ -160,6 +160,19 @@ impl SignalEngine {
         before - self.universes.len()
     }
 
+    /// 丢弃全部 Universe 状态（进入播放器模式时清空实时信号）。
+    ///
+    /// 累计包数 `total_packets` 保留不变，避免仪表盘的包速率计算出现负跳变。
+    ///
+    /// # Returns
+    ///
+    /// 被丢弃的 Universe 数。
+    pub fn clear(&mut self) -> usize {
+        let n = self.universes.len();
+        self.universes.clear();
+        n
+    }
+
     /// 当前活跃 Universe 数量。
     #[must_use]
     pub fn active_universe_count(&self) -> usize {

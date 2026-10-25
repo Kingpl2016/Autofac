@@ -117,3 +117,24 @@ describe("SettingsForm 的 sACN 开关", () => {
     expect(updater(settings).protocol.sacnUniverses).toEqual([2, 5, 63999]);
   });
 });
+
+describe("SettingsForm 的播放器模式分区", () => {
+  it("默认关闭“启动时进入播放器模式”，并说明适用场景", () => {
+    expect(DEFAULT_SETTINGS.player.startInPlayerMode).toBe(false);
+    render(<SettingsForm settings={DEFAULT_SETTINGS} update={vi.fn()} />);
+    const toggle = screen.getByRole("switch", { name: "启动时进入播放器模式" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText(/适合无人值守的节目播放机/)).toBeTruthy();
+  });
+
+  it("拨动开关会把 startInPlayerMode 写入草稿，其余分区不变", () => {
+    const update = vi.fn();
+    render(<SettingsForm settings={DEFAULT_SETTINGS} update={update} />);
+    fireEvent.click(screen.getByRole("switch", { name: "启动时进入播放器模式" }));
+    const updater = update.mock.calls[0][0] as (s: AppSettings) => AppSettings;
+    const next = updater(DEFAULT_SETTINGS);
+    expect(next.player.startInPlayerMode).toBe(true);
+    expect(next.recording).toEqual(DEFAULT_SETTINGS.recording);
+  });
+});
+

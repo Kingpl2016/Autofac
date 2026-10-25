@@ -5,6 +5,7 @@
 //! 宿主层只做装配与命令注册。
 
 mod about_commands;
+mod app_mode_commands;
 mod controller_commands;
 mod playback_commands;
 mod recording_commands;
@@ -78,7 +79,47 @@ pub fn run() {
                     controller.set_recovered(outcomes);
                 }
             });
+            // 无人值守的播放机：设置里勾选后，一启动就进入播放器模式（停止实时接收，只播放节目）。
+            // 须在 Tokio 上下文中切换（重建 / 拆除接收套接字需要 reactor）。
+            if cfg.player.start_in_player_mode {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let emit: host_core::recording::Emitter = std::sync::Arc::new({
+                        let handle = handle.clone();
+                        move |name, payload| {
+                            let _ = tauri::Emitter::emit(&handle, name, payload);
+                        }
+                    });
+                    if let Err(e) = handle
+                        .artnet_core()
+                        .set_app_mode(host_core::app_mode::AppMode::Player, &emit)
+                    {
+                        tracing::warn!(error = %e, "启动时进入播放器模式失败，保持实时模式");
+                    }
+                });
+            }
             Ok(())
+        })
+        // 关闭窗口：录制或播放进行中先拦下，交给前端确认（见 `app_quit`）；否则直接关闭。
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    return;
+                }
+                let app = window.app_handle();
+                let core = app.artnet_core();
+                let recording = core.recording().is_recording();
+                let playing =
+                    core.playback().status().state == host_core::playback::PlaybackState::Playing;
+                if recording || playing {
+                    api.prevent_close();
+                    let _ = tauri::Emitter::emit(
+                        window,
+                        "app:close-requested",
+                        serde_json::json!({ "recording": recording, "playing": playing }),
+                    );
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
@@ -97,7 +138,13 @@ pub fn run() {
             host_core::commands::set_device_name,
             host_core::commands::get_forwarding,
             host_core::commands::save_forwarding,
+            app_mode_commands::app_mode_get,
+            app_mode_commands::app_mode_set,
+            app_mode_commands::app_quit,
             recording_commands::get_recording_dir,
+            recording_commands::recording_disk_info,
+            recording_commands::recording_check_dir,
+            recording_commands::recording_open_dir,
             recording_commands::recording_start,
             recording_commands::recording_stop,
             recording_commands::recording_status,
@@ -112,7 +159,7 @@ pub fn run() {
             playback_commands::player_close,
             playback_commands::player_seek,
             playback_commands::player_set_speed,
-            playback_commands::player_set_loop,
+            playback_commands::player_set_repeat,
             playback_commands::player_set_target,
             playback_commands::player_set_viewed,
             playback_commands::player_status,
@@ -134,6 +181,21 @@ pub fn run() {
             controller_commands::controller_rename_file,
             controller_commands::controller_upload_recording,
         ])
-        .run(tauri::generate_context!())
-        .expect("启动 Tauri 应用失败");
+        .build(tauri::generate_context!())
+        .expect("启动 Tauri 应用失败")
+        .run(|app, event| {
+            // 兜底：任何途径触发的退出，只要录制还在进行就先收尾再退出，
+            // 保证录制文件总是被完整保存（正常关闭窗口时前端已确认并走 `app_quit`）。
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                let ctl = app.artnet_core().recording().clone();
+                if ctl.is_recording() {
+                    api.prevent_exit();
+                    let handle = app.clone();
+                    std::thread::spawn(move || {
+                        let _ = ctl.stop();
+                        handle.exit(0);
+                    });
+                }
+            }
+        });
 }

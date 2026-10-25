@@ -1,5 +1,6 @@
 import {
   Disc3,
+  Film,
   GitMerge,
   Keyboard,
   Monitor,
@@ -15,6 +16,7 @@ export type SettingsSectionId =
   | "display"
   | "merge"
   | "recording"
+  | "player"
   | "shortcuts";
 
 export interface SettingsSectionMeta {
@@ -71,6 +73,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     descKey: "settings.descRecording",
     icon: Disc3,
     tileClass: "bg-chart-5/15 text-chart-5",
+  },
+  {
+    id: "player",
+    titleKey: "settings.sectionPlayer",
+    descKey: "settings.descPlayer",
+    icon: Film,
+    tileClass: "bg-primary/15 text-primary",
   },
   {
     id: "shortcuts",

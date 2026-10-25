@@ -3,6 +3,7 @@
  */
 
 import type { Protocol } from "@/shared/domain/engine";
+import type { DiskLevel } from "../../../shared/domain/disk";
 
 /** 闭区间 Universe 范围。 */
 export interface UniverseRange {
@@ -54,6 +55,10 @@ export interface RecordingStatus {
   stats: SessionStats;
   dropped: number;
   universes: number[];
+  /** 录制目录所在卷的剩余字节数；无法查询时为 null */
+  diskFreeBytes: number | null;
+  /** 最近一次检查得到的磁盘空间等级 */
+  diskLevel: DiskLevel;
 }
 
 /** Universe 规划结果。 */
@@ -92,6 +97,8 @@ export interface RecordingResult {
   files: FinishedFile[];
   error: string | null;
   dropped: number;
+  /** 非用户主动停止时的原因（目前只有磁盘空间告急） */
+  stoppedBy: "disk" | null;
 }
 
 /** 孤立录制的恢复结果（对应 `recorder::RecoveryOutcome`）。 */
@@ -121,11 +128,14 @@ export interface LibraryEntry {
 export const LIB_ERR_EXISTS = "already_exists";
 export const LIB_ERR_OUTSIDE = "outside_library";
 export const LIB_ERR_NOT_FOUND = "not_found";
+/** 无法移入回收站的错误码前缀（后面跟冒号和原因）。 */
+export const LIB_ERR_TRASH = "trash_failed";
 
 /** 后端错误码。 */
 export const REC_ERR_ALREADY = "already_recording";
 export const REC_ERR_NO_UNIVERSES = "no_universes";
 export const REC_ERR_NOT_RECORDING = "not_recording";
+export const REC_ERR_DISK_LOW = "disk_low";
 
 /** 空状态（未录制）。 */
 export const EMPTY_STATUS: RecordingStatus = {
@@ -148,6 +158,8 @@ export const EMPTY_STATUS: RecordingStatus = {
   },
   dropped: 0,
   universes: [],
+  diskFreeBytes: null,
+  diskLevel: "ok",
 };
 
 // ---------------------------------------------------------------------------
@@ -161,6 +173,28 @@ export type PlayerTarget =
 
 export type PlayState = "stopped" | "playing" | "paused";
 
+/** 重复模式：播完即停 / 单个循环 / 连播（按节目库顺序向下，到末尾停止）。 */
+export type RepeatMode = "off" | "loop" | "playlist";
+
+/** 重复模式的循环顺序（快捷键 `L` 依此切换）。 */
+export const REPEAT_MODES: readonly RepeatMode[] = ["off", "loop", "playlist"];
+
+/**
+ * 取循环顺序中的下一个重复模式。
+ *
+ * @param mode 当前模式。
+ * @returns 下一个模式（`playlist` 之后回到 `off`）。
+ */
+export function nextRepeatMode(mode: RepeatMode): RepeatMode {
+  return REPEAT_MODES[(REPEAT_MODES.indexOf(mode) + 1) % REPEAT_MODES.length];
+}
+
+/** `player:playlist` 事件载荷：连播的结果。 */
+export type PlaylistEvent =
+  | { kind: "advanced"; name: string }
+  | { kind: "listFinished" }
+  | { kind: "advanceFailed"; name: string; reason: string };
+
 /** 回放状态（`player:state` 事件与 `player_status` 返回值）。 */
 export interface PlaybackStatus {
   loaded: boolean;
@@ -170,7 +204,7 @@ export interface PlaybackStatus {
   posUs: number;
   durationUs: number;
   speedMilli: number;
-  looping: boolean;
+  repeat: RepeatMode;
   frames: number;
   corruptFrames: number;
   universes: number[];
@@ -251,7 +285,7 @@ export const EMPTY_PLAYBACK: PlaybackStatus = {
   posUs: 0,
   durationUs: 0,
   speedMilli: 1000,
-  looping: false,
+  repeat: "off",
   frames: 0,
   corruptFrames: 0,
   universes: [],

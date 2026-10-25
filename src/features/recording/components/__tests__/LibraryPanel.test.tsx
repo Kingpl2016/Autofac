@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
 
@@ -16,7 +17,10 @@ const api = vi.hoisted(() => ({
   recordingsRename: vi.fn(),
   recordingsDelete: vi.fn(),
   playerOpen: vi.fn(),
-  recordingStop: vi.fn(),
+}));
+const modeApi = vi.hoisted(() => ({
+  appModeSet: vi.fn(),
+  stopRecordingForModeChange: vi.fn(),
 }));
 const controller = vi.hoisted(() => ({
   connected: true,
@@ -35,7 +39,13 @@ vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   ...api,
 }));
+vi.mock("@/features/app-mode/lib/api", async (orig) => ({
+  ...(await orig<typeof import("@/features/app-mode/lib/api")>()),
+  ...modeApi,
+}));
 
+import { ModeConfirmDialog, useAppModeStore } from "@/features/app-mode";
+import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePlayerStore } from "../../stores/usePlayerStore";
 import { useRecordingStore } from "../../stores/useRecordingStore";
 import { EMPTY_PLAYBACK, EMPTY_STATUS } from "../../lib/types";
@@ -60,9 +70,13 @@ const entry = (over: Partial<Record<string, unknown>> = {}) => ({
 function renderPanel(onPlayed?: () => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}>
-      <LibraryPanel onPlayed={onPlayed} />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <LibraryPanel onPlayed={onPlayed} />
+        {/* 回放走统一的模式切换，确认对话框由布局挂载；测试里补上 */}
+        <ModeConfirmDialog />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -72,6 +86,10 @@ beforeEach(async () => {
   controller.connected = true;
   usePlayerStore.setState({ status: EMPTY_PLAYBACK });
   useRecordingStore.setState({ status: EMPTY_STATUS });
+  useEngineStatusStore.setState({ appMode: "live", recording: false, playing: false });
+  useAppModeStore.setState({ transitioning: false });
+  modeApi.appModeSet.mockResolvedValue({ mode: "player", receivers: "suspended", sender: "ready" });
+  modeApi.stopRecordingForModeChange.mockResolvedValue(undefined);
   api.recordingsList.mockResolvedValue([entry(), entry({ path: "D:/rec/bad.artrec", name: "bad", valid: false })]);
 });
 
@@ -105,8 +123,25 @@ describe("LibraryPanel", () => {
     expect(api.recordingsDelete).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("移入系统回收站");
+    expect(dialog.textContent).toContain("可在回收站中恢复");
     fireEvent.click(Array.from(dialog.querySelectorAll("button")).find((b) => b.textContent === "删除")!);
     await waitFor(() => expect(api.recordingsDelete).toHaveBeenCalledWith("D:/rec/show.artrec"));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("已将“开场秀”移入回收站"));
+  });
+
+  it("无法移入回收站时提示原因，并说明节目已原样保留（不会永久删除）", async () => {
+    api.recordingsDelete.mockRejectedValue(new Error("trash_failed: 回收站不可用"));
+    renderPanel();
+    await screen.findByText("开场秀");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(Array.from(dialog.querySelectorAll("button")).find((b) => b.textContent === "删除")!);
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("无法移入回收站，节目已原样保留：回收站不可用"),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("重命名冲突时提示同名节目已存在", async () => {
@@ -131,6 +166,46 @@ describe("LibraryPanel", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "上传到核心板" })[0]);
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(toast.success.mock.calls[0][0]).toContain("show.artrec");
+  });
+});
+
+describe("LibraryPanel 连播标记", () => {
+  const three = () => [
+    entry({ path: "D:/rec/a.artrec", fileName: "a.artrec", name: "第一个" }),
+    entry({ path: "D:/rec/bad.artrec", fileName: "bad.artrec", name: "损坏的", valid: false }),
+    entry({ path: "D:/rec/c.artrec", fileName: "c.artrec", name: "第三个" }),
+  ];
+  const playing = (repeat: "off" | "loop" | "playlist") =>
+    usePlayerStore.setState({
+      status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/a.artrec", name: "第一个", repeat },
+    });
+
+  it("连播模式下，只在播放中节目之后的下一个有效节目上显示“下一个”（跳过损坏文件）", async () => {
+    api.recordingsList.mockResolvedValue(three());
+    playing("playlist");
+    renderPanel();
+    await screen.findByText("第三个");
+    const badges = screen.getAllByText("下一个");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].closest("li")!.textContent).toContain("第三个");
+  });
+
+  it("关闭或循环模式下不显示“下一个”", async () => {
+    api.recordingsList.mockResolvedValue(three());
+    playing("loop");
+    renderPanel();
+    await screen.findByText("第三个");
+    expect(screen.queryByText("下一个")).toBeNull();
+  });
+
+  it("播放中的已是最后一个有效节目时没有“下一个”", async () => {
+    api.recordingsList.mockResolvedValue(three());
+    usePlayerStore.setState({
+      status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/c.artrec", name: "第三个", repeat: "playlist" },
+    });
+    renderPanel();
+    await screen.findByText("第三个");
+    expect(screen.queryByText("下一个")).toBeNull();
   });
 });
 
@@ -163,6 +238,7 @@ describe("LibraryPanel 搜索与高亮", () => {
         files: [{ path: "D:/rec/new.artrec", durationUs: 1, frames: 1, bytes: 1, sources: [] }],
         error: null,
         dropped: 0,
+        stoppedBy: null,
       },
     });
     renderPanel();
@@ -184,20 +260,32 @@ describe("LibraryPanel 搜索与高亮", () => {
 });
 
 describe("LibraryPanel 回放入口", () => {
-  it("首次回放需确认进入回放模式，确认后打开节目并通知父组件", async () => {
+  it("实时模式下回放需确认进入播放器模式，确认后打开节目并通知父组件", async () => {
     api.playerOpen.mockResolvedValue(undefined);
     const onPlayed = vi.fn();
     renderPanel(onPlayed);
     await screen.findByText("开场秀");
 
     fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
-    expect(await screen.findByText("进入回放模式？")).toBeTruthy();
+    expect(await screen.findByText("进入播放器模式？")).toBeTruthy();
     expect(api.playerOpen).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "进入回放" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入播放器模式" }));
     await waitFor(() => expect(api.playerOpen).toHaveBeenCalledWith("D:/rec/show.artrec"));
     await waitFor(() => expect(onPlayed).toHaveBeenCalledTimes(1));
-    expect(api.recordingStop).not.toHaveBeenCalled();
+    expect(modeApi.stopRecordingForModeChange).not.toHaveBeenCalled();
+    // 节目由后端 player_open 自动进入播放器模式，不需要再单独调用 app_mode_set
+    expect(modeApi.appModeSet).not.toHaveBeenCalled();
+  });
+
+  it("取消确认不会打开节目", async () => {
+    renderPanel();
+    await screen.findByText("开场秀");
+    fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
+    await screen.findByText("进入播放器模式？");
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByText("进入播放器模式？")).toBeNull());
+    expect(api.playerOpen).not.toHaveBeenCalled();
   });
 
   it("损坏的文件不能回放", async () => {
@@ -208,10 +296,10 @@ describe("LibraryPanel 回放入口", () => {
     expect(plays[1].disabled).toBe(true);
   });
 
-  it("录制进行中：确认后先停止录制再进入回放", async () => {
-    useRecordingStore.setState({ status: { ...EMPTY_STATUS, recording: true } });
+  it("录制进行中：对话框说明会先停止并保存，确认后先停止录制再打开节目", async () => {
+    useEngineStatusStore.setState({ recording: true });
     const order: string[] = [];
-    api.recordingStop.mockImplementation(async () => {
+    modeApi.stopRecordingForModeChange.mockImplementation(async () => {
       order.push("stop");
     });
     api.playerOpen.mockImplementation(async () => {
@@ -221,12 +309,13 @@ describe("LibraryPanel 回放入口", () => {
     await screen.findByText("开场秀");
 
     fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
-    expect(await screen.findByText(/当前正在录制/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "停止录制并回放" }));
+    expect(await screen.findByText(/正在进行的录制会先停止并保存/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "停止录制并进入" }));
     await waitFor(() => expect(order).toEqual(["stop", "open"]));
   });
 
-  it("已处于回放模式时直接切换节目，不再弹确认", async () => {
+  it("已处于播放器模式时直接切换节目，不再弹确认，也不重复提示“已进入”", async () => {
+    useEngineStatusStore.setState({ appMode: "player" });
     usePlayerStore.setState({ status: { ...EMPTY_PLAYBACK, loaded: true } });
     api.playerOpen.mockResolvedValue(undefined);
     renderPanel();
@@ -234,7 +323,8 @@ describe("LibraryPanel 回放入口", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
     await waitFor(() => expect(api.playerOpen).toHaveBeenCalledWith("D:/rec/show.artrec"));
-    expect(screen.queryByText("进入回放模式？")).toBeNull();
+    expect(screen.queryByText("进入播放器模式？")).toBeNull();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("后端提示录制进行中时给出可读文案", async () => {
@@ -243,8 +333,20 @@ describe("LibraryPanel 回放入口", () => {
     await screen.findByText("开场秀");
 
     fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
-    fireEvent.click(await screen.findByRole("button", { name: "进入回放" }));
+    fireEvent.click(await screen.findByRole("button", { name: "进入播放器模式" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.error.mock.calls[0][0]).toContain("录制进行中");
+  });
+
+  it("打不开节目时说明是哪个原因，而不是笼统的“切换模式失败”", async () => {
+    api.playerOpen.mockRejectedValue(new Error("文件头损坏"));
+    renderPanel();
+    await screen.findByText("开场秀");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "进入播放器模式" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(toast.error.mock.calls[0][0]).toContain("文件头损坏");
+    expect(toast.error.mock.calls[0][0]).not.toContain("切换模式失败");
   });
 });

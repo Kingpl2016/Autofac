@@ -10,9 +10,10 @@ import { cn } from "@/lib/utils";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useProtocolFlags } from "@/features/settings";
 import type { Protocol } from "@/shared/domain/engine";
-import { SurfacePanel } from "./console/SurfacePanel";
+import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { RecordConsole } from "./RecordConsole";
 import { SourcePicker } from "./SourcePicker";
+import { useDiskInfo } from "../hooks/useDiskInfo";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import { recordingStart, recordingStop } from "../lib/api";
@@ -53,6 +54,7 @@ export function RecordPanel() {
   const [busy, setBusy] = useState<"start" | "stop" | null>(null);
 
   const recording = status.recording;
+  const disk = useDiskInfo(recording);
   const playbackLoaded = usePlayerStore((s) => s.status.loaded);
 
   const filter = useMemo<RecordFilter>(() => {
@@ -134,6 +136,7 @@ export function RecordPanel() {
         snapshots={universes}
         plan={plan}
         sourceCount={sources.length}
+        disk={disk}
         name={name}
         notes={notes}
         onNameChange={setName}

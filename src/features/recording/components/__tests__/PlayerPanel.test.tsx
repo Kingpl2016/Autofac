@@ -12,6 +12,7 @@ const toast = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
 }));
+const announcer = vi.hoisted(() => ({ announce: vi.fn() }));
 const api = vi.hoisted(() => ({
   playerPlay: vi.fn(),
   playerPause: vi.fn(),
@@ -19,12 +20,13 @@ const api = vi.hoisted(() => ({
   playerClose: vi.fn(),
   playerSeek: vi.fn(),
   playerSetSpeed: vi.fn(),
-  playerSetLoop: vi.fn(),
+  playerSetRepeat: vi.fn(),
   playerSetTarget: vi.fn(),
   playerSetViewed: vi.fn(),
   playerOverview: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast }));
+vi.mock("@/shared/stores/announcerStore", () => announcer);
 vi.mock("@/features/settings", () => ({
   useSettingsQuery: () => ({ data: { display: { valueFormat: "decimal" } } }),
   useProtocolFlags: () => ({ sacnEnabled: false }),
@@ -104,14 +106,29 @@ describe("PlayerPanel", () => {
     await waitFor(() => expect(api.playerPause).toHaveBeenCalledTimes(1));
   });
 
-  it("循环开关与退出回放分别发送对应命令", async () => {
-    usePlayerStore.setState({ status: loaded() });
+  it("重复模式是三段单选，当前项被选中；点击发送对应模式", async () => {
+    usePlayerStore.setState({ status: loaded({ repeat: "loop" }) });
     renderPanel();
 
-    fireEvent.click(screen.getByRole("switch", { name: "循环" }));
-    await waitFor(() => expect(api.playerSetLoop).toHaveBeenCalledWith(true));
+    const group = screen.getByRole("radiogroup", { name: "重复模式" });
+    const radios = Array.from(group.querySelectorAll('[role="radio"]'));
+    expect(radios.map((r) => [r.textContent, r.getAttribute("aria-checked")])).toEqual([
+      ["关闭", "false"],
+      ["循环", "true"],
+      ["连播", "false"],
+    ]);
 
-    fireEvent.click(screen.getByRole("button", { name: "退出回放" }));
+    fireEvent.click(screen.getByRole("radio", { name: "连播" }));
+    await waitFor(() => expect(api.playerSetRepeat).toHaveBeenCalledWith("playlist"));
+    fireEvent.click(screen.getByRole("radio", { name: "关闭" }));
+    await waitFor(() => expect(api.playerSetRepeat).toHaveBeenLastCalledWith("off"));
+  });
+
+  it("关闭节目发送 close（只卸载节目，退出播放器模式由横幅负责）", async () => {
+    usePlayerStore.setState({ status: loaded() });
+    renderPanel();
+    expect(screen.queryByRole("button", { name: "退出播放器模式" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "关闭节目" }));
     await waitFor(() => expect(api.playerClose).toHaveBeenCalledTimes(1));
   });
 
@@ -181,11 +198,23 @@ describe("PlayerPanel 键盘快捷键", () => {
     await waitFor(() => expect(api.playerSeek).toHaveBeenLastCalledWith(60_000_000));
   });
 
-  it("L 切换循环", async () => {
-    usePlayerStore.setState({ status: loaded() });
-    renderPanel();
+  it("L 依次切换重复模式（关闭 → 循环 → 连播 → 关闭），并向读屏播报", async () => {
+    usePlayerStore.setState({ status: loaded({ repeat: "off" }) });
+    const { rerenderPanel } = renderPanel();
     press("l");
-    await waitFor(() => expect(api.playerSetLoop).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(api.playerSetRepeat).toHaveBeenLastCalledWith("loop"));
+    expect(announcer.announce).toHaveBeenLastCalledWith("重复模式：循环");
+
+    usePlayerStore.setState({ status: loaded({ repeat: "loop" }) });
+    rerenderPanel();
+    press("L");
+    await waitFor(() => expect(api.playerSetRepeat).toHaveBeenLastCalledWith("playlist"));
+    expect(announcer.announce).toHaveBeenLastCalledWith("重复模式：连播");
+
+    usePlayerStore.setState({ status: loaded({ repeat: "playlist" }) });
+    rerenderPanel();
+    press("l");
+    await waitFor(() => expect(api.playerSetRepeat).toHaveBeenLastCalledWith("off"));
   });
 
   it("焦点在输入框 / 按钮 / 滑杆上时不触发全局快捷键", async () => {
@@ -202,7 +231,7 @@ describe("PlayerPanel 键盘快捷键", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(api.playerPlay).not.toHaveBeenCalled();
     expect(api.playerSeek).not.toHaveBeenCalled();
-    expect(api.playerSetLoop).not.toHaveBeenCalled();
+    expect(api.playerSetRepeat).not.toHaveBeenCalled();
   });
 
   it("面板不可见（active=false）时不响应", async () => {

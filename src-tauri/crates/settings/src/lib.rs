@@ -10,7 +10,8 @@ mod store;
 pub use error::{Result, SettingsError};
 pub use model::{
     AppSettings, ChannelFormat, DisplaySettings, CURRENT_SCHEMA_VERSION, MergeMode, MergeSettings, NetworkMode,
-    NetworkSettings, NicConfig, ProtocolSettings, RecordingCompression, RecordingSettings,
+    NetworkSettings, NicConfig, PlayerSettings, ProtocolSettings, RecordingCompression,
+    RecordingSettings,
     UniverseFormat,
     UpdateChannel, UpdateSettings, ValueFormat,
 };
@@ -86,6 +87,25 @@ mod tests {
         assert_eq!(s.recording.compression, RecordingCompression::Zstd);
         assert_eq!(s.recording.zstd_level, 3);
         assert_eq!(s.recording.split_minutes, 0);
+    }
+
+    #[test]
+    fn player_section_defaults_off_and_old_files_still_load() {
+        // 默认：始终以实时模式启动
+        assert!(!AppSettings::default().player.start_in_player_mode);
+        // 旧配置文件没有 player 分区：回落默认，而不是整体解析失败
+        let mut v: serde_json::Value =
+            serde_json::from_str(&to_json(&AppSettings::default()).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("player");
+        let s = from_json(&v.to_string()).unwrap();
+        assert_eq!(s.player, PlayerSettings::default());
+        // 显式开启后能往返
+        let mut on = AppSettings::default();
+        on.player.start_in_player_mode = true;
+        let back = from_json(&to_json(&on).unwrap()).unwrap();
+        assert!(back.player.start_in_player_mode);
+        // 序列化键名是 camelCase，与前端一致
+        assert!(to_json(&on).unwrap().contains("startInPlayerMode"));
     }
 
     #[test]

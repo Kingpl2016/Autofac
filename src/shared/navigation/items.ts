@@ -28,6 +28,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** 所属分组 */
   section: NavSection;
+  /** 依赖实时信号：播放器模式下接收已停止，页面里不会有数据（仍可进入以查看原因） */
+  liveOnly?: boolean;
 }
 
 /**
@@ -35,11 +37,11 @@ export interface NavItem {
  */
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", labelKey: "nav.dashboard", icon: LayoutDashboard, section: "signal" },
-  { to: "/universes", labelKey: "nav.universes", icon: Grid3x3, section: "signal" },
-  { to: "/discovery", labelKey: "nav.discovery", icon: Radar, section: "signal" },
+  { to: "/universes", labelKey: "nav.universes", icon: Grid3x3, section: "signal", liveOnly: true },
+  { to: "/discovery", labelKey: "nav.discovery", icon: Radar, section: "signal", liveOnly: true },
   { to: "/forwarding", labelKey: "nav.forwarding", icon: Forward, section: "signal" },
   { to: "/signal-flow", labelKey: "nav.signalFlow", icon: Workflow, section: "signal" },
-  { to: "/recording", labelKey: "nav.recording", icon: Circle, section: "program" },
+  { to: "/recording", labelKey: "nav.recording", icon: Circle, section: "program", liveOnly: true },
   { to: "/thing-model", labelKey: "nav.thingModel", icon: Boxes, section: "program" },
   { to: "/loops", labelKey: "nav.loops", icon: Cable, section: "program" },
   { to: "/scenes", labelKey: "nav.scenes", icon: ListVideo, section: "program" },

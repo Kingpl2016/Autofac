@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LogOut, Pause, Play, Repeat, Square } from "lucide-react";
+import { CircleStop, ListOrdered, LogOut, Pause, Play, Repeat, Square } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { Segmented } from "./console/Segmented";
-import { StatusPill, type StatusTone } from "./console/StatusPill";
-import { SurfacePanel } from "./console/SurfacePanel";
+import { announce } from "@/shared/stores/announcerStore";
+import { Segmented } from "../../../shared/components/Segmented";
+import { StatusPill, type StatusTone } from "../../../shared/components/StatusPill";
+import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { TimeCode } from "./console/TimeCode";
 import { formatDurationUs } from "../lib/filter";
-import { SPEED_STEPS, type PlayState, type PlaybackStatus } from "../lib/types";
+import {
+  SPEED_STEPS,
+  nextRepeatMode,
+  type PlayState,
+  type PlaybackStatus,
+  type RepeatMode,
+} from "../lib/types";
 
 /** 拖动进度条时向后端发送 seek 的最小间隔（毫秒）。 */
 const SEEK_THROTTLE_MS = 60;
@@ -34,7 +40,7 @@ interface TransportDeckProps {
   onStop: () => void;
   onSeek: (posUs: number) => void;
   onSpeed: (milli: number) => void;
-  onLoop: (loop: boolean) => void;
+  onRepeat: (mode: RepeatMode) => void;
   onExit: () => void;
   /** 是否响应键盘快捷键（回放模式不可见时应关闭，避免空格键被隐藏面板吞掉） */
   hotkeys?: boolean;
@@ -55,13 +61,31 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   );
 }
 
+/** 重复模式的文案键。 */
+const REPEAT_LABEL: Record<RepeatMode, string> = {
+  off: "player.repeatOff",
+  loop: "player.repeatLoop",
+  playlist: "player.repeatPlaylist",
+};
+const REPEAT_HINT: Record<RepeatMode, string> = {
+  off: "player.repeatOffHint",
+  loop: "player.repeatLoopHint",
+  playlist: "player.repeatPlaylistHint",
+};
+const REPEAT_ICON: Record<RepeatMode, React.ReactNode> = {
+  off: <CircleStop className="size-3.5" aria-hidden />,
+  loop: <Repeat className="size-3.5" aria-hidden />,
+  playlist: <ListOrdered className="size-3.5" aria-hidden />,
+};
+const REPEAT_ORDER: RepeatMode[] = ["off", "loop", "playlist"];
+
 /** 倍速显示文案，如 `1x`、`0.5x`。 */
 function speedLabel(milli: number): string {
   return `${milli / 1000}x`;
 }
 
 /**
- * 传输台：节目名与状态、大号时间码、播放 / 停止 / 循环 / 倍速、可拖动的进度滑杆。
+ * 传输台：节目名与状态、大号时间码、播放 / 停止 / 重复模式 / 倍速、可拖动的进度滑杆。
  *
  * 拖动期间进度以本地值为准并节流地向后端 seek，松开后回到后端上报的位置。
  */
@@ -72,7 +96,7 @@ export function TransportDeck({
   onStop,
   onSeek,
   onSpeed,
-  onLoop,
+  onRepeat,
   onExit,
   hotkeys = true,
 }: TransportDeckProps) {
@@ -90,11 +114,11 @@ export function TransportDeck({
 
   const playing = status.state === "playing";
 
-  // 键盘快捷键：空格 播放 / 暂停，←/→ 前后跳 5 秒（Shift 为 1 秒），L 切换循环。
+  // 键盘快捷键：空格 播放 / 暂停，←/→ 前后跳 5 秒（Shift 为 1 秒），L 依次切换重复模式。
   // 用 ref 持有最新状态，监听器只在开关变化时重新注册。
-  const live = useRef({ status, playing, onPlay, onPause, onSeek, onLoop });
+  const live = useRef({ status, playing, onPlay, onPause, onSeek, onRepeat, t });
   useEffect(() => {
-    live.current = { status, playing, onPlay, onPause, onSeek, onLoop };
+    live.current = { status, playing, onPlay, onPause, onSeek, onRepeat, t };
   });
   useEffect(() => {
     if (!hotkeys) return;
@@ -113,7 +137,10 @@ export function TransportDeck({
         cur.onSeek(Math.min(cur.status.durationUs, Math.max(0, cur.status.posUs + delta)));
       } else if (e.key === "l" || e.key === "L") {
         e.preventDefault();
-        cur.onLoop(!cur.status.looping);
+        // 快捷键切换时焦点没有移动，需主动向读屏播报新模式
+        const next = nextRepeatMode(cur.status.repeat);
+        cur.onRepeat(next);
+        announce(cur.t("player.repeatAnnounce", { mode: cur.t(REPEAT_LABEL[next]) }));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -195,15 +222,18 @@ export function TransportDeck({
             <Square />
           </Button>
 
-          <label className="ml-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Repeat className="size-4" aria-hidden />
-            <Switch
-              checked={status.looping}
-              onCheckedChange={onLoop}
-              aria-label={t("player.loop")}
-            />
-            {t("player.loop")}
-          </label>
+          <Segmented
+            ariaLabel={t("player.repeat")}
+            value={status.repeat}
+            options={REPEAT_ORDER.map((m) => ({
+              value: m,
+              label: t(REPEAT_LABEL[m]),
+              icon: REPEAT_ICON[m],
+              title: t(REPEAT_HINT[m]),
+            }))}
+            onChange={onRepeat}
+            className="ml-2"
+          />
 
           <Segmented
             ariaLabel={t("player.speed")}

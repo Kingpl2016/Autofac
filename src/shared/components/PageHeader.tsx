@@ -25,7 +25,10 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
       )}
     >
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        {/* tabIndex=-1：路由切换后可被程序聚焦，读屏用户据此知道页面已更换 */}
+        <h1 tabIndex={-1} className="text-xl font-semibold tracking-tight outline-none">
+          {title}
+        </h1>
         {subtitle && (
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         )}

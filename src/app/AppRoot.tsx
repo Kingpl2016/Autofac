@@ -11,8 +11,10 @@ import {
   applyAccent,
   applyLanguageAttr,
 } from "@/shared/stores/prefsStore";
+import { LiveAnnouncer } from "@/shared/components/LiveAnnouncer";
 import { useEngineListeners } from "@/shared/hooks/useEngineListeners";
 import { useSystemLog } from "@/shared/hooks/useSystemLog";
+import { useAppModeListeners } from "@/features/app-mode";
 import {
   usePlayerListeners,
   useRecordingHotkeys,
@@ -36,6 +38,7 @@ export function AppRoot() {
   useEngineListeners();
   useRecordingListeners();
   usePlayerListeners();
+  useAppModeListeners();
   useRecordingHotkeys();
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export function AppRoot() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster position="bottom-right" theme={theme} richColors />
+      <LiveAnnouncer />
     </QueryClientProvider>
   );
 }

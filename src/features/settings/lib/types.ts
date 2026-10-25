@@ -65,6 +65,12 @@ export interface UpdateSettings {
   channel: UpdateChannel;
 }
 
+/** 播放器模式设置（对应后端 `settings::PlayerSettings`）。 */
+export interface PlayerSettings {
+  /** 启动时直接进入播放器模式（无人值守的节目播放机用）；默认关闭 */
+  startInPlayerMode: boolean;
+}
+
 export interface AppSettings {
   /** 配置结构版本（后端用于一次性迁移，前端原样回传即可） */
   schemaVersion: number;
@@ -73,6 +79,7 @@ export interface AppSettings {
   display: DisplaySettings;
   merge: MergeSettings;
   recording: RecordingSettings;
+  player: PlayerSettings;
   update: UpdateSettings;
 }
 

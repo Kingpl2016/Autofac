@@ -8,14 +8,14 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use artrec_core::ArtRecReader;
 use player::{PlayState, Player, PlayerConfig, DEFAULT_KEEPALIVE_US};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::util::lock;
@@ -35,6 +35,67 @@ pub const ERR_RECORDING_ACTIVE: &str = "recording_active";
 pub const ERR_NO_PLAYER: &str = "no_player";
 /// 错误码：Direct 目标的 IP 非法。
 pub const ERR_BAD_TARGET: &str = "bad_target";
+
+/// 重复模式：节目自然播完后的行为。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepeatMode {
+    /// 播完即停（停在结尾）。
+    #[default]
+    Off,
+    /// 单个节目循环播放。
+    Loop,
+    /// 连播：播完后自动打开并播放节目库里的下一个，到列表末尾停止。
+    Playlist,
+}
+
+impl RepeatMode {
+    /// 该模式下回放器自身是否需要循环回绕。
+    ///
+    /// # Returns
+    ///
+    /// 仅 [`RepeatMode::Loop`] 为 `true`。
+    #[must_use]
+    pub fn loops(self) -> bool {
+        self == Self::Loop
+    }
+}
+
+/// 连播要打开的下一个节目。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NextProgram {
+    /// 节目路径（须已通过录制目录校验）。
+    pub path: PathBuf,
+    /// 显示名。
+    pub name: String,
+}
+
+/// 查询"当前节目之后的下一个可播放节目"：参数为当前节目路径，没有下一个时返回 `None`。
+pub type NextProgramFn = Arc<dyn Fn(&Path) -> Option<NextProgram> + Send + Sync>;
+
+/// 在节目库里查找 `current` 之后的下一个可播放节目。
+///
+/// 顺序与节目库列表一致（修改时间从新到旧），因此"下一个"是列表里紧随其后的那一项；
+/// 文件头无法解析的条目会被跳过。
+///
+/// # Arguments
+///
+/// * `dir` - 录制目录。
+/// * `current` - 当前节目路径；只比较文件名，因为节目都位于录制目录的直接子级。
+///
+/// # Returns
+///
+/// 下一个有效节目；`current` 不在库里或已是最后一个有效节目时返回 `None`。
+#[must_use]
+pub fn next_in_library(dir: &Path, current: &Path) -> Option<NextProgram> {
+    let name = current.file_name()?;
+    let list = recorder::list_library(dir);
+    let pos = list.iter().position(|e| std::ffi::OsStr::new(&e.file_name) == name)?;
+    list[pos + 1..].iter().find(|e| e.valid).map(|e| NextProgram {
+        path: PathBuf::from(&e.path),
+        name: e.name.clone(),
+    })
+}
 
 /// 回放状态（面向前端）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -77,8 +138,8 @@ pub struct PlaybackStatus {
     pub duration_us: u64,
     /// 倍速（千分之一）。
     pub speed_milli: u32,
-    /// 是否循环。
-    pub looping: bool,
+    /// 重复模式。
+    pub repeat: RepeatMode,
     /// 帧总数。
     pub frames: u64,
     /// 已跳过的损坏帧数。
@@ -137,7 +198,7 @@ enum Cmd {
     Stop,
     Seek(u64),
     Speed(u32),
-    Loop(bool),
+    Repeat(RepeatMode),
     Target(DispatchTarget),
     Close,
 }
@@ -148,6 +209,8 @@ struct Inner {
     cmd: Mutex<Option<mpsc::UnboundedSender<Cmd>>>,
     status: Arc<Mutex<PlaybackStatus>>,
     viewed: Arc<Mutex<Vec<u16>>>,
+    /// 用户选择的重复模式：跨节目保留，新打开的节目沿用它。
+    repeat: Mutex<RepeatMode>,
 }
 
 /// 回放控制器（可克隆，内部共享）。
@@ -178,6 +241,8 @@ pub struct OpenParams {
     pub name: String,
     /// 输出目标。
     pub target: DispatchTarget,
+    /// 连播时用于查找下一个节目；为 `None` 时连播模式播完即视为列表结束。
+    pub next: Option<NextProgramFn>,
 }
 /// 回放任务上下文。
 struct TaskCtx {
@@ -190,6 +255,11 @@ struct TaskCtx {
     target: DispatchTarget,
     generation: Arc<AtomicU64>,
     my_generation: u64,
+    /// 本节目当前生效的重复模式。
+    repeat: RepeatMode,
+    next: Option<NextProgramFn>,
+    /// 回到控制器（弱引用，避免任务与控制器互相拖住）：连播时据此打开下一个节目。
+    controller: Weak<Inner>,
 }
 
 impl PlaybackController {
@@ -206,6 +276,7 @@ impl PlaybackController {
                 cmd: Mutex::new(None),
                 status: Arc::new(Mutex::new(PlaybackStatus::default())),
                 viewed: Arc::new(Mutex::new(Vec::new())),
+                repeat: Mutex::new(RepeatMode::Off),
             }),
         }
     }
@@ -269,18 +340,25 @@ impl PlaybackController {
             path,
             name,
             target,
+            next,
         } = params;
         if mode.is_recording() {
             return Err(ERR_RECORDING_ACTIVE.to_string());
         }
         let target = normalize_target(target)?;
         let reader = ArtRecReader::open_file(&path).map_err(|e| e.to_string())?;
-        let looping = reader.header().loop_play();
+        // 用户显式选择的模式优先；仍为"关闭"时，文件头自带的循环标志代表作者意图
+        let stored = *lock(&self.inner.repeat);
+        let repeat = if stored == RepeatMode::Off && reader.header().loop_play() {
+            RepeatMode::Loop
+        } else {
+            stored
+        };
         let player = Player::new(
             reader,
             PlayerConfig {
                 keepalive_us: DEFAULT_KEEPALIVE_US,
-                looping,
+                looping: repeat.loops(),
                 ..PlayerConfig::default()
             },
         );
@@ -300,6 +378,9 @@ impl PlaybackController {
             target,
             generation: self.inner.generation.clone(),
             my_generation,
+            repeat,
+            next,
+            controller: Arc::downgrade(&self.inner),
         };
         ctx.mode.set_playback(true);
         let base = PlaybackStatus {
@@ -369,17 +450,27 @@ impl PlaybackController {
         self.send(Cmd::Speed(milli))
     }
 
-    /// 设置循环。
+    /// 设置重复模式。
+    ///
+    /// 模式会被记住并沿用到之后打开的节目；已有节目时立即生效。没有节目时只记录，不报错。
     ///
     /// # Arguments
     ///
-    /// * `looping` - `true` 表示播放到结尾后回绕循环。
+    /// * `mode` - 新的重复模式。
+    pub fn set_repeat(&self, mode: RepeatMode) {
+        *lock(&self.inner.repeat) = mode;
+        // 没有节目时 `send` 返回 ERR_NO_PLAYER：此时只需记录，下次打开节目时生效
+        let _ = self.send(Cmd::Repeat(mode));
+    }
+
+    /// 当前记住的重复模式。
     ///
-    /// # Errors
+    /// # Returns
     ///
-    /// 没有已打开的节目时返回 [`ERR_NO_PLAYER`]。
-    pub fn set_loop(&self, looping: bool) -> Result<(), String> {
-        self.send(Cmd::Loop(looping))
+    /// 用户最近一次通过 [`PlaybackController::set_repeat`] 设置的模式；从未设置时为 [`RepeatMode::Off`]。
+    #[must_use]
+    pub fn repeat(&self) -> RepeatMode {
+        *lock(&self.inner.repeat)
     }
 
     /// 切换输出目标。
@@ -396,7 +487,10 @@ impl PlaybackController {
         self.send(Cmd::Target(target))
     }
 
-    /// 关闭节目并退出回放模式（恢复实时接收）。没有节目时什么也不做。
+    /// 关闭节目（卸载输出）。没有节目时什么也不做。
+    ///
+    /// 只卸载节目、清除"已打开节目"标志；**不会**退出播放器模式，
+    /// 退出播放器模式、恢复实时接收由应用模式切换负责。
     pub fn close(&self) {
         if let Some(tx) = lock(&self.inner.cmd).take() {
             let _ = tx.send(Cmd::Close);
@@ -405,6 +499,19 @@ impl PlaybackController {
 }
 
 impl TaskCtx {
+    /// 本任务是否仍是当前节目的任务（重新打开节目后旧任务不再拥有共享状态）。
+    fn is_current(&self) -> bool {
+        self.generation.load(Ordering::SeqCst) == self.my_generation
+    }
+
+    /// 发布状态：仍是当前任务时才写共享状态并推送，避免旧任务的陈旧状态覆盖新节目。
+    fn publish(&self, status: &PlaybackStatus) {
+        if self.is_current() {
+            *lock(&self.status) = status.clone();
+            self.emit_state(status);
+        }
+    }
+
     fn emit_state(&self, status: &PlaybackStatus) {
         (self.emit)(
             "player:state",
@@ -429,7 +536,7 @@ fn build_status(
         pos_us: s.pos_us,
         duration_us: s.duration_us,
         speed_milli: s.speed_milli,
-        looping: s.looping,
+        repeat: ctx.repeat,
         frames: s.frames as u64,
         corrupt_frames: s.corrupt_frames,
         universes: player.universe_ids(),
@@ -448,6 +555,57 @@ async fn output(ctx: &TaskCtx, emissions: Vec<player::Emission>) {
                 .plan(u.universe, &u.data, now_ms, &ctx.target, false);
             ctx.dispatcher.send_jobs(jobs).await;
         }
+    }
+}
+
+/// 节目自然播完后的处理：连播模式下打开并播放下一个，其余模式什么也不做。
+///
+/// 结果通过 `player:playlist` 事件通知前端（`advanced` / `listFinished` / `advanceFailed`）。
+async fn on_program_end(ctx: &TaskCtx, current: &str) {
+    if ctx.repeat != RepeatMode::Playlist || !ctx.is_current() {
+        return;
+    }
+    let emit = |payload: serde_json::Value| (ctx.emit)("player:playlist", payload);
+    let Some(next_fn) = ctx.next.clone() else {
+        emit(serde_json::json!({ "kind": "listFinished" }));
+        return;
+    };
+    let cur = PathBuf::from(current);
+    // 列目录与读 sidecar 是阻塞 I/O，放到阻塞线程
+    let found = tokio::task::spawn_blocking(move || next_fn(&cur))
+        .await
+        .ok()
+        .flatten();
+    let Some(next) = found else {
+        emit(serde_json::json!({ "kind": "listFinished" }));
+        return;
+    };
+    let Some(inner) = ctx.controller.upgrade() else {
+        return;
+    };
+    let controller = PlaybackController { inner };
+    let name = next.name.clone();
+    let result = controller.open(OpenParams {
+        emit: ctx.emit.clone(),
+        dispatcher: ctx.dispatcher.clone(),
+        mode: ctx.mode.clone(),
+        started_at: ctx.started_at,
+        path: next.path,
+        name: next.name,
+        target: ctx.target.clone(),
+        next: ctx.next.clone(),
+    });
+    match result {
+        Ok(_) => {
+            let _ = controller.play();
+            emit(serde_json::json!({ "kind": "advanced", "name": name }));
+        }
+        // 下一个文件缺失或损坏：保持当前节目停在结尾，由前端提示
+        Err(reason) => emit(serde_json::json!({
+            "kind": "advanceFailed",
+            "name": name,
+            "reason": reason,
+        })),
     }
 }
 
@@ -487,30 +645,40 @@ async fn run_player(
                         output(&ctx, ems).await;
                     }
                     Cmd::Speed(m) => player.set_speed(now, m),
-                    Cmd::Loop(l) => player.set_loop(l),
+                    Cmd::Repeat(m) => {
+                        ctx.repeat = m;
+                        player.set_loop(m.loops());
+                    }
                     Cmd::Target(t) => ctx.target = t,
                     Cmd::Close => break,
                 }
                 // 命令生效后立即输出到期内容并刷新状态，界面不必等下一个节拍
                 let ems = player.poll(wall());
                 output(&ctx, ems).await;
+                if player.take_ended() {
+                    on_program_end(&ctx, &base.path).await;
+                }
                 let st = build_status(&base, &player, wall(), &ctx);
-                *lock(&ctx.status) = st.clone();
-                ctx.emit_state(&st);
+                ctx.publish(&st);
                 last_state = Some(st);
                 last_state_at = Instant::now();
             }
             () = tokio::time::sleep(sleep_for) => {
                 let ems = player.poll(wall());
                 output(&ctx, ems).await;
+                if player.take_ended() {
+                    on_program_end(&ctx, &base.path).await;
+                }
             }
             _ = ui.tick() => {
                 let st = build_status(&base, &player, wall(), &ctx);
-                *lock(&ctx.status) = st.clone();
                 let changed = last_state.as_ref() != Some(&st);
-                if changed || last_state_at.elapsed() >= IDLE_STATE_EVERY {
-                    ctx.emit_state(&st);
-                    last_state_at = Instant::now();
+                if ctx.is_current() {
+                    *lock(&ctx.status) = st.clone();
+                    if changed || last_state_at.elapsed() >= IDLE_STATE_EVERY {
+                        ctx.emit_state(&st);
+                        last_state_at = Instant::now();
+                    }
                 }
                 last_state = Some(st);
 
@@ -561,8 +729,9 @@ mod tests {
     use tokio::net::UdpSocket;
 
     use super::{
-        normalize_target, OpenParams, PlaybackController, PlaybackState, PlaybackStatus,
-        ERR_BAD_TARGET, ERR_NO_PLAYER, ERR_RECORDING_ACTIVE,
+        next_in_library, normalize_target, NextProgram, OpenParams, PlaybackController,
+        PlaybackState, PlaybackStatus, RepeatMode, ERR_BAD_TARGET, ERR_NO_PLAYER,
+        ERR_RECORDING_ACTIVE,
     };
     use crate::dispatch::{DispatchTarget, Dispatcher};
     use crate::mode::RuntimeMode;
@@ -572,6 +741,11 @@ mod tests {
 
     /// 写一个 2 路 Universe（5、6）的节目：0ms / 60ms / 120ms 三帧，总长 200ms。
     fn make_file(dir: &Path) -> PathBuf {
+        make_file_named(dir, "p.artrec")
+    }
+
+    /// 与 [`make_file`] 相同，但可指定文件名（连播测试需要多个节目）。
+    fn make_file_named(dir: &Path, file_name: &str) -> PathBuf {
         let unis = vec![
             UniDesc::from_universe(5, 512).unwrap(),
             UniDesc::from_universe(6, 512).unwrap(),
@@ -583,7 +757,7 @@ mod tests {
             cur[u][0] = v;
             w.add_full_frame(t, &cur).unwrap();
         }
-        let p = dir.join("p.artrec");
+        let p = dir.join(file_name);
         std::fs::write(&p, w.finish(200_000).unwrap().into_inner()).unwrap();
         p
     }
@@ -659,7 +833,25 @@ mod tests {
             path,
             name: "demo".into(),
             target,
+            next: None,
         }
+    }
+
+    /// 等待某个 `player:playlist` 事件（按 `kind`），返回其载荷。
+    async fn wait_playlist_event(log: &EventLog, kind: &str) -> serde_json::Value {
+        for _ in 0..200 {
+            let hit = log
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(n, v)| n == "player:playlist" && v["kind"] == kind)
+                .map(|(_, v)| v.clone());
+            if let Some(v) = hit {
+                return v;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("等待 player:playlist/{kind} 超时: {:?}", log.lock().unwrap());
     }
 
     async fn wait_status(
@@ -730,6 +922,132 @@ mod tests {
         assert_eq!(c.seek(1).unwrap_err(), ERR_NO_PLAYER);
         assert!(!c.is_loaded());
         c.close(); // 无节目时关闭是空操作
+    }
+
+    #[test]
+    fn repeat_mode_is_remembered_without_a_player() {
+        let c = PlaybackController::new();
+        assert_eq!(c.repeat(), RepeatMode::Off);
+        c.set_repeat(RepeatMode::Playlist); // 没有节目时不报错，只记录
+        assert_eq!(c.repeat(), RepeatMode::Playlist);
+    }
+
+    #[tokio::test]
+    async fn remembered_repeat_mode_applies_to_the_next_opened_program() {
+        let tmp = Tmp::new();
+        let mode = Arc::new(RuntimeMode::new());
+        let (emit, _) = event_log();
+        let c = PlaybackController::new();
+        c.set_repeat(RepeatMode::Loop);
+        let st = c
+            .open(params(emit, dispatcher(vec![]).await, &mode, make_file(&tmp.0), DispatchTarget::Forwarding))
+            .unwrap();
+        assert_eq!(st.repeat, RepeatMode::Loop);
+        // 已打开时切换立即反映到状态
+        c.set_repeat(RepeatMode::Off);
+        let s = wait_status(&c, |s| s.repeat == RepeatMode::Off).await;
+        assert!(s.loaded);
+        c.close();
+    }
+
+    /// 连播：播完第一个后自动打开并播放第二个；第二个播完（列表末尾）后停止并报告列表结束。
+    #[tokio::test]
+    async fn playlist_advances_then_stops_at_end_of_list() {
+        let tmp = Tmp::new();
+        let first = make_file_named(&tmp.0, "a.artrec");
+        let second = make_file_named(&tmp.0, "b.artrec");
+        let mode = Arc::new(RuntimeMode::new());
+        let (emit, log) = event_log();
+        let c = PlaybackController::new();
+        c.set_repeat(RepeatMode::Playlist);
+
+        let second_path = second.clone();
+        let first_name = first.file_name().unwrap().to_owned();
+        let mut p = params(emit, dispatcher(vec![]).await, &mode, first, DispatchTarget::Forwarding);
+        p.next = Some(Arc::new(move |cur: &Path| {
+            (cur.file_name() == Some(first_name.as_os_str())).then(|| NextProgram {
+                path: second_path.clone(),
+                name: "second".into(),
+            })
+        }));
+        c.open(p).unwrap();
+        c.play().unwrap();
+
+        let advanced = wait_playlist_event(&log, "advanced").await;
+        assert_eq!(advanced["name"], "second");
+        let s = wait_status(&c, |s| s.path == second.to_string_lossy() && s.state == PlaybackState::Playing).await;
+        assert_eq!(s.repeat, RepeatMode::Playlist, "连播模式应沿用到下一个节目");
+        assert!(mode.is_playback(), "切换节目过程中始终处于回放模式");
+
+        wait_playlist_event(&log, "listFinished").await;
+        let end = wait_status(&c, |s| s.state == PlaybackState::Stopped && s.pos_us == s.duration_us).await;
+        assert!(end.loaded && end.path == second.to_string_lossy(), "列表末尾应停在最后一个节目的结尾");
+        c.close();
+    }
+
+    #[tokio::test]
+    async fn playlist_reports_failure_and_keeps_current_program_when_next_is_broken() {
+        let tmp = Tmp::new();
+        let a = make_file_named(&tmp.0, "a.artrec");
+        let bad = tmp.0.join("bad.artrec");
+        std::fs::write(&bad, [b'X'; 100]).unwrap();
+        let mode = Arc::new(RuntimeMode::new());
+        let (emit, log) = event_log();
+        let c = PlaybackController::new();
+        c.set_repeat(RepeatMode::Playlist);
+
+        let mut p = params(emit, dispatcher(vec![]).await, &mode, a.clone(), DispatchTarget::Forwarding);
+        p.next = Some(Arc::new(move |_| {
+            Some(NextProgram { path: bad.clone(), name: "broken".into() })
+        }));
+        c.open(p).unwrap();
+        c.play().unwrap();
+
+        let failed = wait_playlist_event(&log, "advanceFailed").await;
+        assert_eq!(failed["name"], "broken");
+        let s = wait_status(&c, |s| s.state == PlaybackState::Stopped && s.pos_us == s.duration_us).await;
+        assert_eq!(s.path, a.to_string_lossy(), "下一个损坏时应停在当前节目的结尾");
+        assert!(mode.is_playback());
+        c.close();
+    }
+
+    #[tokio::test]
+    async fn off_mode_stops_at_end_without_playlist_events() {
+        let tmp = Tmp::new();
+        let mode = Arc::new(RuntimeMode::new());
+        let (emit, log) = event_log();
+        let c = PlaybackController::new();
+        let mut p = params(emit, dispatcher(vec![]).await, &mode, make_file(&tmp.0), DispatchTarget::Forwarding);
+        p.next = Some(Arc::new(|_| panic!("关闭模式不应查找下一个节目")));
+        c.open(p).unwrap();
+        c.play().unwrap();
+        wait_status(&c, |s| s.state == PlaybackState::Stopped && s.pos_us == s.duration_us).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(log.lock().unwrap().iter().all(|(n, _)| n != "player:playlist"));
+        c.close();
+    }
+
+    #[test]
+    fn next_in_library_follows_list_order_and_skips_invalid() {
+        let tmp = Tmp::new();
+        let newest = make_file_named(&tmp.0, "newest.artrec");
+        let middle = make_file_named(&tmp.0, "middle.artrec");
+        let broken = tmp.0.join("broken.artrec");
+        std::fs::write(&broken, [b'X'; 100]).unwrap();
+        let oldest = make_file_named(&tmp.0, "oldest.artrec");
+        // 显式设置修改时间，避免同一毫秒内创建导致顺序不确定：新 → 旧
+        let base = std::time::SystemTime::now();
+        for (f, secs) in [(&newest, 0u64), (&middle, 10), (&broken, 20), (&oldest, 30)] {
+            let file = std::fs::File::options().write(true).open(f).unwrap();
+            file.set_modified(base - Duration::from_secs(secs)).unwrap();
+        }
+
+        let n1 = next_in_library(&tmp.0, &newest).unwrap();
+        assert!(n1.path.ends_with("middle.artrec"));
+        let n2 = next_in_library(&tmp.0, &middle).unwrap();
+        assert!(n2.path.ends_with("oldest.artrec"), "应跳过损坏文件: {n2:?}");
+        assert!(next_in_library(&tmp.0, &oldest).is_none(), "最后一个之后没有下一个");
+        assert!(next_in_library(&tmp.0, &tmp.0.join("nope.artrec")).is_none());
     }
 
     #[tokio::test]

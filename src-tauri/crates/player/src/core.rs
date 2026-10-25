@@ -122,6 +122,8 @@ pub struct Player<R: Read + Seek> {
     buffers: Option<Vec<Vec<u8>>>,
     last_emit_wall: u64,
     corrupt: u64,
+    /// 非循环播放刚到达结尾且尚未被 [`Player::take_ended`] 取走。
+    ended: bool,
 }
 
 impl<R: Read + Seek> Player<R> {
@@ -149,6 +151,7 @@ impl<R: Read + Seek> Player<R> {
             buffers: None,
             last_emit_wall: 0,
             corrupt: 0,
+            ended: false,
         }
     }
 
@@ -276,6 +279,7 @@ impl<R: Read + Seek> Player<R> {
         self.state = PlayState::Playing;
         self.anchor = Some((now, self.pos_us));
         self.last_emit_wall = now;
+        self.ended = false;
     }
 
     /// 暂停（位置冻结，保活继续）。
@@ -298,6 +302,19 @@ impl<R: Read + Seek> Player<R> {
         self.anchor = None;
         self.next_index = 0;
         self.buffers = None;
+        self.ended = false;
+    }
+
+    /// 取走"非循环播放刚到达结尾"的一次性信号。
+    ///
+    /// 宿主层在每次 [`Player::poll`] 之后调用，用于实现"连播"等结尾行为。
+    ///
+    /// # Returns
+    ///
+    /// 自上次调用（或 `play` / `stop` / `seek`）以来播放自然到达结尾且未循环时为 `true`，
+    /// 并清除该信号；其余情况为 `false`。循环播放永远不会产生该信号。
+    pub fn take_ended(&mut self) -> bool {
+        std::mem::take(&mut self.ended)
     }
 
     /// 设置循环。
@@ -336,6 +353,7 @@ impl<R: Read + Seek> Player<R> {
     /// 该位置应有的完整输出状态（全部 Universe）；位置早于首帧时没有输出。
     pub fn seek(&mut self, now: u64, pos_us: u64) -> Vec<Emission> {
         let pos = pos_us.min(self.duration_us());
+        self.ended = false;
         self.pos_us = pos;
         if self.state == PlayState::Playing {
             self.anchor = Some((now, pos));
@@ -469,6 +487,7 @@ impl<R: Read + Seek> Player<R> {
                     self.state = PlayState::Stopped;
                     self.pos_us = dur;
                     self.anchor = None;
+                    self.ended = true;
                 }
             }
         }
@@ -654,6 +673,48 @@ mod tests {
         assert!(e.is_empty());
         assert_eq!(p.state(), PlayState::Stopped);
         assert!(p.next_deadline(2_000_000).is_none());
+    }
+
+    #[test]
+    fn reaching_the_end_signals_ended_exactly_once() {
+        let mut p = sample();
+        p.play(0);
+        p.poll(0);
+        assert!(!p.take_ended(), "未到结尾不应有信号");
+        p.poll(1_000_000);
+        assert_eq!(p.state(), PlayState::Stopped);
+        assert!(p.take_ended(), "自然播完应给出信号");
+        assert!(!p.take_ended(), "信号只取一次");
+    }
+
+    #[test]
+    fn looping_never_signals_ended() {
+        let mut p = sample();
+        p.set_loop(true);
+        p.play(0);
+        p.poll(0);
+        p.poll(1_000_000);
+        p.poll(5_500_000);
+        assert!(!p.take_ended());
+    }
+
+    #[test]
+    fn seek_play_and_stop_clear_a_pending_ended_signal() {
+        let mut p = sample();
+        p.play(0);
+        p.poll(1_000_000);
+        p.seek(1_000_001, 0);
+        assert!(!p.take_ended(), "seek 应清除未取走的结尾信号");
+
+        p.play(2_000_000);
+        p.poll(3_000_000);
+        p.stop();
+        assert!(!p.take_ended(), "stop 应清除未取走的结尾信号");
+
+        p.play(4_000_000);
+        p.poll(5_000_000);
+        p.play(5_000_001); // 已停止状态下再次 play：从头开始并清除信号
+        assert!(!p.take_ended());
     }
 
     #[test]

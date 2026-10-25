@@ -7,8 +7,8 @@ interface SurfacePanelProps {
   title?: ReactNode;
   /** 标题右侧操作区 */
   actions?: ReactNode;
-  /** 状态着色边框：录制红 / 播放绿 */
-  tone?: "default" | "recording" | "playing";
+  /** 状态着色边框：录制红 / 播放绿 / 播放器模式强调色 */
+  tone?: "default" | "recording" | "playing" | "player";
   className?: string;
   children: ReactNode;
 }
@@ -30,6 +30,7 @@ export function SurfacePanel({
         tone === "default" && "panel-edge",
         tone === "recording" && "border-recording/50 glow-recording",
         tone === "playing" && "border-success/40 glow-success",
+        tone === "player" && "border-primary/40 glow-primary",
         className,
       )}
     >

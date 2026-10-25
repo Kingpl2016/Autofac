@@ -14,8 +14,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use artnet_net::DmxFrame;
 use recorder::{
-    plan_universes, EncoderConfig, FileRecorder, RecordFilter, RecoveryOutcome, SessionConfig,
-    SessionStats, StartParams, UniversePlan,
+    can_start, plan_universes, DiskGuard, DiskLevel, EncoderConfig, FileRecorder, RecordFilter,
+    RecoveryOutcome, SessionConfig, SessionStats, StartParams, UniversePlan,
 };
 use serde::{Deserialize, Serialize};
 use settings::{AppSettings, RecordingCompression};
@@ -35,6 +35,8 @@ const STATS_EVERY: Duration = Duration::from_millis(250);
 const CHANNEL_CAP: usize = 16_384;
 /// 每轮最多连续排空的帧数，避免长时间不 tick。
 const DRAIN_BATCH: usize = 8192;
+/// 录制期间检查磁盘剩余空间的间隔。
+const DISK_CHECK_EVERY: Duration = Duration::from_secs(10);
 
 /// 错误码：已在录制。
 pub const ERR_ALREADY_RECORDING: &str = "already_recording";
@@ -42,6 +44,8 @@ pub const ERR_ALREADY_RECORDING: &str = "already_recording";
 pub const ERR_NO_UNIVERSES: &str = "no_universes";
 /// 错误码：当前没有进行中的录制。
 pub const ERR_NOT_RECORDING: &str = "not_recording";
+/// 错误码：录制目录所在卷的剩余空间不足以开始录制。
+pub const ERR_DISK_LOW: &str = "disk_low";
 
 /// 启动录制的参数（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, Deserialize)]
@@ -94,6 +98,10 @@ pub struct RecordingStatus {
     pub dropped: u64,
     /// 本次录制的 Universe 集合。
     pub universes: Vec<u16>,
+    /// 录制目录所在卷的剩余字节数；无法查询时为 `None`。
+    pub disk_free_bytes: Option<u64>,
+    /// 最近一次检查得到的磁盘空间等级。
+    pub disk_level: DiskLevel,
 }
 
 /// 一个已完成的录制文件。
@@ -122,6 +130,85 @@ pub struct RecordingResult {
     pub error: Option<String>,
     /// 录制期间丢弃的帧数。
     pub dropped: u64,
+    /// 非用户主动停止时的原因；用户正常停止时为 `None`。
+    pub stopped_by: Option<StopReason>,
+}
+
+/// 录制被自动停止的原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StopReason {
+    /// 磁盘剩余空间低于临界值，已自动收尾并停止。
+    Disk,
+}
+
+/// 录制目录所在卷的空间信息（`recording_disk_info` 返回值）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskInfo {
+    /// 被查询的目录。
+    pub path: String,
+    /// 剩余字节数；无法查询（目录及其上级都不存在、平台不支持等）时为 `None`。
+    pub free_bytes: Option<u64>,
+    /// 空间等级；无法查询时为 [`DiskLevel::Ok`]。
+    pub level: DiskLevel,
+    /// 是否允许开始录制；无法查询时为 `true`（不因查询失败而阻止录制）。
+    pub can_start: bool,
+}
+
+/// 对一个候选录制目录的检查结果（`recording_check_dir` 返回值）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirCheck {
+    /// 被检查的目录。
+    pub path: String,
+    /// 路径是否已存在（文件或目录均算）。
+    pub exists: bool,
+    /// 路径是否是目录；已存在却不是目录（例如是一个文件）时为 `false`。
+    pub is_dir: bool,
+    /// 能否在该目录写入：目录尚未创建时检查其最近一个已存在的上级目录。
+    pub writable: bool,
+    /// 所在卷的剩余空间信息。
+    pub disk: DiskInfo,
+}
+
+/// 探测 `dir` 是否可写：创建并立即删除一个唯一命名的临时文件。
+///
+/// # Arguments
+///
+/// * `dir` - 一个已存在的目录。
+///
+/// # Returns
+///
+/// 能创建临时文件时为 `true`。
+fn probe_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".artnet-studio-write-test-{}", std::process::id()));
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// 剩余空间查询函数：输入目录，返回其所在卷的可用字节数；无法查询时返回 `None`。
+pub type FreeSpaceFn = Arc<dyn Fn(&Path) -> Option<u64> + Send + Sync>;
+
+/// 真实的剩余空间查询：取 `path` 最近一个已存在的上级目录所在卷的可用字节数。
+///
+/// # Arguments
+///
+/// * `path` - 录制目录；目录尚未创建时向上寻找已存在的祖先。
+///
+/// # Returns
+///
+/// 可用字节数；路径上没有已存在的目录或系统调用失败时为 `None`。
+#[must_use]
+pub fn real_free_space(path: &Path) -> Option<u64> {
+    path.ancestors()
+        .find(|p| p.exists())
+        .and_then(|p| fs4::available_space(p).ok())
 }
 
 
@@ -200,6 +287,9 @@ struct ThreadCtx {
     dropped: Arc<AtomicU64>,
     status: Arc<Mutex<RecordingStatus>>,
     mode: Arc<RuntimeMode>,
+    free_space: FreeSpaceFn,
+    /// 磁盘空间检查间隔。
+    disk_every: Duration,
 }
 
 /// 进行中的录制句柄。
@@ -215,6 +305,9 @@ struct Inner {
     active: Mutex<Option<Active>>,
     status: Arc<Mutex<RecordingStatus>>,
     recovered: Mutex<Vec<RecoveryOutcome>>,
+    free_space: FreeSpaceFn,
+    /// 磁盘空间检查间隔（毫秒）；生产环境恒为 [`DISK_CHECK_EVERY`]，测试可缩短。
+    disk_every_ms: AtomicU64,
 }
 
 impl FrameSink for Inner {
@@ -256,6 +349,21 @@ impl RecordingController {
     /// 未在录制、丢帧计数为 0 且无恢复结果的 [`RecordingController`]。
     #[must_use]
     pub fn new(mode: Arc<RuntimeMode>) -> Self {
+        Self::with_free_space(mode, Arc::new(real_free_space))
+    }
+
+    /// 与 [`RecordingController::new`] 相同，但可注入剩余空间查询（测试用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - 录制 / 回放互斥仲裁，与接收循环及回放控制器共享。
+    /// * `free_space` - 剩余空间查询函数。
+    ///
+    /// # Returns
+    ///
+    /// 使用给定查询函数的空闲 [`RecordingController`]。
+    #[must_use]
+    pub fn with_free_space(mode: Arc<RuntimeMode>, free_space: FreeSpaceFn) -> Self {
         Self {
             inner: Arc::new(Inner {
                 mode,
@@ -264,7 +372,70 @@ impl RecordingController {
                 active: Mutex::new(None),
                 status: Arc::new(Mutex::new(RecordingStatus::default())),
                 recovered: Mutex::new(Vec::new()),
+                free_space,
+                disk_every_ms: AtomicU64::new(DISK_CHECK_EVERY.as_millis() as u64),
             }),
+        }
+    }
+
+    /// 检查一个候选录制目录：是否存在、是不是目录、能否写入，以及所在卷的剩余空间。
+    ///
+    /// 只做只读探测（写入测试用的临时文件会被立即删除），**不会**创建目录。
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - 候选录制目录（可以尚未创建）。
+    ///
+    /// # Returns
+    ///
+    /// 汇总的 [`DirCheck`]。目录尚未创建时，`writable` 反映其最近一个已存在上级目录的可写性。
+    #[must_use]
+    pub fn check_dir(&self, dir: &Path) -> DirCheck {
+        let exists = dir.exists();
+        let is_dir = dir.is_dir();
+        // 以最近一个已存在的路径为准：它必须是目录且可写；若它是文件（路径经过文件），则不可写
+        let writable = match dir.ancestors().find(|p| p.exists()) {
+            Some(p) if p.is_dir() => probe_writable(p),
+            _ => false,
+        };
+        DirCheck {
+            path: dir.to_string_lossy().into_owned(),
+            exists,
+            is_dir,
+            writable,
+            disk: self.disk_info(dir),
+        }
+    }
+
+    /// 缩短磁盘空间检查间隔（测试用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `every` - 新的检查间隔，对此后开始的录制生效。
+    #[cfg(test)]
+    pub fn set_disk_check_interval(&self, every: Duration) {
+        self.inner
+            .disk_every_ms
+            .store(every.as_millis() as u64, Ordering::Relaxed);
+    }
+
+    /// 查询录制目录所在卷的空间信息。
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - 录制目录（可以尚未创建）。
+    ///
+    /// # Returns
+    ///
+    /// 剩余字节数、等级以及是否允许开始录制的 [`DiskInfo`]。
+    #[must_use]
+    pub fn disk_info(&self, dir: &Path) -> DiskInfo {
+        let free = (self.inner.free_space)(dir);
+        DiskInfo {
+            path: dir.to_string_lossy().into_owned(),
+            free_bytes: free,
+            level: free.map_or(DiskLevel::Ok, recorder::classify),
+            can_start: free.is_none_or(can_start),
         }
     }
 
@@ -353,6 +524,7 @@ impl RecordingController {
     ///
     /// - [`ERR_ALREADY_RECORDING`]：已在录制。
     /// - [`ERR_NO_UNIVERSES`]：没有可录制的 Universe。
+    /// - [`ERR_DISK_LOW`]：录制目录所在卷的剩余空间不足 500 MB。
     /// - 其它：目录不可写等落盘错误描述。
     pub fn start(
         &self,
@@ -378,8 +550,16 @@ impl RecordingController {
         split: Option<Duration>,
     ) -> Result<RecordingStartResult, String> {
         let mut active = lock(&self.inner.active);
-        if active.is_some() {
-            return Err(ERR_ALREADY_RECORDING.to_string());
+        if let Some(a) = active.as_ref() {
+            if !a.handle.is_finished() {
+                return Err(ERR_ALREADY_RECORDING.to_string());
+            }
+            // 线程已自行结束（磁盘告急 / 写盘错误）：结果早已通过 `recording:finished` 送达，
+            // 这里回收句柄，让用户无需先调用 `stop` 就能再次开始录制。
+            if let Some(done) = active.take() {
+                let _ = done.handle.join();
+            }
+            *lock(&self.inner.tap) = None;
         }
 
         let plan = plan_universes(candidate_universes(snapshot, &args.filter, &args.universes));
@@ -424,6 +604,11 @@ impl RecordingController {
             source_timeout_ms: u64::from(cfg.merge.source_timeout_ms),
         };
 
+        let free_now = (self.inner.free_space)(&base.dir);
+        if free_now.is_some_and(|f| !can_start(f)) {
+            return Err(ERR_DISK_LOW.to_string());
+        }
+
         let first = FileRecorder::start(base.clone(), session_cfg.clone())
             .map_err(|e| e.to_string())?;
         let path = first.final_path().to_string_lossy().into_owned();
@@ -436,6 +621,8 @@ impl RecordingController {
             path: path.clone(),
             part: 1,
             universes: plan.accepted.clone(),
+            disk_free_bytes: free_now,
+            disk_level: free_now.map_or(DiskLevel::Ok, recorder::classify),
             ..RecordingStatus::default()
         };
         *lock(&self.inner.tap) = Some(tx);
@@ -449,6 +636,8 @@ impl RecordingController {
             dropped: self.inner.dropped.clone(),
             status: self.inner.status.clone(),
             mode: self.inner.mode.clone(),
+            free_space: self.inner.free_space.clone(),
+            disk_every: Duration::from_millis(self.inner.disk_every_ms.load(Ordering::Relaxed)),
         };
         let handle = std::thread::Builder::new()
             .name("artrec-recorder".into())
@@ -513,8 +702,17 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
     let mut next_tick = t0 + TICK;
     let mut next_checkpoint = t0 + CHECKPOINT_EVERY;
     let mut next_stats = t0 + STATS_EVERY;
+    let mut next_disk = t0 + ctx.disk_every;
+    let mut guard = DiskGuard::new();
+    // 开始时先查一次：偏低就立刻告警，而不是等 10 秒
+    if check_disk(ctx, &mut guard) == Some(DiskLevel::Critical) {
+        result.stopped_by = Some(StopReason::Disk);
+    }
 
     'outer: loop {
+        if result.stopped_by.is_some() {
+            break;
+        }
         let mut disconnected = false;
         match rx.recv_timeout(TICK) {
             Ok(f) => feed(&mut rec, &f, t0),
@@ -550,6 +748,13 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
         if now >= next_stats {
             publish(ctx, &rec, part, t0);
             next_stats = now + STATS_EVERY;
+        }
+        if now >= next_disk {
+            next_disk = now + ctx.disk_every;
+            if check_disk(ctx, &mut guard) == Some(DiskLevel::Critical) {
+                result.stopped_by = Some(StopReason::Disk);
+                break 'outer;
+            }
         }
 
         // 自动分段：收尾当前文件，立即在同目录开始下一段（Universe 集合保持不变）
@@ -607,6 +812,33 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
 fn feed(rec: &mut FileRecorder, frame: &DmxFrame, t0: Instant) {
     let t_us = frame.received_at.saturating_duration_since(t0).as_micros() as u64;
     rec.ingest(frame, t_us);
+}
+
+/// 检查一次磁盘空间：更新共享状态，并在等级变化时推送 `recording:disk`。
+///
+/// # Arguments
+///
+/// * `ctx` - 录制线程上下文（目录、查询函数、共享状态、事件发射）。
+/// * `guard` - 本次录制的磁盘守卫，记住上一次的等级。
+///
+/// # Returns
+///
+/// 等级相对上次变化时为 `Some(新等级)`；无变化或无法查询时为 `None`。
+fn check_disk(ctx: &ThreadCtx, guard: &mut DiskGuard) -> Option<DiskLevel> {
+    let free = (ctx.free_space)(&ctx.base.dir)?;
+    let changed = guard.observe(free);
+    {
+        let mut s = lock(&ctx.status);
+        s.disk_free_bytes = Some(free);
+        s.disk_level = guard.level();
+    }
+    if let Some(level) = changed {
+        (ctx.emit)(
+            "recording:disk",
+            serde_json::json!({ "level": level, "freeBytes": free }),
+        );
+    }
+    changed
 }
 
 /// 刷新共享状态并向前端推送 `recording:stats`。
@@ -703,8 +935,8 @@ mod tests {
     use settings::AppSettings;
 
     use super::{
-        Emitter, RecordingController, RecordingStartArgs, ERR_ALREADY_RECORDING, ERR_NOT_RECORDING,
-        ERR_NO_UNIVERSES,
+        Emitter, RecordingController, RecordingStartArgs, ERR_ALREADY_RECORDING, ERR_DISK_LOW,
+        ERR_NOT_RECORDING, ERR_NO_UNIVERSES,
     };
 
     struct Tmp(PathBuf);
@@ -885,6 +1117,132 @@ mod tests {
             let hi = f.iter().map(|b| b[0]).max().unwrap();
             assert!(hi - lo <= 1, "frame {i}: 各路数据相差 {}", hi - lo);
         }
+    }
+
+    /// 造一个"剩余空间由测试随时改写"的控制器。
+    fn ctl_with_free(free: &Arc<std::sync::atomic::AtomicU64>) -> RecordingController {
+        let f = free.clone();
+        RecordingController::with_free_space(
+            Arc::new(RuntimeMode::new()),
+            Arc::new(move |_| Some(f.load(std::sync::atomic::Ordering::Relaxed))),
+        )
+    }
+
+    #[test]
+    fn low_disk_refuses_to_start_and_stays_idle() {
+        let tmp = Tmp::new("disklow");
+        let free = Arc::new(std::sync::atomic::AtomicU64::new(100_000_000));
+        let ctl = ctl_with_free(&free);
+        let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
+
+        let err = ctl
+            .start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("d", RecordFilter::default(), vec![]))
+            .unwrap_err();
+        assert_eq!(err, ERR_DISK_LOW);
+        assert!(!ctl.is_recording());
+        assert!(!ctl.disk_info(&tmp.0).can_start);
+
+        // 空间恢复后即可开始
+        free.store(5_000_000_000, std::sync::atomic::Ordering::Relaxed);
+        assert!(ctl.disk_info(&tmp.0).can_start);
+        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("d2", RecordFilter::default(), vec![]))
+            .unwrap();
+        ctl.stop().unwrap();
+    }
+
+    #[test]
+    fn check_dir_reports_existing_missing_and_non_directory_paths() {
+        let tmp = Tmp::new("checkdir");
+        let ctl = RecordingController::with_free_space(Arc::new(RuntimeMode::new()), Arc::new(|_| Some(7_000_000_000)));
+
+        let ok = ctl.check_dir(&tmp.0);
+        assert!(ok.exists && ok.is_dir && ok.writable);
+        assert_eq!(ok.disk.free_bytes, Some(7_000_000_000));
+        assert_eq!(std::fs::read_dir(&tmp.0).unwrap().count(), 0, "探测文件必须被清理");
+
+        // 尚未创建：反映最近已存在上级目录的可写性，且不会创建目录
+        let missing = tmp.0.join("a").join("b");
+        let c = ctl.check_dir(&missing);
+        assert!(!c.exists && !c.is_dir && c.writable);
+        assert!(!tmp.0.join("a").exists(), "检查不应创建目录");
+
+        // 路径是一个文件：不可写
+        let file = tmp.0.join("occupied");
+        std::fs::write(&file, b"x").unwrap();
+        let f = ctl.check_dir(&file);
+        assert!(f.exists && !f.is_dir && !f.writable);
+        // 路径经过一个文件，同样不可写
+        assert!(!ctl.check_dir(&file.join("sub")).writable);
+    }
+
+    #[test]
+    fn unknown_free_space_does_not_block_recording() {
+        let tmp = Tmp::new("diskunk");
+        let ctl = RecordingController::with_free_space(Arc::new(RuntimeMode::new()), Arc::new(|_| None));
+        let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
+        assert!(ctl.disk_info(&tmp.0).can_start);
+        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("u", RecordFilter::default(), vec![]))
+            .unwrap();
+        ctl.stop().unwrap();
+    }
+
+    /// 录制中空间跌破临界值：自动收尾为合法文件、发出事件、标明原因，且无需先 `stop` 即可再次开始。
+    #[test]
+    fn critical_disk_auto_stops_with_valid_file_and_allows_restart() {
+        use std::sync::atomic::Ordering;
+        let tmp = Tmp::new("diskcrit");
+        let free = Arc::new(std::sync::atomic::AtomicU64::new(5_000_000_000));
+        let ctl = ctl_with_free(&free);
+        ctl.set_disk_check_interval(Duration::from_millis(50));
+        let events: Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>> = Arc::default();
+        let sink = events.clone();
+        let emit: Emitter = Arc::new(move |name, v| sink.lock().unwrap().push((name.to_string(), v)));
+        let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
+        ctl.start(emit, &AppSettings::default(), tmp.0.clone(), &snapshot, args("crit", RecordFilter::default(), vec![]))
+            .unwrap();
+        for i in 0..5u8 {
+            ctl.offer(&dmx(1, "10.0.0.1", i + 1));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        // 先降到"偏低"：只告警，仍在录制
+        free.store(900_000_000, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(ctl.is_recording());
+        assert_eq!(ctl.status().disk_level, recorder::DiskLevel::Low);
+
+        // 再降到临界：自动停止
+        free.store(50_000_000, Ordering::Relaxed);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while ctl.is_recording() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!ctl.is_recording(), "临界空间应自动停止录制");
+
+        let finished = events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(n, _)| n == "recording:finished")
+            .map(|(_, v)| v.clone())
+            .expect("应发出 recording:finished");
+        assert_eq!(finished["stoppedBy"], "disk");
+        let path = finished["files"][0]["path"].as_str().unwrap().to_string();
+        ArtRecReader::open_file(std::path::Path::new(&path)).expect("自动停止后的文件必须合法可读");
+        let levels: Vec<String> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(n, _)| n == "recording:disk")
+            .map(|(_, v)| v["level"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(levels, vec!["low", "critical"]);
+
+        // 线程已自行结束：无需先 stop，空间恢复后可直接再次开始
+        free.store(5_000_000_000, Ordering::Relaxed);
+        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("again", RecordFilter::default(), vec![]))
+            .expect("自动停止后应能再次开始");
+        ctl.stop().unwrap();
     }
 
     #[test]

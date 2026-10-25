@@ -57,6 +57,9 @@ pub enum LibraryError {
     /// 文件系统错误。
     #[error("IO 错误: {0}")]
     Io(#[from] std::io::Error),
+    /// 无法移入系统回收站（此时文件保持原样，不会退化为永久删除）。
+    #[error("无法移入回收站: {0}")]
+    Trash(String),
 }
 
 /// 校验 `path` 是 `dir` 直接子级的 `.artrec` 文件，返回规整后的路径。
@@ -202,7 +205,25 @@ pub fn rename_recording(
     Ok(dst)
 }
 
-/// 删除节目及其 sidecar。
+/// 把一组文件移入系统回收站的函数：成功返回 `Ok`，失败返回描述。
+pub type TrashFn<'a> = &'a dyn Fn(&[PathBuf]) -> Result<(), String>;
+
+/// 真实的回收站实现：把给定文件一并移入系统回收站。
+///
+/// # Arguments
+///
+/// * `paths` - 要移入回收站的文件（已存在）。
+///
+/// # Errors
+///
+/// 系统回收站不可用或移动失败时返回描述。
+pub fn trash_paths(paths: &[PathBuf]) -> Result<(), String> {
+    trash::delete_all(paths).map_err(|e| e.to_string())
+}
+
+/// 把节目及其 sidecar 移入系统回收站（可在回收站里恢复）。
+///
+/// 移动失败时**不会**退化为永久删除：文件保持原样并返回 [`LibraryError::Trash`]。
 ///
 /// # Arguments
 ///
@@ -211,22 +232,46 @@ pub fn rename_recording(
 ///
 /// # Errors
 ///
-/// 路径非法或文件系统失败。
+/// 路径非法，或无法移入回收站。
 pub fn delete_recording(dir: &Path, path: &Path) -> Result<(), LibraryError> {
+    delete_recording_with(dir, path, &trash_paths)
+}
+
+/// [`delete_recording`] 的实现体，回收站操作可替换（测试用，避免弄脏真实回收站）。
+///
+/// # Arguments
+///
+/// * `dir` - 录制目录。
+/// * `path` - 待删除节目的路径，须通过 [`resolve_in_dir`] 校验。
+/// * `trash` - 把文件移入回收站的函数；节目与其存在的 sidecar 会在**一次**调用里交给它。
+///
+/// # Errors
+///
+/// 路径非法，或 `trash` 返回错误（`LibraryError::Trash`）。
+pub fn delete_recording_with(
+    dir: &Path,
+    path: &Path,
+    trash: TrashFn<'_>,
+) -> Result<(), LibraryError> {
     let src = resolve_in_dir(dir, path)?;
-    std::fs::remove_file(&src)?;
-    let _ = std::fs::remove_file(sidecar_path(&src));
-    Ok(())
+    let mut items = vec![src.clone()];
+    let side = sidecar_path(&src);
+    if side.exists() {
+        items.push(side);
+    }
+    trash(&items).map_err(LibraryError::Trash)
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+    use std::path::PathBuf;
 
     use artrec_core::{ArtRecWriter, CompressAlgo, UniDesc};
 
     use super::{
-        delete_recording, list_library, rename_recording, resolve_in_dir, LibraryError,
+        delete_recording, delete_recording_with, list_library, rename_recording, resolve_in_dir,
+        LibraryError,
     };
     use crate::sidecar::{read_sidecar, sidecar_path, write_sidecar, Sidecar};
     use crate::testutil::TempDir;
@@ -349,16 +394,65 @@ mod tests {
     }
 
     #[test]
-    fn delete_removes_sidecar_too() {
+    fn delete_hands_program_and_sidecar_to_trash_together() {
+        use std::cell::RefCell;
         let dir = TempDir::new("lib-del");
         let p = make_artrec(&dir, "d", 1);
         write_sidecar(&p, &Sidecar::default()).unwrap();
-        delete_recording(dir.path(), &p).unwrap();
-        assert!(!p.exists());
-        assert!(!sidecar_path(&p).exists());
+        let calls: RefCell<Vec<Vec<PathBuf>>> = RefCell::new(Vec::new());
+        delete_recording_with(dir.path(), &p, &|items: &[PathBuf]| {
+            calls.borrow_mut().push(items.to_vec());
+            Ok(())
+        })
+        .unwrap();
+        let calls = calls.into_inner();
+        assert_eq!(calls.len(), 1, "节目与 sidecar 应在一次回收站操作里交出");
+        assert_eq!(calls[0].len(), 2);
+        assert!(calls[0][0].ends_with("d.artrec"));
+        assert_eq!(calls[0][1], sidecar_path(&calls[0][0]));
+    }
+
+    #[test]
+    fn delete_without_sidecar_only_trashes_the_program() {
+        let dir = TempDir::new("lib-del-nosc");
+        let p = make_artrec(&dir, "d", 1);
+        let seen = std::cell::RefCell::new(0usize);
+        delete_recording_with(dir.path(), &p, &|items: &[PathBuf]| {
+            *seen.borrow_mut() = items.len();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(seen.into_inner(), 1);
+    }
+
+    /// 回收站失败时必须保留文件，绝不退化为永久删除。
+    #[test]
+    fn trash_failure_keeps_files_and_reports_error() {
+        let dir = TempDir::new("lib-del-fail");
+        let p = make_artrec(&dir, "d", 1);
+        write_sidecar(&p, &Sidecar::default()).unwrap();
+        let err = delete_recording_with(dir.path(), &p, &|_: &[PathBuf]| Err("回收站不可用".into()))
+            .unwrap_err();
+        assert!(matches!(err, LibraryError::Trash(ref m) if m == "回收站不可用"), "{err:?}");
+        assert!(p.exists() && sidecar_path(&p).exists(), "失败后文件必须原样保留");
+    }
+
+    #[test]
+    fn delete_validates_path_before_touching_trash() {
+        let dir = TempDir::new("lib-del-guard");
+        let p = make_artrec(&dir, "d", 1);
+        std::fs::remove_file(&p).unwrap();
+        let called = std::cell::RefCell::new(false);
+        let probe = |_: &[PathBuf]| {
+            *called.borrow_mut() = true;
+            Ok(())
+        };
         assert!(matches!(
-            delete_recording(dir.path(), &p),
+            delete_recording_with(dir.path(), &p, &probe),
             Err(LibraryError::NotFound)
         ));
+        let outside = std::env::temp_dir().join("elsewhere.artrec");
+        assert!(delete_recording_with(dir.path(), &outside, &probe).is_err());
+        assert!(!*called.borrow(), "非法路径不应触达回收站");
     }
 }

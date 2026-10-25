@@ -8,9 +8,10 @@ use std::sync::Arc;
 
 use recorder::{LibraryEntry, LibraryError, RecoveryOutcome};
 use tauri::{AppHandle, Emitter as _, Manager};
+use tauri_plugin_opener::OpenerExt as _;
 
 use host_core::recording::{
-    Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult, RecordingStatus,
+    DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult, RecordingStatus,
 };
 use host_core::ArtnetCoreExt;
 use host_core::SettingsExt;
@@ -72,6 +73,84 @@ pub fn resolved_dir(app: &AppHandle) -> PathBuf {
 #[tauri::command]
 pub fn get_recording_dir(app: AppHandle) -> Result<String, String> {
     Ok(resolved_dir(&app).to_string_lossy().into_owned())
+}
+
+/// 检查一个候选录制目录（设置页在用户选定 / 编辑目录后调用）。
+///
+/// 只读探测，不会创建目录。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+/// * `path` - 要检查的目录；为空则检查当前生效的录制目录（含默认目录）。
+///
+/// # Returns
+///
+/// 目录是否存在、是否可写以及所在卷剩余空间的 [`DirCheck`]。
+#[tauri::command]
+pub fn recording_check_dir(app: AppHandle, path: Option<String>) -> DirCheck {
+    let dir = match path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => resolved_dir(&app),
+    };
+    app.artnet_core().recording().check_dir(&dir)
+}
+
+/// 错误码：要打开的路径不是目录。
+pub const ERR_NOT_A_DIRECTORY: &str = "not_a_directory";
+
+/// 在系统文件管理器中打开录制目录。
+///
+/// 由后端打开而不是前端直接调用 opener 插件，是为了不向前端放开任意路径的打开权限：
+/// 这里**只打开目录**，传入的路径若是文件（打开文件可能执行它）一律拒绝。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+/// * `path` - 要打开的目录（设置页里尚未保存的草稿路径）；为空则打开当前生效的录制目录，
+///   且目录不存在时先创建。传入的非空路径必须是已存在的目录。
+///
+/// # Errors
+///
+/// 路径不是已存在的目录返回 [`ERR_NOT_A_DIRECTORY`]；默认目录无法创建或系统无法打开时返回错误描述。
+#[tauri::command]
+pub fn recording_open_dir(app: AppHandle, path: Option<String>) -> Result<(), String> {
+    let dir = match path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => {
+            let dir = PathBuf::from(p);
+            if !dir.is_dir() {
+                return Err(ERR_NOT_A_DIRECTORY.to_string());
+            }
+            dir
+        }
+        _ => {
+            let dir = resolved_dir(&app);
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            dir
+        }
+    };
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// 查询录制目录所在卷的剩余空间。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+/// * `path` - 要查询的目录；为空则查询当前生效的录制目录。设置页在用户编辑目录时用它预览新目录。
+///
+/// # Returns
+///
+/// 剩余字节数、等级与是否允许开始录制的 [`DiskInfo`]；无法查询时 `free_bytes` 为 `None`。
+#[tauri::command]
+pub fn recording_disk_info(app: AppHandle, path: Option<String>) -> DiskInfo {
+    let dir = match path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => resolved_dir(&app),
+    };
+    app.artnet_core().recording().disk_info(&dir)
 }
 
 /// 开始录制。
@@ -149,6 +228,8 @@ pub const LIB_ERR_EXISTS: &str = "already_exists";
 pub const LIB_ERR_OUTSIDE: &str = "outside_library";
 /// 错误码：文件不存在。
 pub const LIB_ERR_NOT_FOUND: &str = "not_found";
+/// 错误码前缀：无法移入系统回收站（后面跟冒号和系统给出的原因）。
+pub const LIB_ERR_TRASH: &str = "trash_failed";
 
 /// 把库错误转换为前端可翻译的错误码（其余原样返回描述）。
 fn lib_err(e: LibraryError) -> String {
@@ -156,6 +237,7 @@ fn lib_err(e: LibraryError) -> String {
         LibraryError::AlreadyExists => LIB_ERR_EXISTS.to_string(),
         LibraryError::OutsideLibrary => LIB_ERR_OUTSIDE.to_string(),
         LibraryError::NotFound => LIB_ERR_NOT_FOUND.to_string(),
+        LibraryError::Trash(m) => format!("{LIB_ERR_TRASH}: {m}"),
         LibraryError::Io(e) => e.to_string(),
     }
 }

@@ -1,5 +1,6 @@
 import { invoke } from "@/shared/tauri/invoke";
 
+import type { DiskInfo } from "../../../shared/domain/disk";
 import { decodeOverview } from "./overview";
 import type {
   ChannelSeries,
@@ -13,6 +14,7 @@ import type {
   RecordingStartResult,
   RecordingStatus,
   RecoveryOutcome,
+  RepeatMode,
   SeriesQuery,
   SourceStat,
 } from "./types";
@@ -20,6 +22,15 @@ import type {
 /** 当前生效的录制目录（配置为空时为默认目录）。 */
 export function getRecordingDir(): Promise<string> {
   return invoke<string>("get_recording_dir");
+}
+
+/**
+ * 查询录制目录所在卷的剩余空间。
+ *
+ * @param path 要查询的目录；省略则查询当前生效的录制目录。
+ */
+export function recordingDiskInfo(path?: string): Promise<DiskInfo> {
+  return invoke<DiskInfo>("recording_disk_info", { path: path ?? null });
 }
 
 /** 当前来源（按 IP 聚合）统计。 */
@@ -106,9 +117,9 @@ export function playerSetSpeed(speedMilli: number): Promise<void> {
   return invoke<void>("player_set_speed", { speedMilli });
 }
 
-/** 设置循环播放。 */
-export function playerSetLoop(looping: boolean): Promise<void> {
-  return invoke<void>("player_set_loop", { looping });
+/** 设置重复模式（关闭 / 循环 / 连播）；没有节目时也会被记住。 */
+export function playerSetRepeat(mode: RepeatMode): Promise<void> {
+  return invoke<void>("player_set_repeat", { mode });
 }
 
 /** 切换输出目标。 */

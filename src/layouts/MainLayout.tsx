@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 
+import { CloseGuardDialog, ModeConfirmDialog } from "@/features/app-mode";
 import { Sidebar } from "./Sidebar";
 import { HeaderBar } from "./HeaderBar";
 import { StatusLogBar } from "./StatusLogBar";
@@ -18,6 +19,10 @@ export function MainLayout() {
         </main>
         <StatusLogBar />
       </div>
+      {/* 模式切换确认对话框：整个应用只挂载一次，任何入口都通过 useModeActions 打开 */}
+      <ModeConfirmDialog />
+      {/* 退出守卫：录制或播放进行中关闭窗口时的确认 */}
+      <CloseGuardDialog />
     </div>
   );
 }

@@ -2,6 +2,9 @@ import { useTranslation } from "react-i18next";
 import { Network, ShieldCheck, Circle, Server, Film } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ModeSwitch } from "@/features/app-mode";
+import { HeaderRecordButton } from "@/features/recording";
 import { cn } from "@/lib/utils";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { ThemeToggle } from "./ThemeToggle";
@@ -18,12 +21,20 @@ export function HeaderBar() {
     connected,
     clusterRole,
     guardianEnabled,
-    recording,
-    playback,
+    playing,
+    appMode,
   } = useEngineStatusStore();
+  const playerMode = appMode === "player";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-6">
+    <TooltipProvider delayDuration={200}>
+    <header
+      // 播放器模式：底边换成强调色 + 极淡底色，任何页面都能一眼看出当前模式（只改颜色，不引起布局位移）
+      className={cn(
+        "flex h-14 shrink-0 items-center justify-between border-b bg-card px-6",
+        playerMode ? "border-b-2 border-primary/60 bg-primary/5" : "border-border",
+      )}
+    >
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Network className="size-4" aria-hidden />
@@ -44,18 +55,14 @@ export function HeaderBar() {
       </div>
 
       <div className="flex items-center gap-3">
-        {playback && (
-          <Badge variant="warning">
+        {playing && (
+          <Badge variant="success">
             <Film className="size-3" aria-hidden />
             {t("header.playback")}
           </Badge>
         )}
-        {recording && (
-          <Badge variant="destructive">
-            <Circle className="size-2 animate-pulse fill-current" aria-hidden />
-            {t("header.recording")}
-          </Badge>
-        )}
+        <ModeSwitch />
+        <HeaderRecordButton />
         {clusterRole !== "none" && (
           <Badge variant={clusterRole === "primary" ? "success" : "secondary"}>
             <Server className="size-3" aria-hidden />
@@ -72,5 +79,6 @@ export function HeaderBar() {
         <PersonalizationPanel />
       </div>
     </header>
+    </TooltipProvider>
   );
 }

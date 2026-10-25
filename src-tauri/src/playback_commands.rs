@@ -10,7 +10,7 @@ use artrec_core::ArtRecReader;
 use player::{Overview, SeriesError};
 use tauri::{AppHandle, Emitter as _};
 
-use host_core::playback::PlaybackStatus;
+use host_core::playback::{PlaybackStatus, RepeatMode};
 use host_core::recording::Emitter;
 use host_core::{ArtnetCoreExt, DispatchTarget};
 
@@ -63,8 +63,9 @@ pub fn player_open(
             let _ = app.emit(name, payload);
         }
     });
+    let library_dir = resolved_dir(&app);
     app.artnet_core()
-        .open_playback(emit, file, name, target.unwrap_or_default())
+        .open_playback(emit, file, name, target.unwrap_or_default(), library_dir)
 }
 
 /// 播放 / 继续。
@@ -123,14 +124,17 @@ pub fn player_set_speed(app: AppHandle, speed_milli: u32) -> Result<(), String> 
     app.artnet_core().playback().set_speed(speed_milli)
 }
 
-/// 设置循环播放。
+/// 设置重复模式（关闭 / 循环 / 连播）。
 ///
-/// # Errors
+/// 模式会被记住并沿用到之后打开的节目；没有节目时也可设置，不报错。
 ///
-/// 没有已打开的节目（`no_player`）。
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+/// * `mode` - 新的重复模式。
 #[tauri::command]
-pub fn player_set_loop(app: AppHandle, looping: bool) -> Result<(), String> {
-    app.artnet_core().playback().set_loop(looping)
+pub fn player_set_repeat(app: AppHandle, mode: RepeatMode) {
+    app.artnet_core().playback().set_repeat(mode);
 }
 
 /// 切换输出目标（转发表 / 指定 IP）。
@@ -276,9 +280,10 @@ pub struct SeriesQuery {
 ///
 /// # Errors
 ///
-/// 回放模式中返回 [`ERR_PLAYBACK_ACTIVE`]。
+/// 已打开节目，或处于播放器模式（此时实时接收已停止，没有东西可录）时返回 [`ERR_PLAYBACK_ACTIVE`]。
 pub fn ensure_not_playing(app: &AppHandle) -> Result<(), String> {
-    if app.artnet_core().playback().is_loaded() {
+    let core = app.artnet_core();
+    if core.playback().is_loaded() || core.app_mode_status().mode == host_core::app_mode::AppMode::Player {
         Err(ERR_PLAYBACK_ACTIVE.to_string())
     } else {
         Ok(())

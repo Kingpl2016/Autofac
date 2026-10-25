@@ -12,6 +12,7 @@ use artnet_net::Bytes;
 use forwarding::{ForwardProtocol, ForwardingTable, RateLimiter, MIN_INTERVAL_MS_44HZ};
 use serde::{Deserialize, Serialize};
 
+use crate::sender::SenderHealth;
 use crate::util::lock;
 
 /// 一次待发送任务。
@@ -75,6 +76,8 @@ pub struct Dispatcher {
     /// sACN 总开关：关闭时 [`Dispatcher::plan`] 丢弃所有 sACN 输出路由。
     /// 与运行时的接收循环共享同一个标志。
     sacn_enabled: Arc<AtomicBool>,
+    /// 发送器健康度：每次发送后上报成败，连续失败时触发发送套接字重建。
+    health: Arc<SenderHealth>,
 }
 
 impl Dispatcher {
@@ -101,7 +104,18 @@ impl Dispatcher {
             sender,
             // 独立使用（测试等）时默认放行；运行时按配置显式设置
             sacn_enabled: Arc::new(AtomicBool::new(true)),
+            health: SenderHealth::new(),
         }
+    }
+
+    /// 发送器健康度的共享句柄（运行时据此监督并重建发送套接字）。
+    ///
+    /// # Returns
+    ///
+    /// 与本分发器（及其克隆）共享的 [`SenderHealth`]。
+    #[must_use]
+    pub fn health(&self) -> Arc<SenderHealth> {
+        self.health.clone()
     }
 
     /// 设置 sACN 输出总开关。关闭后不再产出任何 sACN 发送任务。
@@ -227,12 +241,13 @@ impl Dispatcher {
     pub async fn send_jobs(&self, jobs: Vec<ForwardJob>) {
         for job in jobs {
             if job.delay_ms == 0 {
-                send_one(&self.sender, &job).await;
+                send_one(&self.sender, &self.health, &job).await;
             } else {
                 let sender = self.sender.clone();
+                let health = self.health.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_millis(u64::from(job.delay_ms))).await;
-                    send_one(&sender, &job).await;
+                    send_one(&sender, &health, &job).await;
                 });
             }
         }
@@ -261,23 +276,30 @@ impl Dispatcher {
     }
 }
 
-/// 执行一次发送（Art-Net 或 sACN 单播到目标）。目标 IP 非法或发送器未就绪时静默忽略。
-async fn send_one(sender: &Arc<tokio::sync::Mutex<Option<DmxSender>>>, job: &ForwardJob) {
+/// 执行一次发送（Art-Net 或 sACN 单播到目标），并把成败上报给 `health`。
+///
+/// 目标 IP 非法或发送器尚未就绪时静默忽略（发送器缺失由监督任务负责创建，不算发送失败）。
+async fn send_one(
+    sender: &Arc<tokio::sync::Mutex<Option<DmxSender>>>,
+    health: &SenderHealth,
+    job: &ForwardJob,
+) {
     let Ok(ip) = job.target_ip.parse::<IpAddr>() else {
         return;
     };
     let addr = SocketAddr::new(ip, job.port);
     let guard = sender.lock().await;
     let Some(s) = guard.as_ref() else { return };
-    match job.protocol {
-        ForwardProtocol::ArtNet => {
-            let _ = s.send_artnet(addr, job.target_universe, 0, &job.data).await;
-        }
+    let result = match job.protocol {
+        ForwardProtocol::ArtNet => s.send_artnet(addr, job.target_universe, 0, &job.data).await,
         ForwardProtocol::Sacn => {
-            let _ = s
-                .send_sacn(Some(addr), job.target_universe, 0, 100, &job.data)
-                .await;
+            s.send_sacn(Some(addr), job.target_universe, 0, 100, &job.data)
+                .await
         }
+    };
+    match result {
+        Ok(()) => health.report_ok(),
+        Err(_) => health.report_error(),
     }
 }
 
@@ -318,6 +340,60 @@ mod tests {
             Arc::new(Mutex::new(RateLimiter::new())),
             Arc::new(tokio::sync::Mutex::new(None)),
         )
+    }
+
+    /// 发往一个本机 IPv4 套接字无法到达的地址族（IPv6），发送必然失败。
+    fn failing_job() -> super::ForwardJob {
+        super::ForwardJob {
+            protocol: ForwardProtocol::ArtNet,
+            target_ip: "::1".into(),
+            port: 6454,
+            target_universe: 1,
+            delay_ms: 0,
+            data: vec![1u8].into(),
+        }
+    }
+
+    /// 连续发送失败会把发送器标记为需要重建；中间夹着成功则不会。
+    #[tokio::test]
+    async fn send_failures_are_reported_to_sender_health() {
+        let d = Dispatcher::new(
+            Arc::new(Mutex::new(ForwardingTable::default())),
+            Arc::new(Mutex::new(RateLimiter::new())),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                DmxSender::new([0u8; 16]).await.unwrap(),
+            ))),
+        );
+        let health = d.health();
+        assert_eq!(health.state(), crate::sender::SenderState::Ready);
+
+        let ok_rx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let ok_job = super::ForwardJob {
+            target_ip: "127.0.0.1".into(),
+            port: ok_rx.local_addr().unwrap().port(),
+            ..failing_job()
+        };
+        for _ in 0..crate::sender::FAIL_STREAK_THRESHOLD - 1 {
+            d.send_jobs(vec![failing_job()]).await;
+        }
+        d.send_jobs(vec![ok_job]).await;
+        for _ in 0..crate::sender::FAIL_STREAK_THRESHOLD - 1 {
+            d.send_jobs(vec![failing_job()]).await;
+        }
+        assert_eq!(health.state(), crate::sender::SenderState::Ready, "成功会打断连续失败");
+
+        d.send_jobs(vec![failing_job()]).await;
+        assert_eq!(health.state(), crate::sender::SenderState::Reconnecting);
+    }
+
+    /// 发送器尚未创建时发送被静默忽略，不能算作发送失败。
+    #[tokio::test]
+    async fn missing_sender_is_not_counted_as_a_failure() {
+        let d = dispatcher(ForwardingTable::default());
+        for _ in 0..crate::sender::FAIL_STREAK_THRESHOLD * 2 {
+            d.send_jobs(vec![failing_job()]).await;
+        }
+        assert_eq!(d.health().state(), crate::sender::SenderState::Ready);
     }
 
     #[test]

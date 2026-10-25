@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, ChevronRight, Waypoints } from "lucide-react";
+import { ChevronLeft, ChevronRight, CirclePause, Waypoints } from "lucide-react";
 
 import {
   Tooltip,
@@ -14,6 +14,7 @@ import {
   NAV_SECTIONS,
   NAV_SECTION_LABELS,
 } from "@/shared/navigation/items";
+import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
 
 /**
@@ -28,6 +29,8 @@ export function Sidebar() {
   const { t } = useTranslation();
   const collapsed = usePrefsStore((s) => s.sidebarCollapsed);
   const toggleSidebar = usePrefsStore((s) => s.toggleSidebar);
+  // 播放器模式下，依赖实时信号的页面仍可进入（会看到原因），但在导航里标出“已暂停”
+  const playerMode = useEngineStatusStore((s) => s.appMode === "player");
   const toggleLabel = collapsed ? t("nav.expand") : t("nav.collapse");
 
   // 标签与分组标题的淡入淡出；折叠时不可见也不应被读屏朗读
@@ -95,7 +98,10 @@ export function Sidebar() {
                   </div>
                   <ul className="flex flex-col gap-0.5 tall:gap-1 taller:gap-1.5">
                     {items.map((item) => {
-                      const label = t(item.labelKey);
+                      const paused = playerMode && item.liveOnly === true;
+                      const baseLabel = t(item.labelKey);
+                      // 无障碍名称与折叠态提示都带上状态，而不是只靠图标
+                      const label = paused ? `${baseLabel}（${t("nav.pausedInPlayer")}）` : baseLabel;
                       const Icon = item.icon;
                       return (
                         <li key={item.to}>
@@ -119,8 +125,14 @@ export function Sidebar() {
                               >
                                 <Icon className="size-5 shrink-0" aria-hidden />
                                 <span className={cn(fade, "truncate")} aria-hidden={collapsed}>
-                                  {label}
+                                  {baseLabel}
                                 </span>
+                                {paused && (
+                                  <CirclePause
+                                    className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+                                    aria-hidden
+                                  />
+                                )}
                               </NavLink>
                             </TooltipTrigger>
                             {collapsed && (

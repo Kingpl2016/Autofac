@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
 
@@ -31,6 +32,7 @@ vi.mock("../../lib/api", async (orig) => ({
 }));
 
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
+import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePlayerStore } from "../../stores/usePlayerStore";
 import { useRecordingStore } from "../../stores/useRecordingStore";
 import { EMPTY_PLAYBACK, EMPTY_STATUS } from "../../lib/types";
@@ -39,9 +41,11 @@ import { RecordingView } from "../RecordingView";
 function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}>
-      <RecordingView />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <RecordingView />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -79,39 +83,43 @@ beforeEach(async () => {
   usePlayerStore.setState({ status: EMPTY_PLAYBACK, channels: {} });
   useRecordingStore.setState({ status: EMPTY_STATUS, last: null, sources: [] });
   useEngineDataStore.setState({ universes: [], devices: [] });
+  useEngineStatusStore.setState({ appMode: "live", recording: false, playing: false });
   stubMatchMedia(true);
 });
 
 afterEach(() => cleanup());
 
 describe("RecordingView", () => {
-  it("宽屏：默认是录制模式，节目库作为常驻侧栏显示节目", async () => {
+  it("宽屏：显示录制表单，节目库作为常驻侧栏显示节目；回放在播放器页", async () => {
     renderView();
-    expect(screen.getByRole("tab", { name: "录制", selected: true })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "录制" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "开始录制" })).toBeTruthy();
+    // 没有“录制 / 回放”页内分段切换；实时模式下页头也没有播放器入口（从顶栏进入播放模式）
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByRole("link", { name: "前往播放器" })).toBeNull();
     const aside = screen.getByRole("complementary", { name: "节目库" });
     expect(await screen.findByText("开场秀")).toBeTruthy();
     expect(aside.contains(screen.getByText("开场秀"))).toBe(true);
   });
 
-  it("切换到回放模式不会丢失录制表单的输入", () => {
+  it("播放器模式下录制区域换成说明面板，但表单保持挂载、输入不丢失，节目库仍可用", async () => {
     renderView();
-    const nameInput = screen.getByLabelText("节目名称") as HTMLInputElement;
-    fireEvent.change(nameInput, { target: { value: "彩排" } });
+    fireEvent.change(screen.getByLabelText("节目名称"), { target: { value: "彩排" } });
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^回放/ }), { button: 0 });
-    expect(screen.getByRole("tab", { name: /^回放/, selected: true })).toBeTruthy();
-    expect(screen.getByText(/还没有打开节目/)).toBeTruthy();
+    act(() => useEngineStatusStore.setState({ appMode: "player" }));
+    expect(screen.getByText("播放器模式下实时接收已停止")).toBeTruthy();
+    expect(screen.getByText("播放器模式下无法录制。退出播放器模式后即可录制。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "退出播放器模式" })).toBeTruthy();
+    // 表单只是隐藏，并未卸载
+    const input = screen.getByLabelText("节目名称", { selector: "input" }) as HTMLInputElement;
+    expect(input.closest("[hidden]")).toBeTruthy();
+    expect(input.value).toBe("彩排");
+    // 节目库仍在，可管理节目
+    expect(await screen.findByText("开场秀")).toBeTruthy();
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "录制" }), { button: 0 });
+    act(() => useEngineStatusStore.setState({ appMode: "live" }));
+    expect(screen.queryByText("播放器模式下实时接收已停止")).toBeNull();
     expect((screen.getByLabelText("节目名称") as HTMLInputElement).value).toBe("彩排");
-  });
-
-  it("回放空状态的“前往节目库”在宽屏下聚焦侧栏", () => {
-    renderView();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^回放/ }), { button: 0 });
-    fireEvent.click(screen.getByRole("button", { name: "前往节目库" }));
-    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "节目库" }));
   });
 
   it("录制中在页头显示状态胶囊与时间", () => {
@@ -121,14 +129,6 @@ describe("RecordingView", () => {
     renderView();
     expect(screen.getAllByText("录制中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0:12.3").length).toBeGreaterThan(0);
-  });
-
-  it("已打开节目时，回放标签带“回放中”标记", () => {
-    usePlayerStore.setState({
-      status: { ...EMPTY_PLAYBACK, loaded: true, path: "x", name: "n", universes: [1] },
-    });
-    renderView();
-    expect(screen.getByRole("img", { name: "回放中" })).toBeTruthy();
   });
 
   it("窄屏：没有常驻侧栏，页头按钮打开节目库抽屉", async () => {

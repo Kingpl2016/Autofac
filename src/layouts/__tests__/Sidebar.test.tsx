@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
+import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
 import { Sidebar } from "../Sidebar";
 
@@ -18,9 +19,41 @@ function renderSidebar() {
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
   usePrefsStore.setState({ sidebarCollapsed: false });
+  useEngineStatusStore.setState({ appMode: "live" });
 });
 
 afterEach(() => cleanup());
+
+describe("Sidebar 与播放器模式", () => {
+  it("导航里没有独立的“播放器”入口：播放模式从顶栏的“播放器”按钮进入", () => {
+    renderSidebar();
+    const labels = screen.getAllByRole("link").map((l) => l.getAttribute("aria-label"));
+    expect(labels).not.toContain("播放器");
+    expect(labels).toContain("录制");
+  });
+
+  it("实时模式下没有“已暂停”标记", () => {
+    renderSidebar();
+    expect(screen.getAllByRole("link").some((l) => /已暂停/.test(l.getAttribute("aria-label") ?? ""))).toBe(false);
+  });
+
+  it("播放器模式下，依赖实时信号的页面仍可进入，但在名称里写明“已暂停”（不只靠图标）", () => {
+    useEngineStatusStore.setState({ appMode: "player" });
+    renderSidebar();
+    const paused = screen
+      .getAllByRole("link")
+      .filter((l) => /已暂停/.test(l.getAttribute("aria-label") ?? ""))
+      .map((l) => l.getAttribute("aria-label"));
+    expect(paused).toEqual([
+      "Universe 视图（播放器模式下已暂停）",
+      "设备发现（播放器模式下已暂停）",
+      "录制（播放器模式下已暂停）",
+    ]);
+    // 转发、信号流等不依赖实时信号的页面不受影响
+    expect(screen.getByRole("link", { name: "信号转发" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "信号流" })).toBeTruthy();
+  });
+});
 
 describe("Sidebar", () => {
   it("展开时为宽栏并显示导航文字", () => {

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsQuery } from "@/features/settings";
 import { ChannelGrid, UniversePicker } from "@/features/universes";
-import { SurfacePanel } from "./console/SurfacePanel";
+import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { ChannelCurves } from "./ChannelCurves";
 import { PlayerTargetPicker } from "./PlayerTargetPicker";
 import { TimelineHeatmap } from "./TimelineHeatmap";
@@ -18,7 +18,7 @@ import {
   playerPause,
   playerPlay,
   playerSeek,
-  playerSetLoop,
+  playerSetRepeat,
   playerSetSpeed,
   playerSetTarget,
   playerSetViewed,
@@ -115,7 +115,7 @@ export function PlayerPanel({ onGoLibrary, active = true }: PlayerPanelProps) {
         onStop={() => void run(playerStop)}
         onSeek={(pos) => void run(() => playerSeek(pos))}
         onSpeed={(m) => void run(() => playerSetSpeed(m))}
-        onLoop={(l) => void run(() => playerSetLoop(l))}
+        onRepeat={(m) => void run(() => playerSetRepeat(m))}
         onExit={() => void run(playerClose)}
         hotkeys={active}
       />

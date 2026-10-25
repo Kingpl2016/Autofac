@@ -6,12 +6,14 @@
 //!
 //! 命令位于 [`commands`]，由宿主在自己的 `invoke_handler` 注册（命令名不变）。
 
+pub mod app_mode;
 pub mod dispatch;
 pub mod mode;
 pub mod playback;
 pub mod recording;
 pub mod runtime;
 pub mod sacn;
+pub mod sender;
 mod util;
 
 pub use dispatch::{DispatchTarget, Dispatcher, ForwardJob};

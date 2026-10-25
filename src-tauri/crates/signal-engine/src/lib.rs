@@ -47,6 +47,22 @@ mod tests {
     }
 
     #[test]
+    fn clear_drops_all_universes_but_keeps_packet_counter() {
+        let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
+        eng.ingest(&frame(1, [10, 0, 0, 1], vec![1]), 0);
+        eng.ingest(&frame(2, [10, 0, 0, 2], vec![2]), 0);
+        let packets = eng.total_packets();
+        assert_eq!(eng.clear(), 2);
+        assert!(eng.snapshot().is_empty());
+        assert_eq!(eng.merged_output(1), None);
+        assert_eq!(eng.total_packets(), packets, "累计包数不应回退");
+        assert_eq!(eng.clear(), 0, "重复清理是幂等的");
+        // 清空后仍可继续接收
+        eng.ingest(&frame(3, [10, 0, 0, 3], vec![3]), 5);
+        assert_eq!(eng.active_universe_count(), 1);
+    }
+
+    #[test]
     fn ingest_and_snapshot() {
         let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
         eng.ingest(&frame(1, [10, 0, 0, 1], vec![0, 255, 0]), 0);

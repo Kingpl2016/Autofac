@@ -1,8 +1,30 @@
-import { Circle, Pause, Play, Square, TriangleAlert, type LucideIcon } from "lucide-react";
+import {
+  CircleCheck,
+  Circle,
+  Film,
+  OctagonAlert,
+  Pause,
+  Play,
+  Square,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type StatusTone = "recording" | "playing" | "paused" | "idle" | "warning";
+/**
+ * 状态色调。红 = 录制、绿 = 播放 / 就绪、黄 = 暂停 / 告警、强调色 = 播放器模式（“模式”而非“状态”，
+ * 不占用红绿黄）、红 + 警示图标 = 错误。
+ */
+export type StatusTone =
+  | "recording"
+  | "playing"
+  | "paused"
+  | "idle"
+  | "warning"
+  | "player"
+  | "ready"
+  | "error";
 
 const TONES: Record<StatusTone, { icon: LucideIcon; className: string }> = {
   recording: {
@@ -16,6 +38,9 @@ const TONES: Record<StatusTone, { icon: LucideIcon; className: string }> = {
   paused: { icon: Pause, className: "bg-warning/15 text-warning" },
   idle: { icon: Square, className: "bg-secondary text-muted-foreground" },
   warning: { icon: TriangleAlert, className: "bg-warning/15 text-warning" },
+  player: { icon: Film, className: "bg-primary/15 text-primary glow-primary" },
+  ready: { icon: CircleCheck, className: "bg-success/15 text-success" },
+  error: { icon: OctagonAlert, className: "bg-destructive/15 text-destructive" },
 };
 
 interface StatusPillProps {

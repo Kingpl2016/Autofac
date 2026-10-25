@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RecordingDirField } from "./RecordingDirField";
 import { SettingsSectionById } from "./SettingsSection";
 import { SettingRow } from "./SettingRow";
 import { ShortcutsSection } from "./ShortcutsSection";
@@ -365,19 +366,12 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
 
       {/* 录制 */}
       <SettingsSectionById id="recording">
-        <SettingRow label={t("settings.recordingDir")}>
-          <Input
-            className="w-full"
-            placeholder="~/Documents/ArtNet Studio Recordings"
-            value={settings.recording.directory}
-            onChange={(e) =>
-              update((s) => ({
-                ...s,
-                recording: { ...s.recording, directory: e.target.value },
-              }))
-            }
-          />
-        </SettingRow>
+        <RecordingDirField
+          value={settings.recording.directory}
+          onChange={(directory) =>
+            update((s) => ({ ...s, recording: { ...s.recording, directory } }))
+          }
+        />
         <SettingRow label={t("settings.recordingCompression")}>
           <Select
             value={settings.recording.compression}
@@ -433,6 +427,22 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
                   splitMinutes: Math.max(0, Number(e.target.value) || 0),
                 },
               }))
+            }
+          />
+        </SettingRow>
+      </SettingsSectionById>
+
+      {/* 播放器模式 */}
+      <SettingsSectionById id="player">
+        <SettingRow
+          label={t("settings.startInPlayerMode")}
+          hint={t("settings.startInPlayerModeHint")}
+        >
+          <Switch
+            checked={settings.player.startInPlayerMode}
+            aria-label={t("settings.startInPlayerMode")}
+            onCheckedChange={(on) =>
+              update((s) => ({ ...s, player: { ...s.player, startInPlayerMode: on } }))
             }
           />
         </SettingRow>

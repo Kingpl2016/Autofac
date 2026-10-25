@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { Circle, Loader2, Square, TriangleAlert } from "lucide-react";
+import { Circle, Loader2, OctagonAlert, Square, TriangleAlert } from "lucide-react";
+import { Link, useInRouterContext } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import type { UniverseSnapshot } from "@/shared/domain/engine";
 import { MetricChip } from "./console/MetricChip";
 import { PulseRing } from "./console/PulseRing";
-import { StatusPill } from "./console/StatusPill";
-import { SurfacePanel } from "./console/SurfacePanel";
+import { StatusPill } from "../../../shared/components/StatusPill";
+import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { TimeCode } from "./console/TimeCode";
+import { MIN_START_FREE_BYTES, formatDiskBytes, type DiskInfo } from "../../../shared/domain/disk";
 import { formatBytes } from "../lib/filter";
 import type { RecordingResult, RecordingStatus, UniversePlan } from "../lib/types";
 
@@ -40,6 +42,8 @@ interface RecordConsoleProps {
   plan: UniversePlan;
   /** 当前检测到的来源（发送方 IP）数量，待机时作为“有没有信号”的提示 */
   sourceCount: number;
+  /** 空闲时的录制目录空间信息（录制中改用 `status` 里的实时值）；未知为 null */
+  disk?: DiskInfo | null;
   /** 节目名称 / 备注（受控输入，录制中锁定） */
   name: string;
   notes: string;
@@ -61,6 +65,7 @@ export function RecordConsole({
   snapshots,
   plan,
   sourceCount,
+  disk = null,
   name,
   notes,
   onNameChange,
@@ -81,6 +86,17 @@ export function RecordConsole({
   const shownUniverses = recording ? status.universes : plan.accepted;
   const fieldLabel = "text-xs font-medium text-muted-foreground";
 
+  // 剩余空间：录制中取后端推送的实时值，空闲时取查询结果；两者都未知则不显示指标
+  const diskFree = recording ? status.diskFreeBytes : (disk?.freeBytes ?? null);
+  const diskLevel = recording ? status.diskLevel : (disk?.level ?? "ok");
+  const diskBlocked = !recording && disk !== null && !disk.canStart;
+  const diskValue =
+    diskFree === null
+      ? null
+      : diskLevel === "ok"
+        ? formatDiskBytes(diskFree)
+        : `${formatDiskBytes(diskFree)} · ${t("recording.diskLowTag")}`;
+
   return (
     <SurfacePanel tone={recording ? "recording" : "default"}>
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
@@ -100,6 +116,15 @@ export function RecordConsole({
                 <span className="text-xs text-muted-foreground">{t("recording.lastResult")}</span>
               )}
             </div>
+            {!recording && last?.stoppedBy === "disk" && (
+              <p
+                role="alert"
+                className="flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                {t("recording.stoppedByDisk")}
+              </p>
+            )}
             <TimeCode
               valueUs={shownUs}
               size="xl"
@@ -116,7 +141,7 @@ export function RecordConsole({
 
           {/* 待机：显示“有没有信号”，让空闲的录制舱也有实时反馈 */}
           {!recording && !last && (
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
               <MetricChip label={t("recording.statSources")} value={String(sourceCount)} />
               <MetricChip
                 label={t("recording.statActiveUniverses")}
@@ -126,11 +151,18 @@ export function RecordConsole({
                 label={t("recording.statPlanned")}
                 value={String(plan.accepted.length)}
               />
+              {diskValue !== null && (
+                <MetricChip
+                  label={t("recording.statDiskFree")}
+                  value={diskValue}
+                  warn={diskLevel !== "ok"}
+                />
+              )}
             </dl>
           )}
 
           {(recording || last) && (
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-6">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-7">
               {recording ? (
                 <>
                   <MetricChip label={t("recording.statFrames")} value={String(s.frames)} />
@@ -149,6 +181,13 @@ export function RecordConsole({
                     value={String(status.dropped)}
                     warn={status.dropped > 0}
                   />
+                  {diskValue !== null && (
+                    <MetricChip
+                      label={t("recording.statDiskFree")}
+                      value={diskValue}
+                      warn={diskLevel !== "ok"}
+                    />
+                  )}
                 </>
               ) : (
                 <>
@@ -214,8 +253,9 @@ export function RecordConsole({
             <Button
               className="h-14 w-full rounded-xl bg-recording text-base text-recording-foreground hover:bg-recording/90"
               onClick={onStart}
-              disabled={busy === "start" || playbackLoaded}
+              disabled={busy === "start" || playbackLoaded || diskBlocked}
               aria-busy={busy === "start"}
+              aria-describedby={diskBlocked ? "rec-disk-help" : undefined}
             >
               {busy === "start" ? (
                 <Loader2 className="animate-spin" />
@@ -224,6 +264,18 @@ export function RecordConsole({
               )}
               {t("recording.start")}
             </Button>
+          )}
+          {diskBlocked && disk && (
+            <p id="rec-disk-help" className="flex items-start gap-2 text-xs text-destructive">
+              <OctagonAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>
+                {t("recording.diskBlocked", {
+                  free: formatDiskBytes(disk.freeBytes ?? 0),
+                  min: formatDiskBytes(MIN_START_FREE_BYTES),
+                })}{" "}
+                <SettingsLink />
+              </span>
+            </p>
           )}
           {playbackLoaded && !recording && (
             <p className="flex items-start gap-2 text-xs text-warning">
@@ -286,6 +338,18 @@ export function RecordConsole({
         )}
       </div>
     </SurfacePanel>
+  );
+}
+
+/** “更改录制目录”链接；不在路由上下文中（单元测试）时不渲染。 */
+function SettingsLink() {
+  const { t } = useTranslation();
+  const inRouter = useInRouterContext();
+  if (!inRouter) return null;
+  return (
+    <Link to="/settings" className="underline underline-offset-2">
+      {t("recording.diskChangeDir")}
+    </Link>
   );
 }
 

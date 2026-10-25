@@ -19,11 +19,13 @@ use forwarding::{ForwardingTable, RateLimiter};
 use settings::AppSettings;
 use signal_engine::{SignalEngine, SourceStat, UniverseSnapshot};
 
+use crate::app_mode::{AppMode, ModeDeps, ModeManager, ModeStatus, ReceiversState};
 use crate::dispatch::{DispatchTarget, Dispatcher};
 use crate::mode::{FrameFanout, RuntimeMode};
 use crate::playback::{OpenParams, PlaybackController, PlaybackStatus};
 use crate::recording::RecordingController;
 use crate::sacn::{plan_sacn, SacnPlan};
+use crate::sender::{self, SenderHealth};
 use crate::util::lock;
 
 /// 本应用固定 CID（用于 sACN 发送与发现）。
@@ -115,6 +117,21 @@ struct SacnState {
     generation: u64,
 }
 
+/// Art-Net 接收任务的配置与句柄；与 [`SacnState`] 对应，但配置只在启动时读取。
+#[derive(Default)]
+struct ArtnetRx {
+    /// 运行中的接收任务；`abort()` 会丢弃套接字并释放端口。
+    handle: Option<tokio::task::JoinHandle<()>>,
+    /// 启动时读取的绑定网卡；`None` 表示尚未 `spawn`。
+    bind_ip: Option<Ipv4Addr>,
+    /// 配置是否启用 Art-Net 接收。
+    enabled: bool,
+    /// 帧通道发送端：重建接收任务时需要。
+    frame_tx: Option<mpsc::Sender<DmxFrame>>,
+    /// ArtPollReply 通道发送端：重建接收任务时需要。
+    reply_tx: Option<mpsc::Sender<PollReplyInfo>>,
+}
+
 /// 应用运行时句柄：共享引擎、设备注册表与被查看集合。
 #[derive(Clone)]
 pub struct Runtime {
@@ -140,6 +157,16 @@ pub struct Runtime {
     recording: RecordingController,
     /// sACN 接收任务状态（可随设置实时启停）。
     sacn: Arc<Mutex<SacnState>>,
+    /// Art-Net 接收任务状态（可被播放器模式挂起并重建）。
+    artnet: Arc<Mutex<ArtnetRx>>,
+    /// 接收是否被播放器模式挂起：为 `true` 时设置变更不得重建 sACN 接收。
+    suspended: Arc<AtomicBool>,
+    /// 最近一次应用的配置，恢复接收时据此重建 sACN 方案。
+    last_cfg: Arc<Mutex<Option<AppSettings>>>,
+    /// 应用运行模式管理器。
+    modes: Arc<ModeManager>,
+    /// 发送器健康度（与分发器共享）。
+    sender_health: Arc<SenderHealth>,
     /// 帧通道发送端：保留一份供重建 sACN 接收任务时使用。
     frame_tx: Arc<Mutex<Option<mpsc::Sender<DmxFrame>>>>,
     start: Instant,
@@ -175,6 +202,7 @@ impl Runtime {
             sender.clone(),
         );
         dispatcher.set_sacn_enabled(cfg.protocol.sacn_enabled);
+        let sender_health = dispatcher.health();
         // 录制 / 回放共享同一互斥仲裁；录制控制器把自身帧接收器注册进扇出，
         // 接收循环只认扇出、不再硬编码录制。
         let mode = Arc::new(RuntimeMode::new());
@@ -195,6 +223,11 @@ impl Runtime {
             scanning: Arc::new(AtomicBool::new(false)),
             recording,
             sacn: Arc::new(Mutex::new(SacnState::default())),
+            artnet: Arc::new(Mutex::new(ArtnetRx::default())),
+            suspended: Arc::new(AtomicBool::new(false)),
+            last_cfg: Arc::new(Mutex::new(None)),
+            modes: Arc::new(ModeManager::new()),
+            sender_health,
             frame_tx: Arc::new(Mutex::new(None)),
             start: Instant::now(),
             names_path,
@@ -222,6 +255,11 @@ impl Runtime {
     /// * `path` - 已校验的 `.artrec` 路径。
     /// * `name` - 显示名。
     /// * `target` - 输出目标。
+    /// * `library_dir` - 录制目录，连播时据此查找下一个节目。
+    ///
+    /// # Returns
+    ///
+    /// 节目刚打开时的初始 [`PlaybackStatus`]。
     ///
     /// # Errors
     ///
@@ -232,16 +270,120 @@ impl Runtime {
         path: PathBuf,
         name: String,
         target: DispatchTarget,
+        library_dir: PathBuf,
     ) -> Result<PlaybackStatus, String> {
-        self.playback.open(OpenParams {
-            emit,
+        let next: crate::playback::NextProgramFn =
+            Arc::new(move |current| crate::playback::next_in_library(&library_dir, current));
+        // 打开节目即进入播放器模式（回放需要独占输出，实时接收必须先停）。
+        // 若本次调用负责进入，节目打不开时要退回实时模式，不能把用户留在一个空的播放器模式里。
+        let entered_here = self.modes.mode() == AppMode::Live;
+        if entered_here {
+            self.set_app_mode(AppMode::Player, &emit)?;
+        }
+        let opened = self.playback.open(OpenParams {
+            emit: emit.clone(),
             dispatcher: self.dispatcher.clone(),
             mode: self.mode.clone(),
             started_at: self.start,
             path,
             name,
             target,
-        })
+            next: Some(next),
+        });
+        if opened.is_err() && entered_here {
+            let _ = self.set_app_mode(AppMode::Live, &emit);
+        }
+        opened
+    }
+
+    /// 当前应用模式状态。
+    ///
+    /// # Returns
+    ///
+    /// 当前模式、接收任务状态与发送器状态的 [`ModeStatus`]。
+    #[must_use]
+    pub fn app_mode_status(&self) -> ModeStatus {
+        ModeStatus {
+            mode: self.modes.mode(),
+            receivers: self.modes.receivers(),
+            sender: self.sender_health.state(),
+        }
+    }
+
+    /// 切换应用模式（**须在 Tokio 上下文中调用**：重建接收套接字需要 reactor）。
+    ///
+    /// 目标等于当前模式时是幂等的；实时模式下若接收曾绑定失败，会再次尝试重建。
+    /// 成功后推送 `app:mode` 事件。
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - 目标模式。
+    /// * `emit` - 事件发射回调。
+    ///
+    /// # Returns
+    ///
+    /// 切换完成后的 [`ModeStatus`]。
+    ///
+    /// # Errors
+    ///
+    /// - `transition_in_progress`：已有切换正在进行。
+    /// - `recording_active`：录制进行中，不能进入播放器模式。
+    pub fn set_app_mode(
+        &self,
+        target: AppMode,
+        emit: &crate::recording::Emitter,
+    ) -> Result<ModeStatus, String> {
+        self.modes.set(target, self)?;
+        let status = self.app_mode_status();
+        emit("app:mode", serde_json::to_value(status).unwrap_or(serde_json::Value::Null));
+        Ok(status)
+    }
+
+    /// 启动（或重建）Art-Net 接收任务（**须在 Tokio 上下文中调用**）。
+    ///
+    /// # Returns
+    ///
+    /// 成功绑定，或按配置本就关闭（无需绑定）时为 `true`；绑定失败或尚未 `spawn` 时为 `false`。
+    fn artnet_start(&self) -> bool {
+        // 启动时 `spawn` 的绑定任务与"启动即进入播放器模式"可能赛跑：
+        // 若接收已被挂起，这里不能再把端口绑回来（恢复时会先清除挂起标志再调用）。
+        if self.suspended.load(Ordering::Acquire) {
+            return true;
+        }
+        let (ip, tx, reply, enabled) = {
+            let st = lock(&self.artnet);
+            (st.bind_ip, st.frame_tx.clone(), st.reply_tx.clone(), st.enabled)
+        };
+        if !enabled {
+            return true;
+        }
+        let (Some(ip), Some(tx)) = (ip, tx) else {
+            return false;
+        };
+        if let Some(old) = lock(&self.artnet).handle.take() {
+            old.abort();
+        }
+        match socket::spawn_artnet_receiver(ip, tx, reply) {
+            Ok(handle) => {
+                lock(&self.artnet).handle = Some(handle);
+                // 仅在接收套接字真正绑定成功后才允许扫描（否则收不到回复）
+                self.artnet_enabled.store(true, Ordering::Relaxed);
+                true
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Art-Net 接收绑定失败");
+                self.artnet_enabled.store(false, Ordering::Relaxed);
+                false
+            }
+        }
+    }
+
+    /// 停止 Art-Net 接收任务并释放端口。
+    fn artnet_stop(&self) {
+        if let Some(h) = lock(&self.artnet).handle.take() {
+            h.abort();
+        }
+        self.artnet_enabled.store(false, Ordering::Relaxed);
     }
 
     /// 按源 IP 聚合的当前来源统计（供录制来源选择器）。
@@ -299,6 +441,7 @@ impl Runtime {
             e.set_mode(cfg.merge.mode);
             e.set_timeout(u64::from(cfg.merge.source_timeout_ms));
         }
+        *lock(&self.last_cfg) = Some(cfg.clone());
         self.reconcile_sacn(cfg);
     }
 
@@ -314,6 +457,11 @@ impl Runtime {
     fn reconcile_sacn(&self, cfg: &AppSettings) {
         // 先于一切改开关：之后到达的 sACN 帧即被接收循环丢弃
         self.dispatcher.set_sacn_enabled(cfg.protocol.sacn_enabled);
+        // 播放器模式下接收已被整体挂起：保存设置不能把 sACN 接收悄悄重建出来。
+        // 恢复时会以最新配置（`last_cfg`）重新建立。
+        if self.suspended.load(Ordering::Acquire) {
+            return;
+        }
         let plan = plan_sacn(cfg, &netif::list_interfaces());
 
         let (generation, had_receiver) = {
@@ -485,32 +633,52 @@ impl Runtime {
 
         // 套接字绑定（UdpSocket::from_std）必须在 Tokio 运行时上下文中执行，
         // 而 Tauri 的 setup 不处于 reactor 内，故放入 async runtime 任务中绑定。
-        let artnet_enabled = cfg.protocol.artnet_enabled;
-        let artnet_bound = self.artnet_enabled.clone();
-        let recv_tx = tx.clone();
+        *lock(&self.last_cfg) = Some(cfg.clone());
+        {
+            // 配置只在启动时读取；句柄与通道发送端留在状态里，播放器模式退出时据此重建
+            let mut st = lock(&self.artnet);
+            st.bind_ip = Some(bind_ip);
+            st.enabled = cfg.protocol.artnet_enabled;
+            st.frame_tx = Some(tx.clone());
+            st.reply_tx = Some(reply_tx);
+        }
+        let this = self.clone();
         tauri::async_runtime::spawn(async move {
-            if artnet_enabled {
-                match socket::spawn_artnet_receiver(bind_ip, recv_tx.clone(), Some(reply_tx))
-                {
-                    // 仅在接收套接字真正绑定成功后才允许扫描（否则收不到回复）
-                    Ok(_) => artnet_bound.store(true, Ordering::Relaxed),
-                    Err(e) => tracing::warn!(error = %e, "Art-Net 接收绑定失败"),
-                }
-            } else {
-                drop(reply_tx);
+            if !this.artnet_start() {
+                this.modes.set_receivers(ReceiversState::Failed);
             }
         });
         // 保留发送端：sACN 接收任务由 reconcile_sacn 按设置实时启停，重建时需要它。
         *lock(&self.frame_tx) = Some(tx);
         self.reconcile_sacn(cfg);
 
-        // 创建发送器（供转发使用）
-        let sender = self.sender.clone();
+        // 发送器监督：首次创建与之后的故障重建走同一条路径（连续发送失败 → 阶梯退避重建）
+        let health = self.sender_health.clone();
+        let slot = self.sender.clone();
         tauri::async_runtime::spawn(async move {
-            if let Ok(s) = DmxSender::new(APP_CID).await {
-                *sender.lock().await = Some(s);
+            loop {
+                health.wait_for_trouble().await;
+                sender::recover(&health, &slot, || DmxSender::new(APP_CID), sender::rebind_delay)
+                    .await;
             }
         });
+        // 发送器状态变化时推送 app:mode，让界面及时显示"输出重连中 / 不可用"
+        {
+            let weak_health = Arc::downgrade(&self.sender_health);
+            let modes = self.modes.clone();
+            let app = app.clone();
+            self.sender_health.set_listener(move |_| {
+                if let Some(h) = weak_health.upgrade() {
+                    let status = ModeStatus {
+                        mode: modes.mode(),
+                        receivers: modes.receivers(),
+                        sender: h.state(),
+                    };
+                    let _ = app.emit("app:mode", status);
+                }
+            });
+        }
+        self.sender_health.request_recovery();
 
         // 帧摄取 + 转发任务
         let engine = self.engine.clone();
@@ -525,8 +693,9 @@ impl Runtime {
                 if frame.protocol == Protocol::Sacn && !sacn_gate.load(Ordering::Relaxed) {
                     continue;
                 }
-                // 回放模式下暂停实时接收（避免回放输出被自己重新摄取形成回环）
-                if mode.is_playback() {
+                // 回放模式下暂停实时接收（避免回放输出被自己重新摄取形成回环）；
+                // 播放器模式下接收任务已拆除，这里再丢弃通道里残留的迟到帧
+                if mode.is_playback() || mode.is_player() {
                     continue;
                 }
                 // 旁路给已注册的帧接收器（录制等）：各自非阻塞处理，不影响下方合并与转发
@@ -642,9 +811,59 @@ impl Runtime {
     }
 }
 
+impl ModeDeps for Runtime {
+    fn is_recording(&self) -> bool {
+        self.mode.is_recording()
+    }
+
+    fn set_player_flag(&self, on: bool) {
+        self.mode.set_player(on);
+    }
+
+    fn suspend_receivers(&self) {
+        self.suspended.store(true, Ordering::Release);
+        self.artnet_stop();
+        let mut st = lock(&self.sacn);
+        st.generation += 1; // 让仍在异步绑定中的旧任务自认过期
+        if let Some(handle) = st.handle.take() {
+            handle.abort();
+        }
+        st.applied = None;
+    }
+
+    fn resume_receivers(&self) -> bool {
+        self.suspended.store(false, Ordering::Release);
+        let bound = self.artnet_start();
+        let cfg = lock(&self.last_cfg).clone();
+        if let Some(cfg) = cfg {
+            self.reconcile_sacn(&cfg);
+        }
+        bound
+    }
+
+    fn clear_live_state(&self) {
+        let universes = lock(&self.engine).clear();
+        let devices = lock(&self.registry).clear();
+        self.dispatcher.reset_rate_limits();
+        tracing::info!(universes, devices, "已清空实时状态");
+    }
+
+    fn ensure_sender(&self) {
+        // 发送槽被占用（正在发送）说明发送器存在；只有确认为空才请求创建
+        if self.sender.try_lock().is_ok_and(|g| g.is_none()) {
+            self.sender_health.request_recovery();
+        }
+    }
+
+    fn close_program(&self) {
+        self.playback.close();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
     use artnet_net::{Bytes, DmxFrame, Protocol};
@@ -652,6 +871,9 @@ mod tests {
     use settings::AppSettings;
 
     use super::Runtime;
+    use crate::app_mode::{AppMode, ReceiversState};
+    use crate::dispatch::DispatchTarget;
+    use crate::recording::Emitter;
     use crate::util::lock;
 
     /// 造一个只收单播的 sACN 配置：端口 0 由系统分配，不订阅组播，避免依赖网络环境。
@@ -761,5 +983,143 @@ mod tests {
         assert!(rt.dispatcher.sacn_gate().load(std::sync::atomic::Ordering::Relaxed));
         rt.apply_settings(&sacn_cfg(false));
         assert!(!rt.dispatcher.sacn_gate().load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    // ---- 播放器模式 ----
+
+    fn noop_emit() -> Emitter {
+        Arc::new(|_, _| {})
+    }
+
+    /// 写一个最小的合法 `.artrec`（1 路 Universe、两帧）。
+    fn write_program(dir: &std::path::Path, file: &str) -> std::path::PathBuf {
+        use artrec_core::{ArtRecWriter, CompressAlgo, UniDesc};
+        let unis = vec![UniDesc::from_universe(5, 512).unwrap()];
+        let mut w = ArtRecWriter::new(std::io::Cursor::new(Vec::new()), unis, CompressAlgo::Zstd, 1, 0, 0)
+            .unwrap();
+        let mut cur = vec![vec![0u8; 512]];
+        for (t, v) in [(0u64, 1u8), (50_000, 2)] {
+            cur[0][0] = v;
+            w.add_full_frame(t, &cur).unwrap();
+        }
+        let p = dir.join(file);
+        std::fs::write(&p, w.finish(100_000).unwrap().into_inner()).unwrap();
+        p
+    }
+
+    struct TmpDir(std::path::PathBuf);
+    impl TmpDir {
+        fn new(tag: &str) -> Self {
+            let p = std::env::temp_dir().join(format!("artnet-studio-rt-{tag}-{}", std::process::id()));
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for TmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn player_mode_tears_down_receivers_clears_state_and_survives_settings_saves() {
+        let rt = runtime(&sacn_cfg(true));
+        rt.apply_settings(&sacn_cfg(true));
+        assert!(wait_for_handle(&rt), "实时模式下应有 sACN 接收任务");
+        lock(&rt.engine).ingest(&sacn_frame(2, [10, 0, 0, 2]), 0);
+        lock(&rt.registry).upsert_source(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), Protocol::Sacn, 0);
+        assert_eq!(rt.snapshot().len(), 1);
+
+        let st = rt.set_app_mode(AppMode::Player, &noop_emit()).unwrap();
+        assert_eq!((st.mode, st.receivers), (AppMode::Player, ReceiversState::Suspended));
+        assert!(rt.mode.is_player(), "接收循环据此丢弃迟到帧");
+        assert!(lock(&rt.sacn).handle.is_none(), "sACN 接收应已拆除");
+        assert!(rt.snapshot().is_empty(), "实时信号应被清空");
+        assert!(rt.devices().is_empty(), "设备表应被清空");
+
+        // 在播放器模式下保存设置，不能把 sACN 接收悄悄重建出来
+        rt.apply_settings(&sacn_cfg(true));
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(lock(&rt.sacn).handle.is_none() && lock(&rt.sacn).applied.is_none());
+
+        // 退出：以最新配置重建，并放开标志
+        let st = rt.set_app_mode(AppMode::Live, &noop_emit()).unwrap();
+        assert_eq!((st.mode, st.receivers), (AppMode::Live, ReceiversState::Bound));
+        assert!(!rt.mode.is_player());
+        assert!(wait_for_handle(&rt), "退出后应重建 sACN 接收");
+    }
+
+    #[test]
+    fn scanning_is_refused_while_receivers_are_suspended() {
+        let rt = runtime(&sacn_cfg(false));
+        rt.artnet_enabled.store(true, std::sync::atomic::Ordering::Relaxed); // 模拟接收已绑定
+        rt.set_app_mode(AppMode::Player, &noop_emit()).unwrap();
+        let err = tauri::async_runtime::block_on(rt.scan_network()).unwrap_err();
+        assert_eq!(err, super::SCAN_ERR_ARTNET_DISABLED);
+    }
+
+    #[test]
+    fn recording_blocks_entering_player_mode_and_nothing_changes() {
+        let rt = runtime(&sacn_cfg(false));
+        rt.mode.set_recording(true);
+        let err = rt.set_app_mode(AppMode::Player, &noop_emit()).unwrap_err();
+        assert_eq!(err, crate::playback::ERR_RECORDING_ACTIVE);
+        assert_eq!(rt.app_mode_status().mode, AppMode::Live);
+        assert!(!rt.mode.is_player());
+    }
+
+    #[test]
+    fn opening_a_program_enters_player_mode_and_leaving_closes_it() {
+        let tmp = TmpDir::new("open");
+        let file = write_program(&tmp.0, "a.artrec");
+        let rt = runtime(&sacn_cfg(false));
+        let events: Arc<Mutex<Vec<String>>> = Arc::default();
+        let sink = events.clone();
+        let emit: Emitter = Arc::new(move |n, _| sink.lock().unwrap().push(n.to_string()));
+
+        let st = rt
+            .open_playback(emit.clone(), file, "a".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .unwrap();
+        assert!(st.loaded);
+        assert_eq!(rt.app_mode_status().mode, AppMode::Player, "打开节目应自动进入播放器模式");
+        assert!(events.lock().unwrap().iter().any(|n| n == "app:mode"));
+
+        // 只关闭节目不会退出播放器模式
+        rt.playback().close();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(rt.app_mode_status().mode, AppMode::Player);
+
+        rt.set_app_mode(AppMode::Live, &emit).unwrap();
+        assert!(!rt.mode.is_player());
+    }
+
+    #[test]
+    fn failing_to_open_a_program_rolls_back_to_live_mode() {
+        let tmp = TmpDir::new("badopen");
+        let bad = tmp.0.join("bad.artrec");
+        std::fs::write(&bad, [b'X'; 100]).unwrap();
+        let rt = runtime(&sacn_cfg(false));
+
+        let err = rt
+            .open_playback(noop_emit(), bad, "bad".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .unwrap_err();
+        assert!(!err.is_empty());
+        assert_eq!(rt.app_mode_status().mode, AppMode::Live, "打不开节目时不能把用户留在播放器模式");
+        assert!(!rt.mode.is_player());
+    }
+
+    #[test]
+    fn opening_while_already_in_player_mode_does_not_roll_back_on_failure() {
+        let tmp = TmpDir::new("stay");
+        let good = write_program(&tmp.0, "a.artrec");
+        let bad = tmp.0.join("bad.artrec");
+        std::fs::write(&bad, [b'X'; 100]).unwrap();
+        let rt = runtime(&sacn_cfg(false));
+        rt.open_playback(noop_emit(), good, "a".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .unwrap();
+        assert!(rt
+            .open_playback(noop_emit(), bad, "bad".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .is_err());
+        assert_eq!(rt.app_mode_status().mode, AppMode::Player, "原本就在播放器模式，失败不应退出");
     }
 }

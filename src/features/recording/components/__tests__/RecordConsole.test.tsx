@@ -136,10 +136,53 @@ describe("RecordConsole", () => {
       files: [{ path: "D:/rec/a.artrec", durationUs: 5_000_000, frames: 10, bytes: 1024, sources: [] }],
       error: null,
       dropped: 0,
+      stoppedBy: null,
     };
     setup({ last });
     expect(screen.getByText("上次录制")).toBeTruthy();
     expect(screen.getByText("0:05.0")).toBeTruthy();
     expect(screen.getByText("D:/rec/a.artrec")).toBeTruthy();
+  });
+
+  it("剩余空间不足以开始时：禁用开始、给出带数值的持续说明，并与按钮关联", () => {
+    setup({
+      disk: { path: "D:/rec", freeBytes: 320_000_000, level: "low", canStart: false },
+    });
+    const btn = screen.getByRole("button", { name: "开始录制" }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    const help = screen.getByText(/录制目录剩余 320 MB，至少需要 500 MB/);
+    expect(btn.getAttribute("aria-describedby")).toBe(help.closest("p")!.id);
+  });
+
+  it("空间偏低但仍可开始时：开始可用，指标用文字标明“偏低”", () => {
+    setup({
+      disk: { path: "D:/rec", freeBytes: 800_000_000, level: "low", canStart: true },
+    });
+    expect((screen.getByRole("button", { name: "开始录制" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("800 MB · 偏低")).toBeTruthy();
+  });
+
+  it("空间充足时显示剩余空间，无法查询时不显示该指标", () => {
+    setup({ disk: { path: "D:/rec", freeBytes: 5_000_000_000, level: "ok", canStart: true } });
+    expect(screen.getByText("5.0 GB")).toBeTruthy();
+    cleanup();
+    setup({ disk: null });
+    expect(screen.queryByText("剩余空间")).toBeNull();
+  });
+
+  it("录制中显示后端推送的实时剩余空间", () => {
+    setup({ status: live({ diskFreeBytes: 2_500_000_000, diskLevel: "ok" }) });
+    expect(screen.getByText("2.5 GB")).toBeTruthy();
+  });
+
+  it("因磁盘空间被自动停止时：用 alert 角色持续提示，不依赖会消失的 toast", () => {
+    const last: RecordingResult = {
+      files: [{ path: "D:/rec/a.artrec", durationUs: 5_000_000, frames: 10, bytes: 1024, sources: [] }],
+      error: null,
+      dropped: 0,
+      stoppedBy: "disk",
+    };
+    setup({ last });
+    expect(screen.getByRole("alert").textContent).toContain("因磁盘空间不足，录制已自动停止并保存");
   });
 });

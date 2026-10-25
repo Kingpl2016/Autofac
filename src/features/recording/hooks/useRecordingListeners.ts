@@ -5,6 +5,7 @@ import i18n from "@/shared/i18n";
 import { onEvent } from "@/shared/tauri/events";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { recordingStatus, recordingTakeRecovered } from "../lib/api";
+import { formatDiskBytes, type DiskLevel } from "../../../shared/domain/disk";
 import type {
   RecordingResult,
   RecordingStatus,
@@ -25,8 +26,14 @@ function notifyRecovered(outcomes: RecoveryOutcome[]) {
   }
 }
 
+/** `recording:disk` 事件载荷：磁盘空间等级发生变化。 */
+interface DiskEvent {
+  level: DiskLevel;
+  freeBytes: number;
+}
+
 /**
- * 订阅录制相关事件（`recording:stats` / `recording:finished` / `engine:sources`），
+ * 订阅录制相关事件（`recording:stats` / `recording:finished` / `recording:disk` / `engine:sources`），
  * 同步到录制 store 与顶部状态条，并在启动时提示异常退出后恢复出的录制。
  * 在应用根挂载一次。
  */
@@ -45,8 +52,17 @@ export function useRecordingListeners() {
       onEvent<RecordingResult>("recording:finished", (r) => {
         setLast(r);
         patchStatus({ recording: false });
-        if (r.error) {
+        if (r.stoppedBy === "disk") {
+          // 无人值守时录制被迫停止属于关键事件：不自动消失，直到用户确认
+          toast.error(i18n.t("recording.stoppedByDisk"), { duration: Infinity, closeButton: true });
+        } else if (r.error) {
           toast.error(i18n.t("recording.finishedWithError", { reason: r.error }));
+        }
+      }),
+      onEvent<DiskEvent>("recording:disk", (e) => {
+        // 临界等级由 `recording:finished` 的 stoppedBy 负责提示，这里只处理告警与恢复
+        if (e.level === "low") {
+          toast.warning(i18n.t("recording.diskLowToast", { free: formatDiskBytes(e.freeBytes) }));
         }
       }),
       onEvent<SourceStat[]>("engine:sources", setSources),

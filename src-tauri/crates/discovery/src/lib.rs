@@ -266,6 +266,21 @@ impl DeviceRegistry {
         }
     }
 
+    /// 移除全部设备（用户自定义名仍保留，设备再次出现时会恢复）。
+    ///
+    /// 进入播放器模式、停止一切接收时调用：此后不会再有新的发现信息，
+    /// 留着旧设备只会让界面显示过期的在线状态。
+    ///
+    /// # Returns
+    ///
+    /// 被移除的设备数量。
+    pub fn clear(&mut self) -> usize {
+        let n = self.devices.len();
+        self.devices.clear();
+        self.binds.clear();
+        n
+    }
+
     /// 移除全部离线设备（用户自定义名仍保留，设备再次出现时会恢复）。
     ///
     /// # Returns
@@ -490,6 +505,20 @@ mod tests {
         reg.upsert_source(ip(90), Protocol::Sacn, 5);
         let back = reg.list().into_iter().find(|d| d.ip == "192.168.1.90").unwrap();
         assert_eq!(back.custom_name.as_deref(), Some("舞台右"));
+    }
+
+    #[test]
+    fn clear_removes_every_device_but_keeps_custom_names() {
+        let mut reg = DeviceRegistry::new();
+        reg.upsert_source(ip(60), Protocol::Sacn, 0);
+        reg.upsert_source(ip(61), Protocol::ArtNet, 0);
+        reg.set_custom_name(ip(60), "舞台右".into());
+        assert_eq!(reg.clear(), 2);
+        assert!(reg.list().is_empty());
+        assert_eq!(reg.clear(), 0);
+        // 自定义名保留：设备重新出现时恢复
+        reg.upsert_source(ip(60), Protocol::Sacn, 9);
+        assert_eq!(reg.list()[0].custom_name.as_deref(), Some("舞台右"));
     }
 
     #[test]
