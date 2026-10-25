@@ -3,12 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { isTauri } from "@/shared/tauri/invoke";
-import { DEFAULT_SETTINGS, getSettings, saveSettings } from "../lib/api";
+import { getSettings, saveSettings } from "../lib/api";
 import type { AppSettings } from "../lib/types";
 
 /** 自动保存防抖延迟（毫秒）。 */
 const AUTOSAVE_DELAY = 2000;
+
+/** 自动保存状态：空闲 / 待保存（有改动等防抖）/ 保存中 / 已保存 / 失败。 */
+export type SaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 
 /** 配置查询缓存键。 */
 const SETTINGS_QUERY_KEY = ["settings"] as const;
@@ -20,7 +22,6 @@ export function useSettingsQuery() {
   return useQuery({
     queryKey: SETTINGS_QUERY_KEY,
     queryFn: getSettings,
-    initialData: isTauri() ? undefined : DEFAULT_SETTINGS,
   });
 }
 
@@ -35,24 +36,23 @@ export function useSettingsDraft(initial: AppSettings) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<AppSettings>(initial);
+  const [status, setStatus] = useState<SaveStatus>("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const persist = useCallback(
     (next: AppSettings) => {
-      if (!isTauri()) {
-        // 浏览器预览没有后端：直接更新缓存，让依赖设置的界面（如 sACN 开关）即时响应
-        queryClient.setQueryData(SETTINGS_QUERY_KEY, next);
-        return;
-      }
+      setStatus("saving");
       void saveSettings(next)
         .then((saved) => {
           // 用后端规范化后的结果刷新缓存，全站读取设置的地方立即生效
           queryClient.setQueryData(SETTINGS_QUERY_KEY, saved);
+          setStatus("saved");
           toast.success(t("settings.saved"));
         })
-        .catch((e: unknown) =>
-          toast.error(e instanceof Error ? e.message : String(e)),
-        );
+        .catch((e: unknown) => {
+          setStatus("error");
+          toast.error(e instanceof Error ? e.message : String(e));
+        });
     },
     [t, queryClient],
   );
@@ -67,6 +67,7 @@ export function useSettingsDraft(initial: AppSettings) {
 
   const update = useCallback(
     (updater: (prev: AppSettings) => AppSettings) => {
+      setStatus("pending");
       setDraft((prev) => {
         const next = updater(prev);
         scheduleSave(next);
@@ -92,5 +93,5 @@ export function useSettingsDraft(initial: AppSettings) {
     [],
   );
 
-  return { draft, update, replace };
+  return { draft, update, replace, status };
 }

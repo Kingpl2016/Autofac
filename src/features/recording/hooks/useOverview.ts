@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { isTauri } from "@/shared/tauri/invoke";
 import { playerOverview } from "../lib/api";
 import type { Overview } from "../lib/types";
 
@@ -15,7 +14,7 @@ export function useOverview(path: string) {
   return useQuery<Overview>({
     queryKey: ["player-overview", path],
     queryFn: () => playerOverview(path),
-    enabled: isTauri() && path !== "",
+    enabled: path !== "",
     staleTime: Infinity,
     gcTime: 5 * 60 * 1000,
     retry: false,

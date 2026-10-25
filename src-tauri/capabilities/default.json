@@ -8,6 +8,12 @@
     "opener:default",
     "dialog:default",
     "store:default",
+    "log:default",
+    "upload:default",
+    "updater:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "$HOME/**" }]

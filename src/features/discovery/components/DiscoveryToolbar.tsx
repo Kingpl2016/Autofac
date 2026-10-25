@@ -5,7 +5,7 @@ import { Download, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CategoryFilter, StatusFilter } from "../lib/filters";
-import { SegmentedControl, type SegmentOption } from "./SegmentedControl";
+import { SegmentedControl, type SegmentOption } from "../../../shared/components/SegmentedControl";
 
 interface DiscoveryToolbarProps {
   query: string;

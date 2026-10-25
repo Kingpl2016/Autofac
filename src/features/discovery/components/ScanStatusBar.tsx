@@ -3,7 +3,7 @@ import { Circle, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { LastScan } from "../hooks/useNetworkScan";
+import type { LastScan } from "../stores/useScanSession";
 
 interface ScanStatusBarProps {
   scanning: boolean;

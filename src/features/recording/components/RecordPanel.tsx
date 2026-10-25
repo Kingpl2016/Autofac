@@ -9,14 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { isTauri } from "@/shared/tauri/invoke";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useProtocolFlags } from "@/features/settings";
 import type { Protocol } from "@/shared/domain/engine";
 import { SourcePicker } from "./SourcePicker";
 import { RecordStats } from "./RecordStats";
-import { usePlayerStore } from "../hooks/usePlayerStore";
-import { useRecordingStore } from "../hooks/useRecordingStore";
+import { usePlayerStore } from "../stores/usePlayerStore";
+import { useRecordingStore } from "../stores/useRecordingStore";
 import { recordingStart, recordingStop } from "../lib/api";
 import {
   buildFileStem,
@@ -24,18 +23,8 @@ import {
   parseUniverseRanges,
   previewUniverses,
 } from "../lib/filter";
-import {
-  PLAYER_ERR_PLAYBACK_ACTIVE,
-  REC_ERR_ALREADY,
-  REC_ERR_NOT_RECORDING,
-  REC_ERR_NO_UNIVERSES,
-  type RecordFilter,
-} from "../lib/types";
-
-/** 把任意异常规整为字符串。 */
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+import { describeRecordingError } from "../lib/recordControl";
+import type { RecordFilter } from "../lib/types";
 
 /** 列表过长时截断显示。 */
 function summarize(list: number[], max = 12): string {
@@ -105,20 +94,10 @@ export function RecordPanel() {
       return next.artNet || next.sacn ? next : prev;
     });
 
-  const describeError = (e: unknown, fallbackKey: string): string => {
-    const raw = messageOf(e);
-    if (raw === REC_ERR_NO_UNIVERSES) return t("recording.errNoUniverses");
-    if (raw === REC_ERR_ALREADY) return t("recording.errAlready");
-    if (raw === PLAYER_ERR_PLAYBACK_ACTIVE) return t("recording.errPlaybackActive");
-    if (raw === REC_ERR_NOT_RECORDING) return t("recording.errNotRecording");
-    return t(fallbackKey, { reason: raw });
-  };
+  const describeError = (e: unknown, fallbackKey: string): string =>
+    describeRecordingError(e, t, fallbackKey);
 
   const handleStart = async () => {
-    if (!isTauri()) {
-      toast.info(t("recording.desktopOnly"));
-      return;
-    }
     setBusy("start");
     setLast(null);
     try {

@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 
 import i18n from "@/shared/i18n";
-import { isTauri } from "@/shared/tauri/invoke";
 import { onEvent } from "@/shared/tauri/events";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { recordingStatus, recordingTakeRecovered } from "../lib/api";
@@ -12,7 +11,7 @@ import type {
   RecoveryOutcome,
   SourceStat,
 } from "../lib/types";
-import { useRecordingStore } from "./useRecordingStore";
+import { useRecordingStore } from "../stores/useRecordingStore";
 
 /** 把启动时的恢复结果转成一条提示。 */
 function notifyRecovered(outcomes: RecoveryOutcome[]) {
@@ -54,17 +53,15 @@ export function useRecordingListeners() {
     ];
 
     // 初始状态与启动恢复提示（页面刷新或应用重启后）
-    if (isTauri()) {
-      void recordingStatus()
-        .then((s) => {
-          setStatus(s);
-          patchStatus({ recording: s.recording });
-        })
-        .catch(() => {});
-      void recordingTakeRecovered()
-        .then(notifyRecovered)
-        .catch(() => {});
-    }
+    void recordingStatus()
+      .then((s) => {
+        setStatus(s);
+        patchStatus({ recording: s.recording });
+      })
+      .catch(() => {});
+    void recordingTakeRecovered()
+      .then(notifyRecovered)
+      .catch(() => {});
 
     return () => {
       for (const u of unlisteners) void u.then((fn) => fn());

@@ -23,7 +23,7 @@ export function HeaderBar() {
   } = useEngineStatusStore();
 
   return (
-    <header className="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-border bg-card px-10">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-6">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Network className="size-4" aria-hidden />

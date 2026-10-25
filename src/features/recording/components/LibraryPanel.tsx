@@ -16,12 +16,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { isTauri } from "@/shared/tauri/invoke";
-import { useControllerStatus } from "@/features/controller";
-import { usePlayerStore } from "../hooks/usePlayerStore";
-import { useRecordingStore } from "../hooks/useRecordingStore";
+import { controllerUploadRecording, useControllerStatus } from "@/features/controller";
+import { usePlayerStore } from "../stores/usePlayerStore";
+import { useRecordingStore } from "../stores/useRecordingStore";
 import {
-  controllerUploadRecording,
   playerOpen,
   recordingStop,
   recordingsDelete,
@@ -72,8 +70,6 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const list = useQuery({
     queryKey: LIBRARY_KEY,
     queryFn: recordingsList,
-    enabled: isTauri(),
-    initialData: isTauri() ? undefined : ([] as LibraryEntry[]),
   });
 
   // 一次录制结束后自动刷新列表

@@ -1,8 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 
-import { isTauri } from "./invoke";
-
 /** 界面偏好落盘文件（位于 app_data_dir）。 */
 const PREFS_FILE = "ui-prefs.json";
 
@@ -18,11 +16,9 @@ function getStore(): LazyStore {
 }
 
 /**
- * 创建给 zustand `persist` 用的存储适配器。
- *
- * Tauri 环境把状态以 JSON 对象写入 `ui-prefs.json`（Tauri Store 插件）；
- * 非 Tauri（dev 浏览器预览）回退到 `localStorage`。任何读写失败都只告警并降级，
- * 不会让界面因为偏好存储不可用而崩溃。
+ * 创建给 zustand `persist` 用的存储适配器，统一经 Tauri Store 插件把状态以 JSON
+ * 对象写入 `ui-prefs.json`。读写失败只告警并降级（读取返回 `null`），不让界面因为
+ * 偏好存储不可用而崩溃。
  *
  * # Returns
  *
@@ -32,12 +28,8 @@ export function createTauriPersistStorage<S>(): PersistStorage<S> {
   return {
     getItem: async (name) => {
       try {
-        if (isTauri()) {
-          const v = await getStore().get<StorageValue<S>>(name);
-          return v ?? null;
-        }
-        const raw = localStorage.getItem(name);
-        return raw ? (JSON.parse(raw) as StorageValue<S>) : null;
+        const v = await getStore().get<StorageValue<S>>(name);
+        return v ?? null;
       } catch (e) {
         console.warn(`[prefs] 读取 ${name} 失败，使用默认值`, e);
         return null;
@@ -45,22 +37,14 @@ export function createTauriPersistStorage<S>(): PersistStorage<S> {
     },
     setItem: async (name, value) => {
       try {
-        if (isTauri()) {
-          await getStore().set(name, value);
-          return;
-        }
-        localStorage.setItem(name, JSON.stringify(value));
+        await getStore().set(name, value);
       } catch (e) {
         console.warn(`[prefs] 写入 ${name} 失败`, e);
       }
     },
     removeItem: async (name) => {
       try {
-        if (isTauri()) {
-          await getStore().delete(name);
-          return;
-        }
-        localStorage.removeItem(name);
+        await getStore().delete(name);
       } catch (e) {
         console.warn(`[prefs] 删除 ${name} 失败`, e);
       }

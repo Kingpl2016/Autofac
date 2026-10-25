@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { invoke, isTauri } from "@/shared/tauri/invoke";
+import { setViewedUniverses } from "../lib/api";
 
 /**
  * 管理"正在查看"的 Universe 集合，并同步到后端（决定推送哪些通道数据）。
@@ -12,8 +12,7 @@ export function useViewedUniverses() {
 
   // 同步到后端
   useEffect(() => {
-    if (!isTauri()) return;
-    void invoke("set_viewed_universes", { universes: selected }).catch(() => {});
+    void setViewedUniverses(selected).catch(() => {});
   }, [selected]);
 
   const toggle = useCallback((u: number) => {

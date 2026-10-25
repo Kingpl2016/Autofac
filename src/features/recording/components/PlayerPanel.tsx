@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSettingsQuery } from "@/features/settings";
 import { ChannelGrid, UniversePicker } from "@/features/universes";
-import { isTauri } from "@/shared/tauri/invoke";
 import { ChannelCurves } from "./ChannelCurves";
 import { PlayerTargetPicker } from "./PlayerTargetPicker";
 import { TimelineHeatmap } from "./TimelineHeatmap";
 import { TransportBar } from "./TransportBar";
-import { usePlayerStore } from "../hooks/usePlayerStore";
+import { usePlayerStore } from "../stores/usePlayerStore";
 import {
   playerClose,
   playerPause,
@@ -65,7 +64,7 @@ export function PlayerPanel({ onGoLibrary }: PlayerPanelProps) {
 
   // 同步到后端，决定推送哪些通道数据
   useEffect(() => {
-    if (!isTauri() || !status.loaded) return;
+    if (!status.loaded) return;
     void playerSetViewed(viewed).catch(() => {});
   }, [viewed, status.loaded]);
 

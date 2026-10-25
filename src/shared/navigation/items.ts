@@ -10,6 +10,7 @@ import {
   ListVideo,
   Cpu,
   FolderCog,
+  Info,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +46,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/controller-control", labelKey: "nav.controllerControl", icon: Cpu, section: "device" },
   { to: "/controller-files", labelKey: "nav.controllerFiles", icon: FolderCog, section: "device" },
   { to: "/settings", labelKey: "nav.settings", icon: Settings, section: "system" },
+  { to: "/about", labelKey: "nav.about", icon: Info, section: "system" },
 ];
 
 /** 分组顺序 */

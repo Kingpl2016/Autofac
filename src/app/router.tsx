@@ -16,6 +16,7 @@ import ScenesPage from "@/pages/ScenesPage";
 import ControllerControlPage from "@/pages/ControllerControlPage";
 import ControllerFilesPage from "@/pages/ControllerFilesPage";
 import SettingsPage from "@/pages/SettingsPage";
+import AboutPage from "@/pages/AboutPage";
 
 /**
  * 应用路由表：单布局 + 各功能页面。
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
       { path: "controller-control", element: <ControllerControlPage /> },
       { path: "controller-files", element: <ControllerFilesPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "about", element: <AboutPage /> },
     ],
   },
 ]);

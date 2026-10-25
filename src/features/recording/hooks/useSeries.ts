@@ -1,6 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { isTauri } from "@/shared/tauri/invoke";
 import { playerSeries } from "../lib/api";
 import type { ChannelSeries } from "../lib/types";
 
@@ -26,7 +25,7 @@ interface UseSeriesParams {
  */
 export function useSeries(p: UseSeriesParams) {
   const enabled =
-    isTauri() && p.path !== "" && p.universe !== null && p.channels.length > 0 && p.maxPoints > 0;
+    p.path !== "" && p.universe !== null && p.channels.length > 0 && p.maxPoints > 0;
   return useQuery<ChannelSeries[]>({
     queryKey: [
       "player-series",

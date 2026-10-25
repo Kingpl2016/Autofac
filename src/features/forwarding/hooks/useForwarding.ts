@@ -3,18 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { isTauri } from "@/shared/tauri/invoke";
-import { EMPTY_TABLE, getForwarding, saveForwarding } from "../lib/api";
+import { getForwarding, saveForwarding } from "../lib/api";
 import type { ForwardDestination, ForwardingTable } from "../lib/types";
 
 const AUTOSAVE_DELAY = 2000;
 
-/** 查询转发表（非 Tauri 回退空表）。 */
+/** 查询转发表。 */
 export function useForwardingQuery() {
   return useQuery({
     queryKey: ["forwarding"],
     queryFn: getForwarding,
-    initialData: isTauri() ? undefined : EMPTY_TABLE,
   });
 }
 
@@ -32,7 +30,6 @@ export function useForwardingDraft(initial: ForwardingTable) {
 
   const persist = useCallback(
     (list: ForwardDestination[]) => {
-      if (!isTauri()) return;
       void saveForwarding({ destinations: list })
         .then(() => toast.success(t("forwarding.autoSaved")))
         .catch((e: unknown) =>

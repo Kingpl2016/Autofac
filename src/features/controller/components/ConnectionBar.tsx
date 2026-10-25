@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { controllerApi } from "../lib/api";
+import { controllerConnect, controllerDisconnect } from "../lib/api";
 import { useControllerStatus } from "../hooks/useControllerStatus";
 
 /**
@@ -25,7 +25,7 @@ export function ConnectionBar() {
   const connect = async () => {
     setBusy(true);
     try {
-      await controllerApi.connect(host, tcpPort, httpPort);
+      await controllerConnect(host, tcpPort, httpPort);
       toast.success(t("controller.connected"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -36,7 +36,7 @@ export function ConnectionBar() {
   };
 
   const disconnect = async () => {
-    await controllerApi.disconnect();
+    await controllerDisconnect();
     refresh();
   };
 

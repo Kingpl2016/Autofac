@@ -12,7 +12,12 @@ import {
   applyLanguageAttr,
 } from "@/shared/stores/prefsStore";
 import { useEngineListeners } from "@/shared/hooks/useEngineListeners";
-import { usePlayerListeners, useRecordingListeners } from "@/features/recording";
+import { useSystemLog } from "@/shared/hooks/useSystemLog";
+import {
+  usePlayerListeners,
+  useRecordingHotkeys,
+  useRecordingListeners,
+} from "@/features/recording";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,9 +32,11 @@ export function AppRoot() {
   const theme = usePrefsStore((s) => s.theme);
   const accent = usePrefsStore((s) => s.accent);
   const language = usePrefsStore((s) => s.language);
+  useSystemLog();
   useEngineListeners();
   useRecordingListeners();
   usePlayerListeners();
+  useRecordingHotkeys();
 
   useEffect(() => {
     applyThemeClass(theme);

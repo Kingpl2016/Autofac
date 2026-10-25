@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LibraryPanel } from "./LibraryPanel";
 import { PlayerPanel } from "./PlayerPanel";
 import { RecordPanel } from "./RecordPanel";
-import { usePlayerStore } from "../hooks/usePlayerStore";
+import { usePlayerStore } from "../stores/usePlayerStore";
 
 type TabKey = "record" | "library" | "player";
 

@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/shared/components/PageHeader";
-import { isTauri } from "@/shared/tauri/invoke";
 import { saveTextFile } from "@/shared/tauri/files";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useProtocolFlags } from "@/features/settings";
@@ -18,9 +17,9 @@ import { DeviceTable, type DeviceTableHandle } from "./DeviceTable";
 import { DiscoveryEmptyState } from "./DiscoveryEmptyState";
 import { DiscoveryToolbar } from "./DiscoveryToolbar";
 import { ScanStatusBar } from "./ScanStatusBar";
-import type { SegmentOption } from "./SegmentedControl";
+import type { SegmentOption } from "../../../shared/components/SegmentedControl";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
-import { useDiscoveryPrefs } from "../hooks/useDiscoveryPrefs";
+import { useDiscoveryPrefs } from "../stores/useDiscoveryPrefs";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useNetworkScan } from "../hooks/useNetworkScan";
 import { useNewDevices } from "../hooks/useNewDevices";
@@ -151,7 +150,6 @@ export function DiscoveryView() {
   };
 
   const handleRefresh = () => {
-    if (!isTauri()) return;
     void getDevices()
       .then(setDevices)
       .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
@@ -159,11 +157,6 @@ export function DiscoveryView() {
 
   const handleClearOffline = () => {
     const n = offlineCount;
-    if (!isTauri()) {
-      setDevices(devices.filter((d) => d.online));
-      toast.success(t("discovery.clearedOffline", { n }));
-      return;
-    }
     void clearOfflineDevices()
       .then((left) => {
         setDevices(left);

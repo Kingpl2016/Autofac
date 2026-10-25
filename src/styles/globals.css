@@ -67,9 +67,9 @@
   --sidebar-border: oklch(0.9 0.005 260);
   --sidebar-ring: oklch(0.55 var(--accent-c) var(--accent-h));
 
-  /* 密度令牌（宽松留白：页面边距与区块间距） */
-  --density-gutter: 3rem;
-  --density-gap: 2rem;
+  /* 密度令牌（紧凑留白：页面边距与区块间距） */
+  --density-gutter: 1.5rem;
+  --density-gap: 1.25rem;
 
   /* 字体 */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;

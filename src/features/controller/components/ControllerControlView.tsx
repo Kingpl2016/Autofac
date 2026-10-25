@@ -15,7 +15,13 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { ConnectionBar } from "./ConnectionBar";
-import { controllerApi } from "../lib/api";
+import {
+  controllerBoardOp,
+  controllerProgramOp,
+  controllerReadChannels,
+  controllerSetWorkMode,
+  controllerWriteChannels,
+} from "../lib/api";
 
 /** 以 toast 包裹一次异步指令。 */
 async function run(p: Promise<unknown>, okMsg: string) {
@@ -84,7 +90,7 @@ export function ControllerControlView() {
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={() => void run(controllerApi.setWorkMode(Number(mode)), sent)}>
+            <Button onClick={() => void run(controllerSetWorkMode(Number(mode)), sent)}>
               {t("controller.applyMode")}
             </Button>
           </CardContent>
@@ -96,13 +102,13 @@ export function ControllerControlView() {
             <CardTitle className="text-base">{t("controller.boardOp")}</CardTitle>
           </CardHeader>
           <CardContent className="flex gap-3">
-            <Button variant="outline" onClick={() => void run(controllerApi.boardOp(0), sent)}>
+            <Button variant="outline" onClick={() => void run(controllerBoardOp(0), sent)}>
               {t("controller.reset")}
             </Button>
-            <Button variant="outline" onClick={() => void run(controllerApi.boardOp(1), sent)}>
+            <Button variant="outline" onClick={() => void run(controllerBoardOp(1), sent)}>
               {t("controller.factory")}
             </Button>
-            <Button variant="outline" onClick={() => void run(controllerApi.boardOp(2), sent)}>
+            <Button variant="outline" onClick={() => void run(controllerBoardOp(2), sent)}>
               {t("controller.test")}
             </Button>
           </CardContent>
@@ -129,7 +135,7 @@ export function ControllerControlView() {
                   key={k}
                   variant="secondary"
                   size="sm"
-                  onClick={() => void run(controllerApi.programOp(programNo, i), sent)}
+                  onClick={() => void run(controllerProgramOp(programNo, i), sent)}
                 >
                   {t(k)}
                 </Button>
@@ -166,7 +172,7 @@ export function ControllerControlView() {
               <Button
                 onClick={() =>
                   void run(
-                    controllerApi.writeChannels(
+                    controllerWriteChannels(
                       start,
                       unitCount,
                       unitRun,
@@ -185,7 +191,7 @@ export function ControllerControlView() {
                 variant="outline"
                 onClick={async () => {
                   try {
-                    const r = await controllerApi.readChannels(start, unitCount, unitRun);
+                    const r = await controllerReadChannels(start, unitCount, unitRun);
                     setReadResult(r);
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : String(e));

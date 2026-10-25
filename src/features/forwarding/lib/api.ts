@@ -10,6 +10,3 @@ export function getForwarding(): Promise<ForwardingTable> {
 export function saveForwarding(table: ForwardingTable): Promise<void> {
   return invoke<void>("save_forwarding", { table });
 }
-
-/** 非 Tauri 预览下的回退空表。 */
-export const EMPTY_TABLE: ForwardingTable = { destinations: [] };

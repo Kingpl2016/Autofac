@@ -25,6 +25,7 @@ Art-Net / sACN 灯光控制与录制平台。基于 Tauri 2 + React 19 构建的
 
 ### 系统
 - **设置**：录制目录、压缩策略、分段、网络接口、主题与语言等偏好配置。
+- **关于**：版本与运行环境信息（可一键复制诊断文本）、软件更新（检查 / 带进度下载安装 / 更新通道）。
 
 ### 关于 sACN
 
@@ -46,7 +47,8 @@ sACN 默认**关闭**，只在需要时到「设置 → 协议」打开 `启用 
 - Vitest + Testing Library（测试）
 
 **后端（Tauri / Rust）**
-- Tauri 2（`src-tauri`），Rust edition 2021，最低 1.80
+- Tauri 2（`src-tauri`），Rust edition 2021，最低 1.90
+- Tauri 官方插件：`store`（界面偏好持久化）、`dialog` / `fs`（文件对话框与读写）、`opener`、`log`（统一日志，Rust `tracing` 经 `log` 桥接 + 前端日志汇入应用内日志面板）、`global-shortcut`（录制开始 / 停止全局热键）、`updater`（自动更新）、`upload`（HTTP 文件传输）、`persisted-scope`（持久化已授权的文件范围）
 - Workspace crates（`src-tauri/crates`）：
   - `artnet-net`：Art-Net / sACN 网络收发
   - `artrec-core`：`.artrec` 格式编解码（权威实现）
@@ -59,7 +61,7 @@ sACN 默认**关闭**，只在需要时到「设置 → 协议」打开 `启用 
 ## 开发环境要求
 
 - [Node.js](https://nodejs.org/)（建议 LTS）与 npm
-- [Rust](https://www.rust-lang.org/)（1.80 或更高）
+- [Rust](https://www.rust-lang.org/)（1.90 或更高）
 - [Tauri 2 前置依赖](https://v2.tauri.app/start/prerequisites/)（按操作系统安装对应的系统库 / 构建工具）
 
 ## 快速开始
@@ -70,10 +72,9 @@ npm install
 
 # 启动桌面应用（Tauri 开发模式，含热重载）
 npm run tauri dev
-
-# 仅启动前端（浏览器中调试 UI，不含 Tauri 原生能力）
-npm run dev
 ```
+
+> 本应用为**桌面专用**：所有后端调用直接走 Tauri IPC，不再提供浏览器降级。请使用 `npm run tauri dev` 开发；`npm run dev` 仅作为 Tauri 加载的 Vite 前端服务器，在纯浏览器中打开时涉及后端能力的界面将不可用。
 
 ## 构建
 
@@ -83,6 +84,16 @@ npm run tauri build
 ```
 
 产物位于 `src-tauri/target/release/bundle`。
+
+### 自动更新（Updater）
+
+应用已集成 `tauri-plugin-updater`，但**发布更新前需先完成签名配置**（当前 `src-tauri/tauri.conf.json` 的 `plugins.updater` 为占位值）：
+
+1. 生成签名密钥对：`npm run tauri signer generate -- -w ~/.tauri/artnetstudio.key`
+2. 把生成的**公钥**填入 `tauri.conf.json` 的 `plugins.updater.pubkey`，并把 `endpoints` 改为真实更新服务器地址（支持 `{{target}}` / `{{arch}}` / `{{current_version}}` 变量）。
+3. 构建前在环境变量中提供**私钥**：`TAURI_SIGNING_PRIVATE_KEY`（及可选的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`），`npm run tauri build` 会生成带签名的更新制品（`bundle.createUpdaterArtifacts` 已开启）。
+
+配置就绪后，可在「关于 → 软件更新 → 检查更新」触发检查与安装。
 
 ## 常用脚本
 
@@ -114,7 +125,7 @@ art-net-studio/
 │   ├── app/                应用入口与路由
 │   ├── layouts/            主布局、侧栏、头部
 │   ├── pages/              各功能页面
-│   ├── features/           按领域组织的功能模块（含组件、hooks、lib）
+│   ├── features/           按领域组织的功能模块（含 components、hooks、stores、lib）
 │   ├── components/ui/      基础 UI 组件
 │   ├── shared/             导航、全局 store 等共享逻辑
 │   ├── lib/ · styles/      工具函数与样式

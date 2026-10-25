@@ -8,10 +8,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/shared/components/PageHeader";
-import { isTauri } from "@/shared/tauri/invoke";
 import { ConnectionBar } from "./ConnectionBar";
 import { useControllerStatus } from "../hooks/useControllerStatus";
-import { controllerApi, type FileEntry } from "../lib/api";
+import {
+  controllerDeleteFile,
+  controllerDownloadFile,
+  controllerListFiles,
+  controllerRenameFile,
+  controllerUploadFile,
+} from "../lib/api";
 
 /**
  * 核心板文件页：列目录 + 上传 / 下载 / 删除 / 重命名。
@@ -25,16 +30,15 @@ export function ControllerFilesView() {
 
   const list = useQuery({
     queryKey: ["controller-files"],
-    queryFn: controllerApi.listFiles,
-    enabled: isTauri() && status.connected,
-    initialData: isTauri() ? undefined : ([] as FileEntry[]),
+    queryFn: controllerListFiles,
+    enabled: status.connected,
   });
 
   const refetch = () => void list.refetch();
 
   const handleUpload = async (file: File) => {
     try {
-      await controllerApi.uploadFile(file.name, await file.arrayBuffer());
+      await controllerUploadFile(file.name, await file.arrayBuffer());
       toast.success(t("controller.sent"));
       refetch();
     } catch (e) {
@@ -44,7 +48,7 @@ export function ControllerFilesView() {
 
   const handleDownload = async (name: string) => {
     try {
-      const data = await controllerApi.downloadFile(name);
+      const data = await controllerDownloadFile(name);
       const blob = new Blob([new Uint8Array(data)], {
         type: "application/octet-stream",
       });
@@ -61,7 +65,7 @@ export function ControllerFilesView() {
 
   const handleDelete = async (name: string) => {
     try {
-      await controllerApi.deleteFile(name);
+      await controllerDeleteFile(name);
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -73,7 +77,7 @@ export function ControllerFilesView() {
     setRenaming(null);
     if (!to || to === from) return;
     try {
-      await controllerApi.renameFile(from, to);
+      await controllerRenameFile(from, to);
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));

@@ -4,6 +4,7 @@
 //! 外接控制器为 `controller` 库 + 宿主侧薄命令（见 [`controller_commands`]）。
 //! 宿主层只做装配与命令注册。
 
+mod about_commands;
 mod controller_commands;
 mod playback_commands;
 mod recording_commands;
@@ -28,20 +29,40 @@ fn app_version() -> String {
 ///
 /// 当 Tauri 运行时初始化失败时 panic（仅应用入口，不在库边界）。
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+    let mut builder = tauri::Builder::default()
+        // 统一日志：stdout + 滚动文件（LogDir）+ webview。Rust 侧 `tracing` 事件经 `log`
+        // 桥接特性转为 `log` 记录后也由本插件处理，前端经 attachLogger 汇入应用内日志面板。
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: None,
+                    }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                ])
+                .build(),
         )
-        .init();
-
-    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        // 键值持久化：前端界面偏好（如设备发现的筛选 / 排序）落盘到 app_data_dir。
+        // 文件传输（HTTP 上传 / 下载，带进度）。
+        .plugin(tauri_plugin_upload::init())
+        // 键值持久化：前端界面偏好（如外观 / 设备发现的筛选、排序）落盘到 app_data_dir。
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(host_core::init())
+        .plugin(host_core::init());
+
+    // 桌面专用插件：全局快捷键 / 持久化已授权的文件范围 / 自动更新。
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+            .plugin(tauri_plugin_persisted_scope::init())
+            .plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .setup(|app| {
             // 外接控制器句柄（默认未配置）。
             app.manage(controller::ControllerHandle::default());
@@ -61,6 +82,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            about_commands::app_info,
             host_core::commands::get_settings,
             host_core::commands::save_settings,
             host_core::commands::import_settings,

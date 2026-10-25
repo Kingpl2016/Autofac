@@ -20,7 +20,7 @@ import { usePrefsStore } from "@/shared/stores/prefsStore";
  * 左侧导航栏：按分组列出全部功能页面。折叠按钮是贴在侧栏右边缘的圆形把手，
  * 折叠时收窄为仅图标的窄栏。
  *
- * 折叠 / 展开时 DOM 结构保持不变：图标始终固定在同一位置（折叠宽度 4rem 的正中），
+ * 折叠 / 展开时 DOM 结构保持不变：图标始终固定在同一位置（折叠宽度 4rem 的正中，中心 32px），
  * 文字标签与分组标题只做淡入淡出并被外层裁剪。这样宽度过渡期间不会出现图标跳动、
  * 文字换行或分组标题挤压的混乱。
  */
@@ -43,13 +43,13 @@ export function Sidebar() {
         className={cn(
           "relative h-full shrink-0 border-r border-sidebar-border bg-sidebar",
           "transition-[width] duration-200 motion-reduce:transition-none",
-          collapsed ? "w-20" : "w-60",
+          collapsed ? "w-16" : "w-52",
         )}
       >
         {/* 内容层裁剪溢出；把手在它之外，才能半悬在侧栏右边缘 */}
         <div className="flex h-full w-full flex-col overflow-hidden">
-          {/* 图标列：折叠宽 80px；pl-7 (28px) + 24px 品牌图标，中心恰好落在 40px */}
-          <div className="flex h-[4.5rem] shrink-0 items-center gap-2.5 border-b border-sidebar-border pl-7">
+          {/* 图标列：折叠宽 64px；pl-5 (20px) + 24px 品牌图标，中心恰好落在 32px；高度与顶栏 h-14 对齐 */}
+          <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border pl-5">
             <Waypoints className="size-6 shrink-0 text-sidebar-primary" aria-hidden />
             <span
               className={cn(
@@ -64,8 +64,8 @@ export function Sidebar() {
 
           <nav
             className={cn(
-              "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-3",
-              // 折叠后可用宽度只有 48px，经典滚动条会把图标挤偏；折叠时隐藏滚动条（仍可滚动）
+              "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-2",
+              // 折叠后可用宽度只有 40px，经典滚动条会把图标挤偏；折叠时隐藏滚动条（仍可滚动）
               collapsed && "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             )}
             aria-label={t("common.appName")}
@@ -74,13 +74,13 @@ export function Sidebar() {
               const items = NAV_ITEMS.filter((i) => i.section === section);
               if (items.length === 0) return null;
               return (
-                <div key={section} className="mb-3 tall:mb-4 taller:mb-5">
+                <div key={section} className="mb-1 tall:mb-1.5 taller:mb-2">
                   {/* 分组标题：展开时显示文字，折叠时显示一条分隔线，高度恒定 */}
-                  <div className="relative h-8 tall:h-9 taller:h-10" role="presentation">
+                  <div className="relative h-6 tall:h-7 taller:h-8" role="presentation">
                     <span
                       className={cn(
                         fade,
-                        "absolute inset-y-0 left-3.5 flex items-center text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground",
+                        "absolute inset-y-0 left-2.5 flex items-center text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground",
                       )}
                       aria-hidden={collapsed}
                     >
@@ -93,7 +93,7 @@ export function Sidebar() {
                       )}
                     />
                   </div>
-                  <ul className="flex flex-col gap-1.5 tall:gap-2 taller:gap-2.5">
+                  <ul className="flex flex-col gap-0.5 tall:gap-1 taller:gap-1.5">
                     {items.map((item) => {
                       const label = t(item.labelKey);
                       const Icon = item.icon;
@@ -110,8 +110,8 @@ export function Sidebar() {
                                 // className 直接 toString() 成垃圾类名，导致整个链接样式失效。
                                 // 选中态改用 NavLink 自动设置的 aria-current="page" 来驱动样式。
                                 className={cn(
-                                  // nav px-4 + 链接 px-3.5：图标左缘 30px、宽 20px，中心 40px，恰为折叠宽度 80px 的正中
-                                  "flex items-center gap-4 overflow-hidden rounded-md px-3.5 py-2.5 text-sm font-medium transition-colors tall:py-3 taller:py-3.5",
+                                  // nav px-3 + 链接 px-2.5：图标左缘 22px、宽 20px，中心 32px，恰为折叠宽度 64px 的正中
+                                  "flex items-center gap-3 overflow-hidden rounded-md px-2.5 py-2 text-sm font-medium transition-colors tall:py-2.5 taller:py-3",
                                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                                   "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
                                   "aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground",
@@ -146,7 +146,7 @@ export function Sidebar() {
               aria-label={toggleLabel}
               aria-expanded={!collapsed}
               className={cn(
-                "absolute -right-3 top-6 z-20 flex size-6 items-center justify-center rounded-full",
+                "absolute -right-3 top-4 z-20 flex size-6 items-center justify-center rounded-full",
                 "border border-border bg-background text-muted-foreground shadow-sm transition-colors",
                 "hover:bg-accent hover:text-accent-foreground",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

@@ -9,8 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SettingsSection } from "./SettingsSection";
+import { SettingsSectionById } from "./SettingsSection";
 import { SettingRow } from "./SettingRow";
+import { ShortcutsSection } from "./ShortcutsSection";
 import { useNetworkInterfaces } from "../hooks/useNetworkInterfaces";
 import type { AppSettings } from "../lib/types";
 
@@ -39,7 +40,8 @@ function parseUniverses(text: string): number[] {
 }
 
 /**
- * 设置表单：网络 / 协议 / 显示 / 合并 / 录制 / 更新 六大分区。
+ * 设置表单：网络 / 协议 / 显示 / 合并 / 录制 / 快捷键 六大分区。
+ * 更新相关功能已迁到「关于」页。
  */
 export function SettingsForm({ settings, update }: SettingsFormProps) {
   const { t } = useTranslation();
@@ -48,9 +50,9 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
   const sacnOn = settings.protocol.sacnEnabled;
 
   return (
-    <div className="grid gap-(--density-gutter) pb-10">
+    <div className="grid gap-8 pb-10">
       {/* 网络 */}
-      <SettingsSection title={t("settings.sectionNetwork")}>
+      <SettingsSectionById id="network">
         <SettingRow label={t("settings.networkMode")}>
           <Select
             value={settings.network.mode}
@@ -139,10 +141,10 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
                 </SettingRow>
               );
             })}
-      </SettingsSection>
+      </SettingsSectionById>
 
       {/* 协议 */}
-      <SettingsSection title={t("settings.sectionProtocol")}>
+      <SettingsSectionById id="protocol">
         <SettingRow label={t("settings.artnetEnabled")}>
           <Switch
             checked={settings.protocol.artnetEnabled}
@@ -224,10 +226,10 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             </SettingRow>
           </>
         )}
-      </SettingsSection>
+      </SettingsSectionById>
 
       {/* 显示 */}
-      <SettingsSection title={t("settings.sectionDisplay")}>
+      <SettingsSectionById id="display">
         <SettingRow label={t("settings.uiUpdateRate")}>
           <Select
             value={String(settings.display.uiUpdateRate)}
@@ -319,10 +321,10 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             </SelectContent>
           </Select>
         </SettingRow>
-      </SettingsSection>
+      </SettingsSectionById>
 
       {/* 合并 */}
-      <SettingsSection title={t("settings.sectionMerge")}>
+      <SettingsSectionById id="merge">
         <SettingRow label={t("settings.mergeMode")}>
           <Select
             value={settings.merge.mode}
@@ -359,10 +361,10 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             }
           />
         </SettingRow>
-      </SettingsSection>
+      </SettingsSectionById>
 
       {/* 录制 */}
-      <SettingsSection title={t("settings.sectionRecording")}>
+      <SettingsSectionById id="recording">
         <SettingRow label={t("settings.recordingDir")}>
           <Input
             className="w-full"
@@ -434,30 +436,10 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             }
           />
         </SettingRow>
-      </SettingsSection>
+      </SettingsSectionById>
 
-      {/* 更新 */}
-      <SettingsSection title={t("settings.sectionUpdate")}>
-        <SettingRow label={t("settings.updateChannel")}>
-          <Select
-            value={settings.update.channel}
-            onValueChange={(v) =>
-              update((s) => ({
-                ...s,
-                update: { channel: v as AppSettings["update"]["channel"] },
-              }))
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="stable">{t("settings.channelStable")}</SelectItem>
-              <SelectItem value="beta">{t("settings.channelBeta")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-      </SettingsSection>
+      {/* 快捷键 */}
+      <ShortcutsSection />
     </div>
   );
 }
