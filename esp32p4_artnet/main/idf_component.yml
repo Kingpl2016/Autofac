@@ -1,0 +1,10 @@
+## 托管依赖（由 IDF 组件管理器拉取）
+dependencies:
+  idf:
+    version: ">=6.1"
+  # IP101 以太网 PHY 驱动（6.0 起移出 IDF 主仓到 esp-eth-drivers）
+  espressif/ip101: "^1.1.0"
+  # mDNS 主机名与服务发现
+  espressif/mdns: "^1.8.0"
+  # JSON（6.0 起内置 json 组件被移除）
+  espressif/cjson: "^1.7.19"

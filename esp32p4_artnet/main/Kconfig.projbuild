@@ -1,0 +1,252 @@
+menu "ArtNet Core 板级配置"
+
+    menu "SD 卡 (SDMMC)"
+        config ART_SD_FREQ_KHZ
+            int "SDMMC 时钟 (kHz)"
+            default 20000
+            help
+                先用 20MHz 跑通，稳定后可试 40000（SDMMC_FREQ_HIGHSPEED）。
+
+        config ART_SD_WIDTH
+            int "总线宽度 (1 或 4)"
+            default 4
+
+        config ART_SD_CLK
+            int "CLK GPIO"
+            default 43
+        config ART_SD_CMD
+            int "CMD GPIO"
+            default 44
+        config ART_SD_D0
+            int "D0 GPIO"
+            default 39
+        config ART_SD_D1
+            int "D1 GPIO"
+            default 40
+        config ART_SD_D2
+            int "D2 GPIO"
+            default 41
+        config ART_SD_D3
+            int "D3 GPIO"
+            default 42
+
+        config ART_SD_LDO_CHAN
+            int "片上 LDO 通道 (SD IO 供电)"
+            default 4
+            help
+                Waveshare ESP32-P4-WIFI6-POE-ETH 的 TF 卡 IO 由 LDO_VO4 供电。
+
+        config ART_SD_INTERNAL_PULLUP
+            bool "启用内部上拉"
+            default y
+            help
+                板上已有外部上拉时可关；默认开以保证可用。
+    endmenu
+
+    menu "以太网 (IP101 RMII)"
+        config ART_ETH_MDC
+            int "MDC GPIO"
+            default 31
+        config ART_ETH_MDIO
+            int "MDIO GPIO"
+            default 52
+        config ART_ETH_PHY_RST
+            int "PHY 复位 GPIO"
+            default 51
+        config ART_ETH_REF_CLK
+            int "RMII REF_CLK 输入 GPIO"
+            default 50
+            help
+                IP101 用 25MHz 晶振产生 50MHz REF_CLK 送入 P4（EMAC_CLK_EXT_IN）。
+        config ART_ETH_PHY_ADDR
+            int "PHY 地址"
+            default 1
+    endmenu
+
+    menu "DMX 串口输出 (UART DMX512)"
+        config ART_DMX_UART_PORTS
+            int "启用的 DMX 串口数 (1~4)"
+            default 1
+            range 1 4
+            help
+                每个 UART 口输出一个 universe（一个 UART = 一个 universe）。
+                代码只使用前 N 个口的配置。P4 共 5 个 HP UART（0~4）：UART0 控制台、
+                UART1 预留给总线 MCU 串口（Etronet）、UART2 为 DMX512 主口、UART3/UART4
+                为备用。启用 Etronet 链路后，DMX 实际最多 3 口（UART2/3/4），请勿设为
+                会与 UART1 冲突的配置。
+
+        config ART_DMX_BREAK_BITS
+            int "BREAK 时长（位周期）"
+            default 44
+            help
+                DMX512 要求 BREAK >= 88us；250kbaud 下 1 位 = 4us，88us ≈ 22 位，
+                这里默认 44 位（约 176us）更稳。采用「帧尾 BREAK 作为下一帧前导」的
+                连续刷新方式，实机须用示波器核对 BREAK/MAB 时序。
+
+        config ART_DMX_P1_UART
+            int "口1 UART 编号"
+            default 2
+        config ART_DMX_P1_TX
+            int "口1 TX GPIO"
+            default 2
+            help
+                串口分配表：DMX512 用 UART2 TX=GPIO2。按 P4 数据手册，GPIO2/3/4/5 是
+                JTAG 接口脚（非 strapping 脚，无启动电平风险）；用作 GPIO/UART 会占用
+                焊盘 JTAG 调试，P4 可改用 USB-Serial-JTAG，一般不影响。上板前对照
+                POE-ETH 引脚图核对。
+        config ART_DMX_P1_UNI
+            int "口1 universe 线性编号"
+            default 0
+
+        config ART_DMX_P2_UART
+            int "口2 UART 编号"
+            default 3
+        config ART_DMX_P2_TX
+            int "口2 TX GPIO"
+            default 20
+        config ART_DMX_P2_UNI
+            int "口2 universe 线性编号"
+            default 1
+
+        config ART_DMX_P3_UART
+            int "口3 UART 编号"
+            default 4
+        config ART_DMX_P3_TX
+            int "口3 TX GPIO"
+            default 22
+        config ART_DMX_P3_UNI
+            int "口3 universe 线性编号"
+            default 2
+
+        config ART_DMX_P4_UART
+            int "口4 UART 编号"
+            default 4
+        config ART_DMX_P4_TX
+            int "口4 TX GPIO"
+            default 23
+            help
+                注意：UART0/1/2/3/4 已分别分给 控制台 / Etronet / DMX口1 / DMX口2 / DMX口3，
+                无空闲 HP UART 可供第 4 个 DMX 口；启用 Etronet 链路时请勿把 DMX 口数设为 4
+                （此默认值与口3 同为 UART4，仅为占位）。
+        config ART_DMX_P4_UNI
+            int "口4 universe 线性编号"
+            default 3
+    endmenu
+
+    menu "总线 MCU 串口 (Etronet)"
+        config ART_ETRONET_ENABLE
+            bool "启用总线 MCU 串口协议 (566400 0x35 帧)"
+            default n
+            help
+                启用《总线 MCU 与核心板通信协议》：ESP32 作纯从机，经 UART 接收
+                Etronet MCU 下发的寄存器指令（复位/出厂/测试、节目操作、工作模式）
+                并回应答帧。与 HTTP / DMX512 输出并存、互不影响。默认关闭。
+
+        config ART_ETRONET_UART
+            int "UART 编号"
+            default 1
+            depends on ART_ETRONET_ENABLE
+            help
+                按串口分配表用 UART1（外部高速通信）。须避开控制台 UART0 与
+                DMX512 输出（UART2）；P4 共 5 个 HP UART（0~4），请勿与已分配口冲突。
+
+        config ART_ETRONET_TX
+            int "TX GPIO"
+            default 4
+            depends on ART_ETRONET_ENABLE
+            help
+                串口分配表：UART1 TX=GPIO4。GPIO4/5 属 P4 的 JTAG 接口脚（非 strapping），
+                用作 UART 仅占用焊盘 JTAG 调试，无启动电平风险。上板前对照 POE-ETH
+                引脚图核对，避免与以太网/SD/DMX 等既用引脚冲突。
+
+        config ART_ETRONET_RX
+            int "RX GPIO"
+            default 5
+            depends on ART_ETRONET_ENABLE
+            help
+                串口分配表：UART1 RX=GPIO5。上板前对照 POE-ETH 引脚图核对。
+
+        config ART_ETRONET_BAUD
+            int "波特率"
+            default 566400
+            depends on ART_ETRONET_ENABLE
+            help
+                协议规定 566400。属非标准波特率，P4 靠分数分频产生，实机须核对
+                误差率与通信稳定性。
+
+        config ART_ETRONET_MAX_FRAME
+            int "数据载荷长度上限 (字节)"
+            default 1024
+            depends on ART_ETRONET_ENABLE
+            help
+                超过此长度的帧判为非法并丢弃，防止伪造超长长度字段灌爆内存。
+    endmenu
+
+    menu "安全"
+        config ART_REQUIRE_AUTH
+            bool "强制鉴权（未配置 token 时拒绝高危端点）"
+            default y
+            help
+                开启时（默认）：未配置 HTTP token 的情况下，所有变更类 / 高危端点
+                （POST/PUT/DELETE、OTA、出厂、改配、删文件、重命名等）一律返回 401，
+                仅放行只读端点；配置了 token 后所有端点都要求 Bearer。
+                关闭时退回旧行为（未配置 token 即完全放行），仅供开发调试，生产请保持开启。
+
+        config ART_MAX_UPLOAD_BYTES
+            int "单文件上传绝对上限 (字节，0=不限)"
+            default 268435456
+            help
+                除按磁盘余量判断外，再对单个 .artrec 上传设绝对上限，防止写满卡 / 异常超大文件。
+                默认 256MiB；设 0 表示不启用绝对上限（仍受磁盘余量约束）。
+
+        config ART_DEFAULT_HTTP_TOKEN
+            string "出厂默认 HTTP token（空=不预置）"
+            default ""
+            help
+                非空时，设备在 NVS 未设置 token 的情况下于启动时以此为初始 token（加盐哈希存储）。
+                生产建议设置一个强随机值，使设备从不处于「无 token」的全开放状态，同时便于首次联机
+                （否则开启强制鉴权时，无 token 的新设备连 PUT /api/config 都被拒而无法远程设置 token）。
+                用户经 PUT /api/config 的 httpToken 覆盖后以用户值为准；清除后下次启动恢复此出厂默认。
+    endmenu
+
+    menu "回放"
+        config ART_PLAYER_PREFETCH
+            bool "回放预读 / 解码分线程"
+            default y
+            help
+                启用后，SD 读盘 + Zstd 解压由独立预读线程提前完成，发送线程只取就绪帧下发，
+                消除「帧边界同线程读盘」造成的输出抖动。若实机出现回放不稳定，可关闭本项退回
+                经验证的单线程路径（读取 / 发送在同一引擎线程）。
+
+        config ART_PLAYER_PREFETCH_DEPTH
+            int "预读帧数（环形缓冲深度）"
+            default 4
+            range 2 16
+            depends on ART_PLAYER_PREFETCH
+            help
+                预读缓存的已解压帧数。每帧最多约 64KB（PSRAM），深度越大越能吸收读盘抖动，
+                但占用更多内存。
+    endmenu
+
+    menu "网络回退与服务"
+        config ART_NET_FALLBACK_IP
+            string "DHCP 超时回退静态 IP"
+            default "192.168.1.200"
+        config ART_NET_FALLBACK_MASK
+            string "回退子网掩码"
+            default "255.255.255.0"
+        config ART_NET_FALLBACK_GW
+            string "回退网关"
+            default "192.168.1.1"
+        config ART_DHCP_TIMEOUT_MS
+            int "DHCP 等待超时 (ms)"
+            default 10000
+        config ART_HTTP_PORT
+            int "HTTP 服务端口"
+            default 80
+        config ART_MDNS_HOSTNAME
+            string "mDNS 主机名"
+            default "artnet-core"
+    endmenu
+
+endmenu

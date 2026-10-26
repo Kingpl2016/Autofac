@@ -1,0 +1,20 @@
+# ESP-IDF 固件子项目忽略规则（主工程与 test_apps 同时适用，路径相对本目录）。
+#
+# 入库的是源码与 *.defaults（sdkconfig.defaults / sdkconfig.prod.defaults）；
+# 下列均为构建产物、托管依赖或本地配置，可由源码 + defaults 重新生成，不入库。
+
+# 构建输出（idf.py build 生成；主工程 build/ 与 test_apps/build/ 均匹配）
+build/
+
+# 托管组件（由 idf_component.yml 自动下载）
+managed_components/
+
+# 组件依赖锁（随托管组件解析结果变化）
+dependencies.lock
+
+# 本地 menuconfig 结果（以 sdkconfig.defaults / sdkconfig.prod.defaults 为准）
+sdkconfig
+sdkconfig.old
+
+# vendored 的 zstd 上游源码由 fetch 脚本拉取，不入库
+components/zstd/upstream/

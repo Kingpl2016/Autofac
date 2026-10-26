@@ -1,0 +1,6 @@
+dependencies:
+  idf:
+    version: ">=6.1"
+  espressif/catch2: "^3.16.0"
+  # 组件依赖链所需（parse/打包/文件名校验用到）
+  espressif/cjson: "^1.7.19"

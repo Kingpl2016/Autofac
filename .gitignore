@@ -48,3 +48,9 @@ ArtNet Studio Recordings/
 # Kiro：skills 为外部安装的第三方内容（体积大且可重新安装），steering / specs / hooks 仍纳入版本管理
 .kiro/skills/
 /doc/app.asar
+
+# 芯片数据手册 / 技术参考手册（体积大，可从乐鑫 / 微雪官网获取，不入库）
+/doc/esp32-p4_datasheet_cn.pdf
+/doc/esp32-p4_technical_reference_manual_cn.pdf
+
+# ESP-IDF 固件子项目的构建产物 / 本地配置见 esp32p4/.gitignore（主工程 + test_apps 自包含）

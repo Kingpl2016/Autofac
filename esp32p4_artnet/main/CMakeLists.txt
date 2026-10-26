@@ -1,0 +1,30 @@
+idf_component_register(
+    SRCS
+        "app_main.cpp"
+        "mode_manager.cpp"
+        "outputs.cpp"
+        "board_lifecycle.cpp"
+        "etronet_bridge.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        common
+        settings
+        storage
+        program_store
+        dmx_out
+        artrec
+        player
+        net
+        ota
+        api_server
+        forwarder
+        etronet
+        control
+    PRIV_REQUIRES
+        nvs_flash
+        esp_netif
+        esp_event
+)
+
+target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_23)

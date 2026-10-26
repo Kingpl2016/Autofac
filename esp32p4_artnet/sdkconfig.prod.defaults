@@ -1,0 +1,53 @@
+# 生产安全加固叠加配置（可选，opt-in）
+#
+# 用法（在基线之上叠加，不要直接改 sdkconfig.defaults）：
+#
+#   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.prod.defaults" \
+#          set-target esp32p4 build
+#
+# 本文件启用「可逆、不烧 eFuse」的生产项：OTA 固件签名校验 + 生产日志裁剪。
+# 真正烧录 eFuse 的 Secure Boot v2 / Flash 加密 / eFuse 反回滚是**一次性不可逆**操作，
+# 必须人工按 README「生产安全加固」小节逐步执行，故意不放进自动叠加文件。
+#
+# 前置：先生成签名私钥（仅一次，妥善离线保管，切勿入库）：
+#   espsecure.py generate_signing_key --version 2 secure_boot_signing_key.pem
+# 之后上位机上传的固件必须是用该私钥签名过的制品，设备在 esp_ota_end 校验签名，
+# 校验失败则拒绝（配合 HTTP Bearer 鉴权，堵住未授权 / 被篡改固件的 OTA 通道）。
+
+#
+# OTA 固件签名校验（不启用 Secure Boot，不烧 eFuse，可回退）
+#
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+# 签名方案：Secure Boot v2 默认 RSA-3072；如用 ECDSA 请在 menuconfig 对应切换。
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot_signing_key.pem"
+
+#
+# 生产日志：默认静默但保留 ERROR（编译期裁掉 INFO/DEBUG/VERBOSE，省 flash 与 CPU）。
+# 日志经 esp_log_set_vprintf tee 到环形缓冲，既出串口也供 GET /api/logs 远程取回；
+# 保留 ERROR 便于现场远程诊断。MAXIMUM 级以上的日志已不在固件里，运行时无法再调高。
+#
+CONFIG_LOG_DEFAULT_LEVEL_ERROR=y
+CONFIG_LOG_MAXIMUM_LEVEL_ERROR=y
+# 完全关闭（GET /api/logs 将为空）：取消上两行注释下两行。
+# CONFIG_LOG_DEFAULT_LEVEL_NONE=y
+# CONFIG_LOG_MAXIMUM_LEVEL_NONE=y
+# 关闭控制台串口输出本身（不再往 UART0 打任何日志 / 启动信息）：
+# CONFIG_ESP_CONSOLE_UART_NONE=y
+
+# ---------------------------------------------------------------------------
+# 以下为「一次性不可逆、会烧 eFuse」的项，默认**全部注释**，仅作备忘。
+# 启用前务必通读 ESP-IDF 安全文档，并在可报废的样片上先行验证。
+# ---------------------------------------------------------------------------
+# Secure Boot v2（只允许启动经签名的 bootloader+app，烧 eFuse，不可逆）
+# CONFIG_SECURE_BOOT=y
+# CONFIG_SECURE_BOOT_V2_ENABLED=y
+#
+# Flash 加密（防物理读取镜像 / NVS，烧 eFuse，不可逆）
+# CONFIG_SECURE_FLASH_ENC_ENABLED=y
+# CONFIG_NVS_ENCRYPTION=y
+#
+# eFuse 反回滚（禁止刷入 secure_version 更低的旧固件，烧 eFuse，不可逆）
+# CONFIG_APP_ANTI_ROLLBACK=y
+# CONFIG_APP_SECURE_VERSION=1
