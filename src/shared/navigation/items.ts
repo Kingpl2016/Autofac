@@ -8,15 +8,14 @@ import {
   Boxes,
   Cable,
   ListVideo,
-  Cpu,
-  FolderCog,
+  Network,
   Info,
   Settings,
   type LucideIcon,
 } from "lucide-react";
 
 /** 导航分组键（对应 i18n nav.section*） */
-export type NavSection = "signal" | "program" | "device" | "system";
+export type NavSection = "signal" | "program" | "network" | "system";
 
 /** 单个导航项 */
 export interface NavItem {
@@ -45,19 +44,18 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/thing-model", labelKey: "nav.thingModel", icon: Boxes, section: "program" },
   { to: "/loops", labelKey: "nav.loops", icon: Cable, section: "program" },
   { to: "/scenes", labelKey: "nav.scenes", icon: ListVideo, section: "program" },
-  { to: "/controller-control", labelKey: "nav.controllerControl", icon: Cpu, section: "device" },
-  { to: "/controller-files", labelKey: "nav.controllerFiles", icon: FolderCog, section: "device" },
+  { to: "/network", labelKey: "nav.network", icon: Network, section: "network" },
   { to: "/settings", labelKey: "nav.settings", icon: Settings, section: "system" },
   { to: "/about", labelKey: "nav.about", icon: Info, section: "system" },
 ];
 
 /** 分组顺序 */
-export const NAV_SECTIONS: NavSection[] = ["signal", "program", "device", "system"];
+export const NAV_SECTIONS: NavSection[] = ["signal", "program", "network", "system"];
 
 /** 分组标题 i18n key */
 export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   signal: "nav.sectionSignal",
   program: "nav.sectionProgram",
-  device: "nav.sectionDevice",
+  network: "nav.sectionNetwork",
   system: "nav.sectionSystem",
 };

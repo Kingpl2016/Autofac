@@ -19,12 +19,12 @@ vi.mock("@/features/settings", () => ({
   useSettingsQuery: () => ({ data: { display: { valueFormat: "decimal" } } }),
   useProtocolFlags: () => ({ sacnEnabled: false }),
 }));
-vi.mock("@/features/controller", () => ({
-  useControllerStatus: () => ({
-    status: { host: "", tcpPort: 1227, httpPort: 80, connected: false },
-    refresh: vi.fn(),
-  }),
-  controllerUploadRecording: vi.fn(),
+vi.mock("@/features/network", () => ({
+  useActiveDevice: () => ({ device: null, setActive: vi.fn() }),
+  useDeviceStatus: () => ({ online: false, status: null, error: null, isLoading: false, refetch: vi.fn() }),
+  netdevUploadRecording: vi.fn(),
+  errorText: () => "",
+  useTransferStore: { getState: () => ({ run: vi.fn() }) },
 }));
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),

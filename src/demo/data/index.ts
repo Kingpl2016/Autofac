@@ -1,10 +1,10 @@
 import type { DemoData } from "../types";
 import app from "./app.json";
-import controller from "./controller.json";
 import devices from "./devices.json";
 import forwarding from "./forwarding.json";
 import live from "./live.json";
 import logs from "./logs.json";
+import netdev from "./netdev.json";
 import network from "./network.json";
 import output from "./output.json";
 import recordings from "./recordings.json";
@@ -32,7 +32,7 @@ export function loadDemoData(): DemoData {
     forwarding,
     output,
     recordings,
-    controller,
+    netdev,
     logs,
   };
   return structuredClone(raw) as unknown as DemoData;

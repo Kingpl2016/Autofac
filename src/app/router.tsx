@@ -15,8 +15,7 @@ import PlayerModePage from "@/pages/PlayerModePage";
 import ThingModelPage from "@/pages/ThingModelPage";
 import LoopsPage from "@/pages/LoopsPage";
 import ScenesPage from "@/pages/ScenesPage";
-import ControllerControlPage from "@/pages/ControllerControlPage";
-import ControllerFilesPage from "@/pages/ControllerFilesPage";
+import NetworkPage from "@/pages/NetworkPage";
 import SettingsPage from "@/pages/SettingsPage";
 import AboutPage from "@/pages/AboutPage";
 
@@ -45,8 +44,7 @@ export const router = createBrowserRouter([
       { path: "thing-model", element: <ThingModelPage /> },
       { path: "loops", element: <LoopsPage /> },
       { path: "scenes", element: <ScenesPage /> },
-      { path: "controller-control", element: <ControllerControlPage /> },
-      { path: "controller-files", element: <ControllerFilesPage /> },
+      { path: "network", element: <NetworkPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "about", element: <AboutPage /> },
     ],

@@ -38,11 +38,11 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-persisted-scope = "2"
 tauri-plugin-updater = "2"
 
-# 领域/运行时逻辑已迁入各插件 crate；应用壳只直接依赖回放命令与控制器桥接所需的少数 crate。
+# 领域/运行时逻辑已迁入各插件 crate；应用壳只直接依赖回放命令与网络设备桥接所需的少数 crate。
 artrec-core = { path = "crates/artrec-core" }
 recorder = { path = "crates/recorder" }
 player = { path = "crates/player" }
-controller = { path = "crates/controller" }
+netdev = { path = "crates/netdev" }
 host-core = { path = "crates/host-core" }
 # 信号检测器：测试信号发生器核心与目标地址候选（网卡 / 广播地址）。
 signal-gen = { path = "crates/signal-gen" }

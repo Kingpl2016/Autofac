@@ -10,7 +10,7 @@ import type { Protocol } from "@/shared/domain/engine";
 import type { ForwardingTable } from "@/features/forwarding/lib/types";
 import type { NetworkInterface, AppSettings } from "@/features/settings/lib/types";
 import type { AppInfo } from "@/features/about/lib/api";
-import type { ControllerConfig, FileEntry } from "@/features/controller/lib/api";
+import type { DeviceConfig } from "@/features/network/lib/types";
 import type { PatternSpec, UniverseProgram } from "./lib/patterns";
 
 /** `app.json`：应用信息、录制目录、磁盘与目录检查。 */
@@ -124,15 +124,54 @@ export interface RecordingsSeed {
   programs: ProgramSeed[];
 }
 
-/** `controller.json`。 */
-export interface ControllerSeed {
-  config: ControllerConfig;
+/** 设备 SD 卡上的一个预置节目文件。 */
+export interface NetdevFileSeed {
+  name: string;
+  size: number;
+  /** 已分配的节目号；null 表示尚未分配 */
+  program: number | null;
+  durationMs: number;
+}
+
+/** 网络上存在的一台设备（核心板）。 */
+export interface NetdevMachineSeed {
+  host: string;
+  /** 设备上配置的 HTTP Token；null 表示未配置（此时固件拒绝一切写操作） */
+  token: string | null;
+  /** 是否可达；false 时所有请求超时 */
+  reachable: boolean;
+  version: string;
+  hostname: string;
   workMode: number;
-  reachableHosts: string[];
-  connectDelayMs: number;
-  files: FileEntry[];
-  textFiles: Record<string, string>;
-  channelMemory: Record<string, number>;
+  viaDhcp: boolean;
+  sdTotal: number;
+  sdFree: number;
+  files: NetdevFileSeed[];
+}
+
+/** 应用里已保存的设备（含系统凭据里存的 Token）。 */
+export interface NetdevSavedSeed {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  localToken: string | null;
+}
+
+/** `netdev.json`。 */
+export interface NetdevSeed {
+  /** 模拟一次 HTTP 往返的耗时（毫秒） */
+  latencyMs: number;
+  /** 模拟一次文件传输的总耗时（毫秒） */
+  transferMs: number;
+  /** 模拟设备重启不可达的时长（毫秒） */
+  rebootMs: number;
+  saved: NetdevSavedSeed[];
+  machines: NetdevMachineSeed[];
+  /** 所有设备共用的初始配置 */
+  config: DeviceConfig;
+  logs: string[];
+  ota: { running: string; compileTime: string; rollbackEnabled: boolean };
 }
 
 /** 一条历史日志。 */
@@ -166,6 +205,6 @@ export interface DemoData {
   forwarding: ForwardingTable;
   output: OutputSeed;
   recordings: RecordingsSeed;
-  controller: ControllerSeed;
+  netdev: NetdevSeed;
   logs: LogsSeed;
 }

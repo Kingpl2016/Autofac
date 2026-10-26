@@ -17,7 +17,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAppModeStore, useModeActions } from "@/features/app-mode";
-import { controllerUploadRecording, useControllerStatus } from "@/features/controller";
+import {
+  errorText as netErrorText,
+  netdevUploadRecording,
+  useActiveDevice,
+  useDeviceStatus,
+  useTransferStore,
+} from "@/features/network";
 import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { ProgramThumb } from "./ProgramThumb";
 import { usePlayerStore } from "../stores/usePlayerStore";
@@ -63,7 +69,7 @@ interface LibraryPanelProps {
 
 /**
  * 节目库侧栏：以卡片列出录制目录里的 `.artrec` 节目（含迷你热力图缩略图），
- * 支持搜索、回放、重命名、删除（二次确认）与上传到核心板。
+ * 支持搜索、回放、重命名、删除（二次确认）与上传到当前网络设备。
  *
  * 回放走统一的模式切换（`useModeActions`）：实时模式下点击回放会先弹出“进入播放器模式？”确认，
  * 确认后（必要时先停止录制）由后端 `player_open` 自动进入播放器模式；已在播放器模式则直接切换节目。
@@ -71,7 +77,9 @@ interface LibraryPanelProps {
 export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const { status: controller } = useControllerStatus();
+  const { device: netDevice } = useActiveDevice();
+  const netStatus = useDeviceStatus(netDevice?.id ?? null);
+  const canUpload = netDevice !== null && netStatus.online;
   const lastResult = useRecordingStore((s) => s.last);
   const recording = useRecordingStore((s) => s.status.recording);
   const transitioning = useAppModeStore((s) => s.transitioning);
@@ -153,12 +161,20 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
     });
 
   const upload = async (entry: LibraryEntry) => {
+    if (!netDevice) return;
     setUploading(entry.path);
     try {
-      const name = await controllerUploadRecording(entry.path);
+      // 走全局传输队列：有进度、可取消，切换页面也不会中断
+      const name = await useTransferStore.getState().run(
+        { kind: "upload", deviceId: netDevice.id, label: entry.fileName },
+        (onProgress) => netdevUploadRecording(netDevice.id, entry.path, onProgress),
+      );
       toast.success(t("recording.libUploaded", { name }));
     } catch (e: unknown) {
-      toast.error(t("recording.libUploadFailed", { reason: describeError(e) }));
+      const code = (e as { code?: string } | null)?.code;
+      if (code !== "cancelled") {
+        toast.error(t("recording.libUploadFailed", { reason: netErrorText(t, e) }));
+      }
     } finally {
       setUploading(null);
     }
@@ -349,11 +365,11 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       size="icon"
                       aria-label={t("recording.libUpload")}
                       title={
-                        controller.connected
+                        canUpload
                           ? t("recording.libUpload")
-                          : t("recording.libUploadNeedsController")
+                          : t("recording.libUploadNeedsDevice")
                       }
-                      disabled={!controller.connected || !e.valid || uploading === e.path}
+                      disabled={!canUpload || !e.valid || uploading === e.path}
                       onClick={() => void upload(e)}
                     >
                       <Upload className="size-4" />

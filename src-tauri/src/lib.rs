@@ -1,12 +1,12 @@
 //! Art-Net Studio 的 Tauri 宿主入口。
 //!
 //! 装配窗口与插件。配置与实时子系统由 `host-core` 插件承载（配置/信号引擎/发现/转发/录制/回放），
-//! 外接控制器为 `controller` 库 + 宿主侧薄命令（见 [`controller_commands`]）。
+//! 网络设备为 `netdev` 库 + 宿主侧薄命令（见 [`netdev_commands`]）。
 //! 宿主层只做装配与命令注册。
 
 mod about_commands;
 mod app_mode_commands;
-mod controller_commands;
+mod netdev_commands;
 mod playback_commands;
 mod recording_commands;
 mod signal_checker_commands;
@@ -66,8 +66,11 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            // 外接控制器句柄（默认未配置）。
-            app.manage(controller::ControllerHandle::default());
+            // 网络设备：多设备注册表（Token 存系统凭据管理器）与传输登记表。
+            app.manage(netdev_commands::NetdevState::new(
+                app.handle(),
+                std::sync::Arc::new(netdev::KeyringStore),
+            ));
             // 信号检测器（测试信号发生器）：发送器常驻，窗口按需打开。
             app.manage(signal_checker_commands::SignalCheckerState::new(
                 app.handle(),
@@ -172,21 +175,34 @@ pub fn run() {
             playback_commands::player_status,
             playback_commands::player_overview,
             playback_commands::player_series,
-            controller_commands::controller_get_status,
-            controller_commands::controller_connect,
-            controller_commands::controller_disconnect,
-            controller_commands::controller_board_op,
-            controller_commands::controller_set_work_mode,
-            controller_commands::controller_get_work_mode,
-            controller_commands::controller_program_op,
-            controller_commands::controller_write_channels,
-            controller_commands::controller_read_channels,
-            controller_commands::controller_list_files,
-            controller_commands::controller_download_file,
-            controller_commands::controller_upload_file,
-            controller_commands::controller_delete_file,
-            controller_commands::controller_rename_file,
-            controller_commands::controller_upload_recording,
+            netdev_commands::netdev_list,
+            netdev_commands::netdev_save,
+            netdev_commands::netdev_remove,
+            netdev_commands::netdev_set_token,
+            netdev_commands::netdev_probe,
+            netdev_commands::netdev_status,
+            netdev_commands::netdev_set_workmode,
+            netdev_commands::netdev_board_op,
+            netdev_commands::netdev_program_op,
+            netdev_commands::netdev_player,
+            netdev_commands::netdev_seek,
+            netdev_commands::netdev_speed,
+            netdev_commands::netdev_get_config,
+            netdev_commands::netdev_put_config,
+            netdev_commands::netdev_diag,
+            netdev_commands::netdev_logs,
+            netdev_commands::netdev_list_files,
+            netdev_commands::netdev_list_programs,
+            netdev_commands::netdev_delete_file,
+            netdev_commands::netdev_rename_file,
+            netdev_commands::netdev_upload_file,
+            netdev_commands::netdev_download_file,
+            netdev_commands::netdev_upload_recording,
+            netdev_commands::netdev_cancel,
+            netdev_commands::netdev_ota_status,
+            netdev_commands::netdev_ota_confirm,
+            netdev_commands::netdev_inspect_firmware,
+            netdev_commands::netdev_ota_upload,
             signal_checker_commands::signal_checker_open,
             signal_checker_commands::signal_checker_status,
             signal_checker_commands::signal_checker_validate,

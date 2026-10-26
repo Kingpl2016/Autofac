@@ -11,6 +11,7 @@ const JSON_FILTER = [{ name: "JSON", extensions: ["json"] }];
  *
  * * `defaultName` - 默认文件名。
  * * `content` - 要写入的文本内容。
+ * * `filters` - 对话框过滤器，默认只允许 JSON。
  *
  * # Returns
  *
@@ -19,8 +20,9 @@ const JSON_FILTER = [{ name: "JSON", extensions: ["json"] }];
 export async function saveTextFile(
   defaultName: string,
   content: string,
+  filters: { name: string; extensions: string[] }[] = JSON_FILTER,
 ): Promise<boolean> {
-  const path = await save({ defaultPath: defaultName, filters: JSON_FILTER });
+  const path = await save({ defaultPath: defaultName, filters });
   if (!path) return false;
   await writeTextFile(path, content);
   return true;

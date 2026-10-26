@@ -22,18 +22,26 @@ const modeApi = vi.hoisted(() => ({
   appModeSet: vi.fn(),
   stopRecordingForModeChange: vi.fn(),
 }));
-const controller = vi.hoisted(() => ({
-  connected: true,
-  controllerUploadRecording: vi.fn(),
+const net = vi.hoisted(() => ({
+  online: true,
+  upload: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({ toast }));
-vi.mock("@/features/controller", () => ({
-  useControllerStatus: () => ({
-    status: { host: "", tcpPort: 1227, httpPort: 80, connected: controller.connected },
-    refresh: vi.fn(),
+vi.mock("@/features/network", () => ({
+  useActiveDevice: () => ({
+    device: { id: "d1", name: "主舞台", host: "10.0.0.2", port: 80, hasToken: true },
+    setActive: vi.fn(),
   }),
-  controllerUploadRecording: controller.controllerUploadRecording,
+  useDeviceStatus: () => ({ online: net.online, status: null, error: null, isLoading: false, refetch: vi.fn() }),
+  netdevUploadRecording: net.upload,
+  errorText: (_t: unknown, e: unknown) => (e as { message?: string })?.message ?? String(e),
+  // 与真实实现等价：直接执行传输并返回结果
+  useTransferStore: {
+    getState: () => ({
+      run: (_meta: unknown, start: (cb: () => void) => { promise: Promise<unknown> }) => start(() => undefined).promise,
+    }),
+  },
 }));
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
@@ -83,7 +91,7 @@ function renderPanel(onPlayed?: () => void) {
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
-  controller.connected = true;
+  net.online = true;
   usePlayerStore.setState({ status: EMPTY_PLAYBACK });
   useRecordingStore.setState({ status: EMPTY_STATUS });
   useEngineStatusStore.setState({ appMode: "live", recording: false, playing: false });
@@ -100,16 +108,16 @@ describe("LibraryPanel", () => {
     renderPanel();
     expect(await screen.findByText("开场秀")).toBeTruthy();
     expect(screen.getByText("文件损坏")).toBeTruthy();
-    const uploads = screen.getAllByRole("button", { name: "上传到核心板" }) as HTMLButtonElement[];
+    const uploads = screen.getAllByRole("button", { name: "上传到设备" }) as HTMLButtonElement[];
     expect(uploads[0].disabled).toBe(false);
     expect(uploads[1].disabled).toBe(true);
   });
 
-  it("未连接核心板时禁用上传", async () => {
-    controller.connected = false;
+  it("没有在线的网络设备时禁用上传", async () => {
+    net.online = false;
     renderPanel();
     await screen.findByText("开场秀");
-    const uploads = screen.getAllByRole("button", { name: "上传到核心板" }) as HTMLButtonElement[];
+    const uploads = screen.getAllByRole("button", { name: "上传到设备" }) as HTMLButtonElement[];
     expect(uploads.every((b) => b.disabled)).toBe(true);
   });
 
@@ -159,11 +167,11 @@ describe("LibraryPanel", () => {
   });
 
   it("上传成功后提示文件名", async () => {
-    controller.controllerUploadRecording.mockResolvedValue("show.artrec");
+    net.upload.mockReturnValue({ id: "t1", promise: Promise.resolve("show.artrec"), cancel: vi.fn() });
     renderPanel();
     await screen.findByText("开场秀");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "上传到核心板" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "上传到设备" })[0]);
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(toast.success.mock.calls[0][0]).toContain("show.artrec");
   });

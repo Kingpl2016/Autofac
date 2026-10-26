@@ -1,12 +1,12 @@
 import { installDemoBackend, installDemoStream, type DemoBackend } from "@/shared/tauri/demoBridge";
 import { useLogStore } from "@/shared/stores/logStore";
 import { loadDemoData } from "./data";
-import { createControllerModule } from "./engine/controller";
 import { createDevicesModule } from "./engine/devices";
 import { createForwardingModule } from "./engine/forwarding";
 import { createLiveEngine } from "./engine/live";
 import { createLogsModule } from "./engine/logs";
 import { createModeModule } from "./engine/mode";
+import { createNetdevModule } from "./engine/netdev";
 import { createOutputModule } from "./engine/output";
 import { createPlayerModule } from "./engine/player";
 import { createRecordingModule } from "./engine/recording";
@@ -81,7 +81,7 @@ export async function installDemo(): Promise<void> {
   const player = createPlayerModule(world, recording.library, forwarding);
   const devices = createDevicesModule(world, live);
   const output = createOutputModule(world, live, forwarding, player);
-  const controller = createControllerModule(world, recording.library);
+  const netdev = createNetdevModule(world, recording.library);
   const logs = createLogsModule(world);
   const checkForUpdate = createUpdateChecker(world);
 
@@ -94,7 +94,7 @@ export async function installDemo(): Promise<void> {
     player,
     devices,
     output,
-    controller,
+    netdev,
     logs,
   ];
 
