@@ -203,7 +203,10 @@ impl Shared {
 
     fn record_error(&self, message: &str) {
         self.errors.fetch_add(1, Ordering::Relaxed);
-        *self.last_error.lock().unwrap_or_else(PoisonError::into_inner) = Some(message.to_string());
+        *self
+            .last_error
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(message.to_string());
     }
 }
 
@@ -308,7 +311,10 @@ impl SignalSender {
     ///
     /// 通道号越界时返回 [`ManualError::ChannelOutOfRange`]。
     pub fn set_channel(&self, universe: u16, channel: u16, value: u8) -> Result<(), ManualError> {
-        self.shared.lock_state().manual.set_channel(universe, channel, value)
+        self.shared
+            .lock_state()
+            .manual
+            .set_channel(universe, channel, value)
     }
 
     /// 手动模式：把某个 Universe 的 512 个通道设为同一个值。
@@ -359,7 +365,12 @@ impl SignalSender {
         match st.mode {
             SendMode::Manual => st.manual.get(universe),
             SendMode::Auto => {
-                let index = st.valid.universes.iter().position(|&u| u == universe).unwrap_or(0);
+                let index = st
+                    .valid
+                    .universes
+                    .iter()
+                    .position(|&u| u == universe)
+                    .unwrap_or(0);
                 render(st.pattern, st.clock.phase_ms(), index)
             }
         }
@@ -381,18 +392,28 @@ impl SignalSender {
             .map_err(|e| socket_error(&e))?;
         socket.set_broadcast(true).map_err(|e| socket_error(&e))?;
 
-        let mut run = self.shared.run.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut run = self
+            .shared
+            .run
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if run.is_some() {
             return Ok(()); // 并发的另一次 start 抢先了
         }
         self.shared.packets.store(0, Ordering::Relaxed);
         self.shared.errors.store(0, Ordering::Relaxed);
         self.shared.hz_x100.store(0, Ordering::Relaxed);
-        *self.shared.last_error.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        *self
+            .shared
+            .last_error
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
         self.shared.lock_state().clock.reset();
 
         let (stop, stop_rx) = oneshot::channel();
-        let join = self.handle.spawn(run_loop(self.shared.clone(), socket, stop_rx));
+        let join = self
+            .handle
+            .spawn(run_loop(self.shared.clone(), socket, stop_rx));
         *run = Some(RunHandle { stop, join });
         Ok(())
     }
@@ -505,7 +526,10 @@ struct RateMeter {
 
 impl RateMeter {
     fn new(now: Instant) -> Self {
-        Self { started: now, ticks: 0 }
+        Self {
+            started: now,
+            ticks: 0,
+        }
     }
 
     #[allow(clippy::cast_sign_loss)] // 频率非负
@@ -543,9 +567,14 @@ impl Wire {
                 SACN_PRIORITY,
                 seq,
             ),
-            SignalProtocol::Sacn => {
-                sacn::build(universe, data, &self.shared.cid, SOURCE_NAME, SACN_PRIORITY, seq)
-            }
+            SignalProtocol::Sacn => sacn::build(
+                universe,
+                data,
+                &self.shared.cid,
+                SOURCE_NAME,
+                SACN_PRIORITY,
+                seq,
+            ),
         };
         if packet.is_empty() {
             return; // Universe 超出协议范围；配置校验已排除，这里只是兜底
@@ -735,7 +764,11 @@ mod tests {
     /// 解出 Art-Net 包的 (Universe, 序列号, 数据)。
     fn art(packet: &[u8]) -> (u16, u8, Vec<u8>) {
         match artnet::parse(packet) {
-            Some(ArtNetPacket::Dmx { port_address, sequence, data }) => (port_address, sequence, data),
+            Some(ArtNetPacket::Dmx {
+                port_address,
+                sequence,
+                data,
+            }) => (port_address, sequence, data),
             other => panic!("不是 ArtDmx：{other:?}"),
         }
     }
@@ -762,8 +795,14 @@ mod tests {
         let mut l = ErrorLimiter::default();
         assert!(l.allow("网络不可达", t0));
         assert!(!l.allow("网络不可达", t0 + Duration::from_millis(500)));
-        assert!(l.allow("另一种错误", t0 + Duration::from_millis(600)), "不同文案不受限");
-        assert!(l.allow("另一种错误", t0 + Duration::from_millis(1700)), "窗口过后可再次上报");
+        assert!(
+            l.allow("另一种错误", t0 + Duration::from_millis(600)),
+            "不同文案不受限"
+        );
+        assert!(
+            l.allow("另一种错误", t0 + Duration::from_millis(1700)),
+            "窗口过后可再次上报"
+        );
     }
 
     #[test]
@@ -785,7 +824,8 @@ mod tests {
     async fn artnet_packets_are_valid_artdmx_for_every_universe() {
         let (sock, port) = rx().await;
         let (s, _) = sender();
-        s.configure(cfg(port, SignalProtocol::ArtNet, "0-2")).unwrap();
+        s.configure(cfg(port, SignalProtocol::ArtNet, "0-2"))
+            .unwrap();
         s.set_pattern(PatternId::FullOn);
         s.start().await.unwrap();
         let packets = recv_n(&sock, 9).await;
@@ -817,7 +857,7 @@ mod tests {
             let d = sacn::parse(p).expect("应是合法 sACN 包");
             assert!((1..=2).contains(&d.universe));
             assert_eq!(d.priority, 100);
-            assert_eq!(d.source_name, "Art-Net Studio Signal Checker");
+            assert_eq!(d.source_name(), "Art-Net Studio Signal Checker");
             assert_eq!(&d.cid[..6], b"SIGCHK");
             assert!(all(&d.data, 255));
             assert_eq!(p[112], 0x00, "正常数据包不带终止标志");
@@ -828,7 +868,8 @@ mod tests {
     async fn stopping_blackouts_every_universe_it_touched() {
         let (sock, port) = rx().await;
         let (s, _) = sender();
-        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1")).unwrap();
+        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1"))
+            .unwrap();
         s.set_pattern(PatternId::FullOn);
         s.start().await.unwrap();
         recv_n(&sock, 6).await;
@@ -836,7 +877,11 @@ mod tests {
 
         let rest: Vec<_> = drain(&sock).await.iter().map(|p| art(p)).collect();
         for universe in [0u16, 1] {
-            let last = rest.iter().rev().find(|(u, _, _)| *u == universe).expect("应收到收尾包");
+            let last = rest
+                .iter()
+                .rev()
+                .find(|(u, _, _)| *u == universe)
+                .expect("应收到收尾包");
             assert!(all(&last.2, 0), "Universe {universe} 停止后应被清零");
         }
     }
@@ -858,7 +903,9 @@ mod tests {
                 .filter(|p| p[112] == 0x40 && sacn::parse(p).unwrap().universe == universe)
                 .collect();
             assert_eq!(terminated.len(), 3, "Universe {universe}");
-            assert!(terminated.iter().all(|p| all(&sacn::parse(p).unwrap().data, 0)));
+            assert!(terminated
+                .iter()
+                .all(|p| all(&sacn::parse(p).unwrap().data, 0)));
         }
     }
 
@@ -866,7 +913,8 @@ mod tests {
     async fn shrinking_the_range_blackouts_only_the_removed_universe() {
         let (sock, port) = rx().await;
         let (s, _) = sender();
-        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1")).unwrap();
+        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1"))
+            .unwrap();
         s.set_pattern(PatternId::FullOn);
         s.start().await.unwrap();
         recv_n(&sock, 6).await;
@@ -879,7 +927,10 @@ mod tests {
         let u1: Vec<_> = after.iter().filter(|(u, _, _)| *u == 1).collect();
         let zeros = u1.iter().filter(|(_, _, d)| all(d, 0)).count();
         assert_eq!(zeros, 1, "被移除的 Universe 恰好收到一次清零");
-        assert!(all(&u1.last().unwrap().2, 0), "清零之后不再有该 Universe 的数据");
+        assert!(
+            all(&u1.last().unwrap().2, 0),
+            "清零之后不再有该 Universe 的数据"
+        );
 
         let u0_last = after.iter().rev().find(|(u, _, _)| *u == 0).unwrap();
         assert!(all(&u0_last.2, 255), "保留的 Universe 继续正常发送");
@@ -890,19 +941,27 @@ mod tests {
         let (old, old_port) = rx().await;
         let (new, new_port) = rx().await;
         let (s, _) = sender();
-        s.configure(cfg(old_port, SignalProtocol::ArtNet, "0")).unwrap();
+        s.configure(cfg(old_port, SignalProtocol::ArtNet, "0"))
+            .unwrap();
         s.set_pattern(PatternId::FullOn);
         s.start().await.unwrap();
         recv_n(&old, 3).await;
 
-        s.configure(cfg(new_port, SignalProtocol::ArtNet, "0")).unwrap();
+        s.configure(cfg(new_port, SignalProtocol::ArtNet, "0"))
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(250)).await;
         let old_rest = drain(&old).await;
         let new_got = drain(&new).await;
         s.stop().await;
 
-        assert!(all(&art(old_rest.last().unwrap()).2, 0), "旧目标最后收到的是清零");
-        assert!(new_got.iter().any(|p| all(&art(p).2, 255)), "新目标收到正常数据");
+        assert!(
+            all(&art(old_rest.last().unwrap()).2, 0),
+            "旧目标最后收到的是清零"
+        );
+        assert!(
+            new_got.iter().any(|p| all(&art(p).2, 255)),
+            "新目标收到正常数据"
+        );
         // 换目标后序列号重新从 1 开始
         assert_eq!(art(&new_got[0]).1, 1);
     }
@@ -952,7 +1011,8 @@ mod tests {
     async fn preview_events_are_throttled_and_only_for_universes_in_range() {
         let (sock, port) = rx().await;
         let (s, events) = sender();
-        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1")).unwrap();
+        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1"))
+            .unwrap();
         s.set_pattern(PatternId::FullOn);
         s.set_preview(Some(1));
         s.start().await.unwrap();
@@ -964,12 +1024,25 @@ mod tests {
         let after = events.lock().unwrap().len();
         s.stop().await;
 
-        let previews: Vec<_> = events.lock().unwrap().iter().filter_map(|e| match e {
-            SenderEvent::Preview { universe, data } => Some((*universe, data.clone())),
-            SenderEvent::Error { .. } => None,
-        }).collect();
-        assert!(previews.len() >= 2, "至少应有几次预览，实际 {}", previews.len());
-        assert!(previews.len() <= 10, "约 8.8Hz 节流，实际 {}", previews.len());
+        let previews: Vec<_> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                SenderEvent::Preview { universe, data } => Some((*universe, data.clone())),
+                SenderEvent::Error { .. } => None,
+            })
+            .collect();
+        assert!(
+            previews.len() >= 2,
+            "至少应有几次预览，实际 {}",
+            previews.len()
+        );
+        assert!(
+            previews.len() <= 10,
+            "约 8.8Hz 节流，实际 {}",
+            previews.len()
+        );
         assert!(previews.iter().all(|(u, d)| *u == 1 && all(d, 255)));
         assert_eq!(before, after, "范围外的 Universe 不再上报预览");
     }
@@ -978,7 +1051,8 @@ mod tests {
     async fn status_reports_progress_and_measured_rate() {
         let (sock, port) = rx().await;
         let (s, _) = sender();
-        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1")).unwrap();
+        s.configure(cfg(port, SignalProtocol::ArtNet, "0-1"))
+            .unwrap();
         assert!(!s.status().running);
         s.start().await.unwrap();
         tokio::time::sleep(Duration::from_millis(1300)).await;
@@ -989,7 +1063,11 @@ mod tests {
         assert_eq!(st.universes, vec![0, 1]);
         assert_eq!(st.send_errors, 0);
         assert!(st.packets_sent >= 20, "已发送 {}", st.packets_sent);
-        assert!((10.0..=60.0).contains(&st.measured_hz), "实测频率 {}", st.measured_hz);
+        assert!(
+            (10.0..=60.0).contains(&st.measured_hz),
+            "实测频率 {}",
+            st.measured_hz
+        );
 
         s.stop().await;
         let st = s.status();
@@ -1021,7 +1099,9 @@ mod tests {
         let (s, _) = sender();
         let good = cfg(6454, SignalProtocol::Sacn, "1-4");
         s.configure(good.clone()).unwrap();
-        let err = s.configure(cfg(6454, SignalProtocol::Sacn, "0")).unwrap_err();
+        let err = s
+            .configure(cfg(6454, SignalProtocol::Sacn, "0"))
+            .unwrap_err();
         assert!(matches!(err, ConfigError::OutOfRange { universe: 0, .. }));
         assert_eq!(s.status().config, good);
         assert_eq!(s.status().universe_count, 4);

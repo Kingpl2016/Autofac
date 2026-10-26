@@ -213,12 +213,6 @@ export interface PlaybackStatus {
   destinations: number;
 }
 
-/** 回放期间被查看 Universe 的通道数据（`player:channels`）。 */
-export interface PlayerChannelsPayload {
-  universe: number;
-  data: number[];
-}
-
 /** 时间线概览（对应 `player::Overview`；矩阵为 Base64 字符串，需解码后使用）。 */
 export interface OverviewDto {
   version: number;

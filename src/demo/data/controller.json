@@ -1,0 +1,40 @@
+{
+  "config": {
+    "host": "192.168.1.200",
+    "tcpPort": 1227,
+    "httpPort": 80,
+    "connected": true
+  },
+  "workMode": 4,
+  "reachableHosts": ["192.168.1.200", "192.168.1.201", "10.10.0.50"],
+  "connectDelayMs": 700,
+  "files": [
+    { "name": "SHOW", "size": 0, "isDir": true },
+    { "name": "BACKUP", "size": 0, "isDir": true },
+    { "name": "prog_001.artrec", "size": 4812340, "isDir": false },
+    { "name": "prog_002.artrec", "size": 12904118, "isDir": false },
+    { "name": "prog_003.artrec", "size": 733184, "isDir": false },
+    { "name": "prog_004.artrec", "size": 28450201, "isDir": false },
+    { "name": "开场秀-Act1.artrec", "size": 4812340, "isDir": false },
+    { "name": "休息场间氛围.artrec", "size": 9120771, "isDir": false },
+    { "name": "loop_env.cfg", "size": 1216, "isDir": false },
+    { "name": "circuits.cfg", "size": 3472, "isDir": false },
+    { "name": "scene_queue.json", "size": 8940, "isDir": false },
+    { "name": "thing_model.xlsx", "size": 41230, "isDir": false },
+    { "name": "network.ini", "size": 312, "isDir": false },
+    { "name": "boot.log", "size": 18734, "isDir": false },
+    { "name": "firmware_v1.4.2.bin", "size": 1572864, "isDir": false },
+    { "name": "README.txt", "size": 540, "isDir": false }
+  ],
+  "textFiles": {
+    "network.ini": "[network]\nip=192.168.1.200\nmask=255.255.255.0\ngateway=192.168.1.1\ntcp_port=1227\nhttp_port=80\n",
+    "README.txt": "Art-Net Studio 演示数据\n这是核心板 SD 卡上的示例文件。\n",
+    "boot.log": "[00:00:01] ESP32-P4 boot\n[00:00:02] SD card mounted, 14.8GB free\n[00:00:03] Ethernet link up 100Mbps\n[00:00:03] TCP server listening on 1227\n[00:00:05] work mode = program\n"
+  },
+  "channelMemory": {
+    "1": 255,
+    "2": 128,
+    "3": 64,
+    "4": 0
+  }
+}

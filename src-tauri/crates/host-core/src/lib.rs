@@ -7,18 +7,25 @@
 //! 命令位于 [`commands`]，由宿主在自己的 `invoke_handler` 注册（命令名不变）。
 
 pub mod app_mode;
+mod delay;
 pub mod dispatch;
+pub mod ingest;
 pub mod mode;
 pub mod output_stats;
 pub mod playback;
 pub mod recording;
+pub mod routes;
 pub mod runtime;
 pub mod sacn;
 pub mod sender;
+pub mod stream;
 mod util;
 
 pub use dispatch::{DispatchTarget, Dispatcher, ForwardJob};
+pub use ingest::IngestPipeline;
+pub use routes::{CompiledRoutes, Endpoint};
 pub use runtime::{Runtime, ScanSummary};
+pub use sender::SenderSlot;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -90,6 +97,7 @@ pub fn init<R: TauriRuntime>() -> TauriPlugin<R> {
 pub mod commands {
     use netif::NetworkInterfaceDto;
     use settings::AppSettings;
+    use tauri::ipc::{Channel, InvokeResponseBody};
     use tauri::{AppHandle, Manager, State};
 
     use crate::runtime::{Runtime, ScanSummary};
@@ -179,6 +187,35 @@ pub mod commands {
     #[tauri::command]
     pub fn set_viewed_universes(state: State<'_, Runtime>, universes: Vec<u16>) {
         state.set_viewed(universes);
+    }
+
+    /// 订阅二进制 DMX 通道流（帧格式见 [`crate::stream`]）；替换此前的订阅。
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - 核心运行时。
+    /// * `channel` - 前端创建的通道；每帧以 `ArrayBuffer` 送达。
+    ///
+    /// # Returns
+    ///
+    /// 订阅 id，取消时传给 [`dmx_stream_unsubscribe`]。
+    #[tauri::command]
+    pub fn dmx_stream_subscribe(
+        state: State<'_, Runtime>,
+        channel: Channel<InvokeResponseBody>,
+    ) -> u32 {
+        state.dmx_stream().subscribe(channel)
+    }
+
+    /// 取消二进制 DMX 通道流订阅；`id` 不是当前订阅时什么也不做。
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - 核心运行时。
+    /// * `id` - [`dmx_stream_subscribe`] 返回的订阅 id。
+    #[tauri::command]
+    pub fn dmx_stream_unsubscribe(state: State<'_, Runtime>, id: u32) {
+        state.dmx_stream().unsubscribe(id);
     }
 
     /// 当前来源（按 IP 聚合）统计，供录制来源选择器初始渲染。

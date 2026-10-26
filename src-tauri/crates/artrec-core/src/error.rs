@@ -102,6 +102,24 @@ pub enum ArtRecError {
         /// 本帧时间戳。
         now: u64,
     },
+
+    /// 帧下标超出帧索引表范围。
+    #[error("帧下标 {index} 越界：共 {count} 帧")]
+    FrameOutOfRange {
+        /// 请求的帧下标。
+        index: usize,
+        /// 帧索引表的条目数。
+        count: usize,
+    },
+
+    /// 为共享索引的读取器提供的新数据源与原文件长度不一致（很可能不是同一份文件）。
+    #[error("数据源长度不符：原文件 {expected} 字节，新数据源 {actual} 字节")]
+    SourceLenMismatch {
+        /// 原读取器打开时探测到的文件总字节数。
+        expected: u64,
+        /// 新数据源的总字节数。
+        actual: u64,
+    },
 }
 
 /// ArtRec 操作的便捷 `Result` 别名。

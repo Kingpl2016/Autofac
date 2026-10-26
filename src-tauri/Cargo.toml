@@ -65,17 +65,35 @@ anyhow = "1"
 tracing = { version = "0.1", features = ["log"] }
 crc = "3"
 zstd = "0.14"
-# `log` 特性：无 tracing 订阅者时把 tracing 事件转为 `log` 记录，交由 tauri-plugin-log 统一处理。
 byteorder = "1"
 artnet_protocol = "0.4"
 calamine = "0.37"
 if-addrs = "0.15"
 socket2 = "0.5"
 bytes = "1"
+# 性能基准（仅 dev-dependencies 使用）：带分配计数的微基准框架。
+divan = "=0.1.21"
+# 小键（u16 / IpAddr / 序号）哈希表：FxHash 比默认 SipHash 快；键均来自本机内部，无 HashDoS 风险。
+rustc-hash = "=2.1.3"
+# 读多写少的共享数据（编译后的转发路由、发送器、帧旁路接收器）的无锁读取。
+arc-swap = "=1.9.3"
+# 节目概览 / 通道曲线的并行扫描（专用线程池）。
+rayon = "=1.12.0"
+# 回放线程的高精度等待（Windows 原生 sleep 精度不足 1ms）。
+spin_sleep = "=1.3.3"
 
+# 运行速度优先（见 Rust Performance Book「Build Configuration」）：
+# 收包 / 合并 / 编解码热路径依赖内联与向量化，`opt-level = "s"` 会抑制两者。
 [profile.release]
 panic = "abort"
 codegen-units = 1
-lto = true
-opt-level = "s"
+lto = "fat"
+opt-level = 3
 strip = true
+
+# 采样分析（samply / WPA）用：与 release 相同的优化，保留符号与调试信息。
+# 用法：`cargo build --profile profiling`
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false

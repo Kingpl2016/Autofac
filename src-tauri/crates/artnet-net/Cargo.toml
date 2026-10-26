@@ -19,3 +19,16 @@ artnet_protocol = { workspace = true }
 byteorder = { workspace = true }
 socket2 = { workspace = true }
 bytes = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
+
+# 编解码微基准（divan，带分配计数）。
+[[bench]]
+name = "codec"
+harness = false
+
+# Art-Net / sACN 压测发包程序（仅 std）；test = true 使 `cargo test` 运行其回环自测。
+[[example]]
+name = "loadgen"
+test = true

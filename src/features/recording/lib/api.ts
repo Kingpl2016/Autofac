@@ -127,7 +127,7 @@ export function playerSetTarget(target: PlayerTarget): Promise<void> {
   return invoke<void>("player_set_target", { target });
 }
 
-/** 设置前端正在查看的 Universe（决定推送哪些 `player:channels`）。 */
+/** 设置前端正在查看的 Universe（决定二进制通道流的回放帧包含哪些 Universe）。 */
 export function playerSetViewed(universes: number[]): Promise<void> {
   return invoke<void>("player_set_viewed", { universes });
 }

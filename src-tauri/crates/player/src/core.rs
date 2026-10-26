@@ -13,10 +13,17 @@
 //!   重发当前全部 Universe，避免节点因长时间无数据而超时熄灯。暂停期间同样保活。
 //! - 落后于时间轴（例如调度被阻塞）时，多个到期帧会合并，只输出最终状态。
 //! - 帧损坏（CRC / 解压失败）时沿用上一帧数据继续（规范 §11 演出容错模式）。
+//!
+//! # 缓冲与拷贝
+//!
+//! 输出状态保存在内部的各路缓冲里，另有一份同形状的备用缓冲做双缓冲：推进 / seek 在备用缓冲上
+//! 应用帧数据（失败时当前状态保持不变），成功后与当前缓冲交换，稳态下不分配。一次输出里的各路
+//! 数据只拷贝一次，进同一块共享的 [`Bytes`]，每路是它的零拷贝切片。
 
 use std::io::{Read, Seek};
 
-use artrec_core::ArtRecReader;
+use artrec_core::{ArtRecReader, UniDesc};
+use bytes::Bytes;
 
 /// 默认保活间隔：1 秒（低于常见节点 3~4 秒的无数据超时，且开销可忽略）。
 pub const DEFAULT_KEEPALIVE_US: u64 = 1_000_000;
@@ -55,7 +62,9 @@ pub struct UniverseData {
     /// Universe 编号（来自 UniDesc）。
     pub universe: u16,
     /// 通道数据（`dmx_len` 字节，通常 512）。
-    pub data: Vec<u8>,
+    ///
+    /// 同一次输出的各路数据共享一块引用计数缓冲（每路是其切片），克隆只增引用计数。
+    pub data: Bytes,
 }
 
 /// 一次输出。
@@ -120,10 +129,77 @@ pub struct Player<R: Read + Seek> {
     next_index: usize,
     /// 当前输出状态；`None` 表示尚未输出过任何帧。
     buffers: Option<Vec<Vec<u8>>>,
+    /// 备用缓冲（双缓冲的另一半）：推进 / seek 先在这里应用，成功后与 `buffers` 交换。
+    spare: Vec<Vec<u8>>,
+    /// 读块用的 Payload 缓冲（复用）。
+    raw: Vec<u8>,
+    /// 本次推进发生变化的 Universe 下标（复用）。
+    changed: Vec<usize>,
     last_emit_wall: u64,
     corrupt: u64,
     /// 非循环播放刚到达结尾且尚未被 [`Player::take_ended`] 取走。
     ended: bool,
+}
+
+/// 把 `dst` 变成 `src` 的副本（逐路 `clear` + `extend_from_slice`，稳态下不分配）。
+fn copy_buffers(dst: &mut Vec<Vec<u8>>, src: &[Vec<u8>]) {
+    dst.resize_with(src.len(), Vec::new);
+    for (d, s) in dst.iter_mut().zip(src) {
+        d.clear();
+        d.extend_from_slice(s);
+    }
+}
+
+/// 把 `dst` 变成与 `unis` 一一对应的全零缓冲（与 [`ArtRecReader::zero_buffers`] 相同，但复用容量）。
+fn zero_buffers_into(dst: &mut Vec<Vec<u8>>, unis: &[UniDesc]) {
+    dst.resize_with(unis.len(), Vec::new);
+    for (d, u) in dst.iter_mut().zip(unis) {
+        d.clear();
+        d.resize(usize::from(u.dmx_len), 0);
+    }
+}
+
+/// 把选中的各路缓冲打包成输出：数据只拷贝一次，进同一块共享缓冲，每路取其切片。
+///
+/// # Arguments
+///
+/// * `unis` - Universe 描述（提供编号，与 `buffers` 一一对应）。
+/// * `buffers` - 各路缓冲。
+/// * `indices` - 要输出的下标（按此顺序）；越界的下标被忽略。
+///
+/// # Returns
+///
+/// 每个有效下标一条 [`UniverseData`]。
+fn pack(
+    unis: &[UniDesc],
+    buffers: &[Vec<u8>],
+    indices: impl Iterator<Item = usize> + Clone,
+) -> Vec<UniverseData> {
+    let picked = move || {
+        indices
+            .clone()
+            .filter_map(|i| Some((unis.get(i)?.universe, buffers.get(i)?.as_slice())))
+    };
+    let (count, total) = picked().fold((0usize, 0usize), |(n, len), (_, d)| (n + 1, len + d.len()));
+    if count == 0 {
+        return Vec::new();
+    }
+    let mut flat = Vec::with_capacity(total);
+    for (_, d) in picked() {
+        flat.extend_from_slice(d);
+    }
+    let flat = Bytes::from(flat);
+    let mut out = Vec::with_capacity(count);
+    let mut at = 0;
+    for (universe, d) in picked() {
+        let end = at + d.len();
+        out.push(UniverseData {
+            universe,
+            data: flat.slice(at..end),
+        });
+        at = end;
+    }
+    out
 }
 
 impl<R: Read + Seek> Player<R> {
@@ -149,9 +225,19 @@ impl<R: Read + Seek> Player<R> {
             anchor: None,
             next_index: 0,
             buffers: None,
+            spare: Vec::new(),
+            raw: Vec::new(),
+            changed: Vec::new(),
             last_emit_wall: 0,
             corrupt: 0,
             ended: false,
+        }
+    }
+
+    /// 回到"尚未输出"状态；缓冲移入备用缓冲以便复用。
+    fn clear_output(&mut self) {
+        if let Some(b) = self.buffers.take() {
+            self.spare = b;
         }
     }
 
@@ -272,7 +358,7 @@ impl<R: Read + Seek> Player<R> {
             PlayState::Stopped => {
                 self.pos_us = 0;
                 self.next_index = 0;
-                self.buffers = None;
+                self.clear_output();
             }
             PlayState::Paused => {}
         }
@@ -301,7 +387,7 @@ impl<R: Read + Seek> Player<R> {
         self.pos_us = 0;
         self.anchor = None;
         self.next_index = 0;
-        self.buffers = None;
+        self.clear_output();
         self.ended = false;
     }
 
@@ -361,44 +447,64 @@ impl<R: Read + Seek> Player<R> {
         let Some(i) = self.reader.find_index(pos) else {
             // 早于首帧：没有已知状态，回到"尚未输出"
             self.next_index = 0;
-            self.buffers = None;
+            self.clear_output();
             return Vec::new();
         };
-        let state = self.resolve_tolerant(i);
+        self.resolve_tolerant(i);
         self.next_index = i + 1;
-        let all = self.all_universes(&state);
-        self.buffers = Some(state);
         self.last_emit_wall = now;
         vec![Emission {
             kind: EmissionKind::Seek,
-            universes: all,
+            universes: self.full_state(),
         }]
     }
 
-    /// 解析第 `i` 帧的完整状态；损坏时向前回退最多 32 帧，仍失败则沿用当前状态。
-    fn resolve_tolerant(&mut self, i: usize) -> Vec<Vec<u8>> {
+    /// 当前全部 Universe 的输出状态（与保活重发的内容相同）。
+    ///
+    /// 宿主层在输出被丢弃后可据此补发完整状态，让输出端重新与回放同步。
+    ///
+    /// # Returns
+    ///
+    /// 按 UniDesc 顺序的全部 Universe 数据（共享同一块缓冲）；尚未输出任何帧时为空。
+    #[must_use]
+    pub fn full_state(&self) -> Vec<UniverseData> {
+        match &self.buffers {
+            Some(b) => pack(self.reader.unis(), b, 0..b.len()),
+            None => Vec::new(),
+        }
+    }
+
+    /// 在 `work` 上从零解析第 `i` 帧的完整状态（回溯最近全量帧再前向应用）。
+    ///
+    /// 语义同 [`ArtRecReader::resolve_frame`]，但复用 `work` 与读块缓冲。
+    fn resolve_into(&mut self, i: usize, work: &mut Vec<Vec<u8>>) -> artrec_core::Result<()> {
+        let start = self.reader.keyframe_at_or_before(i)?;
+        zero_buffers_into(work, self.reader.unis());
+        for k in start..=i {
+            let hdr = self.reader.read_chunk_into(k, &mut self.raw)?;
+            self.reader.apply_chunk_into(work, &hdr, &self.raw)?;
+        }
+        Ok(())
+    }
+
+    /// 把第 `i` 帧的完整状态设为当前状态；损坏时向前回退最多 32 帧，仍失败则沿用当前状态
+    /// （尚无状态时为全 0）。
+    fn resolve_tolerant(&mut self, i: usize) {
+        let mut work = std::mem::take(&mut self.spare);
         for k in (i.saturating_sub(32)..=i).rev() {
-            if let Ok(s) = self.reader.resolve_frame(k) {
+            if self.resolve_into(k, &mut work).is_ok() {
                 self.corrupt += (i - k) as u64;
-                return s;
+                self.spare = self.buffers.replace(work).unwrap_or_default();
+                return;
             }
         }
         self.corrupt += 1;
-        self.buffers
-            .clone()
-            .unwrap_or_else(|| self.reader.zero_buffers())
-    }
-
-    fn all_universes(&self, state: &[Vec<u8>]) -> Vec<UniverseData> {
-        self.reader
-            .unis()
-            .iter()
-            .zip(state)
-            .map(|(u, d)| UniverseData {
-                universe: u.universe,
-                data: d.clone(),
-            })
-            .collect()
+        if self.buffers.is_none() {
+            zero_buffers_into(&mut work, self.reader.unis());
+            self.buffers = Some(work);
+        } else {
+            self.spare = work;
+        }
     }
 
     /// 把第 `to` 帧作为"当前帧"应用，返回相对上次输出发生变化的 Universe。
@@ -409,36 +515,37 @@ impl<R: Read + Seek> Player<R> {
             Ok(k) if k >= self.next_index => k,
             _ => self.next_index.min(to),
         };
-        let mut cur = self
-            .buffers
-            .clone()
-            .unwrap_or_else(|| self.reader.zero_buffers());
+        // 在备用缓冲上以当前状态为基准应用（损坏帧不改变它），当前状态留作比较
+        let mut work = std::mem::take(&mut self.spare);
+        match &self.buffers {
+            Some(prev) => copy_buffers(&mut work, prev),
+            None => zero_buffers_into(&mut work, self.reader.unis()),
+        }
         for k in start..=to {
-            match self.reader.read_chunk(k) {
-                Ok((hdr, raw)) => {
-                    if self.reader.apply_chunk(&mut cur, &hdr, &raw).is_err() {
+            match self.reader.read_chunk_into(k, &mut self.raw) {
+                Ok(hdr) => {
+                    if self
+                        .reader
+                        .apply_chunk_into(&mut work, &hdr, &self.raw)
+                        .is_err()
+                    {
                         self.corrupt += 1;
                     }
                 }
                 Err(_) => self.corrupt += 1,
             }
         }
-        let changed: Vec<UniverseData> = self
-            .reader
-            .unis()
-            .iter()
-            .enumerate()
-            .filter(|(idx, _)| match &self.buffers {
-                // 尚无输出历史：全部 Universe 都视为"已变化"
-                None => true,
-                Some(prev) => prev.get(*idx) != cur.get(*idx),
-            })
-            .map(|(idx, u)| UniverseData {
-                universe: u.universe,
-                data: cur[idx].clone(),
-            })
-            .collect();
-        self.buffers = Some(cur);
+        self.changed.clear();
+        let n = self.reader.unis().len();
+        match &self.buffers {
+            // 尚无输出历史：全部 Universe 都视为"已变化"
+            None => self.changed.extend(0..n),
+            Some(prev) => self
+                .changed
+                .extend((0..n).filter(|&idx| prev.get(idx) != work.get(idx))),
+        }
+        let changed = pack(self.reader.unis(), &work, self.changed.iter().copied());
+        self.spare = self.buffers.replace(work).unwrap_or_default();
         self.next_index = to + 1;
         changed
     }
@@ -496,12 +603,10 @@ impl<R: Read + Seek> Player<R> {
             && self.buffers.is_some()
             && now.saturating_sub(self.last_emit_wall) >= self.cfg.keepalive_us
         {
-            if let Some(buf) = &self.buffers {
-                out.push(Emission {
-                    kind: EmissionKind::Keepalive,
-                    universes: self.all_universes(buf),
-                });
-            }
+            out.push(Emission {
+                kind: EmissionKind::Keepalive,
+                universes: self.full_state(),
+            });
             self.last_emit_wall = now;
         }
         out
@@ -546,9 +651,7 @@ impl<R: Read + Seek> Player<R> {
 mod tests {
     use artrec_core::CompressAlgo;
 
-    use super::{
-        EmissionKind, PlayState, Player, PlayerConfig, DEFAULT_KEEPALIVE_US,
-    };
+    use super::{EmissionKind, PlayState, Player, PlayerConfig, DEFAULT_KEEPALIVE_US};
     use crate::walker::testkit::{build_diff, build_full, open};
 
     /// 三个 Universe：0@0ms、1@100ms、0@250ms，总长 1s。
@@ -617,7 +720,10 @@ mod tests {
         p.play(1_000_000); // 在墙钟 1s 处继续，位置仍是 50ms
         assert!(p.poll(1_000_000 + 49_999).is_empty());
         let e = p.poll(1_000_000 + 50_000);
-        assert_eq!(e[0].universes[0].universe, 1, "100ms 的帧在继续后 50ms 到期");
+        assert_eq!(
+            e[0].universes[0].universe, 1,
+            "100ms 的帧在继续后 50ms 到期"
+        );
     }
 
     #[test]
@@ -633,12 +739,20 @@ mod tests {
         assert!(p.poll(0).is_empty());
         // 后退到 120ms：Universe 0 应回到 10
         let e = p.seek(0, 120_000);
-        assert_eq!((e[0].universes[0].data[0], e[0].universes[1].data[5]), (10, 50));
+        assert_eq!(
+            (e[0].universes[0].data[0], e[0].universes[1].data[5]),
+            (10, 50)
+        );
     }
 
     #[test]
     fn seek_before_first_frame_outputs_nothing() {
-        let bytes = build_full(1, &[(500_000, vec![(0, 0, 1)])], 1_000_000, CompressAlgo::None);
+        let bytes = build_full(
+            1,
+            &[(500_000, vec![(0, 0, 1)])],
+            1_000_000,
+            CompressAlgo::None,
+        );
         let mut p = Player::new(open(bytes), PlayerConfig::default());
         p.play(0);
         assert!(p.seek(0, 100_000).is_empty());
@@ -757,8 +871,14 @@ mod tests {
         let e = p.poll(DEFAULT_KEEPALIVE_US);
         assert_eq!(kinds(&e), vec![EmissionKind::Keepalive]);
         assert_eq!(e[0].universes[0].data[0], 42);
-        assert!(p.poll(DEFAULT_KEEPALIVE_US + 1).is_empty(), "保活后重新计时");
-        assert_eq!(kinds(&p.poll(2 * DEFAULT_KEEPALIVE_US)), vec![EmissionKind::Keepalive]);
+        assert!(
+            p.poll(DEFAULT_KEEPALIVE_US + 1).is_empty(),
+            "保活后重新计时"
+        );
+        assert_eq!(
+            kinds(&p.poll(2 * DEFAULT_KEEPALIVE_US)),
+            vec![EmissionKind::Keepalive]
+        );
     }
 
     #[test]
@@ -774,7 +894,10 @@ mod tests {
         assert_eq!(e[0].universes.len(), 2);
         // 保活后重新计时
         assert!(p.poll(DEFAULT_KEEPALIVE_US + 500_000).is_empty());
-        assert_eq!(kinds(&p.poll(2 * DEFAULT_KEEPALIVE_US)), vec![EmissionKind::Keepalive]);
+        assert_eq!(
+            kinds(&p.poll(2 * DEFAULT_KEEPALIVE_US)),
+            vec![EmissionKind::Keepalive]
+        );
     }
 
     #[test]
@@ -815,7 +938,10 @@ mod tests {
             (10_000, vec![(0, 2, 2)]),
             (20_000, vec![(0, 3, 3)]),
         ];
-        let mut p = Player::new(open(build_diff(1, &frames, 20_000)), PlayerConfig::default());
+        let mut p = Player::new(
+            open(build_diff(1, &frames, 20_000)),
+            PlayerConfig::default(),
+        );
         p.play(0);
         p.poll(0);
         p.poll(10_000);
@@ -832,7 +958,11 @@ mod tests {
     fn corrupted_frame_keeps_previous_state_and_counts() {
         let bytes = build_full(
             1,
-            &[(0, vec![(0, 0, 5)]), (10_000, vec![(0, 0, 6)]), (20_000, vec![(0, 0, 7)])],
+            &[
+                (0, vec![(0, 0, 5)]),
+                (10_000, vec![(0, 0, 6)]),
+                (20_000, vec![(0, 0, 7)]),
+            ],
             20_000,
             CompressAlgo::None,
         );
@@ -851,12 +981,78 @@ mod tests {
         assert_eq!(e[0].universes[0].data[0], 7);
     }
 
+    /// seek 到损坏帧：向前回退到最近可解析的帧，并计入损坏数；之后的推进不受影响。
+    #[test]
+    fn seek_onto_a_corrupted_frame_falls_back_to_an_earlier_one() {
+        let bytes = build_full(
+            1,
+            &[
+                (0, vec![(0, 0, 5)]),
+                (10_000, vec![(0, 0, 6)]),
+                (20_000, vec![(0, 0, 7)]),
+            ],
+            30_000,
+            CompressAlgo::None,
+        );
+        let r = open(bytes.clone());
+        let pool = r.header().chunk_pool_offset as usize;
+        let second = pool + r.index()[1].chunk_pos as usize + artrec_core::CHUNKHDR_SIZE;
+        let mut bad = bytes;
+        bad[second] ^= 0xFF;
+        let mut p = Player::new(open(bad), PlayerConfig::default());
+        p.play(0);
+        let e = p.seek(0, 15_000);
+        assert_eq!(
+            e[0].universes[0].data[0], 5,
+            "第二帧损坏：回退到第一帧的状态"
+        );
+        assert_eq!(p.status(0).corrupt_frames, 1);
+        let e = p.poll(20_000);
+        assert_eq!(e[0].universes[0].data[0], 7);
+    }
+
+    /// 一次输出的各路数据共享同一块缓冲（每路是切片），`full_state` 与保活内容一致。
+    #[test]
+    fn emissions_share_one_buffer_and_full_state_matches_keepalive() {
+        // 两路、只有一帧：首帧之后只剩保活
+        let bytes = build_full(
+            2,
+            &[(0, vec![(0, 0, 10), (1, 5, 50)])],
+            10_000_000,
+            CompressAlgo::None,
+        );
+        let mut p = Player::new(open(bytes), PlayerConfig::default());
+        assert!(p.full_state().is_empty(), "尚未输出时没有状态");
+        p.play(0);
+        let e = p.poll(0);
+        let u = &e[0].universes;
+        assert_eq!(u.len(), 2);
+        assert_eq!(u[0].data.len(), 512);
+        // 两路切片在同一块内存里首尾相接
+        assert_eq!(u[0].data.as_ptr().wrapping_add(512), u[1].data.as_ptr());
+
+        let state = p.full_state();
+        assert_eq!(state, *u, "首帧之后的完整状态即首帧输出");
+        let keep = p.poll(DEFAULT_KEEPALIVE_US);
+        assert_eq!(kinds(&keep), vec![EmissionKind::Keepalive]);
+        assert_eq!(keep[0].universes, state);
+
+        p.stop();
+        assert!(p.full_state().is_empty(), "停止后回到尚未输出");
+        // 停止后从头播放：缓冲被复用，首帧照常输出全部 Universe
+        p.play(5_000_000);
+        assert_eq!(p.poll(5_000_000)[0].universes.len(), 2);
+    }
+
     #[test]
     fn status_reports_clamped_position_and_flags() {
         let mut p = sample();
         p.set_loop(true);
         let s = p.status(0);
-        assert_eq!((s.state, s.pos_us, s.duration_us, s.frames), (PlayState::Stopped, 0, 1_000_000, 3));
+        assert_eq!(
+            (s.state, s.pos_us, s.duration_us, s.frames),
+            (PlayState::Stopped, 0, 1_000_000, 3)
+        );
         assert!(s.looping);
         p.play(0);
         assert_eq!(p.status(5_000_000).pos_us, 1_000_000, "位置不超过时长");

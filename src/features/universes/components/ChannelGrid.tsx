@@ -11,9 +11,10 @@ interface ChannelGridProps {
   /** 通道值显示格式 */
   valueFormat: ValueFormat;
   /**
-   * 显式提供通道数据（如回放输出）。省略时读取实时引擎的合并输出。
+   * 显式提供通道数据（如回放输出、信号检测器的帧）。省略时读取实时引擎的合并输出（`Uint8Array`）。
+   * 少于 512 个值时其余通道按 0 显示。
    */
-  data?: number[];
+  data?: ArrayLike<number>;
   /** 高亮的通道号（1 到 512）。 */
   selectedChannel?: number;
   /**

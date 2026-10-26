@@ -1,0 +1,134 @@
+{
+  "destinations": [
+    {
+      "id": "d-stage-left",
+      "name": "舞台左 Node",
+      "targetIp": "192.168.1.101",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "selected",
+      "universeOffset": 0,
+      "defaultDelayMs": 0,
+      "description": "舞台左侧追光与面光,接收主控台 Universe 1-2",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 0, "action": "forward" },
+        { "sourceUniverse": 1, "action": "forward" }
+      ]
+    },
+    {
+      "id": "d-stage-right",
+      "name": "舞台右 Node",
+      "targetIp": "192.168.1.102",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "selected",
+      "universeOffset": 0,
+      "defaultDelayMs": 0,
+      "description": "舞台右侧灯具;Universe 3 延迟 20ms 以对齐左侧",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 2, "action": "forward" },
+        { "sourceUniverse": 3, "action": "forward", "delayMs": 20 }
+      ]
+    },
+    {
+      "id": "d-fx-bars",
+      "name": "效果灯 Node",
+      "targetIp": "192.168.1.103",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "selected",
+      "universeOffset": 0,
+      "defaultDelayMs": 0,
+      "description": "效果灯条;主控台 Universe 5 重映射到本节点的 Universe 1",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 4, "action": "forward", "targetUniverse": 0 },
+        { "sourceUniverse": 5, "action": "forward", "targetUniverse": 1 }
+      ]
+    },
+    {
+      "id": "d-pixel-wall",
+      "name": "像素墙 1",
+      "targetIp": "192.168.1.111",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "selected",
+      "universeOffset": -16,
+      "defaultDelayMs": 0,
+      "description": "视觉工作站 Universe 17-20 整体偏移 -16,输出到 0-3",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 16, "action": "forward" },
+        { "sourceUniverse": 17, "action": "forward" },
+        { "sourceUniverse": 18, "action": "forward" },
+        { "sourceUniverse": 19, "action": "forward" }
+      ]
+    },
+    {
+      "id": "d-madrix-a",
+      "name": "MADRIX 光带 A",
+      "targetIp": "192.168.1.121",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "selected",
+      "universeOffset": 0,
+      "defaultDelayMs": 5,
+      "description": "",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 40, "action": "forward" },
+        { "sourceUniverse": 41, "action": "forward" }
+      ]
+    },
+    {
+      "id": "d-sacn-hall",
+      "name": "sACN 像素网关",
+      "targetIp": "192.168.1.133",
+      "protocol": "sacn",
+      "port": 5568,
+      "mode": "selected",
+      "universeOffset": 100,
+      "defaultDelayMs": 0,
+      "description": "把主控台 Universe 1-2 转成 sACN 送给大厅网关",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 0, "action": "forward" },
+        { "sourceUniverse": 1, "action": "forward" }
+      ]
+    },
+    {
+      "id": "d-flaky",
+      "name": "走廊节点 (信号不稳)",
+      "targetIp": "192.168.1.141",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "selected",
+      "universeOffset": 0,
+      "defaultDelayMs": 0,
+      "description": "线缆老化,偶发丢包;用于观察输出错误与丢帧提示",
+      "enabled": true,
+      "overrides": [
+        { "sourceUniverse": 42, "action": "forward", "targetUniverse": 40 },
+        { "sourceUniverse": 43, "action": "forward", "targetUniverse": 41 }
+      ]
+    },
+    {
+      "id": "d-backup",
+      "name": "备份节点 (已拆除)",
+      "targetIp": "192.168.1.140",
+      "protocol": "artNet",
+      "port": 6454,
+      "mode": "all",
+      "universeOffset": 0,
+      "defaultDelayMs": 0,
+      "description": "设备已离线,暂时停用",
+      "enabled": false,
+      "overrides": [
+        { "sourceUniverse": 6, "action": "exclude" },
+        { "sourceUniverse": 7, "action": "exclude" }
+      ]
+    }
+  ]
+}

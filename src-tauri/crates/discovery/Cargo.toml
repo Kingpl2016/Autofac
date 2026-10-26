@@ -16,3 +16,9 @@ artnet-net = { path = "../artnet-net" }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+divan = { workspace = true }
+
+# 设备注册表微基准（列表克隆 / 离线标记 / 被动发现 / JSON 序列化）。
+[[bench]]
+name = "registry"
+harness = false

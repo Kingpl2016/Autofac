@@ -5,8 +5,13 @@
 //! 窗口结束时才重新计算，使界面上的 pps 数字稳定可读。
 //!
 //! 追踪器只依赖逻辑时间（毫秒），便于确定性测试。
+//!
+//! 计数器键是 `Copy` 的（来源以 [`IpAddr`] 数值标识），哈希表使用 `FxHashMap`；
+//! 窗口内的调用只做查表、不分配，窗口结束时复用两张表交替收集累计值。
 
-use std::collections::HashMap;
+use std::net::IpAddr;
+
+use rustc_hash::FxHashMap;
 
 use crate::engine::UniverseSnapshot;
 
@@ -14,23 +19,25 @@ use crate::engine::UniverseSnapshot;
 pub const RATE_WINDOW_MS: u64 = 1000;
 
 /// 累计包数计数器的键：整体、某个 Universe、某个 Universe 上的某个来源。
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Key {
     /// 全部 Universe 的总计。
     Total,
     /// 单个 Universe 的总计。
     Universe(u16),
-    /// 单个 Universe 上的单个来源（源 IP 字符串）。
-    Source(u16, String),
+    /// 单个 Universe 上的单个来源（源 IP 数值，取自 [`crate::UniverseSource::addr`]）。
+    Source(u16, IpAddr),
 }
 
 /// 包速率追踪器。
 #[derive(Debug, Default)]
 pub struct RateTracker {
     /// 上一个窗口结束时各计数器的累计值。
-    prev: HashMap<Key, u64>,
+    prev: FxHashMap<Key, u64>,
     /// 最近一次计算出的每秒包数。
-    rates: HashMap<Key, u32>,
+    rates: FxHashMap<Key, u32>,
+    /// 窗口结束时收集当前累计值的复用表（与 `prev` 交替，避免每窗口重新分配）。
+    scratch: FxHashMap<Key, u64>,
     /// 上一个窗口结束的逻辑时间；`None` 表示尚未建立基线。
     last_at_ms: Option<u64>,
 }
@@ -55,7 +62,7 @@ impl RateTracker {
     /// # Arguments
     ///
     /// * `snapshot` - 当前全部活跃 Universe 的快照；其 `packet_rate` 与各来源的
-    ///   `packet_rate` 会被就地覆盖。
+    ///   `packet_rate` 会被就地覆盖。来源以 [`crate::UniverseSource::addr`] 标识。
     /// * `total_packets` - 引擎的累计接收包数。
     /// * `now_ms` - 当前逻辑时间（毫秒）。
     ///
@@ -68,58 +75,81 @@ impl RateTracker {
         total_packets: u64,
         now_ms: u64,
     ) -> u32 {
-        let counters = Self::collect(snapshot, total_packets);
         match self.last_at_ms {
             None => {
-                self.prev = counters;
+                Self::collect_into(&mut self.prev, snapshot, total_packets);
                 self.last_at_ms = Some(now_ms);
             }
             Some(last) if now_ms.saturating_sub(last) >= RATE_WINDOW_MS => {
                 let elapsed = now_ms - last;
-                self.rates = counters
-                    .iter()
-                    .map(|(key, &cur)| {
-                        let before = self.prev.get(key).copied().unwrap_or(0);
-                        (key.clone(), per_second(cur.saturating_sub(before), elapsed))
-                    })
-                    .collect();
-                // 只保留仍然存在的计数器，消失的 Universe / 来源随之释放
-                self.prev = counters;
+                Self::collect_into(&mut self.scratch, snapshot, total_packets);
+                self.rates.clear();
+                for (&key, &cur) in &self.scratch {
+                    let before = self.prev.get(&key).copied().unwrap_or(0);
+                    self.rates
+                        .insert(key, per_second(cur.saturating_sub(before), elapsed));
+                }
+                // 只保留仍然存在的计数器，消失的 Universe / 来源随之释放（表容量复用）
+                std::mem::swap(&mut self.prev, &mut self.scratch);
+                self.scratch.clear();
                 self.last_at_ms = Some(now_ms);
             }
+            // 窗口未满：沿用上次结果，不收集计数器
             Some(_) => {}
         }
 
         for u in snapshot.iter_mut() {
-            u.packet_rate = self.rate_of(&Key::Universe(u.universe));
+            u.packet_rate = self.rate_of(Key::Universe(u.universe));
             for s in &mut u.sources {
-                s.packet_rate = self.rate_of(&Key::Source(u.universe, s.ip.clone()));
+                s.packet_rate = self.rate_of(Key::Source(u.universe, s.addr));
             }
         }
-        self.rate_of(&Key::Total)
+        self.rate_of(Key::Total)
     }
 
     /// 清空基线与结果（例如引擎被整体重置后调用）。
     pub fn reset(&mut self) {
         self.prev.clear();
         self.rates.clear();
+        self.scratch.clear();
         self.last_at_ms = None;
     }
 
-    fn rate_of(&self, key: &Key) -> u32 {
-        self.rates.get(key).copied().unwrap_or(0)
+    /// 查询某计数器最近一次计算出的速率。
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - 计数器键。
+    ///
+    /// # Returns
+    ///
+    /// 每秒包数；尚无结果时为 `0`。
+    fn rate_of(&self, key: Key) -> u32 {
+        self.rates.get(&key).copied().unwrap_or(0)
     }
 
-    fn collect(snapshot: &[UniverseSnapshot], total_packets: u64) -> HashMap<Key, u64> {
-        let mut m = HashMap::with_capacity(1 + snapshot.len() * 2);
-        m.insert(Key::Total, total_packets);
+    /// 把快照中的全部累计值收集进 `map`（先清空，复用其容量）。
+    ///
+    /// # Arguments
+    ///
+    /// * `map` - 目标表。
+    /// * `snapshot` - 当前全部活跃 Universe 的快照。
+    /// * `total_packets` - 引擎的累计接收包数。
+    fn collect_into(
+        map: &mut FxHashMap<Key, u64>,
+        snapshot: &[UniverseSnapshot],
+        total_packets: u64,
+    ) {
+        map.clear();
+        let sources: usize = snapshot.iter().map(|u| u.sources.len()).sum();
+        map.reserve(1 + snapshot.len() + sources);
+        map.insert(Key::Total, total_packets);
         for u in snapshot {
-            m.insert(Key::Universe(u.universe), u.total_packets);
+            map.insert(Key::Universe(u.universe), u.total_packets);
             for s in &u.sources {
-                m.insert(Key::Source(u.universe, s.ip.clone()), s.packets);
+                map.insert(Key::Source(u.universe, s.addr), s.packets);
             }
         }
-        m
     }
 }
 
@@ -149,6 +179,7 @@ mod tests {
                 .iter()
                 .map(|(ip, n)| UniverseSource {
                     ip: (*ip).to_string(),
+                    addr: ip.parse().unwrap(),
                     packets: *n,
                     packet_rate: 0,
                 })
@@ -249,6 +280,23 @@ mod tests {
         let mut s = vec![snap(2, 5, &[])];
         t.apply(&mut s, 123, 2500);
         assert_eq!(s[0].packet_rate, 0);
+    }
+
+    #[test]
+    fn same_ip_on_different_universes_is_tracked_separately() {
+        let mut t = RateTracker::new();
+        let mut s = vec![
+            snap(1, 0, &[("10.0.0.1", 0)]),
+            snap(2, 0, &[("10.0.0.1", 0)]),
+        ];
+        t.apply(&mut s, 0, 0);
+        let mut s = vec![
+            snap(1, 44, &[("10.0.0.1", 44)]),
+            snap(2, 10, &[("10.0.0.1", 10)]),
+        ];
+        assert_eq!(t.apply(&mut s, 54, 1000), 54);
+        assert_eq!(s[0].sources[0].packet_rate, 44);
+        assert_eq!(s[1].sources[0].packet_rate, 10);
     }
 
     #[test]

@@ -106,6 +106,8 @@ pub struct RecorderSession<W: Write + Seek> {
     engine: SignalEngine,
     filter: RecordFilter,
     universes: Vec<u16>,
+    /// 复用的各路快照缓冲（与 `universes` 等长、每路 [`DMX_LEN`] 字节），`tick` 时原地覆盖。
+    snap: Vec<Vec<u8>>,
     member: HashSet<u16>,
     dirty: bool,
     last_change_us: u64,
@@ -154,6 +156,7 @@ impl<W: Write + Seek> RecorderSession<W> {
             engine: SignalEngine::new(cfg.merge_mode, source_timeout_ms),
             filter: cfg.filter,
             member: cfg.universes.iter().copied().collect(),
+            snap: vec![vec![0u8; DMX_LEN as usize]; cfg.universes.len()],
             universes: cfg.universes,
             dirty: false,
             last_change_us: 0,
@@ -195,16 +198,15 @@ impl<W: Write + Seek> RecorderSession<W> {
         self.last_change_us = self.last_change_us.max(t_us);
     }
 
-    /// 当前各路合并输出，按 UniDesc 顺序，补零/截断到 [`DMX_LEN`]。
-    fn snapshot(&self) -> Vec<Vec<u8>> {
-        self.universes
-            .iter()
-            .map(|&u| {
-                let mut v = self.engine.merged_output(u).unwrap_or_default();
-                v.resize(DMX_LEN as usize, 0);
-                v
-            })
-            .collect()
+    /// 把当前各路合并输出按 UniDesc 顺序写入复用的快照缓冲，补零/截断到 [`DMX_LEN`]（零分配）。
+    ///
+    /// 结果与"`merged_output(u).unwrap_or_default()` 后 `resize(DMX_LEN, 0)`"逐字节一致：
+    /// 合并宽度之外的通道清零，Universe 不存在时整路清零。
+    fn refresh_snapshot(&mut self) {
+        for (&u, buf) in self.universes.iter().zip(self.snap.iter_mut()) {
+            let n = self.engine.merged_into(u, buf).unwrap_or(0);
+            buf[n..].fill(0);
+        }
     }
 
     /// 周期性调用：若自上次以来有新数据，则做变更检测并按需写帧。
@@ -221,12 +223,12 @@ impl<W: Write + Seek> RecorderSession<W> {
             return Ok(None);
         }
         self.dirty = false;
-        let snap = self.snapshot();
+        self.refresh_snapshot();
         let t = self
             .w
             .last_time_us()
             .map_or(self.last_change_us, |l| l.max(self.last_change_us));
-        self.enc.encode(&mut self.w, t, &snap)
+        self.enc.encode(&mut self.w, t, &self.snap)
     }
 
     /// 刷新底层缓冲，使已写 Chunk 落到操作系统。
@@ -400,7 +402,10 @@ mod tests {
 
         let many = plan_universes(0..200u16);
         assert_eq!(many.accepted.len(), MAX_UNIVERSES_PER_FILE);
-        assert_eq!(many.rejected_over_capacity.len(), 200 - MAX_UNIVERSES_PER_FILE);
+        assert_eq!(
+            many.rejected_over_capacity.len(),
+            200 - MAX_UNIVERSES_PER_FILE
+        );
     }
 
     #[test]
@@ -505,7 +510,11 @@ mod tests {
         assert_eq!(stats.diff_frames, 0);
         assert_eq!(stats.max_chain, 1);
         let r = ArtRecReader::open(cur.into_inner()).unwrap();
-        assert_eq!(r.header().flags, 0, "默认不置 ALLOW_DIFF_FRAME，保证固件兼容");
+        assert_eq!(
+            r.header().flags,
+            0,
+            "默认不置 ALLOW_DIFF_FRAME，保证固件兼容"
+        );
         for (t, i) in expect {
             let f = r.frame_at(t).unwrap().unwrap();
             assert_eq!(f[0][0], (i % 5) as u8 * 40);
@@ -520,5 +529,210 @@ mod tests {
         assert_eq!(stats.frames, 0);
         let r = ArtRecReader::open(cur.into_inner()).unwrap();
         assert_eq!(r.header().frame_count, 0);
+    }
+
+    // ---- 与改动前实现的逐字节对照 ----
+
+    use artrec_core::{ArtRecWriter, UniDesc};
+    use signal_engine::SignalEngine;
+
+    use super::DMX_LEN;
+    use crate::encoder::legacy::{LegacyEncoder, Rng};
+    use crate::encoder::Encoded;
+
+    /// 改动前的会话 tick 路径：`merged_output` 分配快照 + 旧编码器。
+    struct LegacySession {
+        w: ArtRecWriter<Cursor<Vec<u8>>>,
+        enc: LegacyEncoder,
+        engine: SignalEngine,
+        filter: RecordFilter,
+        universes: Vec<u16>,
+        dirty: bool,
+        last_change_us: u64,
+    }
+
+    impl LegacySession {
+        fn new(cfg: &SessionConfig, source_timeout_ms: u64) -> Self {
+            let unis = cfg
+                .universes
+                .iter()
+                .map(|&u| UniDesc::from_universe(u, DMX_LEN).unwrap())
+                .collect();
+            let w = ArtRecWriter::new(
+                Cursor::new(Vec::new()),
+                unis,
+                cfg.encoder.algo,
+                cfg.encoder.level,
+                cfg.encoder.file_flags(),
+                cfg.rec_start_unix_us,
+            )
+            .unwrap();
+            Self {
+                w,
+                enc: LegacyEncoder::new(cfg.encoder),
+                engine: SignalEngine::new(cfg.merge_mode, source_timeout_ms),
+                filter: cfg.filter.clone(),
+                universes: cfg.universes.clone(),
+                dirty: false,
+                last_change_us: 0,
+            }
+        }
+
+        fn ingest(&mut self, frame: &DmxFrame, t_us: u64) {
+            if !self.filter.matches(frame) || !self.universes.contains(&frame.universe) {
+                return;
+            }
+            self.engine.ingest(frame, t_us / 1000);
+            self.dirty = true;
+            self.last_change_us = self.last_change_us.max(t_us);
+        }
+
+        fn snapshot(&self) -> Vec<Vec<u8>> {
+            self.universes
+                .iter()
+                .map(|&u| {
+                    let mut v = self.engine.merged_output(u).unwrap_or_default();
+                    v.resize(DMX_LEN as usize, 0);
+                    v
+                })
+                .collect()
+        }
+
+        fn tick(&mut self) -> Option<Encoded> {
+            if !self.dirty {
+                return None;
+            }
+            self.dirty = false;
+            let snap = self.snapshot();
+            let t = self
+                .w
+                .last_time_us()
+                .map_or(self.last_change_us, |l| l.max(self.last_change_us));
+            self.enc.encode(&mut self.w, t, &snap).unwrap()
+        }
+
+        fn finish(mut self, total_us: u64) -> Vec<u8> {
+            self.tick();
+            let total = total_us.max(self.w.last_time_us().unwrap_or(0));
+            self.enc.encode_tail(&mut self.w, total).unwrap();
+            self.w.finish(total).unwrap().into_inner()
+        }
+    }
+
+    /// 伪随机帧：随机 Universe（含集合外的 12）、来源、宽度（含短帧与超长帧）与内容。
+    fn random_frame(rng: &mut Rng) -> DmxFrame {
+        const UNIS: [u16; 4] = [0, 3, 7, 12];
+        const WIDTHS: [usize; 7] = [1, 3, 24, 100, 511, 512, 600];
+        let universe = UNIS[rng.below(UNIS.len() as u64) as usize];
+        let src = 1 + rng.below(3) as u8;
+        let width = WIDTHS[rng.below(WIDTHS.len() as u64) as usize];
+        let fill = rng.below(256) as u8;
+        let mut data = vec![fill; width];
+        for _ in 0..rng.below(8) {
+            let ch = rng.below(width as u64) as usize;
+            data[ch] = rng.below(256) as u8;
+        }
+        frame(universe, src, &data)
+    }
+
+    /// 复用缓冲的快照与旧实现（`merged_output` + `resize`）逐字节一致，
+    /// 覆盖宽度收缩、多来源合并与从未收到数据的 Universe。
+    #[test]
+    fn snapshot_matches_legacy_merged_output() {
+        for mode in [MergeMode::Htp, MergeMode::Ltp, MergeMode::Priority] {
+            let mut s = RecorderSession::new(
+                Cursor::new(Vec::new()),
+                SessionConfig {
+                    filter: RecordFilter::default(),
+                    universes: vec![0, 3, 7, 9],
+                    merge_mode: mode,
+                    encoder: EncoderConfig::default(),
+                    rec_start_unix_us: 0,
+                },
+                2500,
+            )
+            .unwrap();
+            let mut rng = Rng(0x1234_5678_9ABC_DEF1);
+            // 先灌满 512 字节，再发短帧：合并宽度收缩后，旧数据必须被清零
+            s.ingest(&frame(0, 1, &[0xAA; 512]), 0);
+            s.refresh_snapshot();
+            s.engine.prune(1_000_000);
+            s.ingest(&frame(0, 1, &[1, 2, 3]), 1_000_000_000);
+            for step in 0..600u64 {
+                if step > 0 {
+                    s.ingest(&random_frame(&mut rng), 1_000_000_000 + step * 1000);
+                }
+                s.refresh_snapshot();
+                let expect: Vec<Vec<u8>> = s
+                    .universes
+                    .iter()
+                    .map(|&u| {
+                        let mut v = s.engine.merged_output(u).unwrap_or_default();
+                        v.resize(DMX_LEN as usize, 0);
+                        v
+                    })
+                    .collect();
+                assert!(s.snap == expect, "{mode:?} step={step}");
+            }
+            assert!(
+                s.snap[3].iter().all(|&b| b == 0),
+                "从未收到数据的 Universe 整路为 0"
+            );
+        }
+    }
+
+    /// 同一输入序列下，新会话与改动前实现写出的文件逐字节一致（默认配置与差分配置）。
+    #[test]
+    fn session_file_matches_legacy_byte_for_byte() {
+        let diff = EncoderConfig {
+            allow_diff: true,
+            keyframe_interval_us: 200_000,
+            ..EncoderConfig::default()
+        };
+        for (mode, encoder) in [
+            (MergeMode::Htp, EncoderConfig::default()),
+            (MergeMode::Ltp, EncoderConfig::default()),
+            (MergeMode::Htp, diff),
+            (MergeMode::Priority, diff),
+        ] {
+            let cfg = SessionConfig {
+                filter: RecordFilter::default(),
+                universes: vec![0, 3, 7, 9],
+                merge_mode: mode,
+                encoder,
+                rec_start_unix_us: 42,
+            };
+            let mut s = RecorderSession::new(Cursor::new(Vec::new()), cfg.clone(), 2500).unwrap();
+            let mut old = LegacySession::new(&cfg, 2500);
+            let mut rng = Rng(0x0F0F_1234_ABCD_0001);
+            let mut t = 0u64;
+            for step in 0..800 {
+                for _ in 0..rng.below(4) {
+                    let f = random_frame(&mut rng);
+                    s.ingest(&f, t);
+                    old.ingest(&f, t);
+                    t += rng.below(3000);
+                }
+                assert_eq!(
+                    s.tick().unwrap(),
+                    old.tick(),
+                    "{mode:?}/{encoder:?} step={step}"
+                );
+                t += rng.below(30_000);
+            }
+            let (cur, stats) = s.finish(t + 5_000).unwrap();
+            assert!(
+                stats.frames > 100,
+                "{mode:?}/{encoder:?}: frames={}",
+                stats.frames
+            );
+            if encoder.allow_diff {
+                assert!(stats.diff_frames > 0, "{mode:?}/{encoder:?}");
+            }
+            assert!(
+                cur.into_inner() == old.finish(t + 5_000),
+                "{mode:?}/{encoder:?}: 文件字节不一致"
+            );
+        }
     }
 }

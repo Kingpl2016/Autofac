@@ -6,11 +6,10 @@
 //!   硬编码调用，使录制等消费者可独立注册，便于后续拆分到各自的插件 crate。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 
+use arc_swap::ArcSwap;
 use artnet_net::DmxFrame;
-
-use crate::util::lock;
 
 /// 录制与回放的互斥仲裁：二者不能同时进行。
 ///
@@ -86,14 +85,29 @@ pub trait FrameSink: Send + Sync {
 ///
 /// 以弱引用持有各接收器，消费者销毁后自动失效。每个 sink 自行按需门控
 /// （例如录制未开始时直接返回），因此扇出本身不关心业务状态。
-#[derive(Clone, Default)]
+///
+/// 接收器列表放在 `ArcSwap` 里：注册（极少）时以 RCU 方式整体替换，投递（每帧）无锁读取。
+#[derive(Clone)]
 pub struct FrameFanout {
-    sinks: Arc<Mutex<Vec<Weak<dyn FrameSink>>>>,
+    sinks: Arc<ArcSwap<Vec<Weak<dyn FrameSink>>>>,
     active: Arc<AtomicBool>,
+}
+
+impl Default for FrameFanout {
+    fn default() -> Self {
+        Self {
+            sinks: Arc::new(ArcSwap::from_pointee(Vec::new())),
+            active: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 impl FrameFanout {
     /// 创建空扇出（无接收器）。
+    ///
+    /// # Returns
+    ///
+    /// 不含接收器的 [`FrameFanout`]。
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -105,22 +119,38 @@ impl FrameFanout {
     ///
     /// * `sink` - 接收器的弱引用；其强引用被消费者持有，销毁后此处自动失效。
     pub fn register(&self, sink: Weak<dyn FrameSink>) {
-        lock(&self.sinks).push(sink);
+        self.sinks.rcu(|cur| {
+            let mut next = Vec::clone(cur);
+            next.push(sink.clone());
+            next
+        });
         self.active.store(true, Ordering::Release);
     }
 
-    /// 把一帧投递给所有存活的接收器。无接收器时仅一次原子读、零分配。
+    /// 把一帧投递给所有存活的接收器（不加锁）。无接收器时仅一次原子读、零分配。
     ///
     /// # Arguments
     ///
     /// * `frame` - 接收循环收到的 DMX 帧。
     pub fn offer(&self, frame: &DmxFrame) {
+        self.offer_each(std::iter::once(frame));
+    }
+
+    /// 把一批帧按顺序逐帧投递给所有存活的接收器（接收器列表只读取一次）。
+    ///
+    /// # Arguments
+    ///
+    /// * `frames` - 按到达顺序排列的帧。
+    pub fn offer_each<'a>(&self, frames: impl IntoIterator<Item = &'a DmxFrame>) {
         if !self.active.load(Ordering::Acquire) {
             return;
         }
-        for sink in lock(&self.sinks).iter() {
-            if let Some(s) = sink.upgrade() {
-                s.offer(frame);
+        let sinks = self.sinks.load();
+        for frame in frames {
+            for sink in sinks.iter() {
+                if let Some(s) = sink.upgrade() {
+                    s.offer(frame);
+                }
             }
         }
     }
@@ -128,7 +158,56 @@ impl FrameFanout {
 
 #[cfg(test)]
 mod tests {
-    use super::RuntimeMode;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Weak};
+    use std::time::Instant;
+
+    use artnet_net::{Bytes, DmxFrame, Protocol};
+
+    use super::{FrameFanout, FrameSink, RuntimeMode};
+
+    #[derive(Default)]
+    struct Counter(AtomicUsize);
+
+    impl FrameSink for Counter {
+        fn offer(&self, _frame: &DmxFrame) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    fn frame() -> DmxFrame {
+        DmxFrame {
+            protocol: Protocol::ArtNet,
+            universe: 1,
+            data: Bytes::from_static(&[1]),
+            source: None,
+            sequence: 0,
+            received_at: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn fanout_delivers_to_live_sinks_and_skips_dropped_ones() {
+        let f = FrameFanout::new();
+        f.offer(&frame()); // 无接收器：直接返回
+
+        let a = Arc::new(Counter::default());
+        let b = Arc::new(Counter::default());
+        let weak_a: Weak<dyn FrameSink> = Arc::downgrade(&(a.clone() as Arc<dyn FrameSink>));
+        let weak_b: Weak<dyn FrameSink> = Arc::downgrade(&(b.clone() as Arc<dyn FrameSink>));
+        f.register(weak_a);
+        // 克隆共享同一份接收器列表
+        f.clone().register(weak_b);
+        f.offer(&frame());
+        let batch = [frame(), frame(), frame()];
+        f.offer_each(&batch);
+        assert_eq!(a.0.load(Ordering::Relaxed), 4);
+        assert_eq!(b.0.load(Ordering::Relaxed), 4);
+
+        drop(b);
+        f.offer(&frame());
+        assert_eq!(a.0.load(Ordering::Relaxed), 5, "已销毁的接收器自动失效");
+    }
 
     #[test]
     fn recording_and_playback_are_mutually_exclusive_checks() {

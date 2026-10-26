@@ -32,3 +32,26 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 fs4 = "=1.1.0"
 memory-stats = "=1.2.0"
+bytes = { workspace = true }
+rustc-hash = { workspace = true }
+arc-swap = { workspace = true }
+spin_sleep = { workspace = true }
+
+[dev-dependencies]
+# 带分配计数的微基准框架（仅 benches 使用）。
+divan = { workspace = true }
+
+# 输出分发路由解析微基准：`cargo bench -p host-core --bench dispatch`。
+[[bench]]
+name = "dispatch"
+harness = false
+
+# 实时摄取流水线微基准：`cargo bench -p host-core --bench pipeline`。
+[[bench]]
+name = "pipeline"
+harness = false
+
+# 二进制 DMX 通道流微基准（帧编码 / 变化检测）：`cargo bench -p host-core --bench stream`。
+[[bench]]
+name = "stream"
+harness = false

@@ -80,8 +80,25 @@ pub struct ForwardDestination {
     pub overrides: Vec<UniverseOverride>,
 }
 
+/// 对源 Universe 套用偏移。
+///
+/// # Arguments
+///
+/// * `source_universe` - 源 Universe 编号。
+/// * `offset` - Universe 偏移（可为负）。
+///
+/// # Returns
+///
+/// 结果落在 `0..=65535` 内时返回 `Some(目标 Universe)`；越界（含变为负数、`i32` 溢出）返回 `None`。
+#[must_use]
+pub fn offset_universe(source_universe: u16, offset: i32) -> Option<u16> {
+    i32::from(source_universe)
+        .checked_add(offset)
+        .and_then(|t| u16::try_from(t).ok())
+}
+
 /// 解析后的单条转发路由。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResolvedRoute {
     /// 目标 Universe。
     pub target_universe: u16,
@@ -110,10 +127,7 @@ impl ForwardDestination {
             .find(|o| o.source_universe == source_universe);
 
         let forward = match self.mode {
-            ForwardMode::All => !matches!(
-                ov.map(|o| o.action),
-                Some(OverrideAction::Exclude)
-            ),
+            ForwardMode::All => !matches!(ov.map(|o| o.action), Some(OverrideAction::Exclude)),
             ForwardMode::Selected => {
                 matches!(ov.map(|o| o.action), Some(OverrideAction::Forward))
             }
@@ -125,8 +139,8 @@ impl ForwardDestination {
         let target = if let Some(t) = ov.and_then(|o| o.target_universe) {
             t
         } else {
-            // 偏移越界（含变为负数）→ 不转发
-            u16::try_from(i32::from(source_universe) + self.universe_offset).ok()?
+            // 偏移越界（含变为负数、i32 溢出）→ 不转发
+            offset_universe(source_universe, self.universe_offset)?
         };
         let delay = ov.and_then(|o| o.delay_ms).unwrap_or(self.default_delay_ms);
 

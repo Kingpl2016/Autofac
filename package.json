@@ -6,6 +6,7 @@
   "description": "Art-Net Studio —— Art-Net / sACN 灯光控制与录制平台",
   "scripts": {
     "dev": "vite",
+    "dev:demo": "tauri dev --config src-tauri/tauri.demo.conf.json",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use arc_swap::ArcSwapOption;
 use artnet_net::DmxFrame;
 use recorder::{
     can_start, plan_universes, DiskGuard, DiskLevel, EncoderConfig, FileRecorder, RecordFilter,
@@ -23,7 +24,6 @@ use signal_engine::UniverseSnapshot;
 
 use crate::mode::{FrameSink, RuntimeMode};
 use crate::util::lock;
-
 
 /// 录制线程的写帧节拍（约 45Hz，略高于 44Hz 的 DMX 上限以免漏帧）。
 const TICK: Duration = Duration::from_millis(22);
@@ -183,7 +183,11 @@ pub struct DirCheck {
 /// 能创建临时文件时为 `true`。
 fn probe_writable(dir: &Path) -> bool {
     let probe = dir.join(format!(".artnet-studio-write-test-{}", std::process::id()));
-    match std::fs::OpenOptions::new().write(true).create_new(true).open(&probe) {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
         Ok(_) => {
             let _ = std::fs::remove_file(&probe);
             true
@@ -210,7 +214,6 @@ pub fn real_free_space(path: &Path) -> Option<u64> {
         .find(|p| p.exists())
         .and_then(|p| fs4::available_space(p).ok())
 }
-
 
 fn unix_micros() -> u64 {
     SystemTime::now()
@@ -263,9 +266,9 @@ pub fn candidate_universes(
         let pass = if u.source_ips.is_empty() {
             filter.matches_parts(protocol, u.universe, None)
         } else {
-            u.source_ips.iter().any(|ip| {
-                filter.matches_parts(protocol, u.universe, ip.parse().ok())
-            })
+            u.source_ips
+                .iter()
+                .any(|ip| filter.matches_parts(protocol, u.universe, ip.parse().ok()))
         };
         if pass {
             out.push(u.universe);
@@ -300,7 +303,8 @@ struct Active {
 struct Inner {
     /// 录制 / 回放互斥仲裁（录制状态即 `mode.is_recording()`，接收循环热路径只读）。
     mode: Arc<RuntimeMode>,
-    tap: Mutex<Option<SyncSender<DmxFrame>>>,
+    /// 录制旁路的发送端：接收循环热路径无锁读取；置空即断开通道，录制线程排空剩余帧后收尾。
+    tap: ArcSwapOption<SyncSender<DmxFrame>>,
     dropped: Arc<AtomicU64>,
     active: Mutex<Option<Active>>,
     status: Arc<Mutex<RecordingStatus>>,
@@ -311,13 +315,14 @@ struct Inner {
 }
 
 impl FrameSink for Inner {
-    /// 把一帧旁路给录制线程。未录制时只有一次原子读取；通道满时丢弃并计数，绝不阻塞。
+    /// 把一帧旁路给录制线程。未录制时只有一次原子读取；录制中无锁读取发送端；
+    /// 通道满时丢弃并计数，绝不阻塞。
     fn offer(&self, frame: &DmxFrame) {
         if !self.mode.is_recording() {
             return;
         }
-        let guard = lock(&self.tap);
-        if let Some(tx) = guard.as_ref() {
+        let tap = self.tap.load();
+        if let Some(tx) = tap.as_deref() {
             if let Err(TrySendError::Full(_)) = tx.try_send(frame.clone()) {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
             }
@@ -367,7 +372,7 @@ impl RecordingController {
         Self {
             inner: Arc::new(Inner {
                 mode,
-                tap: Mutex::new(None),
+                tap: ArcSwapOption::empty(),
                 dropped: Arc::new(AtomicU64::new(0)),
                 active: Mutex::new(None),
                 status: Arc::new(Mutex::new(RecordingStatus::default())),
@@ -559,7 +564,7 @@ impl RecordingController {
             if let Some(done) = active.take() {
                 let _ = done.handle.join();
             }
-            *lock(&self.inner.tap) = None;
+            self.inner.tap.store(None);
         }
 
         let plan = plan_universes(candidate_universes(snapshot, &args.filter, &args.universes));
@@ -609,8 +614,8 @@ impl RecordingController {
             return Err(ERR_DISK_LOW.to_string());
         }
 
-        let first = FileRecorder::start(base.clone(), session_cfg.clone())
-            .map_err(|e| e.to_string())?;
+        let first =
+            FileRecorder::start(base.clone(), session_cfg.clone()).map_err(|e| e.to_string())?;
         let path = first.final_path().to_string_lossy().into_owned();
 
         let (tx, rx) = mpsc::sync_channel::<DmxFrame>(CHANNEL_CAP);
@@ -625,7 +630,7 @@ impl RecordingController {
             disk_level: free_now.map_or(DiskLevel::Ok, recorder::classify),
             ..RecordingStatus::default()
         };
-        *lock(&self.inner.tap) = Some(tx);
+        self.inner.tap.store(Some(Arc::new(tx)));
         self.inner.mode.set_recording(true);
 
         let ctx = ThreadCtx {
@@ -644,7 +649,7 @@ impl RecordingController {
             .spawn(move || record_loop(&ctx, first, &rx))
             .map_err(|e| {
                 self.inner.mode.set_recording(false);
-                *lock(&self.inner.tap) = None;
+                self.inner.tap.store(None);
                 e.to_string()
             })?;
         *active = Some(Active { handle });
@@ -665,8 +670,8 @@ impl RecordingController {
         let Some(active) = lock(&self.inner.active).take() else {
             return Err(ERR_NOT_RECORDING.to_string());
         };
-        // 丢弃发送端 → 录制线程排空剩余帧后收尾
-        *lock(&self.inner.tap) = None;
+        // 丢弃发送端 → 录制线程排空剩余帧后收尾（正在 `offer` 的读者释放其临时引用后通道即断开）
+        self.inner.tap.store(None);
         let result = active
             .handle
             .join()
@@ -714,7 +719,11 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
             break;
         }
         let mut disconnected = false;
-        match rx.recv_timeout(TICK) {
+        // 最多等到下一个节拍时刻，空闲时也能按时 tick
+        let wait = next_tick
+            .saturating_duration_since(Instant::now())
+            .min(TICK);
+        match rx.recv_timeout(wait) {
             Ok(f) => feed(&mut rec, &f, t0),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => disconnected = true,
@@ -736,7 +745,11 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
                 result.error = Some(e.to_string());
                 break 'outer;
             }
-            next_tick = now + TICK;
+            // 按绝对时刻推进，不累积漂移；落后超过一个 TICK 时直接对齐到当前时刻，避免连续追帧
+            next_tick += TICK;
+            if now > next_tick {
+                next_tick = now + TICK;
+            }
         }
         if now >= next_checkpoint {
             if let Err(e) = rec.checkpoint() {
@@ -915,7 +928,10 @@ mod tests {
             protocols: vec![Protocol::ArtNet],
             ..RecordFilter::default()
         };
-        assert_eq!(candidate_universes(&snapshot, &filter, &[40, 41]), vec![1, 40, 41]);
+        assert_eq!(
+            candidate_universes(&snapshot, &filter, &[40, 41]),
+            vec![1, 40, 41]
+        );
     }
 
     #[test]
@@ -999,7 +1015,13 @@ mod tests {
             ..RecordFilter::default()
         };
         let started = ctl
-            .start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("e2e", filter, vec![]))
+            .start(
+                noop(),
+                &AppSettings::default(),
+                tmp.0.clone(),
+                &snapshot,
+                args("e2e", filter, vec![]),
+            )
             .unwrap();
         assert_eq!(started.plan.accepted, vec![1]);
         assert!(ctl.is_recording());
@@ -1037,14 +1059,32 @@ mod tests {
         assert_eq!(ctl.stop().unwrap_err(), ERR_NOT_RECORDING);
         // 无活跃信号且未手动指定
         let e = ctl
-            .start(noop(), &cfg, tmp.0.clone(), &[], args("x", RecordFilter::default(), vec![]))
+            .start(
+                noop(),
+                &cfg,
+                tmp.0.clone(),
+                &[],
+                args("x", RecordFilter::default(), vec![]),
+            )
             .unwrap_err();
         assert_eq!(e, ERR_NO_UNIVERSES);
         // 手动指定 Universe 可在无信号时武装录制
-        ctl.start(noop(), &cfg, tmp.0.clone(), &[], args("x", RecordFilter::default(), vec![5]))
-            .unwrap();
+        ctl.start(
+            noop(),
+            &cfg,
+            tmp.0.clone(),
+            &[],
+            args("x", RecordFilter::default(), vec![5]),
+        )
+        .unwrap();
         let again = ctl
-            .start(noop(), &cfg, tmp.0.clone(), &[], args("y", RecordFilter::default(), vec![5]))
+            .start(
+                noop(),
+                &cfg,
+                tmp.0.clone(),
+                &[],
+                args("y", RecordFilter::default(), vec![5]),
+            )
             .unwrap_err();
         assert_eq!(again, ERR_ALREADY_RECORDING);
         let out = ctl.stop().unwrap();
@@ -1063,7 +1103,13 @@ mod tests {
         let cfg = AppSettings::default();
 
         let err = ctl
-            .start(noop(), &cfg, not_a_dir, &snapshot, args("x", RecordFilter::default(), vec![]))
+            .start(
+                noop(),
+                &cfg,
+                not_a_dir,
+                &snapshot,
+                args("x", RecordFilter::default(), vec![]),
+            )
             .unwrap_err();
         assert!(!err.is_empty() && err != ERR_ALREADY_RECORDING);
         assert!(!ctl.is_recording());
@@ -1071,8 +1117,14 @@ mod tests {
 
         // 换一个可写目录即可正常录制
         let good = tmp.0.join("good");
-        ctl.start(noop(), &cfg, good, &snapshot, args("y", RecordFilter::default(), vec![]))
-            .unwrap();
+        ctl.start(
+            noop(),
+            &cfg,
+            good,
+            &snapshot,
+            args("y", RecordFilter::default(), vec![]),
+        )
+        .unwrap();
         ctl.stop().unwrap();
     }
 
@@ -1081,9 +1133,17 @@ mod tests {
     fn sustained_fifty_universe_load_drops_nothing() {
         let tmp = Tmp::new("stress");
         let ctl = RecordingController::new(Arc::new(RuntimeMode::new()));
-        let snapshot: Vec<_> = (0..50u16).map(|u| snap(u, Protocol::ArtNet, &["10.0.0.1"])).collect();
-        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("load", RecordFilter::default(), vec![]))
-            .unwrap();
+        let snapshot: Vec<_> = (0..50u16)
+            .map(|u| snap(u, Protocol::ArtNet, &["10.0.0.1"]))
+            .collect();
+        ctl.start(
+            noop(),
+            &AppSettings::default(),
+            tmp.0.clone(),
+            &snapshot,
+            args("load", RecordFilter::default(), vec![]),
+        )
+        .unwrap();
 
         let producer = {
             let ctl = ctl.clone();
@@ -1138,7 +1198,13 @@ mod tests {
         let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
 
         let err = ctl
-            .start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("d", RecordFilter::default(), vec![]))
+            .start(
+                noop(),
+                &AppSettings::default(),
+                tmp.0.clone(),
+                &snapshot,
+                args("d", RecordFilter::default(), vec![]),
+            )
             .unwrap_err();
         assert_eq!(err, ERR_DISK_LOW);
         assert!(!ctl.is_recording());
@@ -1147,20 +1213,33 @@ mod tests {
         // 空间恢复后即可开始
         free.store(5_000_000_000, std::sync::atomic::Ordering::Relaxed);
         assert!(ctl.disk_info(&tmp.0).can_start);
-        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("d2", RecordFilter::default(), vec![]))
-            .unwrap();
+        ctl.start(
+            noop(),
+            &AppSettings::default(),
+            tmp.0.clone(),
+            &snapshot,
+            args("d2", RecordFilter::default(), vec![]),
+        )
+        .unwrap();
         ctl.stop().unwrap();
     }
 
     #[test]
     fn check_dir_reports_existing_missing_and_non_directory_paths() {
         let tmp = Tmp::new("checkdir");
-        let ctl = RecordingController::with_free_space(Arc::new(RuntimeMode::new()), Arc::new(|_| Some(7_000_000_000)));
+        let ctl = RecordingController::with_free_space(
+            Arc::new(RuntimeMode::new()),
+            Arc::new(|_| Some(7_000_000_000)),
+        );
 
         let ok = ctl.check_dir(&tmp.0);
         assert!(ok.exists && ok.is_dir && ok.writable);
         assert_eq!(ok.disk.free_bytes, Some(7_000_000_000));
-        assert_eq!(std::fs::read_dir(&tmp.0).unwrap().count(), 0, "探测文件必须被清理");
+        assert_eq!(
+            std::fs::read_dir(&tmp.0).unwrap().count(),
+            0,
+            "探测文件必须被清理"
+        );
 
         // 尚未创建：反映最近已存在上级目录的可写性，且不会创建目录
         let missing = tmp.0.join("a").join("b");
@@ -1180,11 +1259,18 @@ mod tests {
     #[test]
     fn unknown_free_space_does_not_block_recording() {
         let tmp = Tmp::new("diskunk");
-        let ctl = RecordingController::with_free_space(Arc::new(RuntimeMode::new()), Arc::new(|_| None));
+        let ctl =
+            RecordingController::with_free_space(Arc::new(RuntimeMode::new()), Arc::new(|_| None));
         let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
         assert!(ctl.disk_info(&tmp.0).can_start);
-        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("u", RecordFilter::default(), vec![]))
-            .unwrap();
+        ctl.start(
+            noop(),
+            &AppSettings::default(),
+            tmp.0.clone(),
+            &snapshot,
+            args("u", RecordFilter::default(), vec![]),
+        )
+        .unwrap();
         ctl.stop().unwrap();
     }
 
@@ -1198,10 +1284,17 @@ mod tests {
         ctl.set_disk_check_interval(Duration::from_millis(50));
         let events: Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>> = Arc::default();
         let sink = events.clone();
-        let emit: Emitter = Arc::new(move |name, v| sink.lock().unwrap().push((name.to_string(), v)));
+        let emit: Emitter =
+            Arc::new(move |name, v| sink.lock().unwrap().push((name.to_string(), v)));
         let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
-        ctl.start(emit, &AppSettings::default(), tmp.0.clone(), &snapshot, args("crit", RecordFilter::default(), vec![]))
-            .unwrap();
+        ctl.start(
+            emit,
+            &AppSettings::default(),
+            tmp.0.clone(),
+            &snapshot,
+            args("crit", RecordFilter::default(), vec![]),
+        )
+        .unwrap();
         for i in 0..5u8 {
             ctl.offer(&dmx(1, "10.0.0.1", i + 1));
             std::thread::sleep(Duration::from_millis(10));
@@ -1242,8 +1335,14 @@ mod tests {
 
         // 线程已自行结束：无需先 stop，空间恢复后可直接再次开始
         free.store(5_000_000_000, Ordering::Relaxed);
-        ctl.start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("again", RecordFilter::default(), vec![]))
-            .expect("自动停止后应能再次开始");
+        ctl.start(
+            noop(),
+            &AppSettings::default(),
+            tmp.0.clone(),
+            &snapshot,
+            args("again", RecordFilter::default(), vec![]),
+        )
+        .expect("自动停止后应能再次开始");
         ctl.stop().unwrap();
     }
 
@@ -1251,9 +1350,18 @@ mod tests {
     fn rejected_universes_are_reported_in_plan() {
         let tmp = Tmp::new("plan");
         let ctl = RecordingController::new(Arc::new(RuntimeMode::new()));
-        let snapshot = vec![snap(3, Protocol::ArtNet, &["10.0.0.1"]), snap(5000, Protocol::ArtNet, &["10.0.0.1"])];
+        let snapshot = vec![
+            snap(3, Protocol::ArtNet, &["10.0.0.1"]),
+            snap(5000, Protocol::ArtNet, &["10.0.0.1"]),
+        ];
         let started = ctl
-            .start(noop(), &AppSettings::default(), tmp.0.clone(), &snapshot, args("p", RecordFilter::default(), vec![]))
+            .start(
+                noop(),
+                &AppSettings::default(),
+                tmp.0.clone(),
+                &snapshot,
+                args("p", RecordFilter::default(), vec![]),
+            )
             .unwrap();
         assert_eq!(started.plan.accepted, vec![3]);
         assert_eq!(started.plan.rejected_out_of_range, vec![5000]);
@@ -1280,7 +1388,11 @@ mod tests {
         }
         let out = ctl.stop().unwrap();
         assert!(out.error.is_none(), "{:?}", out.error);
-        assert!(out.files.len() >= 2, "应至少分成两段，实际 {}", out.files.len());
+        assert!(
+            out.files.len() >= 2,
+            "应至少分成两段，实际 {}",
+            out.files.len()
+        );
         for f in &out.files {
             ArtRecReader::open_file(std::path::Path::new(&f.path)).unwrap();
         }

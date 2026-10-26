@@ -16,12 +16,19 @@
 //! 规范正文与 §13 示例以 **64 字节**头为准（`universe_desc_offset = 64`），而 C 结构体
 //! 含 `reserved[34]`、`pack(1)` 实为 88 字节，二者矛盾。本实现写入 64 字节头，读取端
 //! 完全按头部偏移字段定位分区，兼容两种尺寸。最终以嵌入式固件实现为准对齐。
+//!
+//! # 关于 Zstd 帧格式（嵌入式兼容）
+//!
+//! 每个 Chunk 的压缩 Payload 是一个独立的标准 Zstd 帧：帧头不含原始大小字段、
+//! 不带校验和、不用字典，与历史上 `zstd::encode_all` 写出的帧可互相解码。
+//! 写入/读取端复用压缩与解压上下文只影响性能，不改变字节格式，详见 `compress` 模块说明。
 
 mod compress;
 mod crc;
 mod error;
 mod model;
 mod payload;
+mod readahead;
 mod reader;
 mod writer;
 
@@ -29,13 +36,12 @@ pub use compress::{compress, decompress};
 pub use crc::crc16_ccitt;
 pub use error::{ArtRecError, Result};
 pub use model::{
-    ChunkHdr, CompressAlgo, FileHeader, FrameIndex, UniDesc, CHUNKHDR_SIZE, CHUNK_DIFF,
-    CHUNK_FULL, ENDIAN_TAG_BE, ENDIAN_TAG_LE, FLAG_DIFF_FRAME, FLAG_LOOP, FLAG_SMPTE,
-    FRAMEINDEX_SIZE, HEADER_SIZE, MAGIC, MAX_CHUNK_BYTES, MAX_FULL_PAYLOAD, MAX_NET,
-    MAX_UNIVERSE, SUPPORTED_MAJOR, UNIDESC_SIZE, VER_MAJOR, VER_MINOR,
+    ChunkHdr, CompressAlgo, FileHeader, FrameIndex, UniDesc, CHUNKHDR_SIZE, CHUNK_DIFF, CHUNK_FULL,
+    ENDIAN_TAG_BE, ENDIAN_TAG_LE, FLAG_DIFF_FRAME, FLAG_LOOP, FLAG_SMPTE, FRAMEINDEX_SIZE,
+    HEADER_SIZE, MAGIC, MAX_CHUNK_BYTES, MAX_FULL_PAYLOAD, MAX_NET, MAX_UNIVERSE, SUPPORTED_MAJOR,
+    UNIDESC_SIZE, VER_MAJOR, VER_MINOR,
 };
-pub use payload::{
-    apply_diff, assemble_full, decode_diff, encode_diff, split_full, DiffChange,
-};
+pub use payload::{apply_diff, assemble_full, decode_diff, encode_diff, split_full, DiffChange};
+pub use readahead::{ReadAhead, DEFAULT_READ_AHEAD};
 pub use reader::{read_header_and_unis, ArtRecReader};
 pub use writer::{ArtRecWriter, MAX_DIFF_CHANGES};

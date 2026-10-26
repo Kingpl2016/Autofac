@@ -13,3 +13,20 @@ cast_possible_truncation = "allow"
 [dependencies]
 serde = { workspace = true }
 artnet-net = { path = "../artnet-net" }
+# 速率追踪的计数器表（键为 `Copy` 小键，FxHash 比默认 SipHash 快）。
+rustc-hash = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
+serde_json = { workspace = true }
+bytes = { workspace = true }
+
+# 引擎热路径微基准（摄取 / 合并 / 快照 / 速率 / 来源统计）。
+[[bench]]
+name = "engine"
+harness = false
+
+# 推送载荷 JSON 序列化成本与体积基准。
+[[bench]]
+name = "payload"
+harness = false

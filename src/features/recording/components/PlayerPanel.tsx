@@ -210,4 +210,4 @@ export function PlayerPanel({ onGoLibrary, active = true }: PlayerPanelProps) {
 }
 
 /** 尚未收到该 Universe 数据时的占位（全 0）。 */
-const EMPTY_CHANNELS: number[] = [];
+const EMPTY_CHANNELS = new Uint8Array(0);

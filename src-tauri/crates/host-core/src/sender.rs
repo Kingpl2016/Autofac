@@ -16,11 +16,18 @@ use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use arc_swap::ArcSwapOption;
 use artnet_net::socket::DmxSender;
 use serde::Serialize;
 use tokio::sync::Notify;
 
 use crate::util::lock;
+
+/// 发送器槽位：分发器、监督任务与运行时共享。
+///
+/// 读多写极少（只在创建 / 重建发送套接字时替换），发送路径经 `load` 无锁读取；
+/// 为空（`None`）表示发送器尚未就绪，此时发送被静默忽略。
+pub type SenderSlot = Arc<ArcSwapOption<DmxSender>>;
 
 /// 连续发送失败多少次后判定发送套接字需要重建。
 ///
@@ -178,12 +185,13 @@ pub fn rebind_delay(attempt: u32) -> Duration {
 /// # Arguments
 ///
 /// * `health` - 发送器健康度，用于更新状态。
-/// * `slot` - 与分发器共享的发送器槽位。
+/// * `slot` - 与分发器共享的发送器槽位（见 [`SenderSlot`]）；成功后原子替换其中的发送器，
+///   正在使用旧发送器的发送不受影响（旧发送器在最后一个使用者结束后释放）。
 /// * `make` - 创建新发送器的函数（生产环境为 `DmxSender::new`，测试可注入失败）。
 /// * `delay` - 第 N 次失败后的等待时长，参数从 0 起。
 pub async fn recover<F, Fut>(
     health: &SenderHealth,
-    slot: &tokio::sync::Mutex<Option<DmxSender>>,
+    slot: &ArcSwapOption<DmxSender>,
     mut make: F,
     delay: impl Fn(u32) -> Duration,
 ) where
@@ -194,7 +202,7 @@ pub async fn recover<F, Fut>(
     loop {
         match make().await {
             Ok(sender) => {
-                *slot.lock().await = Some(sender);
+                slot.store(Some(Arc::new(sender)));
                 health.mark_ready();
                 tracing::info!(failed, "发送套接字已就绪");
                 return;
@@ -218,6 +226,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
+    use arc_swap::ArcSwapOption;
     use artnet_net::socket::DmxSender;
 
     use super::{
@@ -279,7 +288,7 @@ mod tests {
         h.set_listener(move |st| s.lock().unwrap().push(st));
         h.request_recovery();
 
-        let slot = tokio::sync::Mutex::new(None);
+        let slot = ArcSwapOption::<DmxSender>::empty();
         let tries = AtomicU32::new(0);
         recover(
             &h,
@@ -299,11 +308,15 @@ mod tests {
         .await;
 
         assert_eq!(tries.load(Ordering::SeqCst), 5);
-        assert!(slot.lock().await.is_some(), "成功后槽位里应有新的发送器");
+        assert!(slot.load().is_some(), "成功后槽位里应有新的发送器");
         assert_eq!(h.state(), SenderState::Ready);
         assert_eq!(
             *states.lock().unwrap(),
-            vec![SenderState::Reconnecting, SenderState::Down, SenderState::Ready]
+            vec![
+                SenderState::Reconnecting,
+                SenderState::Down,
+                SenderState::Ready
+            ]
         );
     }
 
@@ -311,10 +324,16 @@ mod tests {
     async fn first_attempt_is_immediate() {
         let h = SenderHealth::new();
         h.request_recovery();
-        let slot = tokio::sync::Mutex::new(None);
+        let slot = ArcSwapOption::<DmxSender>::empty();
         let started = std::time::Instant::now();
         // 即使退避阶梯很长，首次尝试也不应等待
-        recover(&h, &slot, || DmxSender::new([0u8; 16]), |_| Duration::from_secs(60)).await;
+        recover(
+            &h,
+            &slot,
+            || DmxSender::new([0u8; 16]),
+            |_| Duration::from_secs(60),
+        )
+        .await;
         assert!(started.elapsed() < Duration::from_secs(5));
         assert_eq!(h.state(), SenderState::Ready);
     }

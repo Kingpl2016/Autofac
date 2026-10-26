@@ -17,6 +17,16 @@ module_name_repetitions = "allow"
 serde = { workspace = true }
 thiserror = { workspace = true }
 artrec-core = { path = "../artrec-core" }
+rayon = { workspace = true }
+# 输出数据用共享引用计数缓冲：宿主转发到多个目的地时只增引用计数，不再逐目标拷贝。
+bytes = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+# 带分配计数的微基准框架（仅 benches 使用）。
+divan = { workspace = true }
+
+# 概览 / 曲线扫描与回放推进微基准：`cargo bench -p player --bench scan`。
+[[bench]]
+name = "scan"
+harness = false

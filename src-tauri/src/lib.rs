@@ -69,7 +69,9 @@ pub fn run() {
             // 外接控制器句柄（默认未配置）。
             app.manage(controller::ControllerHandle::default());
             // 信号检测器（测试信号发生器）：发送器常驻，窗口按需打开。
-            app.manage(signal_checker_commands::SignalCheckerState::new(app.handle()));
+            app.manage(signal_checker_commands::SignalCheckerState::new(
+                app.handle(),
+            ));
 
             // 恢复上次异常退出遗留的录制（配置与录制控制器均来自 host-core，已先行 setup）。
             let cfg = app.settings_snapshot();
@@ -134,6 +136,8 @@ pub fn run() {
             host_core::commands::list_network_interfaces,
             host_core::commands::get_universe_snapshot,
             host_core::commands::set_viewed_universes,
+            host_core::commands::dmx_stream_subscribe,
+            host_core::commands::dmx_stream_unsubscribe,
             host_core::commands::get_source_stats,
             host_core::commands::get_devices,
             host_core::commands::scan_network,

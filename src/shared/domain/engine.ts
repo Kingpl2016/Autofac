@@ -35,11 +35,6 @@ export interface EngineStats {
   memoryBytes: number;
 }
 
-export interface ChannelsPayload {
-  universe: number;
-  data: number[];
-}
-
 /** 输出总体状态（对应 Rust `OutputState`）。 */
 export type OutputState = "idle" | "sending" | "dropping" | "error";
 

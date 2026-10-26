@@ -5,7 +5,9 @@
 //!
 //! 本模块分两层：
 //!
-//! - [`OutputStats`]：热路径上的累计计数器（原子量加少量互斥锁），只记录事实；
+//! - [`OutputStats`]：热路径上的累计计数器（全为原子量；仅记录错误文本与增删目的地时加锁），
+//!   只记录事实。每个目的地的计数是一个经 `Arc` 共享的 [`DestCounters`]，编译后的转发表
+//!   预先持有其句柄，发送热路径直接累加，不再按 `String` 查表；
 //! - [`OutputTracker`]：低频（约 2Hz）的窗口差分与状态推导，产出面向前端的 [`OutputPayload`]。
 //!   它只依赖逻辑时间（毫秒），便于确定性测试。
 
@@ -14,6 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::sender::SenderState;
@@ -36,13 +39,35 @@ const SEND_HOLD_MS: u64 = 3000;
 /// 这属于正常现象，不应让状态条报警。
 const DROP_RATIO_PERCENT: u64 = 10;
 
-/// 单个目的地的累计计数。
-#[derive(Debug, Default, Clone)]
-struct DestCounters {
-    sent: u64,
-    errors: u64,
-    dropped: u64,
-    last_send: Option<Instant>,
+/// 单个目的地的累计计数（原子量，经 `Arc` 在统计表、编译后的转发表与发送任务之间共享）。
+///
+/// 三项计数全为 `0` 表示该目的地尚无任何记录，快照中不列出——与此前"首次记录时才建条目"
+/// 的口径一致。计数器只能经 [`OutputStats::dest_counters`] 取得，经
+/// [`OutputStats::record_sent_with`] 等方法累加（全局计数随之一并累加）。
+#[derive(Debug, Default)]
+pub struct DestCounters {
+    sent: AtomicU64,
+    errors: AtomicU64,
+    dropped: AtomicU64,
+    /// 最近一次成功发出的时刻：相对所属 [`OutputStats`] 基准时刻的纳秒数；`0` 表示从未发出。
+    last_send_ns: AtomicU64,
+}
+
+impl DestCounters {
+    /// 是否已有任何记录（决定是否出现在快照里）。
+    fn is_touched(&self) -> bool {
+        self.sent.load(Ordering::Relaxed) != 0
+            || self.errors.load(Ordering::Relaxed) != 0
+            || self.dropped.load(Ordering::Relaxed) != 0
+    }
+
+    /// 清零（等价于删除后重新建条目）。
+    fn reset(&self) {
+        self.sent.store(0, Ordering::Relaxed);
+        self.errors.store(0, Ordering::Relaxed);
+        self.dropped.store(0, Ordering::Relaxed);
+        self.last_send_ns.store(0, Ordering::Relaxed);
+    }
 }
 
 /// 最近一次发送错误。
@@ -53,13 +78,29 @@ struct LastError {
 }
 
 /// 输出累计计数器（线程安全，可经 `Arc` 在分发器及其克隆间共享）。
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct OutputStats {
+    /// 目的地"最近发送时刻"的计时基准。
+    base: Instant,
     sent: AtomicU64,
     errors: AtomicU64,
     dropped: AtomicU64,
     last_error: Mutex<Option<LastError>>,
-    dests: Mutex<HashMap<String, DestCounters>>,
+    /// 目的地 id → 计数器。只在增删目的地、按 id 记录（慢路径）与快照时加锁。
+    dests: Mutex<FxHashMap<Box<str>, Arc<DestCounters>>>,
+}
+
+impl Default for OutputStats {
+    fn default() -> Self {
+        Self {
+            base: Instant::now(),
+            sent: AtomicU64::new(0),
+            errors: AtomicU64::new(0),
+            dropped: AtomicU64::new(0),
+            last_error: Mutex::new(None),
+            dests: Mutex::new(FxHashMap::default()),
+        }
+    }
 }
 
 impl OutputStats {
@@ -73,73 +114,149 @@ impl OutputStats {
         Arc::new(Self::default())
     }
 
-    /// 记录一次成功发出的包。
+    /// 取得（必要时创建）某目的地的计数器句柄。
+    ///
+    /// 同一 id 总是返回同一个计数器，因此转发表重建后计数照常延续。新建的计数器在有记录之前
+    /// 不出现在快照里。
+    ///
+    /// # Arguments
+    ///
+    /// * `dest_id` - 目的地 id。
+    ///
+    /// # Returns
+    ///
+    /// 该目的地的计数器；以 [`DIRECT_PREFIX`] 开头的直发目标不按目的地计数，返回 `None`。
+    #[must_use]
+    pub fn dest_counters(&self, dest_id: &str) -> Option<Arc<DestCounters>> {
+        if dest_id.starts_with(DIRECT_PREFIX) {
+            return None;
+        }
+        let mut map = lock(&self.dests);
+        // 先查后插：目的地已存在时不分配新的键
+        if let Some(c) = map.get(dest_id) {
+            return Some(c.clone());
+        }
+        let c = Arc::new(DestCounters::default());
+        map.insert(Box::from(dest_id), c.clone());
+        Some(c)
+    }
+
+    /// 记录一次成功发出的包（按 id 查找目的地，慢路径；热路径请用 [`OutputStats::record_sent_with`]）。
     ///
     /// # Arguments
     ///
     /// * `dest_id` - 目的地 id；以 [`DIRECT_PREFIX`] 开头的直发目标只计入全局统计。
     pub fn record_sent(&self, dest_id: &str) {
-        self.sent.fetch_add(1, Ordering::Relaxed);
-        self.with_dest(dest_id, |c| {
-            c.sent += 1;
-            c.last_send = Some(Instant::now());
-        });
+        self.record_sent_with(self.dest_counters(dest_id).as_deref());
     }
 
-    /// 记录一次发送错误，并保存最近一次错误的描述。
+    /// 记录一次发送错误，并保存最近一次错误的描述（按 id 查找目的地，慢路径）。
     ///
     /// # Arguments
     ///
     /// * `dest_id` - 目的地 id；以 [`DIRECT_PREFIX`] 开头的直发目标只计入全局统计。
     /// * `message` - 错误描述（底层错误的 `Display` 文本）。
     pub fn record_error(&self, dest_id: &str, message: &str) {
-        self.errors.fetch_add(1, Ordering::Relaxed);
-        *lock(&self.last_error) = Some(LastError {
-            message: message.to_string(),
-            at: Instant::now(),
-        });
-        self.with_dest(dest_id, |c| c.errors += 1);
+        self.record_error_with(self.dest_counters(dest_id).as_deref(), message);
     }
 
-    /// 记录一次被 44Hz 限速器丢弃的帧。
+    /// 记录一次被 44Hz 限速器丢弃的帧（按 id 查找目的地，慢路径）。
     ///
     /// # Arguments
     ///
     /// * `dest_id` - 目的地 id；以 [`DIRECT_PREFIX`] 开头的直发目标只计入全局统计。
     pub fn record_dropped(&self, dest_id: &str) {
+        self.record_dropped_with(self.dest_counters(dest_id).as_deref());
+    }
+
+    /// 记录一次成功发出的包（无锁热路径）。
+    ///
+    /// # Arguments
+    ///
+    /// * `dest` - 目的地计数器（来自 [`OutputStats::dest_counters`]）；`None` 表示只计入全局统计
+    ///   （直发目标）。
+    pub fn record_sent_with(&self, dest: Option<&DestCounters>) {
+        self.sent.fetch_add(1, Ordering::Relaxed);
+        if let Some(c) = dest {
+            c.sent.fetch_add(1, Ordering::Relaxed);
+            c.last_send_ns.store(self.now_ns(), Ordering::Relaxed);
+        }
+    }
+
+    /// 记录一次发送错误，并保存最近一次错误的描述。
+    ///
+    /// # Arguments
+    ///
+    /// * `dest` - 目的地计数器；`None` 表示只计入全局统计（直发目标）。
+    /// * `message` - 错误描述（底层错误的 `Display` 文本）。
+    pub fn record_error_with(&self, dest: Option<&DestCounters>, message: &str) {
+        self.errors.fetch_add(1, Ordering::Relaxed);
+        *lock(&self.last_error) = Some(LastError {
+            message: message.to_string(),
+            at: Instant::now(),
+        });
+        if let Some(c) = dest {
+            c.errors.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// 记录一次被 44Hz 限速器丢弃的帧（无锁热路径）。
+    ///
+    /// # Arguments
+    ///
+    /// * `dest` - 目的地计数器；`None` 表示只计入全局统计（直发目标）。
+    pub fn record_dropped_with(&self, dest: Option<&DestCounters>) {
         self.dropped.fetch_add(1, Ordering::Relaxed);
-        self.with_dest(dest_id, |c| c.dropped += 1);
+        if let Some(c) = dest {
+            c.dropped.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     /// 只保留满足条件的目的地计数，其余清除（转发表变更后调用）。
     ///
-    /// 全局累计值不受影响。
+    /// 全局累计值不受影响。被清除的目的地若仍被编译后的转发表引用，其计数器清零并留在表里
+    /// （快照中不再出现，之后的记录如同重新建条目）；否则直接移除。
     ///
     /// # Arguments
     ///
     /// * `keep` - 返回 `true` 表示保留该目的地 id 的计数。
     pub fn retain(&self, keep: impl Fn(&str) -> bool) {
-        lock(&self.dests).retain(|id, _| keep(id));
+        lock(&self.dests).retain(|id, c| {
+            if keep(id) {
+                return true;
+            }
+            if Arc::strong_count(c) > 1 {
+                c.reset();
+                true
+            } else {
+                false
+            }
+        });
     }
 
     /// 读取当前累计值的快照。
     ///
     /// # Returns
     ///
-    /// 全局与各目的地的累计值；目的地按 id 升序。
+    /// 全局与各目的地的累计值；目的地按 id 升序，只含已有记录的目的地。
     #[must_use]
     pub fn snapshot(&self) -> OutputSnapshot {
         let now = Instant::now();
+        let now_ns = self.ns_since_base(now);
         let ago = |t: Instant| now.saturating_duration_since(t).as_millis() as u64;
         let last_error = lock(&self.last_error).clone();
         let mut destinations: Vec<DestSnapshot> = lock(&self.dests)
             .iter()
-            .map(|(id, c)| DestSnapshot {
-                id: id.clone(),
-                sent: c.sent,
-                errors: c.errors,
-                dropped: c.dropped,
-                last_send_ago_ms: c.last_send.map(ago),
+            .filter(|(_, c)| c.is_touched())
+            .map(|(id, c)| {
+                let last = c.last_send_ns.load(Ordering::Relaxed);
+                DestSnapshot {
+                    id: id.to_string(),
+                    sent: c.sent.load(Ordering::Relaxed),
+                    errors: c.errors.load(Ordering::Relaxed),
+                    dropped: c.dropped.load(Ordering::Relaxed),
+                    last_send_ago_ms: (last != 0).then(|| now_ns.saturating_sub(last) / 1_000_000),
+                }
             })
             .collect();
         destinations.sort_by(|a, b| a.id.cmp(&b.id));
@@ -153,17 +270,14 @@ impl OutputStats {
         }
     }
 
-    fn with_dest(&self, dest_id: &str, f: impl FnOnce(&mut DestCounters)) {
-        if dest_id.starts_with(DIRECT_PREFIX) {
-            return;
-        }
-        let mut map = lock(&self.dests);
-        // 先查后插：热路径上目的地已存在时不分配新的 `String`
-        if let Some(c) = map.get_mut(dest_id) {
-            f(c);
-        } else {
-            f(map.entry(dest_id.to_string()).or_default());
-        }
+    /// `t` 相对基准时刻的纳秒数（饱和）。
+    fn ns_since_base(&self, t: Instant) -> u64 {
+        u64::try_from(t.saturating_duration_since(self.base).as_nanos()).unwrap_or(u64::MAX)
+    }
+
+    /// 当前时刻相对基准的纳秒数，至少为 `1`（`0` 保留给"从未发送"）。
+    fn now_ns(&self) -> u64 {
+        self.ns_since_base(Instant::now()).max(1)
     }
 }
 
@@ -352,7 +466,11 @@ impl OutputTracker {
         self.prev_sent = snap.sent;
         self.prev_errors = snap.errors;
         self.prev_dropped = snap.dropped;
-        self.prev_dest_sent = snap.destinations.iter().map(|d| (d.id.clone(), d.sent)).collect();
+        self.prev_dest_sent = snap
+            .destinations
+            .iter()
+            .map(|d| (d.id.clone(), d.sent))
+            .collect();
         self.last_at_ms = Some(now_ms);
     }
 
@@ -366,7 +484,10 @@ impl OutputTracker {
             .iter()
             .map(|d| {
                 let before = self.prev_dest_sent.get(&d.id).copied().unwrap_or(0);
-                (d.id.clone(), per_second(d.sent.saturating_sub(before), elapsed_ms))
+                (
+                    d.id.clone(),
+                    per_second(d.sent.saturating_sub(before), elapsed_ms),
+                )
             })
             .collect();
         if ds > 0 {
@@ -398,11 +519,22 @@ mod tests {
     use super::*;
 
     fn snap(sent: u64, errors: u64, dropped: u64) -> OutputSnapshot {
-        OutputSnapshot { sent, errors, dropped, ..OutputSnapshot::default() }
+        OutputSnapshot {
+            sent,
+            errors,
+            dropped,
+            ..OutputSnapshot::default()
+        }
     }
 
     fn dest(id: &str, sent: u64) -> DestSnapshot {
-        DestSnapshot { id: id.into(), sent, errors: 0, dropped: 0, last_send_ago_ms: Some(5) }
+        DestSnapshot {
+            id: id.into(),
+            sent,
+            errors: 0,
+            dropped: 0,
+            last_send_ago_ms: Some(5),
+        }
     }
 
     #[test]
@@ -426,7 +558,10 @@ mod tests {
         assert_eq!(snap.destinations[1].sent, 1);
         assert_eq!(snap.destinations[2].id, "c");
         assert_eq!(snap.destinations[2].errors, 1);
-        assert!(snap.destinations[2].last_send_ago_ms.is_none(), "c 从未成功发出");
+        assert!(
+            snap.destinations[2].last_send_ago_ms.is_none(),
+            "c 从未成功发出"
+        );
     }
 
     #[test]
@@ -449,6 +584,57 @@ mod tests {
         assert_eq!(snap.sent, 2);
         assert_eq!(snap.destinations.len(), 1);
         assert_eq!(snap.destinations[0].id, "keep");
+    }
+
+    /// 句柄与按 id 记录共享同一计数器；新建但未记录的计数器不出现在快照里。
+    #[test]
+    fn handles_share_counters_with_id_based_records() {
+        let s = OutputStats::new();
+        let a = s.dest_counters("a").unwrap();
+        assert!(s.dest_counters("direct:1.2.3.4:6454").is_none());
+        let _untouched = s.dest_counters("idle").unwrap();
+        assert!(s.snapshot().destinations.is_empty(), "无记录的目的地不列出");
+
+        s.record_sent_with(Some(&a));
+        s.record_sent("a");
+        s.record_dropped_with(Some(&a));
+        s.record_error_with(None, "direct boom");
+        let snap = s.snapshot();
+        assert_eq!((snap.sent, snap.errors, snap.dropped), (2, 1, 1));
+        assert_eq!(snap.destinations.len(), 1);
+        assert_eq!(
+            (snap.destinations[0].sent, snap.destinations[0].dropped),
+            (2, 1)
+        );
+        assert!(snap.destinations[0]
+            .last_send_ago_ms
+            .is_some_and(|ms| ms < 1000));
+        assert!(
+            Arc::ptr_eq(&a, &s.dest_counters("a").unwrap()),
+            "同 id 复用"
+        );
+    }
+
+    /// 仍被引用的计数器被清除时清零并隐藏，之后的记录如同新建条目。
+    #[test]
+    fn retain_resets_counters_that_are_still_referenced() {
+        let s = OutputStats::new();
+        let a = s.dest_counters("a").unwrap();
+        s.record_sent_with(Some(&a));
+        s.record_sent("gone");
+        s.retain(|_| false);
+        let snap = s.snapshot();
+        assert_eq!(snap.sent, 2, "全局累计保留");
+        assert!(snap.destinations.is_empty());
+
+        s.record_dropped_with(Some(&a));
+        let snap = s.snapshot();
+        assert_eq!(snap.destinations.len(), 1);
+        assert_eq!(
+            (snap.destinations[0].sent, snap.destinations[0].dropped),
+            (0, 1)
+        );
+        assert!(snap.destinations[0].last_send_ago_ms.is_none());
     }
 
     #[test]

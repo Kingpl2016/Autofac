@@ -8,15 +8,14 @@
 use std::collections::HashSet;
 use std::io::{Seek, SeekFrom, Write};
 
-use crate::compress::compress;
+use crate::compress::ZstdCompressor;
 use crate::crc::crc16_ccitt;
 use crate::error::{ArtRecError, Result};
 use crate::model::{
-    ChunkHdr, CompressAlgo, FileHeader, FrameIndex, UniDesc, CHUNKHDR_SIZE, CHUNK_DIFF,
-    CHUNK_FULL, HEADER_SIZE, MAX_CHUNK_BYTES, MAX_FULL_PAYLOAD, UNIDESC_SIZE, VER_MAJOR,
-    VER_MINOR,
+    ChunkHdr, CompressAlgo, FileHeader, FrameIndex, UniDesc, CHUNKHDR_SIZE, CHUNK_DIFF, CHUNK_FULL,
+    HEADER_SIZE, MAX_CHUNK_BYTES, MAX_FULL_PAYLOAD, UNIDESC_SIZE, VER_MAJOR, VER_MINOR,
 };
-use crate::payload::{assemble_full, encode_diff, DiffChange};
+use crate::payload::{assemble_full_into, encode_diff_into, DiffChange};
 
 /// 单个差分帧最多容纳的变更点数（受 `payload_raw_sz` 为 u16 限制：2 + 5×N ≤ 65535）。
 pub const MAX_DIFF_CHANGES: usize = (MAX_FULL_PAYLOAD - 2) / 5;
@@ -43,7 +42,31 @@ fn validate_unis(unis: &[UniDesc]) -> Result<()> {
     Ok(())
 }
 
+/// 按压缩算法创建写入器持有的压缩上下文。
+///
+/// # Arguments
+///
+/// * `algo` - 压缩算法。
+/// * `level` - Zstd 压缩等级。
+///
+/// # Returns
+///
+/// Zstd 时返回可复用的压缩上下文；无压缩时返回 `None`。
+///
+/// # Errors
+///
+/// 压缩上下文创建失败返回 [`ArtRecError::Io`]。
+fn new_codec(algo: CompressAlgo, level: u8) -> Result<Option<ZstdCompressor>> {
+    match algo {
+        CompressAlgo::None => Ok(None),
+        CompressAlgo::Zstd => ZstdCompressor::new(level).map(Some),
+    }
+}
+
 /// ArtRec 流式写入器，泛型于任意 `Write + Seek`（文件或内存 `Cursor`）。
+///
+/// Zstd 模式下写入器持有一个跨帧复用的压缩上下文与输出缓冲，每帧只做压缩本身，
+/// 不再重复创建上下文；产物仍是每个 Chunk 一个独立的标准 Zstd 帧（不写原始大小字段）。
 pub struct ArtRecWriter<W: Write + Seek> {
     w: W,
     unis: Vec<UniDesc>,
@@ -54,6 +77,12 @@ pub struct ArtRecWriter<W: Write + Seek> {
     chunk_pool_offset: u32,
     index: Vec<FrameIndex>,
     bytes_written_in_pool: u32,
+    /// Zstd 压缩上下文（无压缩时为 `None`）。
+    codec: Option<ZstdCompressor>,
+    /// 复用的压缩输出缓冲。
+    packed: Vec<u8>,
+    /// 复用的原始 Payload 装配缓冲。
+    raw: Vec<u8>,
 }
 
 impl<W: Write + Seek> ArtRecWriter<W> {
@@ -75,7 +104,7 @@ impl<W: Write + Seek> ArtRecWriter<W> {
     /// # Errors
     ///
     /// - Universe 重复或全量帧过大，见 [`ArtRecError::DuplicateUniverse`] / [`ArtRecError::PayloadTooLarge`]。
-    /// - 底层写入失败返回 [`ArtRecError::Io`]。
+    /// - Zstd 压缩上下文创建失败或底层写入失败返回 [`ArtRecError::Io`]。
     pub fn new(
         mut w: W,
         unis: Vec<UniDesc>,
@@ -85,6 +114,7 @@ impl<W: Write + Seek> ArtRecWriter<W> {
         rec_start_us: u64,
     ) -> Result<Self> {
         validate_unis(&unis)?;
+        let codec = new_codec(algo, level)?;
         let universe_desc_offset = HEADER_SIZE;
         let chunk_pool_offset = HEADER_SIZE + unis.len() as u32 * UNIDESC_SIZE;
 
@@ -119,6 +149,9 @@ impl<W: Write + Seek> ArtRecWriter<W> {
             chunk_pool_offset,
             index: Vec::new(),
             bytes_written_in_pool: 0,
+            codec,
+            packed: Vec::new(),
+            raw: Vec::new(),
         })
     }
 
@@ -143,7 +176,7 @@ impl<W: Write + Seek> ArtRecWriter<W> {
     ///
     /// # Errors
     ///
-    /// 参数校验失败或定位失败时返回对应 [`ArtRecError`]。
+    /// 参数校验失败、Zstd 压缩上下文创建失败或定位失败时返回对应 [`ArtRecError`]。
     pub fn resume(
         mut w: W,
         unis: Vec<UniDesc>,
@@ -154,10 +187,11 @@ impl<W: Write + Seek> ArtRecWriter<W> {
         index: Vec<FrameIndex>,
     ) -> Result<Self> {
         validate_unis(&unis)?;
+        let codec = new_codec(algo, level)?;
         let chunk_pool_offset = HEADER_SIZE + unis.len() as u32 * UNIDESC_SIZE;
-        let pool_len = index
-            .last()
-            .map_or(0u64, |l| u64::from(l.chunk_pos) + u64::from(l.chunk_cmp_len));
+        let pool_len = index.last().map_or(0u64, |l| {
+            u64::from(l.chunk_pos) + u64::from(l.chunk_cmp_len)
+        });
         let pool_len = u32::try_from(pool_len).map_err(|_| ArtRecError::FileTooLarge)?;
         w.seek(SeekFrom::Start(
             u64::from(chunk_pool_offset) + u64::from(pool_len),
@@ -172,6 +206,9 @@ impl<W: Write + Seek> ArtRecWriter<W> {
             chunk_pool_offset,
             index,
             bytes_written_in_pool: pool_len,
+            codec,
+            packed: Vec::new(),
+            raw: Vec::new(),
         })
     }
 
@@ -190,8 +227,12 @@ impl<W: Write + Seek> ArtRecWriter<W> {
     ///
     /// 装配/压缩/写入失败时返回对应 [`ArtRecError`]。
     pub fn add_full_frame(&mut self, time_us: u64, buffers: &[Vec<u8>]) -> Result<FrameIndex> {
-        let raw = assemble_full(&self.unis, buffers)?;
-        self.write_chunk(CHUNK_FULL, time_us, &raw)
+        // 原始 Payload 装配进复用缓冲；先取出再放回，避免与 `&mut self` 借用冲突
+        let mut raw = std::mem::take(&mut self.raw);
+        let res = assemble_full_into(&self.unis, buffers, &mut raw)
+            .and_then(|()| self.write_chunk(CHUNK_FULL, time_us, &raw));
+        self.raw = raw;
+        res
     }
 
     /// 写入一帧差分增量帧（需 flags 已置 ALLOW_DIFF_FRAME）。
@@ -215,8 +256,11 @@ impl<W: Write + Seek> ArtRecWriter<W> {
                 max: MAX_FULL_PAYLOAD,
             });
         }
-        let raw = encode_diff(changes);
-        self.write_chunk(CHUNK_DIFF, time_us, &raw)
+        let mut raw = std::mem::take(&mut self.raw);
+        encode_diff_into(changes, &mut raw);
+        let res = self.write_chunk(CHUNK_DIFF, time_us, &raw);
+        self.raw = raw;
+        res
     }
 
     fn write_chunk(&mut self, chunk_type: u16, time_us: u64, raw: &[u8]) -> Result<FrameIndex> {
@@ -228,7 +272,14 @@ impl<W: Write + Seek> ArtRecWriter<W> {
                 });
             }
         }
-        let packed = compress(self.algo, self.level, raw)?;
+        // Zstd：复用上下文压缩进复用缓冲；无压缩：直接写原始 Payload，不再拷贝
+        let packed: &[u8] = match self.codec.as_mut() {
+            Some(codec) => {
+                codec.compress_into(raw, &mut self.packed)?;
+                &self.packed
+            }
+            None => raw,
+        };
         let total = CHUNKHDR_SIZE + packed.len();
         if raw.len() > MAX_CHUNK_BYTES || total > MAX_CHUNK_BYTES {
             return Err(ArtRecError::ChunkTooLarge {
@@ -254,7 +305,7 @@ impl<W: Write + Seek> ArtRecWriter<W> {
         };
         let chunk_pos = self.bytes_written_in_pool;
         self.w.write_all(&hdr.to_bytes())?;
-        self.w.write_all(&packed)?;
+        self.w.write_all(packed)?;
         self.bytes_written_in_pool = new_pool;
         let entry = FrameIndex {
             time_us,
@@ -343,7 +394,8 @@ impl<W: Write + Seek> ArtRecWriter<W> {
     pub fn finish(mut self, total_duration_us: u64) -> Result<W> {
         // 帧索引表紧接 D 区之后
         let frame_index_offset = self.chunk_pool_offset + self.bytes_written_in_pool;
-        self.w.seek(SeekFrom::Start(u64::from(frame_index_offset)))?;
+        self.w
+            .seek(SeekFrom::Start(u64::from(frame_index_offset)))?;
         for idx in &self.index {
             self.w.write_all(&idx.to_bytes())?;
         }

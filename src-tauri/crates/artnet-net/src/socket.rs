@@ -14,6 +14,15 @@ use crate::sacn::{self, SACN_PORT};
 /// 接收缓冲区大小（足够容纳最大 Art-Net/sACN 包）。
 const RECV_BUF: usize = 2048;
 
+/// 接收套接字请求的内核接收缓冲（`SO_RCVBUF`）大小：4 MiB。
+///
+/// 256 Universe × 44 Hz 约 1.1 万包/秒，系统默认缓冲（通常仅数十至数百 KiB）
+/// 在接收任务偶发调度延迟时容易溢出丢包。
+const RECV_SOCKET_BUFFER: usize = 4 * 1024 * 1024;
+
+/// 发送 sACN 时使用的源名称。
+const SACN_SOURCE_NAME: &str = "Art-Net Studio";
+
 /// 判定一次 `recv_from` 错误是否为致命错误（需终止接收任务）。
 ///
 /// UDP 上存在可恢复的瞬时错误：典型如 Windows 在先前 `send_to` 收到 ICMP
@@ -34,12 +43,17 @@ fn is_fatal_recv_error(e: &std::io::Error) -> bool {
     )
 }
 
-/// 以 `SO_REUSEADDR`（及可用时 `SO_REUSEPORT`）创建并绑定一个 UDP 套接字。
+/// 以 `SO_REUSEADDR`（及可用时 `SO_REUSEPORT`）创建并绑定一个**接收用** UDP 套接字。
+///
+/// 绑定前会请求 4 MiB 的内核接收缓冲（`SO_RCVBUF`）以承受高包率突发；设置失败
+/// 只记录 `warn` 日志、不影响绑定，绑定后以 `info` 日志记录系统实际给出的大小
+/// （Linux 会按 `rmem_max` 截顶并翻倍显示，Windows 通常即为请求值）。本 crate 内
+/// 仅接收任务使用本函数；发送端（[`DmxSender`]）另行绑定，不受影响。
 ///
 /// # Arguments
 ///
 /// * `bind_ip` - 绑定的本地 IPv4 地址（`0.0.0.0` 表示全部接口）。
-/// * `port` - 绑定端口。
+/// * `port` - 绑定端口（`0` 表示由系统分配）。
 ///
 /// # Returns
 ///
@@ -47,14 +61,34 @@ fn is_fatal_recv_error(e: &std::io::Error) -> bool {
 ///
 /// # Errors
 ///
-/// 套接字创建或绑定失败时返回 [`std::io::Error`]。
+/// 套接字创建、地址复用选项设置或绑定失败时返回 [`std::io::Error`]。
 pub fn bind_reuse(bind_ip: Ipv4Addr, port: u16) -> std::io::Result<UdpSocket> {
     let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(S2Protocol::UDP))?;
     sock.set_reuse_address(true)?;
     #[cfg(unix)]
     sock.set_reuse_port(true)?;
     sock.set_nonblocking(true)?;
+    // 接收缓冲须在 bind 前设置；失败不致命，沿用系统默认值继续绑定
+    if let Err(e) = sock.set_recv_buffer_size(RECV_SOCKET_BUFFER) {
+        tracing::warn!(
+            error = %e,
+            requested = RECV_SOCKET_BUFFER,
+            %bind_ip,
+            port,
+            "设置 UDP 接收缓冲失败，沿用系统默认值"
+        );
+    }
     sock.bind(&SocketAddr::from(SocketAddrV4::new(bind_ip, port)).into())?;
+    match sock.recv_buffer_size() {
+        Ok(actual) => tracing::info!(
+            requested = RECV_SOCKET_BUFFER,
+            actual,
+            %bind_ip,
+            port,
+            "UDP 接收套接字已绑定"
+        ),
+        Err(e) => tracing::warn!(error = %e, %bind_ip, port, "读取 UDP 接收缓冲大小失败"),
+    }
     UdpSocket::from_std(sock.into())
 }
 
@@ -115,7 +149,9 @@ pub fn join_sacn_multicast(
 /// # Arguments
 ///
 /// * `bind_ip` - 绑定接口（`0.0.0.0` 为全部）。
-/// * `tx` - 帧发送端。
+/// * `tx` - 帧发送端；通道满时接收任务等待（背压），通道关闭时任务退出。
+/// * `reply_tx` - ArtPollReply 发现信息发送端（可选）；以 `try_send` 投递，
+///   通道满时丢弃该条回复并记 `debug` 日志，不阻塞 DMX 收包。
 ///
 /// # Returns
 ///
@@ -130,7 +166,27 @@ pub fn spawn_artnet_receiver(
     reply_tx: Option<mpsc::Sender<PollReplyInfo>>,
 ) -> std::io::Result<tokio::task::JoinHandle<()>> {
     let socket = bind_reuse(bind_ip, ARTNET_PORT)?;
-    Ok(tokio::spawn(async move {
+    Ok(spawn_artnet_loop(socket, tx, reply_tx))
+}
+
+/// 在已绑定的套接字上运行 Art-Net 接收循环（从 [`spawn_artnet_receiver`] 拆出，
+/// 便于测试使用系统分配端口）。
+///
+/// # Arguments
+///
+/// * `socket` - 已绑定的接收套接字。
+/// * `tx` - 帧发送端。
+/// * `reply_tx` - ArtPollReply 发现信息发送端（可选，`try_send` 投递）。
+///
+/// # Returns
+///
+/// 后台任务句柄。
+fn spawn_artnet_loop(
+    socket: UdpSocket,
+    tx: mpsc::Sender<DmxFrame>,
+    reply_tx: Option<mpsc::Sender<PollReplyInfo>>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
         let mut buf = vec![0u8; RECV_BUF];
         loop {
             let recv = socket.recv_from(&mut buf).await;
@@ -157,7 +213,12 @@ pub fn spawn_artnet_receiver(
                     }
                     Some(ArtNetPacket::PollReply(info)) => {
                         if let Some(r) = &reply_tx {
-                            let _ = r.send(info).await;
+                            // 不 await：回复通道满时丢弃本条，避免阻塞同一套接字上的
+                            // DMX 收包（ArtPollReply 周期性重发，丢一条无妨）；通道已关闭
+                            // 时与旧行为一致，静默忽略。
+                            if let Err(mpsc::error::TrySendError::Full(_)) = r.try_send(info) {
+                                tracing::debug!(source = %src, "ArtPollReply 通道已满，丢弃本条回复");
+                            }
                         }
                     }
                     _ => {}
@@ -171,7 +232,7 @@ pub fn spawn_artnet_receiver(
                 }
             }
         }
-    }))
+    })
 }
 
 /// 运行中的 sACN 接收任务及其绑定结果。
@@ -306,9 +367,11 @@ impl DmxSender {
         sequence: u8,
         data: &[u8],
     ) -> std::io::Result<()> {
-        let buf = artnet::build_dmx(port_address, sequence, data);
-        self.socket.send_to(&buf, target).await?;
-        Ok(())
+        // 栈上组包，零堆分配；`port_address` 越界或 `data` 为空时 n = 0，
+        // 与旧版 `build_dmx` 返回空缓冲一致（发出一个空 UDP 数据报）
+        let mut buf = [0u8; artnet::ARTDMX_MAX_LEN];
+        let n = artnet::build_dmx_into(port_address, sequence, data, &mut buf);
+        self.send_datagram(&buf[..n], target).await
     }
 
     /// 向全网广播一个 ArtPoll（触发节点回复 ArtPollReply 以供发现）。
@@ -360,24 +423,164 @@ impl DmxSender {
         priority: u8,
         data: &[u8],
     ) -> std::io::Result<()> {
-        let buf = sacn::build(universe, data, &self.cid, "Art-Net Studio", priority, sequence);
+        // 栈上组包，零堆分配
+        let mut buf = [0u8; sacn::SACN_MAX_LEN];
+        let n = sacn::build_into(
+            universe,
+            data,
+            &self.cid,
+            SACN_SOURCE_NAME,
+            priority,
+            sequence,
+            &mut buf,
+        );
         let addr = target.unwrap_or_else(|| {
             SocketAddr::new(IpAddr::V4(sacn::multicast_addr(universe)), SACN_PORT)
         });
-        self.socket.send_to(&buf, addr).await?;
-        Ok(())
+        self.send_datagram(&buf[..n], addr).await
+    }
+
+    /// 发送一个 UDP 数据报：先非阻塞 `try_send_to`，套接字暂不可写
+    /// （[`std::io::ErrorKind::WouldBlock`]）时回退为异步 `send_to` 等待可写。
+    ///
+    /// 常态下发送缓冲有余量，`try_send_to` 直接完成，免去一次 future 轮询与
+    /// 就绪等待；错误语义与直接 `send_to` 相同。
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - 完整数据报内容。
+    /// * `target` - 目标地址（含端口）。
+    ///
+    /// # Errors
+    ///
+    /// 发送失败（`WouldBlock` 以外的错误，或回退的 `send_to` 失败）时返回
+    /// [`std::io::Error`]。
+    async fn send_datagram(&self, buf: &[u8], target: SocketAddr) -> std::io::Result<()> {
+        match self.socket.try_send_to(buf, target) {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                self.socket.send_to(buf, target).await.map(|_| ())
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{bind_reuse, is_fatal_recv_error, join_sacn_multicast, spawn_sacn_receiver};
+    use super::{
+        bind_reuse, is_fatal_recv_error, join_sacn_multicast, spawn_artnet_loop,
+        spawn_sacn_receiver, DmxSender, RECV_SOCKET_BUFFER, SACN_SOURCE_NAME,
+    };
     use crate::frame::Protocol;
-    use crate::sacn;
+    use crate::{artnet, sacn};
     use std::io::{Error, ErrorKind};
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, SocketAddr};
     use std::time::Duration;
+    use tokio::net::UdpSocket;
     use tokio::sync::mpsc;
+
+    /// 绑定一个本机回环接收套接字（系统分配端口）。
+    async fn loopback_rx() -> (UdpSocket, SocketAddr) {
+        let sock = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let addr = sock.local_addr().unwrap();
+        (sock, addr)
+    }
+
+    /// 在 2 秒内收一个数据报并返回其内容。
+    async fn recv_one(sock: &UdpSocket) -> Vec<u8> {
+        let mut buf = [0u8; 2048];
+        let (n, _) = tokio::time::timeout(Duration::from_secs(2), sock.recv_from(&mut buf))
+            .await
+            .expect("2 秒内应收到数据报")
+            .unwrap();
+        buf[..n].to_vec()
+    }
+
+    #[tokio::test]
+    async fn send_artnet_wire_bytes_match_build_dmx() {
+        let (rx, addr) = loopback_rx().await;
+        let sender = DmxSender::new([0u8; 16]).await.unwrap();
+        let data: Vec<u8> = (0..511u16).map(|i| (i % 251) as u8).collect();
+        sender.send_artnet(addr, 0x0123, 9, &data).await.unwrap();
+        assert_eq!(recv_one(&rx).await, artnet::build_dmx(0x0123, 9, &data));
+    }
+
+    #[tokio::test]
+    async fn send_sacn_wire_bytes_match_build() {
+        let (rx, addr) = loopback_rx().await;
+        let cid = *b"sender-cid-01234";
+        let sender = DmxSender::new(cid).await.unwrap();
+        let data = [7u8; 512];
+        sender
+            .send_sacn(Some(addr), 42, 3, 150, &data)
+            .await
+            .unwrap();
+        assert_eq!(
+            recv_one(&rx).await,
+            sacn::build(42, &data, &cid, SACN_SOURCE_NAME, 150, 3)
+        );
+    }
+
+    #[tokio::test]
+    async fn burst_send_never_errors() {
+        // 连续快速发送，覆盖 try_send_to 直发与 WouldBlock 回退两条路径
+        let (rx, addr) = loopback_rx().await;
+        let sender = DmxSender::new([0u8; 16]).await.unwrap();
+        for seq in 0..2000u32 {
+            sender
+                .send_artnet(addr, 1, (seq % 256) as u8, &[0xFF; 512])
+                .await
+                .unwrap();
+        }
+        drop(rx);
+    }
+
+    #[tokio::test]
+    async fn full_poll_reply_channel_does_not_block_dmx() {
+        let sock = bind_reuse(Ipv4Addr::LOCALHOST, 0).unwrap();
+        let port = sock.local_addr().unwrap().port();
+        let (tx, mut rx) = mpsc::channel(8);
+        // 容量 1 且从不消费：旧实现 `send().await` 会在第 2 条回复处永久卡住
+        let (reply_tx, _reply_rx) = mpsc::channel(1);
+        let handle = spawn_artnet_loop(sock, tx, Some(reply_tx));
+
+        let mut reply = vec![0u8; 239];
+        reply[0..8].copy_from_slice(b"Art-Net\0");
+        reply[8..10].copy_from_slice(&0x2100u16.to_le_bytes());
+        let sender = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        for _ in 0..5 {
+            sender
+                .send_to(&reply, (Ipv4Addr::LOCALHOST, port))
+                .await
+                .unwrap();
+        }
+        let dmx = artnet::build_dmx(77, 1, &[1, 2, 3, 4]);
+        sender
+            .send_to(&dmx, (Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("回复通道满时 DMX 仍应在 2 秒内送达")
+            .expect("通道未关闭");
+        assert_eq!(frame.protocol, Protocol::ArtNet);
+        assert_eq!(frame.universe, 77);
+        assert_eq!(&frame.data[..], &[1, 2, 3, 4]);
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn receive_socket_requests_large_recv_buffer() {
+        let sock = bind_reuse(Ipv4Addr::LOCALHOST, 0).unwrap();
+        let actual = socket2::SockRef::from(&sock).recv_buffer_size().unwrap();
+        assert!(actual > 0);
+        // Windows 按请求值生效；Linux 等受 `rmem_max` 限制，不作强断言
+        if cfg!(windows) {
+            assert!(actual >= RECV_SOCKET_BUFFER, "实际接收缓冲 {actual}");
+        }
+    }
 
     #[tokio::test]
     async fn sacn_receiver_gets_unicast_on_custom_port() {
@@ -387,7 +590,9 @@ mod tests {
         assert_ne!(r.local_port, 0, "应返回系统分配的实际端口");
         assert_eq!((r.joined, r.failed.len()), (0, 0));
 
-        let sender = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let sender = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
         let pkt = sacn::build(3, &[1, 2, 3], &[7u8; 16], "t", 100, 9);
         sender
             .send_to(&pkt, (Ipv4Addr::LOCALHOST, r.local_port))
@@ -428,7 +633,9 @@ mod tests {
     #[test]
     fn connection_reset_is_recoverable() {
         // Windows WSAECONNRESET：先前 send 收到 ICMP 不可达后 recv 返回，应可恢复
-        assert!(!is_fatal_recv_error(&Error::from(ErrorKind::ConnectionReset)));
+        assert!(!is_fatal_recv_error(&Error::from(
+            ErrorKind::ConnectionReset
+        )));
     }
 
     #[test]
@@ -447,6 +654,8 @@ mod tests {
     #[test]
     fn addr_not_available_is_fatal() {
         // 绑定地址失效等无法继续的错误应终止接收任务
-        assert!(is_fatal_recv_error(&Error::from(ErrorKind::AddrNotAvailable)));
+        assert!(is_fatal_recv_error(&Error::from(
+            ErrorKind::AddrNotAvailable
+        )));
     }
 }

@@ -1,10 +1,13 @@
 //! Art-Net 数据包编解码。
 //!
-//! 内部委托给成熟的 [`artnet_protocol`] crate 做字节级编解码，本模块只保留与
-//! 工程其余部分对接的稳定 DTO（[`ArtNetPacket`] / [`PollReplyInfo`]）与薄封装，
-//! 以便调用方（`socket`、`discovery` 等）无感知。
+//! 热路径上的 ArtDmx 收发（[`parse`] 的 ArtDmx 分支、[`build_dmx_into`] /
+//! [`build_dmx`]）为手写字节级实现，接受 / 拒绝规则与输出字节逐一对齐
+//! [`artnet_protocol`] 0.4.4；其余 OpCode（ArtPoll、ArtPollReply 等）仍委托给
+//! [`artnet_protocol`]。本模块只保留与工程其余部分对接的稳定 DTO
+//! （[`ArtNetPacket`] / [`PollReplyInfo`]）与薄封装，以便调用方（`socket`、
+//! `discovery` 等）无感知。
 
-use artnet_protocol::{ArtCommand, Output, Poll, PollReply, PortAddress};
+use artnet_protocol::{ArtCommand, Poll, PollReply, ARTNET_HEADER, ARTNET_PROTOCOL_VERSION};
 use serde::Serialize;
 
 use crate::frame::port_address;
@@ -14,6 +17,22 @@ pub const ARTNET_PORT: u16 = 6454;
 
 /// 单帧 ArtDmx 允许的最大通道数。
 const MAX_DMX: usize = 512;
+
+/// ArtDmx（`OpOutput`）的 OpCode（报文中按小端存放）。
+const OP_DMX: u16 = 0x5000;
+
+/// ArtDmx 固定头长度（18 字节）。
+///
+/// 依次为 `ID`(8)、`OpCode`(2)、`ProtVer`(2)、`Sequence`(1)、`Physical`(1)、
+/// `Port-Address`(2，小端)、`Length`(2，大端)，其后紧跟通道数据。
+const ARTDMX_HEADER_LEN: usize = 18;
+
+/// 单个 ArtDmx 报文的最大字节数（18 字节固定头 + 512 通道），即
+/// [`build_dmx_into`] 输出缓冲的长度。
+pub const ARTDMX_MAX_LEN: usize = ARTDMX_HEADER_LEN + MAX_DMX;
+
+/// 15 位 Port-Address 的上限（`0x7FFF`）。
+const MAX_PORT_ADDRESS: u16 = 0x7FFF;
 
 /// 解析出的 Art-Net 包类型。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +109,16 @@ pub struct PollReplyInfo {
 
 /// 解析 Art-Net 数据包。
 ///
+/// ArtDmx（OpCode `0x5000`）走手写快速路径，只做一次通道数据拷贝；其余 OpCode
+/// 交给 [`artnet_protocol::ArtCommand::from_buffer`]。快速路径的接受 / 拒绝规则与
+/// `artnet_protocol` 0.4.4 完全一致：
+///
+/// - 报文须以 `"Art-Net\0"` 开头，且总长不小于 18 字节（能读到 `Length` 字段）；
+/// - `Port-Address`（偏移 14，小端）须 `<= 0x7FFF`，否则拒绝；
+/// - `ProtVer` 与 `Length` 字段不做校验；`Length` 与实际剩余字节数不一致、
+///   数据为奇数长度、为 0 字节或超过 512 字节时均照常接受；
+/// - 通道数据取偏移 18 起的全部剩余字节。
+///
 /// # Arguments
 ///
 /// * `buf` - UDP 载荷。
@@ -99,7 +128,12 @@ pub struct PollReplyInfo {
 /// 识别出的 [`ArtNetPacket`]；非 Art-Net 或无法解析返回 `None`。
 #[must_use]
 pub fn parse(buf: &[u8]) -> Option<ArtNetPacket> {
+    if opcode_of(buf) == Some(OP_DMX) {
+        return parse_dmx(buf);
+    }
     match ArtCommand::from_buffer(buf).ok()? {
+        // 快速路径已拦截全部 0x5000 报文，此分支理论上不可达；保留旧映射，
+        // 以防判定条件意外不一致时仍退化为与 `artnet_protocol` 相同的结果。
         ArtCommand::Output(o) => Some(ArtNetPacket::Dmx {
             port_address: u16::from(o.port_address),
             sequence: o.sequence,
@@ -111,7 +145,88 @@ pub fn parse(buf: &[u8]) -> Option<ArtNetPacket> {
     }
 }
 
+/// 读取 Art-Net 报文的 OpCode。
+///
+/// 仅在报文至少 10 字节且以 `"Art-Net\0"` 开头时返回；更严格的最小长度
+/// （`artnet_protocol` 要求 14 字节）由各 OpCode 的解析自行把关。
+fn opcode_of(buf: &[u8]) -> Option<u16> {
+    let head: &[u8; 10] = buf.first_chunk()?;
+    if head[..8] != ARTNET_HEADER[..] {
+        return None;
+    }
+    Some(u16::from_le_bytes([head[8], head[9]]))
+}
+
+/// ArtDmx 快速解析（调用方已确认包头与 OpCode）。
+///
+/// 语义照抄 `artnet_protocol` 0.4.4 的 `Output::from`：依次读取 `ProtVer`(2)、
+/// `Sequence`(1)、`Physical`(1)、`Port-Address`(2，小端，`> 0x7FFF` 报错)、
+/// `Length`(2，大端，仅读取不校验)，剩余字节全部作为通道数据。任一字段读不全
+/// （总长 < 18）即拒绝。
+fn parse_dmx(buf: &[u8]) -> Option<ArtNetPacket> {
+    let head: &[u8; ARTDMX_HEADER_LEN] = buf.first_chunk()?;
+    let port_address = u16::from_le_bytes([head[14], head[15]]);
+    if port_address > MAX_PORT_ADDRESS {
+        return None;
+    }
+    Some(ArtNetPacket::Dmx {
+        port_address,
+        sequence: head[12],
+        data: buf[ARTDMX_HEADER_LEN..].to_vec(),
+    })
+}
+
+/// 把 ArtDmx（Output）数据包写入调用方提供的定长缓冲（零堆分配）。
+///
+/// 输出与旧版委托 `artnet_protocol` 0.4.4 的写法逐字节一致：`ProtVer` 为
+/// [`artnet_protocol::ARTNET_PROTOCOL_VERSION`]、`Physical` 为 0、`Port-Address`
+/// 小端、`Length` 大端且为补齐后的偶数长度。
+///
+/// # Arguments
+///
+/// * `port_address` - 15 位 Port-Address（`0..=0x7FFF`）。
+/// * `sequence` - 序列号（0 表示不启用序列）。
+/// * `data` - 通道数据；超过 512 字节时截断为前 512 字节，奇数长度末尾补一个 0。
+/// * `out` - 输出缓冲；只写入前 `n` 字节（`n` 为返回值），其余字节保持原样，
+///   因此可在多次调用间复用而无需清零。
+///
+/// # Returns
+///
+/// 写入 `out` 的报文字节数（`18 + 补齐后的数据长度`，最大 [`ARTDMX_MAX_LEN`]）。
+/// `port_address` 超出 15 位范围，或 `data` 为空（ArtDmx 至少需 1 个通道，
+/// 与 `artnet_protocol` 拒绝 0 长度数据的语义一致）时返回 0，`out` 不被修改。
+#[must_use]
+pub fn build_dmx_into(
+    port_address: u16,
+    sequence: u8,
+    data: &[u8],
+    out: &mut [u8; ARTDMX_MAX_LEN],
+) -> usize {
+    if port_address > MAX_PORT_ADDRESS || data.is_empty() {
+        return 0;
+    }
+    let n = data.len().min(MAX_DMX);
+    // ArtDmx 要求偶数长度：不足偶数末尾补 0。
+    let padded_len = n + (n & 1);
+
+    out[..8].copy_from_slice(ARTNET_HEADER);
+    out[8..10].copy_from_slice(&OP_DMX.to_le_bytes());
+    out[10..12].copy_from_slice(&ARTNET_PROTOCOL_VERSION);
+    out[12] = sequence;
+    out[13] = 0; // Physical
+    out[14..16].copy_from_slice(&port_address.to_le_bytes());
+    // padded_len <= 512，转 u16 不会截断
+    out[16..18].copy_from_slice(&(padded_len as u16).to_be_bytes());
+    let body = &mut out[ARTDMX_HEADER_LEN..ARTDMX_HEADER_LEN + padded_len];
+    body[..n].copy_from_slice(&data[..n]);
+    body[n..].fill(0);
+    ARTDMX_HEADER_LEN + padded_len
+}
+
 /// 构造一个 ArtDmx（Output）数据包。
+///
+/// 等价于 [`build_dmx_into`] 后把有效部分拷贝为 `Vec`（一次堆分配）；热路径请直接
+/// 使用 [`build_dmx_into`]。
 ///
 /// # Arguments
 ///
@@ -121,25 +236,12 @@ pub fn parse(buf: &[u8]) -> Option<ArtNetPacket> {
 ///
 /// # Returns
 ///
-/// 完整 ArtDmx 字节缓冲；`port_address` 超出 15 位范围时返回空缓冲。
+/// 完整 ArtDmx 字节缓冲；`port_address` 超出 15 位范围或 `data` 为空时返回空缓冲。
 #[must_use]
 pub fn build_dmx(port_address: u16, sequence: u8, data: &[u8]) -> Vec<u8> {
-    let n = data.len().min(MAX_DMX);
-    // ArtDmx 要求偶数长度：不足偶数末尾补 0。
-    let padded_len = n + (n & 1);
-    let mut payload = vec![0u8; padded_len];
-    payload[..n].copy_from_slice(&data[..n]);
-
-    let Ok(pa) = PortAddress::try_from(port_address) else {
-        return Vec::new();
-    };
-    let cmd = ArtCommand::Output(Output {
-        port_address: pa,
-        sequence,
-        data: payload.into(),
-        ..Output::default()
-    });
-    cmd.write_to_buffer().unwrap_or_default()
+    let mut out = [0u8; ARTDMX_MAX_LEN];
+    let n = build_dmx_into(port_address, sequence, data, &mut out);
+    out[..n].to_vec()
 }
 
 /// 构造一个 ArtPoll 数据包（用于主动发现节点）。
@@ -224,6 +326,180 @@ fn poll_reply_ports(reply: &PollReply) -> Vec<NodePort> {
 fn cstr(raw: &[u8]) -> String {
     let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
     String::from_utf8_lossy(&raw[..end]).into_owned()
+}
+
+/// 旧实现（全部委托 `artnet_protocol` 0.4.4）的原样拷贝，仅作一致性测试的参照。
+#[cfg(test)]
+mod reference {
+    use artnet_protocol::{ArtCommand, Output, PortAddress};
+
+    use super::{poll_reply_info, ArtNetPacket, MAX_DMX};
+
+    /// 旧版 `parse`：任何 OpCode 均交给 `ArtCommand::from_buffer`。
+    pub(super) fn parse(buf: &[u8]) -> Option<ArtNetPacket> {
+        match ArtCommand::from_buffer(buf).ok()? {
+            ArtCommand::Output(o) => Some(ArtNetPacket::Dmx {
+                port_address: u16::from(o.port_address),
+                sequence: o.sequence,
+                data: o.data.as_ref().clone(),
+            }),
+            ArtCommand::Poll(_) => Some(ArtNetPacket::Poll),
+            ArtCommand::PollReply(reply) => Some(ArtNetPacket::PollReply(poll_reply_info(&reply))),
+            _ => Some(ArtNetPacket::Other),
+        }
+    }
+
+    /// 旧版 `build_dmx`：经 `ArtCommand::Output(..).write_to_buffer()` 组包。
+    pub(super) fn build_dmx(port_address: u16, sequence: u8, data: &[u8]) -> Vec<u8> {
+        let n = data.len().min(MAX_DMX);
+        let padded_len = n + (n & 1);
+        let mut payload = vec![0u8; padded_len];
+        payload[..n].copy_from_slice(&data[..n]);
+
+        let Ok(pa) = PortAddress::try_from(port_address) else {
+            return Vec::new();
+        };
+        let cmd = ArtCommand::Output(Output {
+            port_address: pa,
+            sequence,
+            data: payload.into(),
+            ..Output::default()
+        });
+        cmd.write_to_buffer().unwrap_or_default()
+    }
+}
+
+/// 新实现与 [`reference`] 旧实现的逐字节 / 逐结果一致性测试。
+#[cfg(test)]
+mod equivalence {
+    use super::{build_dmx, build_dmx_into, build_poll, parse, reference, ARTDMX_MAX_LEN};
+
+    /// 覆盖边界的 Port-Address：最小值、普通值、15 位上限，以及越界值。
+    const PORT_ADDRESSES: [u16; 6] = [0, 1, 0x1234, 0x7FFF, 0x8000, 0xFFFF];
+
+    /// 覆盖“不启用序列”、普通值与上限的序列号。
+    const SEQUENCES: [u8; 3] = [0, 1, 255];
+
+    /// 一致性测试覆盖的最大数据长度：超过 512 以验证截断。
+    const MAX_TEST_LEN: usize = 520;
+
+    /// 生成长度为 `len` 的确定性通道数据（全非 0，便于发现补齐字节错误）。
+    fn data_of(len: usize) -> Vec<u8> {
+        (0..len).map(|i| ((i * 31 + len) % 255 + 1) as u8).collect()
+    }
+
+    /// 按给定字段手工拼一个 ArtDmx 报文（字段值可任意，用于构造非法 / 边界报文）。
+    fn raw_dmx(
+        version: [u8; 2],
+        sequence: u8,
+        port_address: u16,
+        length: u16,
+        data: &[u8],
+    ) -> Vec<u8> {
+        let mut buf = b"Art-Net\0".to_vec();
+        buf.extend_from_slice(&0x5000u16.to_le_bytes());
+        buf.extend_from_slice(&version);
+        buf.push(sequence);
+        buf.push(7); // Physical
+        buf.extend_from_slice(&port_address.to_le_bytes());
+        buf.extend_from_slice(&length.to_be_bytes());
+        buf.extend_from_slice(data);
+        buf
+    }
+
+    /// 断言新旧 `parse` 对同一输入给出完全相同的结果。
+    fn assert_parse_same(buf: &[u8]) {
+        assert_eq!(parse(buf), reference::parse(buf), "输入 {buf:02X?}");
+    }
+
+    #[test]
+    fn build_dmx_matches_reference_byte_for_byte() {
+        for len in 0..=MAX_TEST_LEN {
+            let data = data_of(len);
+            for pa in PORT_ADDRESSES {
+                for seq in SEQUENCES {
+                    let expected = reference::build_dmx(pa, seq, &data);
+                    assert_eq!(
+                        build_dmx(pa, seq, &data),
+                        expected,
+                        "len={len} pa={pa:#06X} seq={seq}"
+                    );
+
+                    // 预填垃圾字节，验证 build_dmx_into 不依赖调用方清零
+                    let mut out = [0xA5u8; ARTDMX_MAX_LEN];
+                    let n = build_dmx_into(pa, seq, &data, &mut out);
+                    assert_eq!(
+                        &out[..n],
+                        &expected[..],
+                        "into: len={len} pa={pa:#06X} seq={seq}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn build_dmx_into_rejects_like_reference() {
+        let mut out = [0x5Au8; ARTDMX_MAX_LEN];
+        assert_eq!(build_dmx_into(0x8000, 0, &[1, 2], &mut out), 0);
+        assert_eq!(build_dmx_into(1, 0, &[], &mut out), 0);
+        assert!(out.iter().all(|&b| b == 0x5A), "拒绝时不得改动输出缓冲");
+        assert!(reference::build_dmx(0x8000, 0, &[1, 2]).is_empty());
+        assert!(reference::build_dmx(1, 0, &[]).is_empty());
+    }
+
+    #[test]
+    fn parse_matches_reference_for_built_packets() {
+        for len in 0..=MAX_TEST_LEN {
+            let data = data_of(len);
+            for pa in [0, 0x7FFF] {
+                assert_parse_same(&reference::build_dmx(pa, 9, &data));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_matches_reference_for_irregular_artdmx() {
+        for len in 0..=MAX_TEST_LEN + 80 {
+            let data = data_of(len);
+            // Length 字段与实际长度一致、差 1、为 0、为最大值；数据长度含奇数与超 512
+            let exact = u16::try_from(len).unwrap_or(u16::MAX);
+            for length in [exact, exact.wrapping_add(1), 0, u16::MAX] {
+                assert_parse_same(&raw_dmx([0, 14], 3, 0x0102, length, &data));
+            }
+        }
+        // 协议版本不做校验
+        for version in [[0, 0], [0, 13], [0, 14], [0xFF, 0xFF]] {
+            assert_parse_same(&raw_dmx(version, 1, 5, 2, &[1, 2]));
+        }
+        // Port-Address 边界：0x7FFF 接受，0x8000 及以上拒绝
+        for pa in PORT_ADDRESSES {
+            assert_parse_same(&raw_dmx([0, 14], 1, pa, 2, &[1, 2]));
+        }
+    }
+
+    #[test]
+    fn parse_matches_reference_for_truncated_and_corrupt_input() {
+        let full = raw_dmx([0, 14], 4, 0x0203, 4, &[9, 8, 7, 6]);
+        // 每一个前缀长度（含 < 10、10..14、14..18 等各类截断）
+        for cut in 0..=full.len() {
+            assert_parse_same(&full[..cut]);
+        }
+        // 逐字节破坏包头 / OpCode
+        for i in 0..10 {
+            let mut bad = full.clone();
+            bad[i] ^= 0x20;
+            assert_parse_same(&bad);
+        }
+        // OpCode 字节序颠倒（0x0050）与其它 OpCode 不得被识别为 ArtDmx
+        for op in [0x0050u16, 0x5100, 0x5200, 0x2000, 0x2100, 0x1234] {
+            let mut other = full.clone();
+            other[8..10].copy_from_slice(&op.to_le_bytes());
+            assert_parse_same(&other);
+        }
+        assert_parse_same(&build_poll());
+        assert_parse_same(&[]);
+    }
 }
 
 #[cfg(test)]
@@ -331,7 +607,7 @@ mod tests {
         let mut buf = raw_poll_reply();
         buf[18] = 0x02; // NetSwitch = 2
         buf[19] = 0x01; // SubSwitch = 1
-        // 口 1：仅输出；口 2：输入+输出；口 3、4 未使用
+                        // 口 1：仅输出；口 2：输入+输出；口 3、4 未使用
         buf[174..178].copy_from_slice(&[0x80, 0xC0, 0x00, 0x00]);
         buf[178..182].copy_from_slice(&[0x00, 0x80, 0x00, 0x00]); // GoodInput：口 2 有数据
         buf[182..186].copy_from_slice(&[0x80, 0x00, 0x00, 0x00]); // GoodOutput：口 1 有数据

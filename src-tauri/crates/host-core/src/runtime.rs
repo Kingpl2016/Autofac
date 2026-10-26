@@ -10,23 +10,26 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
+use tokio::time::MissedTickBehavior;
 
 use artnet_net::artnet::PollReplyInfo;
 use artnet_net::socket::{self, DmxSender};
 use artnet_net::{DmxFrame, Protocol};
 use discovery::{Device, DeviceCategory, DeviceRegistry};
-use forwarding::{ForwardingTable, RateLimiter};
+use forwarding::ForwardingTable;
 use settings::AppSettings;
 use signal_engine::{RateTracker, SignalEngine, SourceStat, UniverseSnapshot};
 
 use crate::app_mode::{AppMode, ModeDeps, ModeManager, ModeStatus, ReceiversState};
 use crate::dispatch::{DispatchTarget, Dispatcher};
+use crate::ingest::IngestPipeline;
 use crate::mode::{FrameFanout, RuntimeMode};
 use crate::output_stats::OutputTracker;
 use crate::playback::{OpenParams, PlaybackController, PlaybackStatus};
 use crate::recording::RecordingController;
 use crate::sacn::{plan_sacn, SacnPlan};
-use crate::sender::{self, SenderHealth};
+use crate::sender::{self, SenderHealth, SenderSlot};
+use crate::stream::{DmxStream, LiveChannels};
 use crate::util::lock;
 
 /// 本应用固定 CID（用于 sACN 发送与发现）。
@@ -83,11 +86,94 @@ impl Drop for ScanGuard {
     }
 }
 
-/// `engine:output` 事件的最小推送间隔。
+/// `engine:output` 事件的最小推送间隔（约 2Hz）。
 const OUTPUT_EMIT_INTERVAL: Duration = Duration::from_millis(500);
 
-/// `engine:universes` 事件的最小推送间隔。
-const UNIVERSES_EMIT_INTERVAL: Duration = Duration::from_millis(100);
+/// 统计周期（约 10Hz）：prune + 快照 + 速率 + `engine:stats` / `engine:universes` + 被动发现。
+const STATS_INTERVAL: Duration = Duration::from_millis(100);
+
+/// `engine:sources` 事件的最小推送间隔（约 4Hz）。
+const SOURCES_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+
+/// 进程内存的采样间隔（约 1Hz）。
+const MEMORY_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+
+/// 设备列表有变化时，两次 `discovery:devices` 推送的最小间隔（即最多 4Hz）。
+const DEVICES_MIN_INTERVAL: Duration = Duration::from_millis(250);
+
+/// 设备列表没有变化时的心跳推送间隔（让界面上的“最后活动”时间继续刷新）。
+const DEVICES_HEARTBEAT: Duration = Duration::from_secs(1);
+
+/// `discovery:devices` 的推送节流：注册表版本变化即推（相邻两次至少间隔
+/// [`DEVICES_MIN_INTERVAL`]），否则每 [`DEVICES_HEARTBEAT`] 推一次。
+#[derive(Debug, Default)]
+struct DevicesGate {
+    /// 上次推送时的注册表版本。
+    version: Option<u64>,
+    /// 上次推送的时刻。
+    last: Option<Instant>,
+}
+
+impl DevicesGate {
+    /// 判断本轮是否推送；推送时记下版本与时刻。
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - 注册表当前版本（[`DeviceRegistry::version`]）。
+    /// * `now` - 当前时刻。
+    ///
+    /// # Returns
+    ///
+    /// 本轮应推送时为 `true`：首次、版本变化且距上次满最小间隔，或距上次满心跳间隔。
+    fn due(&mut self, version: u64, now: Instant) -> bool {
+        let fire = self.last.is_none_or(|t| {
+            let since = now.saturating_duration_since(t);
+            since >= DEVICES_HEARTBEAT
+                || (self.version != Some(version) && since >= DEVICES_MIN_INTERVAL)
+        });
+        if fire {
+            self.version = Some(version);
+            self.last = Some(now);
+        }
+        fire
+    }
+}
+
+/// 协议的排序键（[`Protocol`] 没有实现 `Ord`）。
+///
+/// # Arguments
+///
+/// * `p` - 来源协议。
+///
+/// # Returns
+///
+/// Art-Net 为 `0`、sACN 为 `1`：同一 IP 先按 Art-Net 合并，分类结果与遍历顺序无关。
+fn protocol_rank(p: Protocol) -> u8 {
+    match p {
+        Protocol::ArtNet => 0,
+        Protocol::Sacn => 1,
+    }
+}
+
+/// 从快照收集被动发现的 `(源 IP, 协议)`，并去重。
+///
+/// 直接使用快照里的数值 IP（[`signal_engine::UniverseSource::addr`]），不再解析字符串；
+/// 协议未知的 Universe 跳过。
+///
+/// # Arguments
+///
+/// * `snapshot` - 当前全部活跃 Universe 快照。
+/// * `out` - 输出缓冲（先清空再写入，复用容量）。
+fn passive_sources(snapshot: &[UniverseSnapshot], out: &mut Vec<(IpAddr, Protocol)>) {
+    out.clear();
+    for u in snapshot {
+        if let Some(protocol) = u.protocol {
+            out.extend(u.sources.iter().map(|s| (s.addr, protocol)));
+        }
+    }
+    out.sort_unstable_by_key(|&(ip, p)| (ip, protocol_rank(p)));
+    out.dedup();
+}
 
 /// 引擎统计事件载荷。
 #[derive(Debug, Clone, Serialize)]
@@ -105,16 +191,6 @@ pub struct StatsPayload {
     ///
     /// 仅统计主进程，不含 WebView 子进程。
     pub memory_bytes: u64,
-}
-
-/// 单个被查看 Universe 的通道数据事件载荷。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChannelsPayload {
-    /// Universe 编号。
-    pub universe: u16,
-    /// 合并后的通道数据。
-    pub data: Vec<u8>,
 }
 
 /// sACN 接收任务的当前状态，由 [`Runtime::reconcile_sacn`] 维护。
@@ -148,9 +224,9 @@ struct ArtnetRx {
 pub struct Runtime {
     engine: Arc<Mutex<SignalEngine>>,
     registry: Arc<Mutex<DeviceRegistry>>,
-    forwarding: Arc<Mutex<ForwardingTable>>,
-    sender: Arc<tokio::sync::Mutex<Option<DmxSender>>>,
-    /// 输出分发器：实时转发与录制回放共用。
+    /// 发送器槽位（与分发器、发送器监督任务共享，发送时无锁读取）。
+    sender: SenderSlot,
+    /// 输出分发器：实时转发与录制回放共用；转发表归它所有（唯一真相）。
     dispatcher: Dispatcher,
     /// 录制 / 回放互斥仲裁：接收循环据 `is_playback()` 暂停实时摄取（手册 Player Mode 语义）。
     mode: Arc<RuntimeMode>,
@@ -160,6 +236,8 @@ pub struct Runtime {
     /// 标志 / 运行时起点等均由运行时内部提供，命令层无需逐一拼装。
     playback: PlaybackController,
     viewed: Arc<Mutex<Vec<u16>>>,
+    /// 二进制 DMX 通道流（实时与回放共用的订阅槽）。
+    stream: Arc<DmxStream>,
     /// Art-Net 接收是否已启用（决定能否收到 ArtPollReply）。
     artnet_enabled: Arc<AtomicBool>,
     /// 是否有扫描正在进行。
@@ -205,13 +283,8 @@ impl Runtime {
             .ok()
             .and_then(|t| ForwardingTable::from_json(&t).ok())
             .unwrap_or_default();
-        let forwarding = Arc::new(Mutex::new(forwarding));
-        let sender = Arc::new(tokio::sync::Mutex::new(None));
-        let dispatcher = Dispatcher::new(
-            forwarding.clone(),
-            Arc::new(Mutex::new(RateLimiter::new())),
-            sender.clone(),
-        );
+        let sender = SenderSlot::default();
+        let dispatcher = Dispatcher::with_table(forwarding, sender.clone());
         dispatcher.set_sacn_enabled(cfg.protocol.sacn_enabled);
         let sender_health = dispatcher.health();
         // 录制 / 回放共享同一互斥仲裁；录制控制器把自身帧接收器注册进扇出，
@@ -223,13 +296,13 @@ impl Runtime {
         Self {
             engine: Arc::new(Mutex::new(engine)),
             registry: Arc::new(Mutex::new(registry)),
-            forwarding,
             sender,
             dispatcher,
             mode,
             fanout,
             playback: PlaybackController::new(),
             viewed: Arc::new(Mutex::new(Vec::new())),
+            stream: Arc::new(DmxStream::new()),
             artnet_enabled: Arc::new(AtomicBool::new(false)),
             scanning: Arc::new(AtomicBool::new(false)),
             recording,
@@ -256,6 +329,20 @@ impl Runtime {
     #[must_use]
     pub fn playback(&self) -> &PlaybackController {
         &self.playback
+    }
+
+    /// 二进制 DMX 通道流（帧格式见 [`crate::stream`]）。
+    ///
+    /// 实时推送任务以 [`StreamKind::Live`](crate::stream::StreamKind::Live) 帧使用它；
+    /// 回放控制器（经 [`Runtime::open_playback`] 传入）以
+    /// [`StreamKind::Playback`](crate::stream::StreamKind::Playback) 帧复用同一订阅。
+    ///
+    /// # Returns
+    ///
+    /// 共享的 [`DmxStream`]。
+    #[must_use]
+    pub fn dmx_stream(&self) -> &Arc<DmxStream> {
+        &self.stream
     }
 
     /// 打开节目并进入回放：分发器 / 回放模式标志 / 运行时起点 / 录制状态均由运行时内部填充。
@@ -294,6 +381,7 @@ impl Runtime {
         let opened = self.playback.open(OpenParams {
             emit: emit.clone(),
             dispatcher: self.dispatcher.clone(),
+            stream: self.dmx_stream().clone(),
             mode: self.mode.clone(),
             started_at: self.start,
             path,
@@ -346,7 +434,10 @@ impl Runtime {
     ) -> Result<ModeStatus, String> {
         self.modes.set(target, self)?;
         let status = self.app_mode_status();
-        emit("app:mode", serde_json::to_value(status).unwrap_or(serde_json::Value::Null));
+        emit(
+            "app:mode",
+            serde_json::to_value(status).unwrap_or(serde_json::Value::Null),
+        );
         Ok(status)
     }
 
@@ -363,7 +454,12 @@ impl Runtime {
         }
         let (ip, tx, reply, enabled) = {
             let st = lock(&self.artnet);
-            (st.bind_ip, st.frame_tx.clone(), st.reply_tx.clone(), st.enabled)
+            (
+                st.bind_ip,
+                st.frame_tx.clone(),
+                st.reply_tx.clone(),
+                st.enabled,
+            )
         };
         if !enabled {
             return true;
@@ -403,13 +499,20 @@ impl Runtime {
         lock(&self.engine).source_stats()
     }
 
-    /// 当前转发表。
+    /// 当前转发表（分发器持有的唯一真相的副本）。
+    ///
+    /// # Returns
+    ///
+    /// 转发表的克隆。
     #[must_use]
     pub fn forwarding(&self) -> ForwardingTable {
-        lock(&self.forwarding).clone()
+        self.dispatcher.table()
     }
 
     /// 保存转发表（替换内存并持久化）。
+    ///
+    /// 交给分发器替换并重新编译路由；目的地可能已增删，限速状态随之清空，
+    /// 已删除目的地的输出统计被清除（同 id 目的地的计数延续）。
     ///
     /// # Arguments
     ///
@@ -421,10 +524,7 @@ impl Runtime {
             }
             let _ = std::fs::write(&self.forwarding_path, text);
         }
-        *lock(&self.forwarding) = table;
-        // 目的地可能已增删，重置限速状态与按目的地归属的输出统计，避免旧条目残留。
-        self.dispatcher.reset_rate_limits();
-        self.dispatcher.prune_output_stats();
+        self.dispatcher.set_table(table);
     }
 
     /// 当前全部活跃 Universe 快照。
@@ -440,8 +540,24 @@ impl Runtime {
     }
 
     /// 设置前端正在查看的 Universe 列表。
+    ///
+    /// 集合确有变化时要求通道流的下一帧为全量（前端据此整体替换通道表）；相同列表不做任何事。
+    ///
+    /// # Arguments
+    ///
+    /// * `universes` - 前端正在查看的 Universe 编号。
     pub fn set_viewed(&self, universes: Vec<u16>) {
-        *lock(&self.viewed) = universes;
+        let changed = {
+            let mut viewed = lock(&self.viewed);
+            let changed = *viewed != universes;
+            if changed {
+                *viewed = universes;
+            }
+            changed
+        };
+        if changed {
+            self.stream.request_full();
+        }
     }
 
     /// 在线应用配置：更新合并模式与源超时，并让 sACN 接收与输出实时跟随设置。
@@ -494,7 +610,11 @@ impl Runtime {
             if had_receiver {
                 let engine_purged = lock(&self.engine).purge_protocol(Protocol::Sacn);
                 let devices_purged = lock(&self.registry).remove_category(DeviceCategory::Sacn);
-                tracing::info!(engine_purged, devices_purged, "sACN 接收已停止并清理残留数据");
+                tracing::info!(
+                    engine_purged,
+                    devices_purged,
+                    "sACN 接收已停止并清理残留数据"
+                );
             }
             return;
         };
@@ -580,8 +700,8 @@ impl Runtime {
         if !self.artnet_enabled.load(Ordering::Relaxed) {
             return Err(SCAN_ERR_ARTNET_DISABLED.to_string());
         }
-        let _guard = ScanGuard::acquire(&self.scanning)
-            .ok_or_else(|| SCAN_ERR_IN_PROGRESS.to_string())?;
+        let _guard =
+            ScanGuard::acquire(&self.scanning).ok_or_else(|| SCAN_ERR_IN_PROGRESS.to_string())?;
 
         let sender = DmxSender::new(APP_CID)
             .await
@@ -640,7 +760,7 @@ impl Runtime {
             .interface
             .parse()
             .unwrap_or(Ipv4Addr::UNSPECIFIED);
-        let (tx, mut rx) = mpsc::channel::<artnet_net::DmxFrame>(1024);
+        let (tx, rx) = mpsc::channel::<artnet_net::DmxFrame>(1024);
         let (reply_tx, mut reply_rx) = mpsc::channel::<PollReplyInfo>(64);
 
         // 套接字绑定（UdpSocket::from_std）必须在 Tokio 运行时上下文中执行，
@@ -666,12 +786,17 @@ impl Runtime {
 
         // 发送器监督：首次创建与之后的故障重建走同一条路径（连续发送失败 → 阶梯退避重建）
         let health = self.sender_health.clone();
-        let slot = self.sender.clone();
+        let slot: SenderSlot = self.sender.clone();
         tauri::async_runtime::spawn(async move {
             loop {
                 health.wait_for_trouble().await;
-                sender::recover(&health, &slot, || DmxSender::new(APP_CID), sender::rebind_delay)
-                    .await;
+                sender::recover(
+                    &health,
+                    &slot,
+                    || DmxSender::new(APP_CID),
+                    sender::rebind_delay,
+                )
+                .await;
             }
         });
         // 发送器状态变化时推送 app:mode，让界面及时显示"输出重连中 / 不可用"
@@ -692,48 +817,15 @@ impl Runtime {
         }
         self.sender_health.request_recovery();
 
-        // 帧摄取 + 转发任务
-        let engine = self.engine.clone();
-        let dispatcher = self.dispatcher.clone();
-        let start = self.start;
-        let fanout = self.fanout.clone();
-        let mode = self.mode.clone();
-        let sacn_gate = self.dispatcher.sacn_gate();
-        tauri::async_runtime::spawn(async move {
-            while let Some(frame) = rx.recv().await {
-                // sACN 已关闭：丢弃通道里迟到的 sACN 帧，避免关闭后又被摄取、录制或转发
-                if frame.protocol == Protocol::Sacn && !sacn_gate.load(Ordering::Relaxed) {
-                    continue;
-                }
-                // 回放模式下暂停实时接收（避免回放输出被自己重新摄取形成回环）；
-                // 播放器模式下接收任务已拆除，这里再丢弃通道里残留的迟到帧
-                if mode.is_playback() || mode.is_player() {
-                    continue;
-                }
-                // 旁路给已注册的帧接收器（录制等）：各自非阻塞处理，不影响下方合并与转发
-                fanout.offer(&frame);
-                let now_ms = start.elapsed().as_millis() as u64;
-                let universe = frame.universe;
-
-                // 摄取并取合并输出
-                let merged = {
-                    let mut e = lock(&engine);
-                    e.ingest(&frame, now_ms);
-                    e.merged_output(universe)
-                };
-                let Some(data) = merged else { continue };
-
-                // 解析路由 + 限速 + 发送，与回放共用同一分发器
-                let jobs = dispatcher.plan(
-                    universe,
-                    &data,
-                    now_ms,
-                    &DispatchTarget::Forwarding,
-                    true,
-                );
-                dispatcher.send_jobs(jobs).await;
-            }
-        });
+        // 帧摄取 + 转发任务：批量取帧，整批一次引擎锁，丢弃 / 旁路 / 路由规则见 `IngestPipeline`
+        let pipeline = IngestPipeline::new(
+            self.engine.clone(),
+            self.dispatcher.clone(),
+            self.fanout.clone(),
+            self.mode.clone(),
+            self.start,
+        );
+        tauri::async_runtime::spawn(pipeline.run(rx));
         // Art-Net 回复 → 设备注册表
         let registry = self.registry.clone();
         let start2 = self.start;
@@ -744,76 +836,113 @@ impl Runtime {
             }
         });
 
-        // 事件推送任务（按 UI 刷新率）
-        let engine = self.engine.clone();
-        let registry = self.registry.clone();
-        let viewed = self.viewed.clone();
-        let start = self.start;
+        // 事件推送任务（按 UI 刷新率驱动，各事件按自己的频率节流）
         let fps = cfg.display.ui_update_rate.max(1);
-        let period = Duration::from_millis(1000 / u64::from(fps));
+        let period = Duration::from_millis((1000 / u64::from(fps)).max(1));
+        tauri::async_runtime::spawn(self.clone().push_loop(app, period));
+    }
+
+    /// 事件推送循环。
+    ///
+    /// 每个 UI 周期（`period`）只做二进制通道流（有订阅者时）；其余按各自频率：
+    ///
+    /// | 工作 | 频率 |
+    /// |------|------|
+    /// | 通道流（[`DmxStream`]，有变化或需全量才发） | UI 刷新率（默认 30Hz） |
+    /// | prune + 快照 + 速率 + `engine:stats` / `engine:universes` + 被动发现 | 约 10Hz |
+    /// | `discovery:devices` | 版本变化即推（最多 4Hz）+ 1Hz 心跳 |
+    /// | `engine:sources` | 约 4Hz |
+    /// | `engine:output` | 约 2Hz |
+    /// | 进程内存采样 | 约 1Hz |
+    ///
+    /// 引擎锁内只取数据（查看列表在锁外读取），序列化与 `emit` 全在锁外。
+    ///
+    /// # Arguments
+    ///
+    /// * `app` - 用于发事件的 AppHandle。
+    /// * `period` - UI 刷新周期。
+    async fn push_loop<R: tauri::Runtime>(self, app: AppHandle<R>, period: Duration) {
         let output_stats = self.dispatcher.output_stats();
-        let sender_health = self.sender_health.clone();
-        tauri::async_runtime::spawn(async move {
-            let mut rate_tracker = RateTracker::new();
-            let mut output_tracker = OutputTracker::new();
-            let mut last_output_emit: Option<Instant> = None;
-            let mut memory_bytes: u64 = 0;
-            let mut last_memory_at: Option<Instant> = None;
-            let mut last_universes_emit: Option<Instant> = None;
-            let mut last_sources_emit = Instant::now();
-            let mut ticker = tokio::time::interval(period);
-            loop {
-                ticker.tick().await;
-                let now_ms = start.elapsed().as_millis() as u64;
-                let uptime_sec = start.elapsed().as_secs();
+        let mut rate_tracker = RateTracker::new();
+        let mut output_tracker = OutputTracker::new();
+        let mut live = LiveChannels::new();
+        let mut devices_gate = DevicesGate::default();
+        let mut passive: Vec<(IpAddr, Protocol)> = Vec::new();
+        let mut viewed: Vec<u16> = Vec::new();
+        let mut memory_bytes: u64 = 0;
+        let mut last_stats_at: Option<Instant> = None;
+        let mut last_memory_at: Option<Instant> = None;
+        let mut last_output_emit: Option<Instant> = None;
+        let mut last_sources_emit = Instant::now();
+        let mut ticker = tokio::time::interval(period);
+        // 处理不过来时跳过错过的节拍，而不是事后连发补齐
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        loop {
+            ticker.tick().await;
+            let now = Instant::now();
+            let now_ms = self.start.elapsed().as_millis() as u64;
 
-                // 来源统计约 4Hz 推送一次（录制来源选择器用，无需跟随 UI 刷新率）
-                let emit_sources = last_sources_emit.elapsed() >= Duration::from_millis(250);
-                // 先在 engine 锁外取当前查看列表，避免在持有 engine 锁期间再嵌套 viewed 锁，
-                // 缩短 engine 临界区、降低与帧摄取循环的锁竞争。
-                let view = lock(&viewed).clone();
-                let (mut snapshot, total, channels, sources) = {
-                    let mut e = lock(&engine);
+            let stats_due =
+                last_stats_at.is_none_or(|t| now.saturating_duration_since(t) >= STATS_INTERVAL);
+            let sources_due =
+                now.saturating_duration_since(last_sources_emit) >= SOURCES_EMIT_INTERVAL;
+            // 没有订阅者时跳过全部通道工作；查看列表在引擎锁外读取（复用缓冲）
+            let stream_on = self.stream.has_subscriber();
+            if stream_on {
+                viewed.clone_from(&lock(&self.viewed));
+                live.prepare(&viewed, self.stream.epoch(), now);
+            }
+
+            // 引擎临界区：只取数据
+            let mut snapshot: Option<(Vec<UniverseSnapshot>, u64)> = None;
+            let mut sources: Option<Vec<SourceStat>> = None;
+            if stats_due || sources_due || stream_on {
+                let mut e = lock(&self.engine);
+                if stats_due {
                     e.prune(now_ms);
-                    let snap = e.snapshot();
-                    let total = e.total_packets();
-                    let sources = emit_sources.then(|| e.source_stats());
-                    let ch: Vec<ChannelsPayload> = view
-                        .iter()
-                        .filter_map(|&u| {
-                            e.merged_output(u).map(|data| ChannelsPayload { universe: u, data })
-                        })
-                        .collect();
-                    (snap, total, ch, sources)
-                };
-                // 速率按约 1 秒窗口差分，避免 30Hz 逐周期差分的整数抖动
-                let packet_rate = rate_tracker.apply(&mut snapshot, total, now_ms);
-                // 进程内存约 1Hz 采样一次（系统调用，无需跟随 UI 刷新率）
-                if last_memory_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(1)) {
-                    last_memory_at = Some(Instant::now());
-                    memory_bytes = memory_stats::memory_stats()
-                        .map_or(0, |m| m.physical_mem as u64);
+                    snapshot = Some((e.snapshot(), e.total_packets()));
                 }
-                if let Some(sources) = sources {
-                    last_sources_emit = Instant::now();
-                    let _ = app.emit("engine:sources", &sources);
+                if sources_due {
+                    sources = Some(e.source_stats());
+                }
+                if stream_on {
+                    live.collect(&e);
+                }
+            }
+
+            if stream_on {
+                if let Some(frame) = live.encode() {
+                    self.stream.send(frame);
+                }
+            }
+            // 来源统计（录制来源选择器用，无需跟随 UI 刷新率）
+            if let Some(sources) = sources {
+                last_sources_emit = now;
+                let _ = app.emit("engine:sources", &sources);
+            }
+            if let Some((mut snapshot, total)) = snapshot {
+                last_stats_at = Some(now);
+                // 速率按约 1 秒窗口差分，避免逐周期差分的整数抖动
+                let packet_rate = rate_tracker.apply(&mut snapshot, total, now_ms);
+                // 进程内存（系统调用）
+                if last_memory_at
+                    .is_none_or(|t| now.saturating_duration_since(t) >= MEMORY_SAMPLE_INTERVAL)
+                {
+                    last_memory_at = Some(now);
+                    memory_bytes =
+                        memory_stats::memory_stats().map_or(0, |m| m.physical_mem as u64);
                 }
 
-                // 被动设备发现：从快照源 IP 更新注册表
+                // 被动设备发现：同一轮先对 (IP, 协议) 去重再 upsert；列表只在需要推送时于锁内克隆
+                passive_sources(&snapshot, &mut passive);
                 let devices = {
-                    let mut r = lock(&registry);
-                    for u in &snapshot {
-                        let proto = u.protocol;
-                        for ip_str in &u.source_ips {
-                            if let (Ok(ip), Some(proto)) = (ip_str.parse::<IpAddr>(), proto) {
-                                r.upsert_source(ip, proto, now_ms);
-                            }
-                        }
+                    let mut r = lock(&self.registry);
+                    for &(ip, protocol) in &passive {
+                        r.upsert_source(ip, protocol, now_ms);
                     }
                     r.mark_stale_offline(now_ms, DEVICE_OFFLINE_MS);
-                    r.list()
+                    devices_gate.due(r.version(), now).then(|| r.list())
                 };
-
 
                 let _ = app.emit(
                     "engine:stats",
@@ -821,33 +950,29 @@ impl Runtime {
                         active_universes: snapshot.len(),
                         total_packets: total,
                         packet_rate,
-                        uptime_sec,
+                        uptime_sec: self.start.elapsed().as_secs(),
                         memory_bytes,
                     },
                 );
-                // 宇宙列表含逐源统计，载荷随宇宙数线性增长；列表只用于计数展示，
-                // 约 10Hz 足够，通道数据（`engine:channels`）仍按 UI 刷新率推送。
-                if last_universes_emit.is_none_or(|t| t.elapsed() >= UNIVERSES_EMIT_INTERVAL) {
-                    last_universes_emit = Some(Instant::now());
-                    let _ = app.emit("engine:universes", &snapshot);
-                }
-                let _ = app.emit("discovery:devices", &devices);
-                for c in channels {
-                    let _ = app.emit("engine:channels", &c);
-                }
-
-                // 输出统计约 2Hz 推送一次：窗口差分与状态推导都按 1 秒窗口，无需更高频率
-                if last_output_emit.is_none_or(|t| t.elapsed() >= OUTPUT_EMIT_INTERVAL) {
-                    last_output_emit = Some(Instant::now());
-                    let payload = output_tracker.update(
-                        &output_stats.snapshot(),
-                        sender_health.state(),
-                        now_ms,
-                    );
-                    let _ = app.emit("engine:output", &payload);
+                let _ = app.emit("engine:universes", &snapshot);
+                if let Some(devices) = devices {
+                    let _ = app.emit("discovery:devices", &devices);
                 }
             }
-        });
+
+            // 输出统计：窗口差分与状态推导都按 1 秒窗口，无需更高频率
+            if last_output_emit
+                .is_none_or(|t| now.saturating_duration_since(t) >= OUTPUT_EMIT_INTERVAL)
+            {
+                last_output_emit = Some(now);
+                let payload = output_tracker.update(
+                    &output_stats.snapshot(),
+                    self.sender_health.state(),
+                    now_ms,
+                );
+                let _ = app.emit("engine:output", &payload);
+            }
+        }
     }
 }
 
@@ -889,8 +1014,8 @@ impl ModeDeps for Runtime {
     }
 
     fn ensure_sender(&self) {
-        // 发送槽被占用（正在发送）说明发送器存在；只有确认为空才请求创建
-        if self.sender.try_lock().is_ok_and(|g| g.is_none()) {
+        // 只有确认发送器为空才请求创建（无锁读取，不再受正在进行的发送干扰）
+        if self.sender.load().is_none() {
             self.sender_health.request_recovery();
         }
     }
@@ -985,8 +1110,14 @@ mod tests {
         let st = lock(&rt.sacn);
         assert!(st.applied.is_none() && st.handle.is_none());
         drop(st);
-        assert!(rt.snapshot().is_empty(), "关闭后引擎里不应残留 sACN Universe");
-        assert!(rt.devices().iter().all(|d| d.category != DeviceCategory::Sacn));
+        assert!(
+            rt.snapshot().is_empty(),
+            "关闭后引擎里不应残留 sACN Universe"
+        );
+        assert!(rt
+            .devices()
+            .iter()
+            .all(|d| d.category != DeviceCategory::Sacn));
     }
 
     #[test]
@@ -1018,11 +1149,20 @@ mod tests {
     #[test]
     fn toggling_sacn_updates_dispatcher_gate() {
         let rt = runtime(&sacn_cfg(false));
-        assert!(!rt.dispatcher.sacn_gate().load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!rt
+            .dispatcher
+            .sacn_gate()
+            .load(std::sync::atomic::Ordering::Relaxed));
         rt.apply_settings(&sacn_cfg(true));
-        assert!(rt.dispatcher.sacn_gate().load(std::sync::atomic::Ordering::Relaxed));
+        assert!(rt
+            .dispatcher
+            .sacn_gate()
+            .load(std::sync::atomic::Ordering::Relaxed));
         rt.apply_settings(&sacn_cfg(false));
-        assert!(!rt.dispatcher.sacn_gate().load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!rt
+            .dispatcher
+            .sacn_gate()
+            .load(std::sync::atomic::Ordering::Relaxed));
     }
 
     // ---- 播放器模式 ----
@@ -1035,8 +1175,15 @@ mod tests {
     fn write_program(dir: &std::path::Path, file: &str) -> std::path::PathBuf {
         use artrec_core::{ArtRecWriter, CompressAlgo, UniDesc};
         let unis = vec![UniDesc::from_universe(5, 512).unwrap()];
-        let mut w = ArtRecWriter::new(std::io::Cursor::new(Vec::new()), unis, CompressAlgo::Zstd, 1, 0, 0)
-            .unwrap();
+        let mut w = ArtRecWriter::new(
+            std::io::Cursor::new(Vec::new()),
+            unis,
+            CompressAlgo::Zstd,
+            1,
+            0,
+            0,
+        )
+        .unwrap();
         let mut cur = vec![vec![0u8; 512]];
         for (t, v) in [(0u64, 1u8), (50_000, 2)] {
             cur[0][0] = v;
@@ -1050,7 +1197,8 @@ mod tests {
     struct TmpDir(std::path::PathBuf);
     impl TmpDir {
         fn new(tag: &str) -> Self {
-            let p = std::env::temp_dir().join(format!("artnet-studio-rt-{tag}-{}", std::process::id()));
+            let p =
+                std::env::temp_dir().join(format!("artnet-studio-rt-{tag}-{}", std::process::id()));
             std::fs::create_dir_all(&p).unwrap();
             Self(p)
         }
@@ -1071,7 +1219,10 @@ mod tests {
         assert_eq!(rt.snapshot().len(), 1);
 
         let st = rt.set_app_mode(AppMode::Player, &noop_emit()).unwrap();
-        assert_eq!((st.mode, st.receivers), (AppMode::Player, ReceiversState::Suspended));
+        assert_eq!(
+            (st.mode, st.receivers),
+            (AppMode::Player, ReceiversState::Suspended)
+        );
         assert!(rt.mode.is_player(), "接收循环据此丢弃迟到帧");
         assert!(lock(&rt.sacn).handle.is_none(), "sACN 接收应已拆除");
         assert!(rt.snapshot().is_empty(), "实时信号应被清空");
@@ -1084,7 +1235,10 @@ mod tests {
 
         // 退出：以最新配置重建，并放开标志
         let st = rt.set_app_mode(AppMode::Live, &noop_emit()).unwrap();
-        assert_eq!((st.mode, st.receivers), (AppMode::Live, ReceiversState::Bound));
+        assert_eq!(
+            (st.mode, st.receivers),
+            (AppMode::Live, ReceiversState::Bound)
+        );
         assert!(!rt.mode.is_player());
         assert!(wait_for_handle(&rt), "退出后应重建 sACN 接收");
     }
@@ -1092,7 +1246,8 @@ mod tests {
     #[test]
     fn scanning_is_refused_while_receivers_are_suspended() {
         let rt = runtime(&sacn_cfg(false));
-        rt.artnet_enabled.store(true, std::sync::atomic::Ordering::Relaxed); // 模拟接收已绑定
+        rt.artnet_enabled
+            .store(true, std::sync::atomic::Ordering::Relaxed); // 模拟接收已绑定
         rt.set_app_mode(AppMode::Player, &noop_emit()).unwrap();
         let err = tauri::async_runtime::block_on(rt.scan_network()).unwrap_err();
         assert_eq!(err, super::SCAN_ERR_ARTNET_DISABLED);
@@ -1118,10 +1273,20 @@ mod tests {
         let emit: Emitter = Arc::new(move |n, _| sink.lock().unwrap().push(n.to_string()));
 
         let st = rt
-            .open_playback(emit.clone(), file, "a".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .open_playback(
+                emit.clone(),
+                file,
+                "a".into(),
+                DispatchTarget::Forwarding,
+                tmp.0.clone(),
+            )
             .unwrap();
         assert!(st.loaded);
-        assert_eq!(rt.app_mode_status().mode, AppMode::Player, "打开节目应自动进入播放器模式");
+        assert_eq!(
+            rt.app_mode_status().mode,
+            AppMode::Player,
+            "打开节目应自动进入播放器模式"
+        );
         assert!(events.lock().unwrap().iter().any(|n| n == "app:mode"));
 
         // 只关闭节目不会退出播放器模式
@@ -1141,10 +1306,20 @@ mod tests {
         let rt = runtime(&sacn_cfg(false));
 
         let err = rt
-            .open_playback(noop_emit(), bad, "bad".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .open_playback(
+                noop_emit(),
+                bad,
+                "bad".into(),
+                DispatchTarget::Forwarding,
+                tmp.0.clone(),
+            )
             .unwrap_err();
         assert!(!err.is_empty());
-        assert_eq!(rt.app_mode_status().mode, AppMode::Live, "打不开节目时不能把用户留在播放器模式");
+        assert_eq!(
+            rt.app_mode_status().mode,
+            AppMode::Live,
+            "打不开节目时不能把用户留在播放器模式"
+        );
         assert!(!rt.mode.is_player());
     }
 
@@ -1155,11 +1330,90 @@ mod tests {
         let bad = tmp.0.join("bad.artrec");
         std::fs::write(&bad, [b'X'; 100]).unwrap();
         let rt = runtime(&sacn_cfg(false));
-        rt.open_playback(noop_emit(), good, "a".into(), DispatchTarget::Forwarding, tmp.0.clone())
-            .unwrap();
+        rt.open_playback(
+            noop_emit(),
+            good,
+            "a".into(),
+            DispatchTarget::Forwarding,
+            tmp.0.clone(),
+        )
+        .unwrap();
         assert!(rt
-            .open_playback(noop_emit(), bad, "bad".into(), DispatchTarget::Forwarding, tmp.0.clone())
+            .open_playback(
+                noop_emit(),
+                bad,
+                "bad".into(),
+                DispatchTarget::Forwarding,
+                tmp.0.clone()
+            )
             .is_err());
-        assert_eq!(rt.app_mode_status().mode, AppMode::Player, "原本就在播放器模式，失败不应退出");
+        assert_eq!(
+            rt.app_mode_status().mode,
+            AppMode::Player,
+            "原本就在播放器模式，失败不应退出"
+        );
+    }
+
+    // ---- 推送节流 ----
+
+    #[test]
+    fn devices_gate_pushes_on_change_at_most_4hz_and_heartbeats_1hz() {
+        let mut gate = super::DevicesGate::default();
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+
+        assert!(gate.due(1, t0), "首次总是推送");
+        assert!(!gate.due(1, ms(100)), "没变化：等心跳");
+        assert!(!gate.due(1, ms(999)));
+        assert!(gate.due(1, ms(1000)), "1 秒心跳");
+
+        // 版本变化：距上次不足 250ms 先压住，满了立刻推
+        assert!(!gate.due(2, ms(1100)));
+        assert!(!gate.due(2, ms(1200)));
+        assert!(gate.due(2, ms(1250)));
+        assert!(!gate.due(2, ms(1350)), "已推过该版本");
+        assert!(!gate.due(3, ms(1400)));
+        assert!(gate.due(3, ms(1500)));
+    }
+
+    #[test]
+    fn passive_sources_use_numeric_ips_and_dedup_per_round() {
+        use signal_engine::{MergeMode, SignalEngine};
+
+        let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
+        // 同一 IP 在两个 Universe 上出现：只 upsert 一次
+        let mut f = sacn_frame(1, [10, 0, 0, 2]);
+        f.protocol = Protocol::ArtNet;
+        eng.ingest(&f, 0);
+        f.universe = 2;
+        eng.ingest(&f, 0);
+        eng.ingest(&sacn_frame(3, [10, 0, 0, 1]), 0);
+        // 同一 IP 也发 sACN：协议不同，分别保留（Art-Net 排在前面）
+        eng.ingest(&sacn_frame(4, [10, 0, 0, 2]), 0);
+
+        let mut out = vec![(IpAddr::V4(Ipv4Addr::UNSPECIFIED), Protocol::Sacn)];
+        super::passive_sources(&eng.snapshot(), &mut out);
+        let ip = |d: u8| IpAddr::V4(Ipv4Addr::new(10, 0, 0, d));
+        assert_eq!(
+            out,
+            vec![
+                (ip(1), Protocol::Sacn),
+                (ip(2), Protocol::ArtNet),
+                (ip(2), Protocol::Sacn)
+            ]
+        );
+    }
+
+    #[test]
+    fn set_viewed_requests_full_frame_only_when_the_set_changes() {
+        let rt = runtime(&sacn_cfg(false));
+        let e0 = rt.dmx_stream().epoch();
+        rt.set_viewed(vec![1, 2]);
+        let e1 = rt.dmx_stream().epoch();
+        assert_ne!(e0, e1);
+        rt.set_viewed(vec![1, 2]);
+        assert_eq!(rt.dmx_stream().epoch(), e1, "同一集合不应强制全量");
+        rt.set_viewed(vec![2]);
+        assert_ne!(rt.dmx_stream().epoch(), e1);
     }
 }

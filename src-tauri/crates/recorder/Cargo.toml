@@ -20,3 +20,17 @@ artrec-core = { path = "../artrec-core" }
 artnet-net = { path = "../artnet-net" }
 signal-engine = { path = "../signal-engine" }
 trash = { version = "=5.2.9", default-features = false, features = ["coinit_apartmentthreaded"] }
+
+[dev-dependencies]
+# 带分配计数的微基准框架（仅 benches 使用）。
+divan = { workspace = true }
+
+# 节目库列表与 sidecar 读取微基准：`cargo bench -p recorder --bench library`。
+[[bench]]
+name = "library"
+harness = false
+
+# 录制 tick 路径（摄入 + 变更检测 + 编码压缩写出）微基准：`cargo bench -p recorder --bench session`。
+[[bench]]
+name = "session"
+harness = false

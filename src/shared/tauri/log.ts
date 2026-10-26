@@ -3,11 +3,33 @@ import {
   warn,
   error,
   debug,
-  attachLogger,
+  attachLogger as pluginAttachLogger,
   LogLevel,
 } from "@tauri-apps/plugin-log";
 
-export { attachLogger, LogLevel };
+import { getDemoBackend } from "./demoBridge";
+
+export { LogLevel };
+
+/**
+ * 订阅 tauri-plugin-log 的日志记录。
+ *
+ * 演示模式下日志面板的内容由演示数据提供，这里不再接入真实后端日志，避免两者混在一起。
+ *
+ * # Arguments
+ *
+ * * `fn` - 每条日志的回调。
+ *
+ * # Returns
+ *
+ * 取消订阅函数的 Promise。
+ */
+export function attachLogger(
+  fn: Parameters<typeof pluginAttachLogger>[0],
+): ReturnType<typeof pluginAttachLogger> {
+  if (getDemoBackend()) return Promise.resolve(() => {});
+  return pluginAttachLogger(fn);
+}
 
 /** 把任意异常规整为文本。 */
 function errText(err: unknown): string {

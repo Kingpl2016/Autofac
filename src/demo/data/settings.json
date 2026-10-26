@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "network": {
+    "mode": "multiNic",
+    "interface": "192.168.1.10",
+    "multiNic": [
+      { "name": "以太网", "artnetEnabled": true, "sacnEnabled": true },
+      { "name": "以太网 2 (灯光专网)", "artnetEnabled": true, "sacnEnabled": false },
+      { "name": "WLAN", "artnetEnabled": false, "sacnEnabled": false }
+    ]
+  },
+  "protocol": {
+    "artnetEnabled": true,
+    "artnetPort": 6454,
+    "sacnEnabled": true,
+    "sacnPort": 5568,
+    "sacnUniverses": [101, 102, 103, 104]
+  },
+  "display": {
+    "uiUpdateRate": 30,
+    "universeFormat": "decimal1",
+    "channelFormat": "decimal1",
+    "valueFormat": "decimal"
+  },
+  "merge": { "mode": "htp", "sourceTimeoutMs": 2500 },
+  "recording": {
+    "directory": "",
+    "compression": "zstd",
+    "zstdLevel": 3,
+    "splitMinutes": 30
+  },
+  "player": { "startInPlayerMode": false },
+  "update": { "channel": "stable" }
+}

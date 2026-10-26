@@ -11,7 +11,8 @@ use tauri::{AppHandle, Emitter as _, Manager};
 use tauri_plugin_opener::OpenerExt as _;
 
 use host_core::recording::{
-    DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult, RecordingStatus,
+    DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult,
+    RecordingStatus,
 };
 use host_core::ArtnetCoreExt;
 use host_core::SettingsExt;
@@ -155,6 +156,8 @@ pub fn recording_disk_info(app: AppHandle, path: Option<String>) -> DiskInfo {
 
 /// 开始录制。
 ///
+/// 创建文件、写文件头与磁盘空间检查都在 `spawn_blocking` 线程上执行，不占用主线程。
+///
 /// # Arguments
 ///
 /// * `app` - Tauri 应用句柄，用于解析录制目录、访问运行时与发射事件。
@@ -169,13 +172,39 @@ pub fn recording_disk_info(app: AppHandle, path: Option<String>) -> DiskInfo {
 /// 回放进行中（`playback_active`）、已在录制（`already_recording`）、
 /// 没有可录制的 Universe（`no_universes`）或目录不可写等落盘错误。
 #[tauri::command]
-pub fn recording_start(
+pub async fn recording_start(
     app: AppHandle,
     args: RecordingStartArgs,
 ) -> Result<RecordingStartResult, String> {
-    crate::playback_commands::ensure_not_playing(&app)?;
+    tauri::async_runtime::spawn_blocking(move || start_blocking(&app, args))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// [`recording_start`] 的阻塞实现体。
+///
+/// 持有 `playback_commands::session_gate` 完成"回放互斥检查 + 开始录制"，与打开节目串行。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+/// * `args` - 前端提交的录制参数。
+///
+/// # Returns
+///
+/// 最终文件路径与 Universe 规划结果。
+///
+/// # Errors
+///
+/// 同 [`recording_start`]。
+fn start_blocking(
+    app: &AppHandle,
+    args: RecordingStartArgs,
+) -> Result<RecordingStartResult, String> {
+    let _gate = crate::playback_commands::session_gate();
+    crate::playback_commands::ensure_not_playing(app)?;
     let cfg = app.settings_snapshot();
-    let dir = recording_dir(&app, &cfg.recording.directory);
+    let dir = recording_dir(app, &cfg.recording.directory);
     let core = app.artnet_core();
     let snapshot = core.snapshot();
     let emit: Emitter = Arc::new({
@@ -244,6 +273,8 @@ fn lib_err(e: LibraryError) -> String {
 
 /// 列出节目库（按修改时间从新到旧）。
 ///
+/// 在 `spawn_blocking` 线程上执行；经 recorder 的进程级节目库缓存，只重读有变化的文件。
+///
 /// # Arguments
 ///
 /// * `app` - Tauri 应用句柄，用于解析录制目录。
@@ -254,13 +285,15 @@ fn lib_err(e: LibraryError) -> String {
 ///
 /// # Errors
 ///
-/// 恒为 `Ok`（保留 `Result` 以兼容前端签名）。
+/// 仅当阻塞任务异常结束（panic 或运行时关闭）时返回描述；正常情况恒为 `Ok`。
 #[tauri::command]
-pub fn recordings_list(app: AppHandle) -> Result<Vec<LibraryEntry>, String> {
-    Ok(recorder::list_library(&resolved_dir(&app)))
+pub async fn recordings_list(app: AppHandle) -> Result<Vec<LibraryEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || recorder::list_library(&resolved_dir(&app)))
+        .await
+        .map_err(|e| e.to_string())
 }
 
-/// 重命名节目，返回新路径。
+/// 重命名节目（连同 sidecar 与概览缓存），返回新路径。
 ///
 /// # Arguments
 ///
@@ -277,18 +310,22 @@ pub fn recordings_list(app: AppHandle) -> Result<Vec<LibraryEntry>, String> {
 /// 路径不在录制目录内（`outside_library`）、目标已存在（`already_exists`）、
 /// 文件不存在（`not_found`）或文件系统失败。
 #[tauri::command]
-pub fn recordings_rename(
+pub async fn recordings_rename(
     app: AppHandle,
     path: String,
     new_name: String,
 ) -> Result<String, String> {
-    let dir = resolved_dir(&app);
-    recorder::rename_recording(&dir, std::path::Path::new(&path), &new_name)
-        .map(|p| p.to_string_lossy().into_owned())
-        .map_err(lib_err)
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = resolved_dir(&app);
+        recorder::rename_recording(&dir, std::path::Path::new(&path), &new_name)
+            .map(|p| p.to_string_lossy().into_owned())
+            .map_err(lib_err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-/// 删除节目及其 sidecar。
+/// 删除节目及其 sidecar 与概览缓存（一并移入系统回收站）。
 ///
 /// # Arguments
 ///
@@ -297,10 +334,15 @@ pub fn recordings_rename(
 ///
 /// # Errors
 ///
-/// 同 [`recordings_rename`]。
+/// 同 [`recordings_rename`]；无法移入回收站时为 `trash_failed: <原因>`。
 #[tauri::command]
-pub fn recordings_delete(app: AppHandle, path: String) -> Result<(), String> {
-    recorder::delete_recording(&resolved_dir(&app), std::path::Path::new(&path)).map_err(lib_err)
+pub async fn recordings_delete(app: AppHandle, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        recorder::delete_recording(&resolved_dir(&app), std::path::Path::new(&path))
+            .map_err(lib_err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 取走应用启动时恢复出的孤立录制结果（取走后清空，只提示一次）。

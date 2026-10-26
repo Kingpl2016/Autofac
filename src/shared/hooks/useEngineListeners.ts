@@ -5,7 +5,6 @@ import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { useOutputStore } from "@/shared/stores/outputStore";
 import type {
-  ChannelsPayload,
   EngineStats,
   OutputPayload,
   UniverseSnapshot,
@@ -13,13 +12,12 @@ import type {
 import type { Device } from "@/shared/domain/device";
 
 /**
- * 订阅引擎事件（stats / universes / channels / output），更新全局 store。
- * 在应用根挂载一次。
+ * 订阅引擎事件（stats / universes / devices / output），更新全局 store。
+ * 在应用根挂载一次。通道数据走二进制通道流，见 `useDmxStream`。
  */
 export function useEngineListeners() {
   const setStats = useEngineDataStore((s) => s.setStats);
   const setUniverses = useEngineDataStore((s) => s.setUniverses);
-  const setChannels = useEngineDataStore((s) => s.setChannels);
   const setDevices = useEngineDataStore((s) => s.setDevices);
   const patchStatus = useEngineStatusStore((s) => s.patch);
   const setOutput = useOutputStore((s) => s.setOutput);
@@ -35,14 +33,11 @@ export function useEngineListeners() {
         });
       }),
       onEvent<UniverseSnapshot[]>("engine:universes", setUniverses),
-      onEvent<ChannelsPayload>("engine:channels", (p) =>
-        setChannels(p.universe, p.data),
-      ),
       onEvent<Device[]>("discovery:devices", setDevices),
       onEvent<OutputPayload>("engine:output", setOutput),
     ];
     return () => {
       for (const u of unlisteners) void u.then((fn) => fn());
     };
-  }, [setStats, setUniverses, setChannels, setDevices, patchStatus, setOutput]);
+  }, [setStats, setUniverses, setDevices, patchStatus, setOutput]);
 }

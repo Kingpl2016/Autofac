@@ -8,8 +8,8 @@ mod range;
 mod ratelimit;
 
 pub use model::{
-    ForwardDestination, ForwardMode, ForwardProtocol, OverrideAction, ResolvedRoute,
-    UniverseOverride,
+    offset_universe, ForwardDestination, ForwardMode, ForwardProtocol, OverrideAction,
+    ResolvedRoute, UniverseOverride,
 };
 pub use range::{format_range, parse_range, try_parse_range, RangeError};
 pub use ratelimit::{RateLimiter, MIN_INTERVAL_MS_44HZ};
@@ -35,10 +35,7 @@ impl ForwardingTable {
     ///
     /// `(目的地, 解析路由)` 列表，仅含需转发者。
     #[must_use]
-    pub fn routes_for(
-        &self,
-        source_universe: u16,
-    ) -> Vec<(&ForwardDestination, ResolvedRoute)> {
+    pub fn routes_for(&self, source_universe: u16) -> Vec<(&ForwardDestination, ResolvedRoute)> {
         self.destinations
             .iter()
             .filter_map(|d| d.resolve(source_universe).map(|r| (d, r)))
@@ -108,7 +105,11 @@ mod tests {
     #[test]
     fn try_parse_range_accepts_what_parse_range_accepts() {
         for text in ["0-3,10,12-13", " 5 , 5 , 4 ", "8-6", "", "1,,2,", "7"] {
-            assert_eq!(try_parse_range(text).unwrap(), parse_range(text), "{text:?}");
+            assert_eq!(
+                try_parse_range(text).unwrap(),
+                parse_range(text),
+                "{text:?}"
+            );
         }
         assert_eq!(try_parse_range("0-50").unwrap().len(), 51);
         assert_eq!(try_parse_range("65535").unwrap(), vec![65535]);
@@ -125,7 +126,10 @@ mod tests {
         assert_eq!(bad("0-5-9"), "0-5-9");
         // 宽松版跳过同样的输入，严格版必须报错
         assert_eq!(parse_range("0-5,abc"), vec![0, 1, 2, 3, 4, 5]);
-        assert!(try_parse_range("abc").unwrap_err().to_string().contains("abc"));
+        assert!(try_parse_range("abc")
+            .unwrap_err()
+            .to_string()
+            .contains("abc"));
     }
 
     #[test]
@@ -167,6 +171,20 @@ mod tests {
         let r = d.resolve(3).unwrap();
         assert_eq!(r.target_universe, 30);
         assert_eq!(r.delay_ms, 500);
+    }
+
+    #[test]
+    fn extreme_offsets_do_not_overflow() {
+        let mut d = dest(ForwardMode::All);
+        d.universe_offset = i32::MAX;
+        assert!(d.resolve(65535).is_none(), "i32 溢出视为越界");
+        d.universe_offset = i32::MIN;
+        assert!(d.resolve(0).is_none());
+        d.universe_offset = -5;
+        assert!(d.resolve(4).is_none(), "变为负数不转发");
+        assert_eq!(d.resolve(5).unwrap().target_universe, 0);
+        assert_eq!(offset_universe(65535, 0), Some(65535));
+        assert_eq!(offset_universe(65535, 1), None);
     }
 
     #[test]

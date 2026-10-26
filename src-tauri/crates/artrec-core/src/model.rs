@@ -362,14 +362,27 @@ impl FrameIndex {
     ///
     /// 缓冲不足 16 字节返回 [`ArtRecError::Truncated`]。
     pub fn from_bytes(b: &[u8]) -> Result<Self> {
-        if b.len() < FRAMEINDEX_SIZE as usize {
-            return Err(ArtRecError::Truncated("FrameIndex 不足 16 字节"));
+        match b.first_chunk::<{ FRAMEINDEX_SIZE as usize }>() {
+            Some(rec) => Ok(Self::from_array(rec)),
+            None => Err(ArtRecError::Truncated("FrameIndex 不足 16 字节")),
         }
-        Ok(Self {
+    }
+
+    /// 从定长 16 字节记录解析（大端，不会失败；crate 内部批量解析索引用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - 一条完整的帧索引记录。
+    ///
+    /// # Returns
+    ///
+    /// 解析出的帧索引条目。
+    pub(crate) fn from_array(b: &[u8; FRAMEINDEX_SIZE as usize]) -> Self {
+        Self {
             time_us: BigEndian::read_u64(&b[0..8]),
             chunk_pos: BigEndian::read_u32(&b[8..12]),
             chunk_cmp_len: BigEndian::read_u16(&b[12..14]),
-        })
+        }
     }
 }
 

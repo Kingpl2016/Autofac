@@ -4,6 +4,7 @@
 //! 反向 DNS 与 ARP MAC 为平台相关的尽力而为增强，由宿主层注入；本 crate
 //! 只维护设备注册表的合并与分类逻辑（纯逻辑，便于测试）。
 
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 
@@ -77,12 +78,54 @@ struct BindState {
 }
 
 /// 设备注册表：合并多来源的发现信息。
+///
+/// 维护一个可见内容版本号（见 [`DeviceRegistry::version`]），宿主据此只在设备列表
+/// 确有变化时才向前端推送，而不是每个刷新周期都序列化整份列表。
 #[derive(Debug, Default)]
 pub struct DeviceRegistry {
     devices: HashMap<IpAddr, Device>,
     custom_names: HashMap<IpAddr, String>,
     /// 多 bind 设备各 bind 的端口状态：IP → bind 序号 → 端口状态。
     binds: HashMap<IpAddr, BTreeMap<u8, BindState>>,
+    /// 可见内容版本：设备增删或任一可见字段变化时 +1；仅 `last_seen_ms` 变化不计。
+    version: u64,
+}
+
+/// 把 `value` 写入 `slot`，并报告值是否真的变化。
+///
+/// # Arguments
+///
+/// * `slot` - 目标字段。
+/// * `value` - 新值。
+///
+/// # Returns
+///
+/// 新值与原值不同（已写入）时为 `true`；相同时为 `false`（不写入）。
+fn assign<T: PartialEq>(slot: &mut T, value: T) -> bool {
+    if *slot == value {
+        false
+    } else {
+        *slot = value;
+        true
+    }
+}
+
+/// 把非空字符串写入可选字段；与现值相同时不分配。
+///
+/// # Arguments
+///
+/// * `slot` - 目标字段。
+/// * `value` - 新值；空串表示“未提供”，不覆盖现值。
+///
+/// # Returns
+///
+/// 字段确实被改写时为 `true`。
+fn assign_non_empty(slot: &mut Option<String>, value: &str) -> bool {
+    if value.is_empty() || slot.as_deref() == Some(value) {
+        return false;
+    }
+    *slot = Some(value.to_owned());
+    true
 }
 
 impl DeviceRegistry {
@@ -114,25 +157,56 @@ impl DeviceRegistry {
             .collect()
     }
 
+    /// 注册表可见内容的版本号。
+    ///
+    /// 只有实质变化才 +1：新增 / 删除设备、`online` 翻转，或类别、主机名、自定义名、MAC、
+    /// 端口、Art-Net 字段（短名、NodeReport、固件、厂商、OEM、样式）等可见字段变化；
+    /// 仅 `last_seen_ms` 刷新不算。数值本身无意义，只用于与上次比较。
+    ///
+    /// # Returns
+    ///
+    /// 单调不减的版本号；与上次读取相同说明 [`list`](Self::list) 除 `last_seen_ms` 外没有变化。
+    #[must_use]
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// 取（必要时创建）某 IP 的设备记录。
+    ///
+    /// 只有插入新设备时才查找并克隆自定义名，并把版本号 +1；已存在的设备直接返回。
+    ///
+    /// # Arguments
+    ///
+    /// * `ip` - 设备 IP。
+    /// * `now_ms` - 当前逻辑时间（毫秒），作为新设备的 `last_seen_ms`。
+    ///
+    /// # Returns
+    ///
+    /// 该设备记录的可变引用。
     fn entry(&mut self, ip: IpAddr, now_ms: u64) -> &mut Device {
-        let custom = self.custom_names.get(&ip).cloned();
-        self.devices.entry(ip).or_insert_with(|| Device {
-            ip: ip.to_string(),
-            hostname: None,
-            custom_name: custom,
-            mac: None,
-            category: DeviceCategory::Network,
-            artnet_ports: None,
-            online: true,
-            last_seen_ms: now_ms,
-            short_name: None,
-            node_report: None,
-            firmware: None,
-            manufacturer: None,
-            oem: None,
-            style: None,
-            ports: Vec::new(),
-        })
+        match self.devices.entry(ip) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                self.version += 1;
+                e.insert(Device {
+                    ip: ip.to_string(),
+                    hostname: None,
+                    custom_name: self.custom_names.get(&ip).cloned(),
+                    mac: None,
+                    category: DeviceCategory::Network,
+                    artnet_ports: None,
+                    online: true,
+                    last_seen_ms: now_ms,
+                    short_name: None,
+                    node_report: None,
+                    firmware: None,
+                    manufacturer: None,
+                    oem: None,
+                    style: None,
+                    ports: Vec::new(),
+                })
+            }
+        }
     }
 
     /// 合并一条 Art-Net 节点回复。
@@ -144,7 +218,6 @@ impl DeviceRegistry {
     pub fn upsert_artnet(&mut self, info: &PollReplyInfo, now_ms: u64) {
         let ip = IpAddr::from(info.ip);
         let mac = format_mac(&info.mac);
-        let long = non_empty(&info.long_name);
 
         // 多 bind 设备（如 8 口节点拆成两个 bind）会从同一 IP 分别回复，
         // 端口需按 bind 序号累积合并，不能互相覆盖。
@@ -163,42 +236,43 @@ impl DeviceRegistry {
             .iter()
             .flat_map(|(bind, state)| {
                 state.ports.iter().map(move |p| NodePort {
-                    index: (bind - 1).saturating_mul(PORTS_PER_BIND).saturating_add(p.index),
+                    index: (bind - 1)
+                        .saturating_mul(PORTS_PER_BIND)
+                        .saturating_add(p.index),
                     ..*p
                 })
             })
             .collect();
 
         let dev = self.entry(ip, now_ms);
-        dev.category = DeviceCategory::ArtNet;
-        dev.online = true;
+        let mut changed = assign(&mut dev.category, DeviceCategory::ArtNet);
+        changed |= assign(&mut dev.online, true);
         dev.last_seen_ms = now_ms;
-        dev.artnet_ports = Some(total_ports);
-        dev.ports = merged_ports;
+        changed |= assign(&mut dev.artnet_ports, Some(total_ports));
+        changed |= assign(&mut dev.ports, merged_ports);
         if dev.hostname.is_none() {
-            dev.hostname = long;
+            changed |= assign_non_empty(&mut dev.hostname, &info.long_name);
         }
-        if mac.is_some() {
-            dev.mac = mac;
+        if let Some(mac) = mac {
+            changed |= assign(&mut dev.mac, Some(mac));
         }
         // 名称 / 状态类字段只在新回复非空时更新，避免被其它 bind 的空字段抹掉。
-        if let Some(v) = non_empty(&info.short_name) {
-            dev.short_name = Some(v);
-        }
-        if let Some(v) = non_empty(&info.node_report) {
-            dev.node_report = Some(v);
-        }
+        changed |= assign_non_empty(&mut dev.short_name, &info.short_name);
+        changed |= assign_non_empty(&mut dev.node_report, &info.node_report);
         if let Some(v) = firmware_string(info.version) {
-            dev.firmware = Some(v);
+            changed |= assign(&mut dev.firmware, Some(v));
         }
         if let Some(v) = manufacturer_string(info.esta_code) {
-            dev.manufacturer = Some(v);
+            changed |= assign(&mut dev.manufacturer, Some(v));
         }
         if info.oem != 0 {
-            dev.oem = Some(info.oem);
+            changed |= assign(&mut dev.oem, Some(info.oem));
         }
         if let Some(v) = style_name(info.style) {
-            dev.style = Some(v.to_string());
+            changed |= assign_non_empty(&mut dev.style, v);
+        }
+        if changed {
+            self.version += 1;
         }
     }
 
@@ -211,25 +285,45 @@ impl DeviceRegistry {
     /// * `now_ms` - 当前逻辑时间（毫秒）。
     pub fn upsert_source(&mut self, ip: IpAddr, protocol: Protocol, now_ms: u64) {
         let dev = self.entry(ip, now_ms);
-        dev.online = true;
+        let mut changed = assign(&mut dev.online, true);
         dev.last_seen_ms = now_ms;
         // 已识别为 Art-Net 节点时不降级分类
         if dev.category != DeviceCategory::ArtNet {
-            dev.category = match protocol {
+            let category = match protocol {
                 Protocol::ArtNet => DeviceCategory::ArtNet,
                 Protocol::Sacn => DeviceCategory::Sacn,
             };
+            changed |= assign(&mut dev.category, category);
+        }
+        if changed {
+            self.version += 1;
         }
     }
 
-    /// 设置设备主机名（反向 DNS 结果）。
+    /// 设置设备主机名（反向 DNS 结果）；设备不存在时先创建。
+    ///
+    /// # Arguments
+    ///
+    /// * `ip` - 设备 IP。
+    /// * `hostname` - 主机名。
+    /// * `now_ms` - 当前逻辑时间（毫秒），仅用于新建设备的 `last_seen_ms`。
     pub fn set_hostname(&mut self, ip: IpAddr, hostname: String, now_ms: u64) {
-        self.entry(ip, now_ms).hostname = Some(hostname);
+        if assign(&mut self.entry(ip, now_ms).hostname, Some(hostname)) {
+            self.version += 1;
+        }
     }
 
-    /// 设置设备 MAC（ARP 结果）。
+    /// 设置设备 MAC（ARP 结果）；设备不存在时先创建。
+    ///
+    /// # Arguments
+    ///
+    /// * `ip` - 设备 IP。
+    /// * `mac` - `AA:BB:CC:DD:EE:FF` 形式的 MAC。
+    /// * `now_ms` - 当前逻辑时间（毫秒），仅用于新建设备的 `last_seen_ms`。
     pub fn set_mac(&mut self, ip: IpAddr, mac: String, now_ms: u64) {
-        self.entry(ip, now_ms).mac = Some(mac);
+        if assign(&mut self.entry(ip, now_ms).mac, Some(mac)) {
+            self.version += 1;
+        }
     }
 
     /// 设置用户自定义名（持久化）。
@@ -239,15 +333,16 @@ impl DeviceRegistry {
     /// * `ip` - 目标设备 IP。
     /// * `name` - 自定义名；空字符串清除。
     pub fn set_custom_name(&mut self, ip: IpAddr, name: String) {
-        if name.is_empty() {
+        let value = if name.is_empty() {
             self.custom_names.remove(&ip);
-            if let Some(d) = self.devices.get_mut(&ip) {
-                d.custom_name = None;
-            }
+            None
         } else {
             self.custom_names.insert(ip, name.clone());
-            if let Some(d) = self.devices.get_mut(&ip) {
-                d.custom_name = Some(name);
+            Some(name)
+        };
+        if let Some(d) = self.devices.get_mut(&ip) {
+            if assign(&mut d.custom_name, value) {
+                self.version += 1;
             }
         }
     }
@@ -259,11 +354,32 @@ impl DeviceRegistry {
     /// * `now_ms` - 当前逻辑时间（毫秒）。
     /// * `timeout_ms` - 离线判定阈值（毫秒）。
     pub fn mark_stale_offline(&mut self, now_ms: u64, timeout_ms: u64) {
+        let mut flipped = false;
         for d in self.devices.values_mut() {
-            if now_ms.saturating_sub(d.last_seen_ms) > timeout_ms {
+            if d.online && now_ms.saturating_sub(d.last_seen_ms) > timeout_ms {
                 d.online = false;
+                flipped = true;
             }
         }
+        if flipped {
+            self.version += 1;
+        }
+    }
+
+    /// 有设备被移除时把版本号 +1。
+    ///
+    /// # Arguments
+    ///
+    /// * `removed` - 本次移除的设备数。
+    ///
+    /// # Returns
+    ///
+    /// 原样返回 `removed`，便于在 `return` 处直接使用。
+    fn note_removed(&mut self, removed: usize) -> usize {
+        if removed > 0 {
+            self.version += 1;
+        }
+        removed
     }
 
     /// 移除全部设备（用户自定义名仍保留，设备再次出现时会恢复）。
@@ -278,7 +394,7 @@ impl DeviceRegistry {
         let n = self.devices.len();
         self.devices.clear();
         self.binds.clear();
-        n
+        self.note_removed(n)
     }
 
     /// 移除全部离线设备（用户自定义名仍保留，设备再次出现时会恢复）。
@@ -290,7 +406,7 @@ impl DeviceRegistry {
         let before = self.devices.len();
         self.devices.retain(|_, d| d.online);
         self.prune_binds();
-        before - self.devices.len()
+        self.note_removed(before - self.devices.len())
     }
 
     /// 丢弃已不在注册表中的设备的 bind 缓存，避免设备再次出现时混入旧端口。
@@ -314,7 +430,7 @@ impl DeviceRegistry {
         let before = self.devices.len();
         self.devices.retain(|_, d| d.category != category);
         self.prune_binds();
-        before - self.devices.len()
+        self.note_removed(before - self.devices.len())
     }
 
     /// 统计在 `since_ms` 及之后有过活动的 Art-Net 节点数量。
@@ -346,15 +462,6 @@ impl DeviceRegistry {
         let mut refs: Vec<(&IpAddr, &Device)> = self.devices.iter().collect();
         refs.sort_by_key(|(ip, _)| **ip);
         refs.into_iter().map(|(_, d)| d.clone()).collect()
-    }
-}
-
-/// 非空字符串转 `Some`，空串转 `None`。
-fn non_empty(s: &str) -> Option<String> {
-    if s.is_empty() {
-        None
-    } else {
-        Some(s.to_string())
     }
 }
 
@@ -442,9 +549,7 @@ mod tests {
     use artnet_net::artnet::{NodePort, PollReplyInfo, PortDirection};
     use artnet_net::Protocol;
 
-    use super::{
-        firmware_string, manufacturer_string, style_name, DeviceCategory, DeviceRegistry,
-    };
+    use super::{firmware_string, manufacturer_string, style_name, DeviceCategory, DeviceRegistry};
 
     fn ip(a: u8) -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(192, 168, 1, a))
@@ -503,7 +608,11 @@ mod tests {
 
         // 自定义名保留，设备再次出现时恢复
         reg.upsert_source(ip(90), Protocol::Sacn, 5);
-        let back = reg.list().into_iter().find(|d| d.ip == "192.168.1.90").unwrap();
+        let back = reg
+            .list()
+            .into_iter()
+            .find(|d| d.ip == "192.168.1.90")
+            .unwrap();
         assert_eq!(back.custom_name.as_deref(), Some("舞台右"));
     }
 
@@ -554,7 +663,11 @@ mod tests {
         assert_eq!(left[0].ip, "192.168.1.71");
         // 自定义名保留，设备再次出现时恢复
         reg.upsert_source(ip(70), Protocol::Sacn, 11_000);
-        let back = reg.list().into_iter().find(|d| d.ip == "192.168.1.70").unwrap();
+        let back = reg
+            .list()
+            .into_iter()
+            .find(|d| d.ip == "192.168.1.70")
+            .unwrap();
         assert_eq!(back.custom_name.as_deref(), Some("旧设备"));
     }
 
@@ -715,6 +828,151 @@ mod tests {
         assert_eq!(json["ports"][0]["direction"], "input");
         assert_eq!(json["ports"][0]["universe"], 3);
         assert!(json.get("nodeReport").is_some());
+    }
+
+    #[test]
+    fn version_ignores_last_seen_only_refresh() {
+        let mut reg = DeviceRegistry::new();
+        assert_eq!(reg.version(), 0);
+        reg.upsert_source(ip(1), Protocol::Sacn, 0);
+        let v = reg.version();
+        assert!(v > 0, "新增设备必须 +1");
+
+        // 只刷新 last_seen：版本不变，但列表里的时间确实更新了
+        reg.upsert_source(ip(1), Protocol::Sacn, 100);
+        reg.upsert_source(ip(1), Protocol::Sacn, 200);
+        assert_eq!(reg.version(), v);
+        assert_eq!(reg.list()[0].last_seen_ms, 200);
+
+        // 没有设备超时：不变
+        reg.mark_stale_offline(1000, 5000);
+        assert_eq!(reg.version(), v);
+    }
+
+    #[test]
+    fn version_tracks_online_flip_and_category() {
+        let mut reg = DeviceRegistry::new();
+        reg.upsert_source(ip(2), Protocol::Sacn, 0);
+        let v0 = reg.version();
+
+        reg.mark_stale_offline(10_000, 5000);
+        let v1 = reg.version();
+        assert!(v1 > v0, "online 翻转为离线必须 +1");
+        // 已离线的设备再次判定：不重复计数
+        reg.mark_stale_offline(20_000, 5000);
+        assert_eq!(reg.version(), v1);
+
+        reg.upsert_source(ip(2), Protocol::Sacn, 20_000);
+        let v2 = reg.version();
+        assert!(v2 > v1, "重新上线必须 +1");
+
+        // sACN → Art-Net：类别变化
+        reg.upsert_source(ip(2), Protocol::ArtNet, 20_100);
+        let v3 = reg.version();
+        assert!(v3 > v2);
+        // Art-Net 节点不降级：类别不变，版本也不变
+        reg.upsert_source(ip(2), Protocol::Sacn, 20_200);
+        assert_eq!(reg.version(), v3);
+        assert_eq!(reg.list()[0].category, DeviceCategory::ArtNet);
+    }
+
+    #[test]
+    fn version_tracks_artnet_fields_but_not_identical_replies() {
+        let mut reg = DeviceRegistry::new();
+        let info = PollReplyInfo {
+            ip: [192, 168, 1, 110],
+            short_name: "S".into(),
+            long_name: "Long".into(),
+            node_report: "#0001 [0001] OK".into(),
+            mac: [1, 2, 3, 4, 5, 6],
+            version: [1, 2],
+            esta_code: 0x4C58,
+            oem: 7,
+            num_ports: 1,
+            ports: vec![port(0, PortDirection::Output, 1)],
+            ..PollReplyInfo::default()
+        };
+        reg.upsert_artnet(&info, 0);
+        let v = reg.version();
+
+        // 完全相同的回复（只是时间变了）：不变
+        reg.upsert_artnet(&info, 1000);
+        reg.upsert_artnet(&info, 2000);
+        assert_eq!(reg.version(), v);
+        assert_eq!(reg.list()[0].last_seen_ms, 2000);
+
+        // 其它 bind 的空字段不会抹掉已有值，也不算变化
+        let sparse = PollReplyInfo {
+            bind_index: 1,
+            short_name: String::new(),
+            node_report: String::new(),
+            ..info.clone()
+        };
+        reg.upsert_artnet(&sparse, 2100);
+        assert_eq!(reg.version(), v);
+
+        let report = PollReplyInfo {
+            node_report: "#0002 [0002] Fault".into(),
+            ..info.clone()
+        };
+        reg.upsert_artnet(&report, 3000);
+        let v1 = reg.version();
+        assert!(v1 > v, "NodeReport 变化必须 +1");
+
+        let ported = PollReplyInfo {
+            ports: vec![port(0, PortDirection::Output, 9)],
+            ..report
+        };
+        reg.upsert_artnet(&ported, 4000);
+        assert!(reg.version() > v1, "端口变化必须 +1");
+    }
+
+    #[test]
+    fn version_tracks_names_hostname_mac_and_removal() {
+        let mut reg = DeviceRegistry::new();
+        reg.upsert_source(ip(3), Protocol::Sacn, 0);
+        let mut v = reg.version();
+        let mut bumped = |reg: &DeviceRegistry| {
+            let now = reg.version();
+            let changed = now != v;
+            v = now;
+            changed
+        };
+
+        reg.set_custom_name(ip(3), "舞台".into());
+        assert!(bumped(&reg));
+        reg.set_custom_name(ip(3), "舞台".into());
+        assert!(!bumped(&reg), "同名不算变化");
+        reg.set_custom_name(ip(3), String::new());
+        assert!(bumped(&reg));
+        // 给不存在的设备起名：列表不变
+        reg.set_custom_name(ip(4), "将来".into());
+        assert!(!bumped(&reg));
+
+        reg.set_hostname(ip(3), "host".into(), 1);
+        assert!(bumped(&reg));
+        reg.set_hostname(ip(3), "host".into(), 2);
+        assert!(!bumped(&reg));
+        reg.set_mac(ip(3), "AA:BB:CC:DD:EE:FF".into(), 3);
+        assert!(bumped(&reg));
+        reg.set_mac(ip(3), "AA:BB:CC:DD:EE:FF".into(), 4);
+        assert!(!bumped(&reg));
+
+        // 什么都没删：不变
+        assert_eq!(reg.clear_offline(), 0);
+        assert_eq!(reg.remove_category(DeviceCategory::Computer), 0);
+        assert!(!bumped(&reg));
+        assert_eq!(reg.remove_category(DeviceCategory::Sacn), 1);
+        assert!(bumped(&reg));
+        assert_eq!(reg.clear(), 0);
+        assert!(!bumped(&reg));
+
+        // 预设名在设备首次出现时套用，并算作新增
+        reg.upsert_source(ip(4), Protocol::Sacn, 5);
+        assert!(bumped(&reg));
+        assert_eq!(reg.list()[0].custom_name.as_deref(), Some("将来"));
+        assert_eq!(reg.clear(), 1);
+        assert!(bumped(&reg));
     }
 
     #[test]

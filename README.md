@@ -76,6 +76,25 @@ npm run tauri dev
 
 > 本应用为**桌面专用**：所有后端调用直接走 Tauri IPC，不再提供浏览器降级。请使用 `npm run tauri dev` 开发；`npm run dev` 仅作为 Tauri 加载的 Vite 前端服务器，在纯浏览器中打开时涉及后端能力的界面将不可用。
 
+### 演示模式（没有灯光设备时看完整界面）
+
+```bash
+npm run dev:demo
+```
+
+窗口标题带「[演示模式]」。所有页面（仪表盘、Universe 监看、设备发现、信号转发、信号流、录制与回放、核心板控制 / 文件、设置、关于）都会有一套完整的测试数据，并且会动起来：
+
+- **实时信号**：25 个 Universe（Art-Net + sACN，含多来源冲突、频闪、保活等情形），包速率、通道值随时间变化。
+- **设备**：34 台设备覆盖 5 种类别，有离线、周期性掉线的，网络扫描会陆续发现新设备。
+- **转发 / 输出**：8 个目的地（含停用、重映射、延迟），其中一个会周期性丢帧并报错。
+- **录制与回放**：节目库 12 个节目（含自动恢复的、损坏的）；可以真的开始 / 停止录制，录完进节目库；回放支持播放、暂停、跳转、倍速、循环、连播，时间线热力图与通道曲线都有数据。
+- **核心板**：只有 `192.168.1.200` / `.201` 能连上，其它地址会连接超时；文件可上传、下载、重命名、删除。
+- **关于**：检查更新总是发现新版本，可看到完整的下载进度与安装流程。
+
+写操作（保存转发表 / 设置、重命名或删除节目、改设备名、增删核心板文件等）在内存里立即生效，刷新页面后还原。
+
+测试数据全部放在 [`src/demo/data/*.json`](src/demo/data)，想增删或调整只改 JSON，不用碰代码。演示代码只在 `vite --mode demo`（或 `VITE_DEMO_MODE=1`）时动态导入，普通构建的产物里没有它。演示模式没有接管的命令（退出守卫、信号检测器窗口）仍走真实后端。
+
 ## 构建
 
 ```bash
@@ -103,6 +122,7 @@ npm run tauri build
 | `npm run build` | 类型检查并构建前端静态产物到 `dist` |
 | `npm run preview` | 预览构建后的前端产物 |
 | `npm run tauri dev` | 启动 Tauri 桌面开发模式 |
+| `npm run dev:demo` | 以演示模式启动桌面应用（全部页面使用 `src/demo/data` 的测试数据） |
 | `npm run tauri build` | 构建桌面应用安装包 |
 | `npm run lint` | 运行 ESLint |
 | `npm run test` | 运行一次 Vitest 测试 |
@@ -117,6 +137,21 @@ cargo test --workspace
 
 （在 `src-tauri` 目录下执行）
 
+### 性能基准与压测
+
+以下命令都在 `src-tauri` 目录下执行。
+
+| 命令 | 说明 |
+|---|---|
+| `cargo bench -p <crate> --benches` | 运行某个 crate 的全部 divan 微基准（报告中位耗时与每次迭代的分配次数），如 `-p host-core`、`-p signal-engine`、`-p artrec-core`、`-p player`、`-p recorder`、`-p artnet-net`、`-p discovery` |
+| `cargo bench -p host-core --bench dispatch -- --sample-count 10` | 只跑单个基准文件；`--sample-count` 等 divan 参数只能配合 `--bench <名称>` 使用 |
+| `cargo build --release -p artnet-net --example loadgen` | 构建 Art-Net 压测发包器 |
+| `target/release/examples/loadgen --universes 256 --hz 44 --sources 1 --seconds 60` | 向本机发 256 Universe × 44Hz 的 ArtDmx（`--sources 2` 模拟双来源合并） |
+| `cargo test -p host-core playback_timing_44hz -- --ignored --nocapture` | 回放计时测试：64 Universe × 44Hz 播放到 UDP 回环，打印迟到 p50 / p99 / max（需在空闲机器上运行） |
+| `cargo build --profile profiling` | 与 release 相同优化、保留符号，供 samply / WPA 采样分析 |
+
+计时类基准在负载波动的机器上误差较大，对比前后结果时建议重复运行几次。
+
 ## 项目结构
 
 ```
@@ -124,6 +159,7 @@ art-net-studio/
 ├── src/                    前端源码
 │   ├── app/                应用入口与路由
 │   ├── layouts/            主布局、侧栏、头部
+│   ├── demo/               演示模式：模拟后端 + 测试数据（data/*.json）
 │   ├── pages/              各功能页面
 │   ├── features/           按领域组织的功能模块（含 components、hooks、stores、lib）
 │   ├── components/ui/      基础 UI 组件

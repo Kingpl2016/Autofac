@@ -7,38 +7,47 @@ import path from "node:path";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+export default defineConfig(({ mode }) => {
+  // 演示模式：`vite --mode demo`（npm run dev:demo）或设置环境变量 VITE_DEMO_MODE=1。
+  // 以构建期常量 `__DEMO_MODE__` 注入，普通构建里整段演示代码会被摇树移除。
+  const demo = mode === "demo" || process.env.VITE_DEMO_MODE === "1";
+
+  return {
+    define: {
+      __DEMO_MODE__: JSON.stringify(demo),
     },
-  },
-  build: {
-    // 多页面：主应用 + 信号检测器独立窗口（由 Rust 侧以 signal-checker.html 打开）
-    rolldownOptions: {
-      input: {
-        main: path.resolve(__dirname, "index.html"),
-        "signal-checker": path.resolve(__dirname, "signal-checker.html"),
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
       },
     },
-  },
-  // Tauri 期望固定端口，失败则直接报错
-  clearScreen: false,
-  server: {
-    port: 1420,
-    strictPort: true,
-    host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
-      : undefined,
-    watch: {
-      // 不监听 Rust 后端目录
-      ignored: ["**/src-tauri/**"],
+    build: {
+      // 多页面：主应用 + 信号检测器独立窗口（由 Rust 侧以 signal-checker.html 打开）
+      rolldownOptions: {
+        input: {
+          main: path.resolve(__dirname, "index.html"),
+          "signal-checker": path.resolve(__dirname, "signal-checker.html"),
+        },
+      },
     },
-  },
+    // Tauri 期望固定端口，失败则直接报错
+    clearScreen: false,
+    server: {
+      port: 1420,
+      strictPort: true,
+      host: host || false,
+      hmr: host
+        ? {
+            protocol: "ws",
+            host,
+            port: 1421,
+          }
+        : undefined,
+      watch: {
+        // 不监听 Rust 后端目录
+        ignored: ["**/src-tauri/**"],
+      },
+    },
+  };
 });

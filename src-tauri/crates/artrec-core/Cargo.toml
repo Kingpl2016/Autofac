@@ -17,3 +17,17 @@ thiserror = { workspace = true }
 crc = { workspace = true }
 zstd = { workspace = true }
 byteorder = { workspace = true }
+
+# 库本身没有基准：关闭后 `cargo bench -p artrec-core -- <divan 参数>` 不会把参数传给
+# libtest 单元测试 harness（否则报 "Unrecognized option"）。
+[lib]
+bench = false
+
+[dev-dependencies]
+# 带分配计数的微基准框架（仅 benches 使用）。
+divan = { workspace = true }
+
+# 编解码微基准：`cargo bench -p artrec-core --bench codec`。
+[[bench]]
+name = "codec"
+harness = false
