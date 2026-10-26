@@ -69,6 +69,7 @@ export function DiscoveryView() {
   const { scanning, last, showNoReply, scan, dismissNoReply } = useNetworkScan();
   const freshIps = useNewDevices();
   const wide = useMediaQuery("(min-width: 1280px)");
+  const medium = useMediaQuery("(min-width: 1024px)");
 
   const rawCategory = useDiscoveryPrefs((s) => s.category);
   const status = useDiscoveryPrefs((s) => s.status);
@@ -76,6 +77,8 @@ export function DiscoveryView() {
   const setCategory = useDiscoveryPrefs((s) => s.setCategory);
   const setStatus = useDiscoveryPrefs((s) => s.setStatus);
   const setSort = useDiscoveryPrefs((s) => s.setSort);
+  const prefShowMac = useDiscoveryPrefs((s) => s.showMac);
+  const setShowMac = useDiscoveryPrefs((s) => s.setShowMac);
   const clearPrefFilters = useDiscoveryPrefs((s) => s.clearFilters);
   // sACN 关闭后其筛选标签消失：停在该标签上时回落到“全部”
   const category: CategoryFilter =
@@ -177,17 +180,22 @@ export function DiscoveryView() {
     );
   };
 
-  const handleAddToForwarding = (d: Device) => {
-    navigate(FORWARDING_PATH, {
-      state: forwardingPrefillState({
-        name: d.customName || d.hostname || d.shortName || "",
-        targetIp: d.ip,
-      }),
-    });
-  };
+  const handleAddToForwarding = useCallback(
+    (d: Device) => {
+      navigate(FORWARDING_PATH, {
+        state: forwardingPrefillState({
+          name: d.customName || d.hostname || d.shortName || "",
+          targetIp: d.ip,
+        }),
+      });
+    },
+    [navigate],
+  );
 
-  // 窄窗口或打开详情时隐藏 MAC 列（详情里有完整信息），保证主要列不被挤压
-  const showMac = wide && !selected;
+  // 窄窗口或打开详情时隐藏 MAC / 信息列（详情里有完整信息），保证主要列不被挤压；
+  // MAC 列另外受用户偏好控制
+  const showMac = prefShowMac && wide && !selected;
+  const showInfo = medium && !selected;
 
   return (
     <div className="flex h-full min-h-[28rem] flex-col gap-4">
@@ -220,6 +228,8 @@ export function DiscoveryView() {
         statusCounts={{ all: devices.length, online: onlineCount, offline: offlineCount }}
         status={status}
         onStatusChange={setStatus}
+        showMac={prefShowMac}
+        onToggleMac={() => setShowMac(!prefShowMac)}
         canExport={visible.length > 0}
         onExport={handleExport}
         offlineCount={offlineCount}
@@ -254,7 +264,10 @@ export function DiscoveryView() {
                 onSelect={handleSelect}
                 freshIps={freshIps}
                 showMac={showMac}
+                showInfo={showInfo}
                 onRename={handleRenameRequest}
+                onForward={handleAddToForwarding}
+                onRenameCommit={handleRename}
               />
             )}
           </div>

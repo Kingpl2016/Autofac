@@ -26,6 +26,7 @@ const EMPTY_STATS: EngineStats = {
   totalPackets: 0,
   packetRate: 0,
   uptimeSec: 0,
+  memoryBytes: 0,
 };
 
 /**

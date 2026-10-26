@@ -15,12 +15,15 @@ export interface DiscoveryPrefsData {
   category: CategoryFilter;
   status: StatusFilter;
   sort: { key: SortKey; dir: SortDir };
+  /** 是否显示 MAC 列（窗口太窄或打开详情面板时仍会自动隐藏）。 */
+  showMac: boolean;
 }
 
 interface DiscoveryPrefsState extends DiscoveryPrefsData {
   setCategory: (category: CategoryFilter) => void;
   setStatus: (status: StatusFilter) => void;
   setSort: (sort: { key: SortKey; dir: SortDir }) => void;
+  setShowMac: (show: boolean) => void;
   /** 清除分类与状态筛选（保留排序）。 */
   clearFilters: () => void;
 }
@@ -42,6 +45,7 @@ export const DEFAULT_PREFS: DiscoveryPrefsData = {
   category: "all",
   status: "all",
   sort: DEFAULT_SORT,
+  showMac: true,
 };
 
 /**
@@ -69,6 +73,7 @@ export function sanitizePrefs(raw: unknown): DiscoveryPrefsData {
         ? (sort.dir as SortDir)
         : DEFAULT_PREFS.sort.dir,
     },
+    showMac: typeof r.showMac === "boolean" ? r.showMac : DEFAULT_PREFS.showMac,
   };
 }
 
@@ -83,13 +88,14 @@ export const useDiscoveryPrefs = create<DiscoveryPrefsState>()(
       setCategory: (category) => set({ category }),
       setStatus: (status) => set({ status }),
       setSort: (sort) => set({ sort }),
+      setShowMac: (showMac) => set({ showMac }),
       clearFilters: () => set({ category: "all", status: "all" }),
     }),
     {
       name: "discovery",
       version: 1,
       storage: createTauriPersistStorage<DiscoveryPrefsData>(),
-      partialize: ({ category, status, sort }) => ({ category, status, sort }),
+      partialize: ({ category, status, sort, showMac }) => ({ category, status, sort, showMac }),
       // 没有已保存的数据（首次运行 / 读取失败）时保持当前值，不被默认值覆盖
       merge: (persisted, current) =>
         persisted == null ? current : { ...current, ...sanitizePrefs(persisted) },

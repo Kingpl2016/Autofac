@@ -100,17 +100,58 @@
     "destinations": "Forward destinations",
     "packetRate": "Packet rate",
     "uptime": "Uptime",
-    "memoryUsage": "Memory usage",
+    "memoryUsage": "Process memory",
     "activeUniverseList": "Active universes",
     "systemLog": "System log",
-    "clusterStatus": "Cluster status",
     "protocol": "Protocol",
     "sourceIp": "Source IP",
     "activeChannels": "Active channels",
     "mergeConflict": "Merge conflict",
     "noActiveUniverses": "No active universes",
     "noDevices": "No devices discovered",
-    "packetsPerSec": "pkt/s"
+    "packetsPerSec": "pkt/s",
+    "output": {
+      "title": "Output health",
+      "state": {
+        "idle": "Idle",
+        "sending": "Sending",
+        "dropping": "Dropping",
+        "error": "Send errors"
+      },
+      "stale": "Stale",
+      "waiting": "Waiting for engine data",
+      "sent": "Sent",
+      "rate": "Send rate",
+      "errors": "Send errors",
+      "dropped": "Dropped",
+      "lastError": "Last error",
+      "none": "None",
+      "ago": "{{time}} ago",
+      "note": "Session totals",
+      "sender": {
+        "reconnecting": "Sender reconnecting",
+        "down": "Sender unavailable"
+      }
+    },
+    "hint": {
+      "devicesTotal": "{{count}} total",
+      "destinationsEnabled": "{{count}} enabled"
+    },
+    "universeN": "Universe {{n}}",
+    "activeChannelsN": "{{count}} active ch",
+    "sourcesMore": "{{count}} more sources",
+    "totalPackets": "Total packets",
+    "cardLimit": "Showing the first {{shown}} of {{total}}. Switch to the table to see all.",
+    "view": {
+      "label": "Active universes view",
+      "cards": "Cards",
+      "table": "Table"
+    },
+    "merge": {
+      "htp": "HTP",
+      "ltp": "LTP",
+      "priority": "Priority"
+    }
   },
   "universes": {
     "title": "Universes",
@@ -274,15 +315,82 @@
     "styleRoute": "Router",
     "styleBackup": "Backup",
     "styleConfig": "Config tool",
-    "styleVisual": "Visualiser"
+    "styleVisual": "Visualiser",
+    "colInfo": "Art-Net info",
+    "colActions": "Actions",
+    "infoUniverses": "{{n}} uni",
+    "infoFirmware": "fw {{v}}",
+    "infoHaPeer": "HA peer",
+    "forwardTo": "Add as forwarding destination",
+    "toggleMac": "MAC column",
+    "toggleMacHint": "Show or hide the MAC address column"
   },
   "signalFlow": {
     "subtitle": "Live view of the source → universe → destination signal path",
     "simplified": "Simplified",
     "simplifyThreshold": "Simplify threshold (≥N)",
     "active": "Active",
-    "disabled": "Disabled",
-    "empty": "No signals or forward destinations"
+    "disabled": "No signal or disabled",
+    "empty": "No signals or forward destinations",
+    "resetLayout": "Reset layout",
+    "resetLayoutHint": "Discard dragged positions, restore the automatic layout and fit the view",
+    "thresholdHint": "Merge universes into one node once this many are active",
+    "canvasLabel": "Signal flow graph",
+    "minimap": "Minimap",
+    "legend": {
+      "label": "Legend",
+      "player": "Player",
+      "source": "Source",
+      "universe": "Universe",
+      "destination": "Destination",
+      "off": "Disabled",
+      "delay": "Delay"
+    },
+    "protocol": {
+      "artNet": "Art-Net",
+      "sacn": "sACN",
+      "mixed": "Art-Net + sACN"
+    },
+    "node": {
+      "hasSignal": "Signal present",
+      "player": "Player",
+      "universes": "{{n}} uni",
+      "sources": "{{n}} src",
+      "channels": "{{n}} ch",
+      "aggregate": "{{n}} universes",
+      "aggregateActive": "{{active}} active · {{rate}} pps",
+      "aggregateProgress": "Share of active universes",
+      "offset": "ofs {{n}}",
+      "off": "OFF"
+    },
+    "canvasHint": "This is the graphical view. If you use a keyboard or a screen reader, switch to the List view.",
+    "view": {
+      "label": "Signal flow view",
+      "graph": "Graph",
+      "list": "List"
+    },
+    "list": {
+      "pathsTitle": "Universe paths",
+      "destinationsTitle": "Destinations",
+      "pathsCaption": "How sources, universes and destinations connect",
+      "destinationsCaption": "Forward destinations and what they are sending",
+      "colStatus": "Status",
+      "colSources": "Sources",
+      "colDestinations": "Destinations",
+      "colAddress": "Address",
+      "colUniverses": "Universes",
+      "signal": "Signal",
+      "noSignal": "No signal",
+      "off": "Disabled"
+    },
+    "announce": {
+      "source": "source {{name}}",
+      "destination": "destination {{name}}",
+      "gained": "Signal on: {{names}}",
+      "lost": "Signal lost: {{names}}",
+      "more": " and {{n}} more",
+      "separator": ", "
+    }
   },
   "forwarding": {
     "title": "Forwarding",
@@ -313,9 +421,72 @@
     "noDestinations": "No forward destinations yet; add one at the top right",
     "duplicate": "Duplicate",
     "autoSaved": "Forwarding configuration saved",
-    "required": "Name and target IP are required",
     "prefillFromDiscovery": "Prefilled from device {{ip}}; review and save",
-    "prefillExisting": "{{ip}} already has a destination; opened for editing"
+    "prefillExisting": "{{ip}} already has a destination; opened for editing",
+    "copySuffix": " (copy)",
+    "retry": "Retry",
+    "saveFailed": "Failed to save forwarding settings",
+    "saveFailedHint": "Your changes are only kept on this page for now. Retry, or check disk space and permissions.",
+    "loadFailed": "Failed to load forwarding settings",
+    "summary": {
+      "offset": "offset {{n}}",
+      "delay": "delay {{ms}}ms",
+      "overrides": "{{count}} overrides"
+    },
+    "error": {
+      "nameRequired": "Enter a name",
+      "ipRequired": "Enter a target IP",
+      "ipInvalid": "Invalid target IP. An IPv4 address is required, e.g. 10.0.0.5",
+      "portInvalid": "Port must be an integer from 1 to 65535",
+      "offsetInvalid": "Offset must be an integer from -65535 to 65535",
+      "delayInvalid": "Delay must be an integer from 0 to 2000 (ms)",
+      "overrideSource": "Source universe must be an integer from 0 to 65535",
+      "overrideTarget": "Target universe must be an integer from 0 to 65535",
+      "overrideDelay": "Delay must be an integer from 0 to 2000 (ms)",
+      "typeInvalid": "Wrong field type",
+      "protocolInvalid": "Protocol must be artNet or sacn",
+      "modeInvalid": "Mode must be all or selected",
+      "actionInvalid": "Action must be forward or exclude"
+    },
+    "delete": {
+      "title": "Delete destination \"{{name}}\"?",
+      "desc": "Signals will no longer be forwarded to {{ip}}. This cannot be undone.",
+      "confirm": "Delete"
+    },
+    "import": {
+      "errorJson": "Import failed: the file is not valid JSON",
+      "errorShape": "Import failed: unexpected format, an array of destinations is required",
+      "errorEmpty": "Import failed: the file contains no destinations",
+      "errorItem": "Import failed: destination #{{index}}, field \"{{field}}\": {{detail}}",
+      "itemField": "item",
+      "title": "Import {{count}} destinations",
+      "desc": "You already have {{current}} destinations. Replace discards all current destinations. Merge appends the imported ones to the end of the list.",
+      "replace": "Replace current",
+      "merge": "Merge",
+      "done": "Imported {{count}} destinations"
+    },
+    "pickDevice": "Select an online device",
+    "pickFromList": "Pick from list",
+    "enterManually": "Enter manually",
+    "enterManuallyItem": "Enter IP manually…",
+    "group": {
+      "artNet": "Art-Net nodes",
+      "sacn": "sACN nodes",
+      "other": "Other devices"
+    },
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "stats": {
+      "waiting": "Waiting for stats",
+      "disabled": "Disabled, not sending",
+      "noTraffic": "Nothing sent yet",
+      "sent": "Sent",
+      "dropped": "Dropped",
+      "errors": "Errors",
+      "lastSend": "Last sent",
+      "ago": "{{time}} ago",
+      "stale": "Stats stale"
+    }
   },
   "settings": {
     "title": "Settings",

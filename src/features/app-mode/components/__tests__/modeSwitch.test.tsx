@@ -92,8 +92,8 @@ describe("ModeSwitch", () => {
   it("进入播放器模式一律先确认：正文写明后果，默认聚焦“取消”", async () => {
     useEngineDataStore.setState({
       universes: [
-        { universe: 1, protocol: "artNet", sourceIps: [], sourceCount: 0, activeChannels: 1, conflictChannels: 0, totalPackets: 1 },
-        { universe: 2, protocol: "artNet", sourceIps: [], sourceCount: 0, activeChannels: 1, conflictChannels: 0, totalPackets: 1 },
+        { universe: 1, protocol: "artNet", sourceIps: [], sourceCount: 0, activeChannels: 1, conflictChannels: 0, totalPackets: 1, packetRate: 0, sources: [] },
+        { universe: 2, protocol: "artNet", sourceIps: [], sourceCount: 0, activeChannels: 1, conflictChannels: 0, totalPackets: 1, packetRate: 0, sources: [] },
       ],
       devices: [],
     });

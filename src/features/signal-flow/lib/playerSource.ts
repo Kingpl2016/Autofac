@@ -21,6 +21,8 @@ export function playerUniverses(status: PlaybackStatus): UniverseSnapshot[] {
     activeChannels: 0,
     conflictChannels: 0,
     totalPackets: 0,
+    packetRate: 0,
+    sources: [],
   }));
 }
 

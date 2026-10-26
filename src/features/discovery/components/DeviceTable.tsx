@@ -31,8 +31,14 @@ interface DeviceTableProps {
   /** 刚被发现的设备 IP（短暂高亮） */
   freshIps: ReadonlySet<string>;
   showMac: boolean;
+  /** 是否显示“Art-Net 信息”列（空间不足时由父组件关闭） */
+  showInfo: boolean;
   /** 按 F2：选中该设备并进入重命名 */
   onRename: (ip: string) => void;
+  /** 把该设备添加为转发目的地（行尾按钮 / 按 F） */
+  onForward: (device: Device) => void;
+  /** 行内改名提交：空串表示清除自定义名 */
+  onRenameCommit: (ip: string, name: string) => void;
   ref?: Ref<DeviceTableHandle>;
 }
 
@@ -41,6 +47,8 @@ interface Column {
   sortKey: SortKey | null;
   labelKey: string;
   className?: string;
+  /** 表头文字仅供读屏（用于没有可见标题的操作列） */
+  srOnly?: boolean;
 }
 
 const COLUMNS: Column[] = [
@@ -51,10 +59,21 @@ const COLUMNS: Column[] = [
   { sortKey: "category", labelKey: "discovery.colCategory", className: "w-32" },
   { sortKey: "ports", labelKey: "discovery.colPorts", className: "w-28" },
 ];
+const INFO_COLUMN: Column = {
+  sortKey: null,
+  labelKey: "discovery.colInfo",
+  className: "w-52",
+};
 const MAC_COLUMN: Column = {
   sortKey: null,
   labelKey: "discovery.colMac",
   className: "w-44",
+};
+const ACTION_COLUMN: Column = {
+  sortKey: null,
+  labelKey: "discovery.colActions",
+  className: "w-12",
+  srOnly: true,
 };
 
 /**
@@ -69,13 +88,18 @@ export function DeviceTable({
   onSelect,
   freshIps,
   showMac,
+  showInfo,
   onRename,
+  onForward,
+  onRenameCommit,
   ref,
 }: DeviceTableProps) {
   const { t } = useTranslation();
   const copy = useCopyToClipboard();
   const bodyRef = useRef<HTMLTableSectionElement>(null);
   const [focusedIp, setFocusedIp] = useState<string | null>(null);
+  // 正在行内改名的设备；同一时间只有一行处于编辑状态
+  const [editingIp, setEditingIp] = useState<string | null>(null);
 
   // 漫游 tabindex 的落点：最近聚焦的行 > 选中行 > 第一行（都必须仍在列表里）
   const has = (ip: string | null) => ip != null && devices.some((d) => d.ip === ip);
@@ -91,6 +115,24 @@ export function DeviceTable({
         ?.focus();
     },
   }));
+
+  // 结束行内编辑后把焦点还给原行，键盘用户不会丢失位置
+  const finishEdit = useCallback((ip: string) => {
+    setEditingIp(null);
+    requestAnimationFrame(() => {
+      bodyRef.current
+        ?.querySelector<HTMLTableRowElement>(`tr[data-ip="${CSS.escape(ip)}"]`)
+        ?.focus();
+    });
+  }, []);
+
+  const handleCommit = useCallback(
+    (ip: string, name: string) => {
+      onRenameCommit(ip, name);
+      finishEdit(ip);
+    },
+    [onRenameCommit, finishEdit],
+  );
 
   const handleToggle = useCallback(
     (ip: string) => onSelect(ip === selectedIp ? null : ip),
@@ -115,7 +157,12 @@ export function DeviceTable({
     list[next].focus();
   };
 
-  const columns = showMac ? [...COLUMNS, MAC_COLUMN] : COLUMNS;
+  const columns = [
+    ...COLUMNS,
+    ...(showInfo ? [INFO_COLUMN] : []),
+    ...(showMac ? [MAC_COLUMN] : []),
+    ACTION_COLUMN,
+  ];
 
   return (
     <table aria-label={t("discovery.tableLabel")} className="w-full table-fixed text-sm">
@@ -158,6 +205,8 @@ export function DeviceTable({
                       <ArrowUpDown className="size-3.5 opacity-40" aria-hidden />
                     )}
                   </button>
+                ) : c.srOnly ? (
+                  <span className="sr-only">{colLabel}</span>
                 ) : (
                   colLabel
                 )}
@@ -175,10 +224,16 @@ export function DeviceTable({
             fresh={freshIps.has(d.ip)}
             active={d.ip === activeIp}
             showMac={showMac}
+            showInfo={showInfo}
             onToggle={handleToggle}
             onActivate={setFocusedIp}
             onCopy={copy}
             onRename={onRename}
+            onForward={onForward}
+            editing={d.ip === editingIp}
+            onStartEdit={setEditingIp}
+            onCommitName={handleCommit}
+            onCancelEdit={finishEdit}
           />
         ))}
       </tbody>

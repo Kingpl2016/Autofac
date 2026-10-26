@@ -57,7 +57,11 @@ describe("playerUniverses / playerDestinations", () => {
 
 describe("buildGraph 回放源节点", () => {
   it("回放伪源生成 player 类型节点，并连到 Universe 与目的地", () => {
-    const g = buildGraph(playerUniverses(status()), [dest("a")], 50, true, "开场秀");
+    const g = buildGraph(playerUniverses(status()), [dest("a")], {
+      simplifyThreshold: 50,
+      playerName: "开场秀",
+      playerActive: true,
+    });
     const player = g.nodes.find((n) => n.id === `src:${PLAYER_SOURCE_ID}`);
     expect(player?.type).toBe("player");
     expect(player?.data).toMatchObject({ name: "开场秀", universeCount: 2 });
@@ -68,16 +72,23 @@ describe("buildGraph 回放源节点", () => {
   });
 
   it("聚合模式下回放源仍是 player 节点", () => {
-    const g = buildGraph(playerUniverses(status({ universes: [1, 2, 3] })), [dest("a")], 2, true, "x");
+    const g = buildGraph(playerUniverses(status({ universes: [1, 2, 3] })), [dest("a")], {
+      simplifyThreshold: 2,
+      playerName: "x",
+    });
     expect(g.simplified).toBe(true);
     expect(g.nodes.find((n) => n.id === `src:${PLAYER_SOURCE_ID}`)?.type).toBe("player");
   });
 
-  it("不播放时边不带动画；禁用的目的地仍是虚线", () => {
-    const g = buildGraph(playerUniverses(status()), [dest("a", false)], 50, false, "x");
-    expect(g.edges.every((e) => e.animated === false)).toBe(true);
+  it("不播放时边没有信号；禁用的目的地标记为 disabled", () => {
+    const g = buildGraph(playerUniverses(status()), [dest("a", false)], {
+      simplifyThreshold: 50,
+      playerName: "x",
+      playerActive: false,
+    });
+    expect(g.edges.every((e) => (e.data as { active: boolean }).active === false)).toBe(true);
     const toDest = g.edges.find((e) => e.target === "dst:a");
-    expect(toDest?.style?.strokeDasharray).toBe("4 4");
+    expect(toDest?.data).toMatchObject({ disabled: true });
   });
 
   it("普通来源仍是 source 节点（回归）", () => {
@@ -91,11 +102,12 @@ describe("buildGraph 回放源节点", () => {
           activeChannels: 1,
           conflictChannels: 0,
           totalPackets: 1,
+          packetRate: 0,
+          sources: [],
         },
       ],
       [],
-      50,
-      true,
+      { simplifyThreshold: 50 },
     );
     expect(g.nodes.find((n) => n.id === "src:10.0.0.1")?.type).toBe("source");
   });

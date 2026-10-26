@@ -24,6 +24,8 @@ const snap = (
   activeChannels: 1,
   conflictChannels: 0,
   totalPackets: 1,
+  packetRate: 0,
+  sources: [],
 });
 
 describe("parseUniverseRanges", () => {

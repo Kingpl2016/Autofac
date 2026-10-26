@@ -3,15 +3,17 @@ import { useEffect } from "react";
 import { onEvent } from "@/shared/tauri/events";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
+import { useOutputStore } from "@/shared/stores/outputStore";
 import type {
   ChannelsPayload,
   EngineStats,
+  OutputPayload,
   UniverseSnapshot,
 } from "@/shared/domain/engine";
 import type { Device } from "@/shared/domain/device";
 
 /**
- * 订阅引擎事件（stats / universes / channels），更新全局 store。
+ * 订阅引擎事件（stats / universes / channels / output），更新全局 store。
  * 在应用根挂载一次。
  */
 export function useEngineListeners() {
@@ -20,6 +22,7 @@ export function useEngineListeners() {
   const setChannels = useEngineDataStore((s) => s.setChannels);
   const setDevices = useEngineDataStore((s) => s.setDevices);
   const patchStatus = useEngineStatusStore((s) => s.patch);
+  const setOutput = useOutputStore((s) => s.setOutput);
 
   useEffect(() => {
     const unlisteners: Array<Promise<() => void>> = [
@@ -36,9 +39,10 @@ export function useEngineListeners() {
         setChannels(p.universe, p.data),
       ),
       onEvent<Device[]>("discovery:devices", setDevices),
+      onEvent<OutputPayload>("engine:output", setOutput),
     ];
     return () => {
       for (const u of unlisteners) void u.then((fn) => fn());
     };
-  }, [setStats, setUniverses, setChannels, setDevices, patchStatus]);
+  }, [setStats, setUniverses, setChannels, setDevices, patchStatus, setOutput]);
 }

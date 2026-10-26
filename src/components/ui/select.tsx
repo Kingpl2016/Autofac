@@ -67,6 +67,18 @@ const SelectContent = React.forwardRef<
 ));
 SelectContent.displayName = "SelectContent";
 
+const SelectLabel = React.forwardRef<
+  React.ComponentRef<typeof SelectPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Label
+    ref={ref}
+    className={cn("px-3 py-1.5 text-xs font-medium text-muted-foreground", className)}
+    {...props}
+  />
+));
+SelectLabel.displayName = "SelectLabel";
+
 const SelectItem = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
@@ -93,6 +105,7 @@ SelectItem.displayName = "SelectItem";
 export {
   Select,
   SelectGroup,
+  SelectLabel,
   SelectValue,
   SelectTrigger,
   SelectContent,

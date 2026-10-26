@@ -4,10 +4,12 @@
 
 mod engine;
 mod merge;
+mod rate;
 mod state;
 
-pub use engine::{SignalEngine, SourceStat, UniverseSnapshot};
+pub use engine::{SignalEngine, SourceStat, UniverseSnapshot, UniverseSource};
 pub use merge::{merge, MergeMode, MergeResult, SourceView};
+pub use rate::{RateTracker, RATE_WINDOW_MS};
 pub use state::{unknown_source, SourceEntry, SourceKey, UniverseState};
 
 #[cfg(test)]
@@ -73,6 +75,40 @@ mod tests {
         assert_eq!(snap[0].universe, 1);
         assert_eq!(snap[0].active_channels, 1);
         assert_eq!(snap[1].universe, 5);
+    }
+
+    #[test]
+    fn snapshot_lists_per_source_packets_sorted_by_ip() {
+        let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
+        eng.ingest(&frame(1, [10, 0, 0, 2], vec![1]), 0);
+        eng.ingest(&frame(1, [10, 0, 0, 1], vec![2]), 1);
+        eng.ingest(&frame(1, [10, 0, 0, 1], vec![3]), 2);
+        let snap = eng.snapshot();
+        let sources = &snap[0].sources;
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].ip, "10.0.0.1");
+        assert_eq!(sources[0].packets, 2);
+        assert_eq!(sources[1].ip, "10.0.0.2");
+        assert_eq!(sources[1].packets, 1);
+        assert_eq!(snap[0].packet_rate, 0, "速率由 RateTracker 补齐");
+        assert_eq!(sources[0].packet_rate, 0);
+    }
+
+    #[test]
+    fn rate_tracker_fills_snapshot_from_engine() {
+        let mut eng = SignalEngine::new(MergeMode::Htp, 2500);
+        let mut tracker = crate::RateTracker::new();
+        eng.ingest(&frame(1, [10, 0, 0, 1], vec![1]), 0);
+        let mut snap = eng.snapshot();
+        tracker.apply(&mut snap, eng.total_packets(), 0);
+        for t in 1..=44u64 {
+            eng.ingest(&frame(1, [10, 0, 0, 1], vec![1]), t * 20);
+        }
+        let mut snap = eng.snapshot();
+        let total = tracker.apply(&mut snap, eng.total_packets(), 1000);
+        assert_eq!(total, 44);
+        assert_eq!(snap[0].packet_rate, 44);
+        assert_eq!(snap[0].sources[0].packet_rate, 44);
     }
 
     #[test]

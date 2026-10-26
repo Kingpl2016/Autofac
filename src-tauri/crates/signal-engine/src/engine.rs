@@ -29,6 +29,22 @@ pub struct UniverseSnapshot {
     pub conflict_channels: usize,
     /// 累计包数。
     pub total_packets: u64,
+    /// 每秒包数（由 [`crate::RateTracker`] 在宿主层补齐，`snapshot()` 本身填 `0`）。
+    pub packet_rate: u32,
+    /// 该 Universe 上各来源的统计（按源 IP 字符串升序）。
+    pub sources: Vec<UniverseSource>,
+}
+
+/// 单个 Universe 内某个来源的统计（面向前端 DTO，camelCase）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniverseSource {
+    /// 源 IP 字符串（未知来源为 `0.0.0.0`）。
+    pub ip: String,
+    /// 该源在此 Universe 上的累计包数。
+    pub packets: u64,
+    /// 该源在此 Universe 上的每秒包数（由 [`crate::RateTracker`] 补齐）。
+    pub packet_rate: u32,
 }
 
 /// 单个来源（按源 IP 聚合）的统计（面向前端 DTO，camelCase）。
@@ -231,6 +247,20 @@ impl SignalEngine {
                     active_channels,
                     conflict_channels: m.conflict_channels,
                     total_packets: st.total_packets,
+                    packet_rate: 0,
+                    sources: {
+                        let mut v: Vec<UniverseSource> = st
+                            .sources
+                            .iter()
+                            .map(|(ip, e)| UniverseSource {
+                                ip: ip.to_string(),
+                                packets: e.packets,
+                                packet_rate: 0,
+                            })
+                            .collect();
+                        v.sort_by(|a, b| a.ip.cmp(&b.ip));
+                        v
+                    },
                 }
             })
             .collect()

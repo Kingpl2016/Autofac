@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Device } from "@/shared/domain/device";
 import {
+  originalName,
   countByCategory,
   displayName,
   filterDevices,
@@ -132,5 +133,23 @@ describe("nextSort", () => {
     expect(nextSort({ key: "ip", dir: "asc" }, "ip")).toEqual({ key: "ip", dir: "desc" });
     expect(nextSort({ key: "ip", dir: "desc" }, "ip")).toEqual({ key: "ip", dir: "asc" });
     expect(nextSort({ key: "ip", dir: "desc" }, "name")).toEqual({ key: "name", dir: "asc" });
+  });
+});
+
+describe("originalName", () => {
+  const base = dev({ ip: "10.0.0.1" });
+
+  it("没有自定义名时不显示补充名", () => {
+    expect(originalName({ ...base, hostname: "node-1" })).toBeNull();
+  });
+
+  it("有自定义名时返回主机名，其次短名", () => {
+    expect(originalName({ ...base, customName: "舞台左", hostname: "node-1", shortName: "N1" })).toBe("node-1");
+    expect(originalName({ ...base, customName: "舞台左", shortName: "N1" })).toBe("N1");
+  });
+
+  it("设备自己没有名字，或与自定义名相同，都没有信息增量", () => {
+    expect(originalName({ ...base, customName: "舞台左" })).toBeNull();
+    expect(originalName({ ...base, customName: "node-1", hostname: "node-1" })).toBeNull();
   });
 });

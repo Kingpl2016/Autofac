@@ -20,6 +20,8 @@ const snap = (universe: number, activeChannels: number): UniverseSnapshot => ({
   activeChannels,
   conflictChannels: 0,
   totalPackets: 1,
+  packetRate: 0,
+  sources: [],
 });
 
 const live = (over: Partial<RecordingStatus> = {}): RecordingStatus => ({

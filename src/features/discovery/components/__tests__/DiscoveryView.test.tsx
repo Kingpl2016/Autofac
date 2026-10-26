@@ -409,3 +409,180 @@ describe("DiscoveryView 清理离线设备", () => {
     ).toBe(true);
   });
 });
+
+describe("DiscoveryView 信息列、MAC 开关与转发入口", () => {
+  const node = dev({
+    ip: "10.0.0.7",
+    hostname: "Node-7",
+    mac: "AA:BB:CC:00:00:07",
+    firmware: "2.5",
+    ports: [
+      { index: 0, direction: "output", universe: 1, active: true },
+      { index: 1, direction: "output", universe: 2, active: true },
+      { index: 2, direction: "input", universe: 1, active: false },
+    ],
+  });
+  const peer = dev({ ip: "10.0.0.9", category: "cluster", hostname: "HA-B" });
+  const pc = dev({ ip: "10.0.0.20", category: "computer", hostname: "控台" });
+
+  beforeEach(() => useEngineDataStore.setState({ devices: [node, peer, pc] }));
+
+  it("“Art-Net 信息”列：Universe 数与固件；集群显示 HA 对端；其它设备为占位符", () => {
+    renderView();
+    expect(screen.getByRole("columnheader", { name: "Art-Net 信息" })).toBeTruthy();
+    const cells = (ip: string) =>
+      Array.from(
+        (dataRows().find((r) => r.getAttribute("data-ip") === ip) as HTMLTableRowElement).cells,
+      ).map((c) => c.textContent);
+    expect(cells("10.0.0.7")).toContain("2 uni · fw 2.5");
+    expect(cells("10.0.0.9")).toContain("HA 对端");
+    expect(cells("10.0.0.20")).not.toContain("HA 对端");
+    expect(cells("10.0.0.20").filter((c) => c === "—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("打开详情面板后信息列与 MAC 列让位", () => {
+    renderView();
+    expect(screen.getByRole("columnheader", { name: "MAC" })).toBeTruthy();
+    fireEvent.click(dataRows()[0]);
+    expect(screen.queryByRole("columnheader", { name: "Art-Net 信息" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "MAC" })).toBeNull();
+  });
+
+  it("MAC 列开关：关闭后列消失，并保存到偏好", () => {
+    renderView();
+    const toggle = screen.getByRole("button", { name: "MAC 列" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("columnheader", { name: "MAC" })).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("columnheader", { name: "MAC" })).toBeNull();
+    expect(screen.getByRole("button", { name: "MAC 列" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(useDiscoveryPrefs.getState().showMac).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "MAC 列" }));
+    expect(screen.getByRole("columnheader", { name: "MAC" })).toBeTruthy();
+  });
+
+  it("行尾按钮：不打开详情，直接跳转转发页并预填该设备", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: "添加为转发目的地 Node-7" }));
+
+    expect(nav.navigate).toHaveBeenCalledWith("/forwarding", {
+      state: { prefill: { name: "Node-7", targetIp: "10.0.0.7" } },
+    });
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("在行上按 F 同样跳转转发页", () => {
+    renderView();
+    const row = dataRows().find((r) => r.getAttribute("data-ip") === "10.0.0.7") as HTMLElement;
+    row.focus();
+    fireEvent.keyDown(row, { key: "f" });
+
+    expect(nav.navigate).toHaveBeenCalledWith("/forwarding", {
+      state: { prefill: { name: "Node-7", targetIp: "10.0.0.7" } },
+    });
+  });
+});
+describe("DiscoveryView 表内行内改名", () => {
+  const node = dev({ ip: "10.0.0.7", hostname: "Node-7", customName: "舞台左" });
+  const other = dev({ ip: "10.0.0.8", hostname: "Node-8" });
+
+  beforeEach(() => useEngineDataStore.setState({ devices: [node, other] }));
+
+  const rowOf = (ip: string) =>
+    dataRows().find((r) => r.getAttribute("data-ip") === ip) as HTMLTableRowElement;
+  const startEdit = (name: string) =>
+    fireEvent.click(screen.getByRole("button", { name: `重命名 ${name}` }));
+
+  it("有自定义名时主行显示自定义名，设备自己的名字以小字补充", () => {
+    renderView();
+    const cell = rowOf("10.0.0.7").cells[0];
+    expect(cell.textContent).toContain("舞台左");
+    expect(cell.textContent).toContain("Node-7");
+  });
+
+  it("点击铅笔：行内出现输入框并带出当前自定义名，不打开详情面板", () => {
+    renderView();
+    startEdit("舞台左");
+    const input = within(rowOf("10.0.0.7")).getByRole("textbox") as HTMLInputElement;
+    expect(input.value).toBe("舞台左");
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("Enter 保存：调用后端、立即更新界面，焦点回到该行", async () => {
+    api.setDeviceName.mockResolvedValue(undefined);
+    renderView();
+    startEdit("Node-8");
+    const input = within(rowOf("10.0.0.8")).getByRole("textbox");
+    fireEvent.change(input, { target: { value: "  舞台右  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(api.setDeviceName).toHaveBeenCalledWith("10.0.0.8", "舞台右");
+    expect(within(rowOf("10.0.0.8")).queryByRole("textbox")).toBeNull();
+    expect(rowOf("10.0.0.8").cells[0].textContent).toContain("舞台右");
+    await waitFor(() => expect(document.activeElement).toBe(rowOf("10.0.0.8")));
+  });
+
+  it("清空后保存会清除自定义名，退回设备自己的名字", () => {
+    api.setDeviceName.mockResolvedValue(undefined);
+    renderView();
+    startEdit("舞台左");
+    const input = within(rowOf("10.0.0.7")).getByRole("textbox");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(api.setDeviceName).toHaveBeenCalledWith("10.0.0.7", "");
+    expect(rowOf("10.0.0.7").cells[0].textContent).toContain("Node-7");
+    expect(rowOf("10.0.0.7").cells[0].textContent).not.toContain("舞台左");
+  });
+
+  it("Esc 取消：不保存，且不会关闭已打开的详情面板", () => {
+    renderView();
+    fireEvent.click(rowOf("10.0.0.8"));
+    expect(screen.getByRole("complementary")).toBeTruthy();
+
+    startEdit("舞台左");
+    fireEvent.keyDown(within(rowOf("10.0.0.7")).getByRole("textbox"), { key: "Escape" });
+
+    expect(api.setDeviceName).not.toHaveBeenCalled();
+    expect(within(rowOf("10.0.0.7")).queryByRole("textbox")).toBeNull();
+    expect(screen.getByRole("complementary")).toBeTruthy();
+  });
+
+  it("失去焦点视为取消", () => {
+    renderView();
+    startEdit("舞台左");
+    const input = within(rowOf("10.0.0.7")).getByRole("textbox");
+    fireEvent.change(input, { target: { value: "没提交" } });
+    fireEvent.blur(input);
+
+    expect(api.setDeviceName).not.toHaveBeenCalled();
+    expect(rowOf("10.0.0.7").cells[0].textContent).toContain("舞台左");
+  });
+
+  it("编辑时按方向键不会触发表格的行间移动", () => {
+    renderView();
+    startEdit("舞台左");
+    const input = within(rowOf("10.0.0.7")).getByRole("textbox");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("编辑时在输入框里按 F / C 不会触发转发或复制", () => {
+    renderView();
+    startEdit("舞台左");
+    const input = within(rowOf("10.0.0.7")).getByRole("textbox");
+    fireEvent.keyDown(input, { key: "f" });
+    expect(nav.navigate).not.toHaveBeenCalled();
+  });
+
+  it("铅笔按钮只在当前行成为 Tab 停靠点", () => {
+    renderView();
+    const pencils = screen.getAllByRole("button", { name: /^重命名 / });
+    expect(pencils.filter((b) => b.tabIndex === 0)).toHaveLength(1);
+  });
+});

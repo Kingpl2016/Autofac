@@ -31,3 +31,4 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 fs4 = "=1.1.0"
+memory-stats = "=1.2.0"

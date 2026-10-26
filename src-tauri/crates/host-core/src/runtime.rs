@@ -17,11 +17,12 @@ use artnet_net::{DmxFrame, Protocol};
 use discovery::{Device, DeviceCategory, DeviceRegistry};
 use forwarding::{ForwardingTable, RateLimiter};
 use settings::AppSettings;
-use signal_engine::{SignalEngine, SourceStat, UniverseSnapshot};
+use signal_engine::{RateTracker, SignalEngine, SourceStat, UniverseSnapshot};
 
 use crate::app_mode::{AppMode, ModeDeps, ModeManager, ModeStatus, ReceiversState};
 use crate::dispatch::{DispatchTarget, Dispatcher};
 use crate::mode::{FrameFanout, RuntimeMode};
+use crate::output_stats::OutputTracker;
 use crate::playback::{OpenParams, PlaybackController, PlaybackStatus};
 use crate::recording::RecordingController;
 use crate::sacn::{plan_sacn, SacnPlan};
@@ -82,6 +83,12 @@ impl Drop for ScanGuard {
     }
 }
 
+/// `engine:output` 事件的最小推送间隔。
+const OUTPUT_EMIT_INTERVAL: Duration = Duration::from_millis(500);
+
+/// `engine:universes` 事件的最小推送间隔。
+const UNIVERSES_EMIT_INTERVAL: Duration = Duration::from_millis(100);
+
 /// 引擎统计事件载荷。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,10 +97,14 @@ pub struct StatsPayload {
     pub active_universes: usize,
     /// 累计包数。
     pub total_packets: u64,
-    /// 每秒包数（上一周期估算）。
+    /// 每秒包数（约 1 秒窗口内的平均值）。
     pub packet_rate: u32,
     /// 运行时长（秒）。
     pub uptime_sec: u64,
+    /// 本进程的物理内存占用（字节，Windows 为工作集）；无法获取时为 `0`。
+    ///
+    /// 仅统计主进程，不含 WebView 子进程。
+    pub memory_bytes: u64,
 }
 
 /// 单个被查看 Universe 的通道数据事件载荷。
@@ -411,8 +422,9 @@ impl Runtime {
             let _ = std::fs::write(&self.forwarding_path, text);
         }
         *lock(&self.forwarding) = table;
-        // 目的地可能已增删，重置限速状态避免旧目的地条目残留。
+        // 目的地可能已增删，重置限速状态与按目的地归属的输出统计，避免旧条目残留。
         self.dispatcher.reset_rate_limits();
+        self.dispatcher.prune_output_stats();
     }
 
     /// 当前全部活跃 Universe 快照。
@@ -739,8 +751,15 @@ impl Runtime {
         let start = self.start;
         let fps = cfg.display.ui_update_rate.max(1);
         let period = Duration::from_millis(1000 / u64::from(fps));
+        let output_stats = self.dispatcher.output_stats();
+        let sender_health = self.sender_health.clone();
         tauri::async_runtime::spawn(async move {
-            let mut last_packets: u64 = 0;
+            let mut rate_tracker = RateTracker::new();
+            let mut output_tracker = OutputTracker::new();
+            let mut last_output_emit: Option<Instant> = None;
+            let mut memory_bytes: u64 = 0;
+            let mut last_memory_at: Option<Instant> = None;
+            let mut last_universes_emit: Option<Instant> = None;
             let mut last_sources_emit = Instant::now();
             let mut ticker = tokio::time::interval(period);
             loop {
@@ -753,7 +772,7 @@ impl Runtime {
                 // 先在 engine 锁外取当前查看列表，避免在持有 engine 锁期间再嵌套 viewed 锁，
                 // 缩短 engine 临界区、降低与帧摄取循环的锁竞争。
                 let view = lock(&viewed).clone();
-                let (snapshot, total, channels, sources) = {
+                let (mut snapshot, total, channels, sources) = {
                     let mut e = lock(&engine);
                     e.prune(now_ms);
                     let snap = e.snapshot();
@@ -767,6 +786,14 @@ impl Runtime {
                         .collect();
                     (snap, total, ch, sources)
                 };
+                // 速率按约 1 秒窗口差分，避免 30Hz 逐周期差分的整数抖动
+                let packet_rate = rate_tracker.apply(&mut snapshot, total, now_ms);
+                // 进程内存约 1Hz 采样一次（系统调用，无需跟随 UI 刷新率）
+                if last_memory_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(1)) {
+                    last_memory_at = Some(Instant::now());
+                    memory_bytes = memory_stats::memory_stats()
+                        .map_or(0, |m| m.physical_mem as u64);
+                }
                 if let Some(sources) = sources {
                     last_sources_emit = Instant::now();
                     let _ = app.emit("engine:sources", &sources);
@@ -787,10 +814,6 @@ impl Runtime {
                     r.list()
                 };
 
-                let packet_rate = ((total.saturating_sub(last_packets)) as f64
-                    * (1000.0 / period.as_millis() as f64))
-                    as u32;
-                last_packets = total;
 
                 let _ = app.emit(
                     "engine:stats",
@@ -799,12 +822,29 @@ impl Runtime {
                         total_packets: total,
                         packet_rate,
                         uptime_sec,
+                        memory_bytes,
                     },
                 );
-                let _ = app.emit("engine:universes", &snapshot);
+                // 宇宙列表含逐源统计，载荷随宇宙数线性增长；列表只用于计数展示，
+                // 约 10Hz 足够，通道数据（`engine:channels`）仍按 UI 刷新率推送。
+                if last_universes_emit.is_none_or(|t| t.elapsed() >= UNIVERSES_EMIT_INTERVAL) {
+                    last_universes_emit = Some(Instant::now());
+                    let _ = app.emit("engine:universes", &snapshot);
+                }
                 let _ = app.emit("discovery:devices", &devices);
                 for c in channels {
                     let _ = app.emit("engine:channels", &c);
+                }
+
+                // 输出统计约 2Hz 推送一次：窗口差分与状态推导都按 1 秒窗口，无需更高频率
+                if last_output_emit.is_none_or(|t| t.elapsed() >= OUTPUT_EMIT_INTERVAL) {
+                    last_output_emit = Some(Instant::now());
+                    let payload = output_tracker.update(
+                        &output_stats.snapshot(),
+                        sender_health.state(),
+                        now_ms,
+                    );
+                    let _ = app.emit("engine:output", &payload);
                 }
             }
         });

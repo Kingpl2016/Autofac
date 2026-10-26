@@ -55,6 +55,19 @@ export function displayName(d: Device): string {
 }
 
 /**
+ * 设置了自定义名之后，设备自己的名字（主机名或短名），用来在列表里作为小字补充。
+ *
+ * @param d 设备。
+ * @returns 没有自定义名、或设备本身没有可用名字时返回 `null`；
+ *   名字与自定义名相同时同样返回 `null`（没有信息增量）。
+ */
+export function originalName(d: Device): string | null {
+  if (!d.customName) return null;
+  const own = d.hostname || d.shortName || null;
+  return own && own !== d.customName ? own : null;
+}
+
+/**
  * 统计各分类的设备数量。
  *
  * @param devices 全部设备。

@@ -2,6 +2,7 @@
 //!
 //! 实时接收链路与录制回放共用本模块，保证两者的路由、偏移、延迟与发送行为一致。
 
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -12,12 +13,15 @@ use artnet_net::Bytes;
 use forwarding::{ForwardProtocol, ForwardingTable, RateLimiter, MIN_INTERVAL_MS_44HZ};
 use serde::{Deserialize, Serialize};
 
+use crate::output_stats::{OutputStats, DIRECT_PREFIX};
 use crate::sender::SenderHealth;
 use crate::util::lock;
 
 /// 一次待发送任务。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForwardJob {
+    /// 目的地 id（转发表条目的 id；直发目标为 `direct:ip:port`），供输出统计归属。
+    pub dest_id: String,
     /// 输出协议。
     pub protocol: ForwardProtocol,
     /// 目标 IP 字符串。
@@ -78,6 +82,8 @@ pub struct Dispatcher {
     sacn_enabled: Arc<AtomicBool>,
     /// 发送器健康度：每次发送后上报成败，连续失败时触发发送套接字重建。
     health: Arc<SenderHealth>,
+    /// 输出统计：累计发出 / 丢弃 / 出错的包数，供仪表盘与转发页展示。
+    stats: Arc<OutputStats>,
 }
 
 impl Dispatcher {
@@ -105,7 +111,30 @@ impl Dispatcher {
             // 独立使用（测试等）时默认放行；运行时按配置显式设置
             sacn_enabled: Arc::new(AtomicBool::new(true)),
             health: SenderHealth::new(),
+            stats: OutputStats::new(),
         }
+    }
+
+    /// 输出统计的共享句柄（运行时据此周期性生成 `engine:output` 事件）。
+    ///
+    /// # Returns
+    ///
+    /// 与本分发器（及其克隆）共享的 [`OutputStats`]。
+    #[must_use]
+    pub fn output_stats(&self) -> Arc<OutputStats> {
+        self.stats.clone()
+    }
+
+    /// 清除转发表中已不存在的目的地的统计（转发表变更后调用）。
+    ///
+    /// 全局累计值保留，仅移除按目的地归属的计数，避免已删除的条目残留。
+    pub fn prune_output_stats(&self) {
+        let ids: HashSet<String> = lock(&self.forwarding)
+            .destinations
+            .iter()
+            .map(|d| d.id.clone())
+            .collect();
+        self.stats.retain(|id| ids.contains(id));
     }
 
     /// 发送器健康度的共享句柄（运行时据此监督并重建发送套接字）。
@@ -191,7 +220,7 @@ impl Dispatcher {
                     .collect()
             }
             DispatchTarget::Direct { ip, protocol, port } => vec![Route {
-                id: format!("direct:{ip}:{port}"),
+                id: format!("{DIRECT_PREFIX}{ip}:{port}"),
                 protocol: *protocol,
                 target_ip: ip.clone(),
                 port: *port,
@@ -221,6 +250,7 @@ impl Dispatcher {
             };
             if allowed {
                 jobs.push(ForwardJob {
+                    dest_id: route.id,
                     protocol: route.protocol,
                     target_ip: route.target_ip,
                     port: route.port,
@@ -228,6 +258,8 @@ impl Dispatcher {
                     delay_ms: route.delay_ms,
                     data: payload.clone(),
                 });
+            } else {
+                self.stats.record_dropped(&route.id);
             }
         }
         jobs
@@ -241,13 +273,14 @@ impl Dispatcher {
     pub async fn send_jobs(&self, jobs: Vec<ForwardJob>) {
         for job in jobs {
             if job.delay_ms == 0 {
-                send_one(&self.sender, &self.health, &job).await;
+                send_one(&self.sender, &self.health, &self.stats, &job).await;
             } else {
                 let sender = self.sender.clone();
                 let health = self.health.clone();
+                let stats = self.stats.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_millis(u64::from(job.delay_ms))).await;
-                    send_one(&sender, &health, &job).await;
+                    send_one(&sender, &health, &stats, &job).await;
                 });
             }
         }
@@ -278,13 +311,16 @@ impl Dispatcher {
 
 /// 执行一次发送（Art-Net 或 sACN 单播到目标），并把成败上报给 `health`。
 ///
-/// 目标 IP 非法或发送器尚未就绪时静默忽略（发送器缺失由监督任务负责创建，不算发送失败）。
+/// 发送器尚未就绪时静默忽略（发送器缺失由监督任务负责创建，不算发送失败）。
+/// 目标 IP 非法属于配置错误：计入输出统计的错误数，但不影响发送器健康度。
 async fn send_one(
     sender: &Arc<tokio::sync::Mutex<Option<DmxSender>>>,
     health: &SenderHealth,
+    stats: &OutputStats,
     job: &ForwardJob,
 ) {
     let Ok(ip) = job.target_ip.parse::<IpAddr>() else {
+        stats.record_error(&job.dest_id, &format!("目标 IP 无效: {}", job.target_ip));
         return;
     };
     let addr = SocketAddr::new(ip, job.port);
@@ -298,8 +334,14 @@ async fn send_one(
         }
     };
     match result {
-        Ok(()) => health.report_ok(),
-        Err(_) => health.report_error(),
+        Ok(()) => {
+            health.report_ok();
+            stats.record_sent(&job.dest_id);
+        }
+        Err(e) => {
+            health.report_error();
+            stats.record_error(&job.dest_id, &e.to_string());
+        }
     }
 }
 
@@ -345,6 +387,7 @@ mod tests {
     /// 发往一个本机 IPv4 套接字无法到达的地址族（IPv6），发送必然失败。
     fn failing_job() -> super::ForwardJob {
         super::ForwardJob {
+            dest_id: "bad".into(),
             protocol: ForwardProtocol::ArtNet,
             target_ip: "::1".into(),
             port: 6454,
@@ -570,4 +613,112 @@ mod tests {
             .unwrap();
         assert!(start.elapsed() >= Duration::from_millis(100), "{:?}", start.elapsed());
     }
-}
+
+    /// 经转发表发出的包会计入全局与目的地的 `sent`，且直发目标只计入全局。
+    #[tokio::test]
+    async fn successful_sends_are_counted_per_destination() {
+        let rx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let port = rx.local_addr().unwrap().port();
+        let d = Dispatcher::new(
+            Arc::new(Mutex::new(ForwardingTable {
+                destinations: vec![dest("a", port, ForwardMode::All)],
+            })),
+            Arc::new(Mutex::new(RateLimiter::new())),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                DmxSender::new([0u8; 16]).await.unwrap(),
+            ))),
+        );
+        d.dispatch(1, &[1], 0, &DispatchTarget::Forwarding, true).await;
+        d.dispatch(2, &[1], 0, &DispatchTarget::Forwarding, true).await;
+        let direct = DispatchTarget::Direct {
+            ip: "127.0.0.1".into(),
+            protocol: ForwardProtocol::ArtNet,
+            port,
+        };
+        d.dispatch(3, &[1], 0, &direct, false).await;
+
+        let snap = d.output_stats().snapshot();
+        assert_eq!(snap.sent, 3);
+        assert_eq!(snap.errors, 0);
+        assert_eq!(snap.destinations.len(), 1, "直发目标不单独列出");
+        assert_eq!(snap.destinations[0].id, "a");
+        assert_eq!(snap.destinations[0].sent, 2);
+    }
+
+    /// 被 44Hz 限速器丢弃的帧计入 `dropped`；回放（不限速）不会产生丢弃。
+    #[test]
+    fn rate_limited_frames_are_counted_as_dropped() {
+        let d = dispatcher(ForwardingTable {
+            destinations: vec![dest("a", 6454, ForwardMode::All)],
+        });
+        assert_eq!(d.plan(1, &[1], 0, &DispatchTarget::Forwarding, true).len(), 1);
+        assert_eq!(d.plan(1, &[2], 5, &DispatchTarget::Forwarding, true).len(), 0);
+        assert_eq!(d.plan(1, &[3], 8, &DispatchTarget::Forwarding, true).len(), 0);
+        assert_eq!(d.plan(1, &[4], 9, &DispatchTarget::Forwarding, false).len(), 1);
+
+        let snap = d.output_stats().snapshot();
+        assert_eq!(snap.dropped, 2);
+        assert_eq!(snap.destinations[0].id, "a");
+        assert_eq!(snap.destinations[0].dropped, 2);
+    }
+
+    /// 发送失败计入 `errors` 并记录原因；目标 IP 非法同样计为错误，但不影响发送器健康度。
+    #[tokio::test]
+    async fn failed_and_invalid_sends_are_counted_as_errors() {
+        let d = Dispatcher::new(
+            Arc::new(Mutex::new(ForwardingTable::default())),
+            Arc::new(Mutex::new(RateLimiter::new())),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                DmxSender::new([0u8; 16]).await.unwrap(),
+            ))),
+        );
+        d.send_jobs(vec![failing_job()]).await;
+        let snap = d.output_stats().snapshot();
+        assert_eq!(snap.errors, 1);
+        assert!(snap.last_error.is_some());
+        assert_eq!(snap.destinations[0].id, "bad");
+        assert_eq!(snap.destinations[0].errors, 1);
+
+        let invalid = super::ForwardJob {
+            target_ip: "not-an-ip".into(),
+            ..failing_job()
+        };
+        d.send_jobs(vec![invalid]).await;
+        let snap = d.output_stats().snapshot();
+        assert_eq!(snap.errors, 2);
+        assert!(snap.last_error.unwrap().contains("not-an-ip"));
+        assert_eq!(d.health().state(), crate::sender::SenderState::Ready, "非法 IP 不算套接字故障");
+    }
+
+    /// 发送器尚未创建时的静默忽略不计入任何统计。
+    #[tokio::test]
+    async fn missing_sender_leaves_output_stats_untouched() {
+        let d = dispatcher(ForwardingTable::default());
+        d.send_jobs(vec![failing_job()]).await;
+        let snap = d.output_stats().snapshot();
+        assert_eq!((snap.sent, snap.errors, snap.dropped), (0, 0, 0));
+    }
+
+    /// 转发表变更后，已删除目的地的统计被清除，全局累计保留。
+    #[test]
+    fn prune_drops_stats_of_removed_destinations() {
+        let table = Arc::new(Mutex::new(ForwardingTable {
+            destinations: vec![
+                dest("keep", 6454, ForwardMode::All),
+                dest("gone", 6455, ForwardMode::All),
+            ],
+        }));
+        let d = Dispatcher::new(
+            table.clone(),
+            Arc::new(Mutex::new(RateLimiter::new())),
+            Arc::new(tokio::sync::Mutex::new(None)),
+        );
+        d.output_stats().record_sent("keep");
+        d.output_stats().record_sent("gone");
+        table.lock().unwrap().destinations.retain(|x| x.id == "keep");
+        d.prune_output_stats();
+        let snap = d.output_stats().snapshot();
+        assert_eq!(snap.sent, 2);
+        assert_eq!(snap.destinations.len(), 1);
+        assert_eq!(snap.destinations[0].id, "keep");
+    }}

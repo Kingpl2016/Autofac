@@ -885,6 +885,8 @@ mod tests {
             active_channels: 1,
             conflict_channels: 0,
             total_packets: 1,
+            packet_rate: 0,
+            sources: Vec::new(),
         }
     }
 

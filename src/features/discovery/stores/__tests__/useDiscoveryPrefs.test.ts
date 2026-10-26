@@ -45,7 +45,18 @@ describe("sanitizePrefs", () => {
         status: "online",
         sort: { key: "ip", dir: "desc" },
       }),
-    ).toEqual({ category: "sacn", status: "online", sort: { key: "ip", dir: "desc" } });
+    ).toEqual({
+      category: "sacn",
+      status: "online",
+      sort: { key: "ip", dir: "desc" },
+      showMac: true,
+    });
+  });
+
+  it("showMac 只接受布尔值，其它回落默认值", () => {
+    expect(sanitizePrefs({ showMac: false }).showMac).toBe(false);
+    expect(sanitizePrefs({ showMac: "no" }).showMac).toBe(true);
+    expect(sanitizePrefs({}).showMac).toBe(true);
   });
 });
 
@@ -64,7 +75,15 @@ describe("useDiscoveryPrefs 持久化", () => {
       category: "artNet",
       status: "all",
       sort: { key: "ip", dir: "desc" },
+      showMac: true,
     });
+  });
+
+  it("MAC 列开关会落盘", async () => {
+    useDiscoveryPrefs.getState().setShowMac(false);
+    await vi.waitFor(() => expect(store.set).toHaveBeenCalled());
+    const saved = store.data.get("discovery") as { state: Record<string, unknown> };
+    expect(saved.state.showMac).toBe(false);
   });
 
   it("重新水合时读回已保存的偏好，并清洗非法值", async () => {

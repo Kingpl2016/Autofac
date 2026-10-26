@@ -38,6 +38,8 @@ const universe = (u: number, ips: string[]) => ({
   activeChannels: 1,
   conflictChannels: 0,
   totalPackets: 1,
+  packetRate: 0,
+  sources: [],
 });
 
 beforeEach(async () => {

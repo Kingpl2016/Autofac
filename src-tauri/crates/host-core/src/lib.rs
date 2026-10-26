@@ -9,6 +9,7 @@
 pub mod app_mode;
 pub mod dispatch;
 pub mod mode;
+pub mod output_stats;
 pub mod playback;
 pub mod recording;
 pub mod runtime;

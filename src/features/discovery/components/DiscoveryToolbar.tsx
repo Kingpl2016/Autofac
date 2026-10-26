@@ -1,6 +1,6 @@
 import type { Ref } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Download, Network, RefreshCw, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,9 @@ interface DiscoveryToolbarProps {
   statusCounts: { all: number; online: number; offline: number };
   status: StatusFilter;
   onStatusChange: (status: StatusFilter) => void;
+  /** MAC 列是否开启（偏好）。 */
+  showMac: boolean;
+  onToggleMac: () => void;
   canExport: boolean;
   onExport: () => void;
   offlineCount: number;
@@ -38,6 +41,8 @@ export function DiscoveryToolbar({
   statusCounts,
   status,
   onStatusChange,
+  showMac,
+  onToggleMac,
   canExport,
   onExport,
   offlineCount,
@@ -103,6 +108,16 @@ export function DiscoveryToolbar({
       />
 
       <div className="ml-auto flex items-center gap-2">
+        <Button
+          variant={showMac ? "secondary" : "outline"}
+          size="sm"
+          aria-pressed={showMac}
+          onClick={onToggleMac}
+          title={t("discovery.toggleMacHint")}
+        >
+          <Network />
+          {t("discovery.toggleMac")}
+        </Button>
         <Button
           variant="outline"
           size="sm"

@@ -100,17 +100,58 @@
     "destinations": "转发目的地",
     "packetRate": "包速率",
     "uptime": "运行时长",
-    "memoryUsage": "内存占用",
+    "memoryUsage": "进程内存",
     "activeUniverseList": "活跃 Universe 列表",
     "systemLog": "系统日志",
-    "clusterStatus": "集群状态",
     "protocol": "协议",
     "sourceIp": "源 IP",
     "activeChannels": "活跃通道",
     "mergeConflict": "合并冲突",
     "noActiveUniverses": "暂无活跃 Universe",
     "noDevices": "暂无发现设备",
-    "packetsPerSec": "包/秒"
+    "packetsPerSec": "包/秒",
+    "output": {
+      "title": "输出健康",
+      "state": {
+        "idle": "空闲",
+        "sending": "发送中",
+        "dropping": "丢帧",
+        "error": "发送错误"
+      },
+      "stale": "数据过期",
+      "waiting": "等待引擎数据",
+      "sent": "已发送",
+      "rate": "发送速率",
+      "errors": "发送错误",
+      "dropped": "丢帧",
+      "lastError": "最近错误",
+      "none": "无",
+      "ago": "{{time}}前",
+      "note": "会话累计",
+      "sender": {
+        "reconnecting": "发送器重连中",
+        "down": "发送器不可用"
+      }
+    },
+    "hint": {
+      "devicesTotal": "共 {{count}} 台",
+      "destinationsEnabled": "已启用 {{count}} 个"
+    },
+    "universeN": "Universe {{n}}",
+    "activeChannelsN": "{{count}} 活跃通道",
+    "sourcesMore": "另有 {{count}} 个来源",
+    "totalPackets": "累计包数",
+    "cardLimit": "仅显示前 {{shown}} 个，共 {{total}} 个，切换到表格可查看全部",
+    "view": {
+      "label": "活动宇宙视图",
+      "cards": "卡片",
+      "table": "表格"
+    },
+    "merge": {
+      "htp": "HTP",
+      "ltp": "LTP",
+      "priority": "优先级"
+    }
   },
   "universes": {
     "title": "Universe 视图",
@@ -274,15 +315,82 @@
     "styleRoute": "路由",
     "styleBackup": "备份",
     "styleConfig": "配置工具",
-    "styleVisual": "可视化"
+    "styleVisual": "可视化",
+    "colInfo": "Art-Net 信息",
+    "colActions": "操作",
+    "infoUniverses": "{{n}} uni",
+    "infoFirmware": "fw {{v}}",
+    "infoHaPeer": "HA 对端",
+    "forwardTo": "添加为转发目的地",
+    "toggleMac": "MAC 列",
+    "toggleMacHint": "显示或隐藏 MAC 地址列"
   },
   "signalFlow": {
     "subtitle": "实时可视化 源 → Universe → 目的地 的信号路径",
     "simplified": "简化模式",
     "simplifyThreshold": "简化阈值 (≥N)",
     "active": "活跃",
-    "disabled": "已禁用",
-    "empty": "暂无信号或转发目的地"
+    "disabled": "无信号或已停用",
+    "empty": "暂无信号或转发目的地",
+    "resetLayout": "重置布局",
+    "resetLayoutHint": "清除手动拖拽的位置，恢复自动排版并适配视图",
+    "thresholdHint": "活跃 Universe 数达到该值时合并显示",
+    "canvasLabel": "信号流图",
+    "minimap": "缩略图",
+    "legend": {
+      "label": "图例",
+      "player": "回放源",
+      "source": "来源",
+      "universe": "Universe",
+      "destination": "目的地",
+      "off": "已停用",
+      "delay": "延迟"
+    },
+    "protocol": {
+      "artNet": "Art-Net",
+      "sacn": "sACN",
+      "mixed": "Art-Net + sACN"
+    },
+    "node": {
+      "hasSignal": "有信号",
+      "player": "回放",
+      "universes": "{{n}} uni",
+      "sources": "{{n}} src",
+      "channels": "{{n}} ch",
+      "aggregate": "{{n}} 个 Universe",
+      "aggregateActive": "{{active}} 个活跃 · {{rate}} pps",
+      "aggregateProgress": "活跃 Universe 占比",
+      "offset": "偏移 {{n}}",
+      "off": "OFF"
+    },
+    "canvasHint": "这是图形化视图。使用键盘或读屏软件时，请切换到“列表”视图。",
+    "view": {
+      "label": "信号流视图",
+      "graph": "节点图",
+      "list": "列表"
+    },
+    "list": {
+      "pathsTitle": "Universe 路径",
+      "destinationsTitle": "目的地",
+      "pathsCaption": "来源、Universe 与目的地的对应关系",
+      "destinationsCaption": "转发目的地及其发送情况",
+      "colStatus": "状态",
+      "colSources": "来源",
+      "colDestinations": "目的地",
+      "colAddress": "地址",
+      "colUniverses": "Universe 数",
+      "signal": "有信号",
+      "noSignal": "无信号",
+      "off": "已停用"
+    },
+    "announce": {
+      "source": "来源 {{name}}",
+      "destination": "目的地 {{name}}",
+      "gained": "有信号：{{names}}",
+      "lost": "信号中断：{{names}}",
+      "more": " 等 {{n}} 项",
+      "separator": "，"
+    }
   },
   "forwarding": {
     "title": "信号转发",
@@ -313,9 +421,72 @@
     "noDestinations": "暂无转发目的地，点击右上角添加",
     "duplicate": "复制",
     "autoSaved": "转发配置已保存",
-    "required": "名称与目标 IP 为必填",
     "prefillFromDiscovery": "已根据设备 {{ip}} 预填，请确认后保存",
-    "prefillExisting": "{{ip}} 已有转发目的地，已打开编辑"
+    "prefillExisting": "{{ip}} 已有转发目的地，已打开编辑",
+    "copySuffix": " 副本",
+    "retry": "重试",
+    "saveFailed": "转发配置保存失败",
+    "saveFailedHint": "改动暂时只保留在当前页面，请重试，或检查磁盘空间与权限。",
+    "loadFailed": "转发配置加载失败",
+    "summary": {
+      "offset": "偏移 {{n}}",
+      "delay": "延迟 {{ms}}ms",
+      "overrides": "{{count}} 条覆盖"
+    },
+    "error": {
+      "nameRequired": "请填写名称",
+      "ipRequired": "请填写目标 IP",
+      "ipInvalid": "目标 IP 格式不正确，需要 IPv4 地址，如 10.0.0.5",
+      "portInvalid": "端口需为 1 到 65535 的整数",
+      "offsetInvalid": "偏移需为整数，范围 -65535 到 65535",
+      "delayInvalid": "延迟需为 0 到 2000 的整数（毫秒）",
+      "overrideSource": "源 Universe 需为 0 到 65535 的整数",
+      "overrideTarget": "目标 Universe 需为 0 到 65535 的整数",
+      "overrideDelay": "延迟需为 0 到 2000 的整数（毫秒）",
+      "typeInvalid": "字段类型不正确",
+      "protocolInvalid": "协议只能是 artNet 或 sacn",
+      "modeInvalid": "模式只能是 all 或 selected",
+      "actionInvalid": "动作只能是 forward 或 exclude"
+    },
+    "delete": {
+      "title": "删除目的地“{{name}}”？",
+      "desc": "删除后将不再向 {{ip}} 转发，此操作无法撤销。",
+      "confirm": "删除"
+    },
+    "import": {
+      "errorJson": "导入失败：文件不是有效的 JSON",
+      "errorShape": "导入失败：文件格式不正确，需要目的地数组",
+      "errorEmpty": "导入失败：文件中没有任何目的地",
+      "errorItem": "导入失败：第 {{index}} 个目的地的“{{field}}”有误，{{detail}}",
+      "itemField": "条目",
+      "title": "导入 {{count}} 个目的地",
+      "desc": "当前已有 {{current}} 个目的地。选择“替换”会丢弃当前全部目的地；选择“合并”会把导入的目的地追加到列表末尾。",
+      "replace": "替换当前",
+      "merge": "合并追加",
+      "done": "已导入 {{count}} 个目的地"
+    },
+    "pickDevice": "选择在线设备",
+    "pickFromList": "从列表选择",
+    "enterManually": "手动输入",
+    "enterManuallyItem": "手动输入 IP…",
+    "group": {
+      "artNet": "Art-Net 节点",
+      "sacn": "sACN 节点",
+      "other": "其他设备"
+    },
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "stats": {
+      "waiting": "等待统计数据",
+      "disabled": "已停用，不发送数据",
+      "noTraffic": "尚未发送数据",
+      "sent": "已发送",
+      "dropped": "丢帧",
+      "errors": "错误",
+      "lastSend": "最近发送",
+      "ago": "{{time}}前",
+      "stale": "统计已过期"
+    }
   },
   "settings": {
     "title": "设置",
