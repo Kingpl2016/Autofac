@@ -1,0 +1,25 @@
+name: 设备闪断
+description: >
+  两个虚拟 Art-Net 节点,其中一个每 8 秒离线 3 秒(不回复 ArtPoll,也不处理数据)。
+  用来观察 Art-Net Studio 设备发现页的在线/离线判定。节点 IP 为 auto:同机有 Studio 时
+  使用 127.0.0.2 / 127.0.0.3,否则两个节点都需要本机真实网卡的 IP,此时请改成辅助 IP。
+duration: 40
+
+nodes:
+  - id: stable
+    ip: auto
+    short_name: 稳定节点
+    ports:
+      - {direction: output, address: 0}
+      - {direction: output, address: 1}
+      - {direction: input, address: 2}
+  - id: flaky
+    ip: 127.0.0.3
+    short_name: 闪断节点
+    ports:
+      - {direction: output, address: 16}
+      - {direction: output, address: 17}
+
+timeline:
+  - {at: 5, action: offline, target: flaky, every: 8, until: 37}
+  - {at: 8, action: online, target: flaky, every: 8, until: 40}

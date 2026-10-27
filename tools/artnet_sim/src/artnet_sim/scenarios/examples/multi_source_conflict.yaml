@@ -1,0 +1,31 @@
+name: 多源冲突
+description: >
+  两个 sACN 源向同一批 Universe 发送。先是同优先级(逐通道取大 HTP),
+  10 秒时源 B 提升优先级接管,20 秒时源 B 正常结束(发送 Stream_Terminated),
+  源 A 重新接管。用来观察 Art-Net Studio 的多源合并与 Priority 仲裁。
+duration: 30
+
+sources:
+  - id: console-a
+    protocol: sacn
+    universes: 1-4
+    generator: sine
+    params: {period: 4, wavelength: 64}
+    priority: 100
+    source_name: 模拟台 A
+    target: multicast
+  - id: console-b
+    protocol: sacn
+    universes: 1-4
+    generator: chase
+    params: {width: 16, speed: 80}
+    priority: 100
+    source_name: 模拟台 B
+    target: multicast
+
+timeline:
+  - {at: 0, action: log, message: "两个源同优先级,按 HTP 合并"}
+  - {at: 10, action: set, target: console-b, values: {priority: 150}}
+  - {at: 10, action: log, message: "源 B 优先级提升到 150,应单独输出"}
+  - {at: 20, action: stop, target: console-b}
+  - {at: 20, action: log, message: "源 B 结束,源 A 应重新接管"}

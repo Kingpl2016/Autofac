@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:,">
+  <title>Art-Net / sACN 模拟工具</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#view">跳到主要内容</a>
+  <header class="topbar">
+    <h1 class="brand">Art-Net / sACN 模拟工具</h1>
+    <nav aria-label="主导航">
+      <ul id="nav" class="tabs" role="tablist"></ul>
+    </nav>
+    <div class="conn" id="conn" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span><span id="conn-text">连接中…</span>
+    </div>
+  </header>
+  <main id="view" tabindex="-1"></main>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <noscript><p>本页面需要启用 JavaScript。</p></noscript>
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

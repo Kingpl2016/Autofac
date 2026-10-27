@@ -1,0 +1,34 @@
+name: 优先级切换
+description: >
+  一个低优先级的背景源(彩虹)持续发送;10 秒时一个高优先级源(频闪)加入并接管,
+  20 秒时它被静默停发(不发送 Stream_Terminated),接收端需要等 2.5 秒数据丢失超时后
+  才会回到背景源。用来对比"正常结束"与"异常掉线"的接管速度。
+duration: 35
+
+sources:
+  - id: background
+    protocol: sacn
+    universes: 1-2
+    generator: rainbow
+    params: {speed: 0.2}
+    priority: 50
+    source_name: 背景灯光
+    target: multicast
+  - id: overlay
+    protocol: sacn
+    universes: 1-2
+    generator: strobe
+    params: {rate: 4, duty: 0.3}
+    priority: 150
+    source_name: 特效灯光
+    target: multicast
+    autostart: false
+
+timeline:
+  - {at: 10, action: start, target: overlay}
+  - {at: 10, action: log, message: "高优先级源加入,应由它独占输出"}
+  - {at: 20, action: pause, target: overlay}
+  - {at: 20, action: log, message: "高优先级源静默掉线,约 2.5 秒后背景源接管"}
+  - {at: 28, action: resume, target: overlay}
+  - {at: 31, action: stop, target: overlay}
+  - {at: 31, action: log, message: "高优先级源正常结束(Stream_Terminated),背景源立即接管"}

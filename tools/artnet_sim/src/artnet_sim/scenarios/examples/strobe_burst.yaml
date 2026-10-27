@@ -1,0 +1,21 @@
+name: 频闪与高速变化
+description: >
+  8 个 Universe 以 44 Hz 发送整体频闪,频率从 2 Hz 逐步升到 20 Hz,再切换成随机噪声。
+  用来观察 Universe 监看页和录制在快速变化下的表现。
+duration: 30
+
+sources:
+  - id: strobe
+    protocol: artnet
+    universes: 1-8
+    generator: strobe
+    params: {rate: 2, duty: 0.5}
+    rate: 44
+    target: broadcast
+
+timeline:
+  - {at: 5, action: set, target: strobe, values: {generator_params: {rate: 5, duty: 0.5}}}
+  - {at: 10, action: set, target: strobe, values: {generator_params: {rate: 10, duty: 0.5}}}
+  - {at: 15, action: set, target: strobe, values: {generator_params: {rate: 20, duty: 0.3}}}
+  - {at: 20, action: set, target: strobe, values: {generator: random, generator_params: {seed: 7}}}
+  - {at: 20, action: log, message: "切换为随机噪声"}

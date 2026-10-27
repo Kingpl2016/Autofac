@@ -54,3 +54,12 @@ ArtNet Studio Recordings/
 /doc/esp32-p4_technical_reference_manual_cn.pdf
 
 # ESP-IDF 固件子项目的构建产物 / 本地配置见 esp32p4/.gitignore（主工程 + test_apps 自包含）
+
+# Python 模拟工具(tools/artnet_sim)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+/tools/artnet_sim/build/

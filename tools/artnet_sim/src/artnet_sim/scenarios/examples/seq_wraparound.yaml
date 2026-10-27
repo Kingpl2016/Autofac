@@ -1,0 +1,36 @@
+name: 序号回绕与异常
+description: >
+  验证接收端对序号的处理。每个阶段 8 秒:正常递增(会经过 255 → 回绕)、序号恒为 0
+  (Art-Net 表示不启用序号)、序号冻结、每 10 帧复位一次。
+duration: 36
+
+sources:
+  - id: artnet-seq
+    protocol: artnet
+    universes: 1
+    generator: ramp
+    params: {period: 2}
+    rate: 100
+    target: broadcast
+  - id: sacn-seq
+    protocol: sacn
+    universes: 1
+    generator: ramp
+    params: {period: 2}
+    rate: 100
+    target: multicast
+    source_name: 序号测试
+
+timeline:
+  - {at: 0, action: log, message: "阶段 0:序号正常递增(100 Hz,约 2.5 秒绕一圈)"}
+  - {at: 8, action: log, message: "阶段 1:Art-Net 序号恒为 0(不启用);sACN 保持递增"}
+  - {at: 8, action: set, target: artnet-seq, values: {impairments: {seq_mode: none}}}
+  - {at: 16, action: log, message: "阶段 2:序号冻结"}
+  - {at: 16, action: set, target: artnet-seq, values: {impairments: {seq_mode: frozen}}}
+  - {at: 16, action: set, target: sacn-seq, values: {impairments: {seq_mode: frozen}}}
+  - {at: 24, action: log, message: "阶段 3:每 10 帧复位序号"}
+  - {at: 24, action: set, target: artnet-seq, values: {impairments: {seq_reset_every: 10}}}
+  - {at: 24, action: set, target: sacn-seq, values: {impairments: {seq_reset_every: 10}}}
+  - {at: 32, action: log, message: "恢复正常"}
+  - {at: 32, action: set, target: artnet-seq, values: {impairments: {}}}
+  - {at: 32, action: set, target: sacn-seq, values: {impairments: {}}}

@@ -1,0 +1,30 @@
+name: 信号源掉线重连
+description: >
+  一个 Art-Net 源和一个 sACN 源。Art-Net 源每 6 秒静默停发 2 秒(反复掉线重连),
+  sACN 源在 10 秒时冻结画面(继续发包但内容不变),20 秒时正常结束再在 25 秒重新启动。
+  用来观察设备在线状态、活跃判定与信号流页面对掉线/重连的反应。
+duration: 40
+
+sources:
+  - id: artnet-flaky
+    protocol: artnet
+    universes: 10-11
+    generator: sine
+    params: {period: 2, wavelength: 100}
+    target: broadcast
+  - id: sacn-main
+    protocol: sacn
+    universes: 10-11
+    generator: ramp
+    params: {period: 6, mode: triangle}
+    source_name: 重连测试台
+    target: multicast
+
+timeline:
+  - {at: 4, action: pause, target: artnet-flaky, every: 6, until: 34}
+  - {at: 6, action: resume, target: artnet-flaky, every: 6, until: 36}
+  - {at: 10, action: freeze, target: sacn-main}
+  - {at: 10, action: log, message: "sACN 画面冻结:仍在发包,但内容不再变化"}
+  - {at: 15, action: unfreeze, target: sacn-main}
+  - {at: 20, action: stop, target: sacn-main}
+  - {at: 25, action: start, target: sacn-main}

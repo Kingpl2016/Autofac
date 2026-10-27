@@ -1,0 +1,31 @@
+name: 网络故障注入
+description: >
+  一个 Art-Net 源持续向广播地址发送,依次叠加:丢包、重复、乱序、时间抖动、序号异常。
+  每个阶段持续 8 秒,最后恢复正常。接收端(Art-Net Studio 或本工具的 listen --stats)
+  应能分别统计出丢包、重复、乱序、抖动和序号复位。
+duration: 50
+
+sources:
+  - id: link
+    protocol: artnet
+    universes: 1-4
+    generator: rainbow
+    params: {speed: 0.3}
+    rate: 44
+    target: broadcast
+    impairments: {seed: 42}
+
+timeline:
+  - {at: 0, action: log, message: "阶段 0:正常发送"}
+  - {at: 8, action: log, message: "阶段 1:随机丢包 10%"}
+  - {at: 8, action: set, target: link, values: {impairments: {loss: 0.10, seed: 42}}}
+  - {at: 16, action: log, message: "阶段 2:重复包 15%"}
+  - {at: 16, action: set, target: link, values: {impairments: {duplicate: 0.15, seed: 42}}}
+  - {at: 24, action: log, message: "阶段 3:乱序 10%"}
+  - {at: 24, action: set, target: link, values: {impairments: {reorder: 0.10, seed: 42}}}
+  - {at: 32, action: log, message: "阶段 4:触发时刻抖动 0~15 ms"}
+  - {at: 32, action: set, target: link, values: {impairments: {jitter_ms: 15, seed: 42}}}
+  - {at: 40, action: log, message: "阶段 5:序号每 20 帧复位一次"}
+  - {at: 40, action: set, target: link, values: {impairments: {seq_reset_every: 20, seed: 42}}}
+  - {at: 48, action: log, message: "恢复正常"}
+  - {at: 48, action: set, target: link, values: {impairments: {}}}

@@ -1,0 +1,38 @@
+name: Art-Net 双源合并(虚拟节点)
+description: >
+  同一台电脑上两个 Art-Net 源(Physical 不同,节点把它们当作两个源)向虚拟节点的两个端口
+  发送,节点按 HTP 合并。25 秒时源 B 静默停发,节点在 10 秒保留期后退出合并;
+  35 秒时源 B 恢复,合并重新开始。节点 IP 为 auto:同机有 Studio 时使用 127.0.0.2。
+  目标写成 node:<id>,运行时替换为该节点的实际 IP。
+duration: 45
+
+nodes:
+  - id: node-1
+    ip: auto
+    short_name: merge-node
+    ports:
+      - {direction: output, address: 0}
+      - {direction: output, address: 1}
+
+sources:
+  - id: src-a
+    protocol: artnet
+    universes: 0-1
+    generator: sine
+    params: {period: 3, wavelength: 128}
+    physical: 0
+    target: node:node-1
+  - id: src-b
+    protocol: artnet
+    universes: 0-1
+    generator: chase
+    params: {width: 32, speed: 100}
+    physical: 1
+    target: node:node-1
+
+timeline:
+  - {at: 0, action: log, message: "两个源同时发送,节点逐通道取大(HTP)"}
+  - {at: 25, action: pause, target: src-b}
+  - {at: 25, action: log, message: "源 B 静默停发,10 秒后节点退出合并"}
+  - {at: 35, action: resume, target: src-b}
+  - {at: 35, action: log, message: "源 B 恢复,合并重新开始"}

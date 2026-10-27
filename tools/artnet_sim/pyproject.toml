@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artnet-sim"
+version = "0.1.0"
+description = "Art-Net / sACN 模拟工具:发送端、虚拟节点、抓包分析(Web UI)"
+requires-python = ">=3.11"
+dependencies = [
+    "psutil==7.2.2",
+    "pyyaml==6.0.3",
+    "zstandard==0.25.0",
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+    "websockets==17.3",
+    "pydantic==2.14.1",
+    "python-multipart==0.0.32",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "httpx==0.28.1",
+    "ruff==0.17.2",
+]
+build = [
+    "pyinstaller==6.22.3",
+]
+
+[project.scripts]
+artnet-sim = "artnet_sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+artnet_sim = ["scenarios/examples/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
+markers = [
+    "slow: 耗时较长的计时/压力测试",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# 黄金向量是很长的十六进制字符串,不适合折行。
+"tests/test_rust_golden.py" = ["E501"]
+# 场景测试里内嵌了很多单行 YAML 片段。
+"tests/test_scenarios.py" = ["E501"]

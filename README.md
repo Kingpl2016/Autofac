@@ -155,6 +155,10 @@ cargo test --workspace
 
 计时类基准在负载波动的机器上误差较大，对比前后结果时建议重复运行几次。
 
+## 模拟测试工具（Python）
+
+没有真实灯控设备时，可用 [`tools/artnet_sim`](tools/artnet_sim) 在本机或局域网里模拟 Art-Net / sACN 信号，用来测试本应用的发现、监看、转发、录制与回放。安装、使用与打包方式见 [`tools/artnet_sim/README.md`](tools/artnet_sim/README.md)。
+
 ## 项目结构
 
 ```
@@ -173,6 +177,7 @@ art-net-studio/
 │   ├── src/                命令层（录制、回放、控制器）
 │   ├── crates/             领域逻辑 workspace crates
 │   └── tauri.conf.json     Tauri 配置
+├── tools/artnet_sim/       Python 版 Art-Net / sACN 模拟测试工具
 ├── doc/                    规范与说明文档
 └── index.html              前端 HTML 入口
 ```
