@@ -54,6 +54,14 @@ describe("AboutView", () => {
     expect(screen.getByRole("button", { name: "复制诊断信息" })).toHaveProperty("disabled", false);
   });
 
+  it("身份区显示标志与一句话简介；标志只是装饰，对读屏隐藏", async () => {
+    const { container } = renderView();
+    await screen.findByText("版本 0.1.0");
+    expect(screen.getByText("Art-Net / sACN 灯光控制与录制平台")).toBeTruthy();
+    const logo = container.querySelector("svg[viewBox='0 0 512 512']");
+    expect(logo?.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("页脚显示版权行", async () => {
     renderView();
     expect(

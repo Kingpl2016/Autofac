@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { usePrefsStore } from "@/shared/stores/prefsStore";
+import { useAppearanceRevision } from "@/features/appearance";
 import { useOverview } from "../hooks/useOverview";
 import { formatDurationUs } from "../lib/filter";
 import { drawHeatmap, heatmapCells, rowHeightFor, summarizeOverview } from "../lib/heatmap";
@@ -58,8 +58,7 @@ export function TimelineHeatmap({
 }: TimelineHeatmapProps) {
   const { t } = useTranslation();
   const overview = useOverview(path);
-  const theme = usePrefsStore((s) => s.theme);
-  const accent = usePrefsStore((s) => s.accent);
+  const appearanceRevision = useAppearanceRevision();
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,8 +104,8 @@ export function TimelineHeatmap({
       HEAT_VARS.map((v) => themeColor(canvas, v, "currentColor")),
       themeColor(canvas, "--muted", "transparent"),
     );
-    // theme / accent 只用于触发重绘：颜色变量变化后重新取色
-  }, [cells, rowHeight, width, height, theme, accent]);
+    // appearanceRevision 只用于触发重绘：颜色变量变化后重新取色
+  }, [cells, rowHeight, width, height, appearanceRevision]);
 
   // 拖动跳转
   const dragging = useRef(false);

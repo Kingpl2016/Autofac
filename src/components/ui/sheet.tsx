@@ -45,7 +45,7 @@ const SheetContent = React.forwardRef<
       >
         {children}
         <SheetPrimitive.Close
-          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="absolute right-4 top-4 flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={t("common.close")}
         >
           <X className="size-4" />

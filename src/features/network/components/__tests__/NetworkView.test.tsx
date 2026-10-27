@@ -94,7 +94,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
   useActiveDeviceStore.setState({ activeId: null });
-  useDeviceSessionStore.setState({ rebooting: {}, forceWrite: {} });
+  useDeviceSessionStore.setState({ rebooting: {} });
   useTransferStore.setState({ items: [] });
   useEngineDataStore.setState({ devices: [] });
   api.netdevList.mockResolvedValue([dev("d1", "主舞台", "10.0.0.2"), dev("d2", "侧台", "10.0.0.3")]);
@@ -166,10 +166,11 @@ describe("NetworkView", () => {
     expect(await screen.findByRole("dialog", { name: "编辑设备" })).toBeTruthy();
   });
 
-  it("设备没配置 Token：进入只读模式并提示", async () => {
+  it("设备没配置 Token：默认可写，不显示只读提示", async () => {
     api.netdevGetConfig.mockResolvedValue({ tokenSet: false });
     renderView();
-    expect(await screen.findByText("只读模式：设备尚未配置 Token")).toBeTruthy();
+    await screen.findByText("4 · 节目");
+    expect(screen.queryByText("只读模式：设备尚未配置 Token")).toBeNull();
   });
 
   it("移除设备要确认；确认后调用删除", async () => {

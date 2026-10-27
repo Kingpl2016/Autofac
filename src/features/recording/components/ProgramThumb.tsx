@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { usePrefsStore } from "@/shared/stores/prefsStore";
+import { useAppearanceRevision } from "@/features/appearance";
 import { useOverview } from "../hooks/useOverview";
 import { drawHeatmap, heatmapCells } from "../lib/heatmap";
 import { themeColor } from "../lib/themeColor";
@@ -27,8 +27,7 @@ interface ProgramThumbProps {
  * 缩略图本身是装饰（对读屏隐藏）；`children` 作为叠加角标，不受影响。
  */
 export function ProgramThumb({ path, valid, children }: ProgramThumbProps) {
-  const theme = usePrefsStore((s) => s.theme);
-  const accent = usePrefsStore((s) => s.accent);
+  const appearanceRevision = useAppearanceRevision();
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
@@ -66,8 +65,8 @@ export function ProgramThumb({ path, valid, children }: ProgramThumbProps) {
       HEAT_VARS.map((v) => themeColor(canvas, v, "currentColor")),
       themeColor(canvas, "--surface-1", "transparent"),
     );
-    // theme / accent 只用于触发重绘：颜色变量变化后重新取色
-  }, [data, theme, accent]);
+    // appearanceRevision 只用于触发重绘：颜色变量变化后重新取色
+  }, [data, appearanceRevision]);
 
   return (
     <div className="relative h-16 overflow-hidden rounded-lg bg-surface-1">

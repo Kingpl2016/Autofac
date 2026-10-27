@@ -10,12 +10,10 @@ import { AccessBanner } from "../AccessBanner";
 function make(state: AccessState, over: Partial<DeviceAccess> = {}): DeviceAccess {
   return {
     state,
-    canRead: state === "ok" || state === "readonly",
+    canRead: state === "ok",
     canWrite: state === "ok",
     status: { status: null, online: false, error: null, isLoading: false, refetch: vi.fn() },
     tokenSet: null,
-    forceWrite: false,
-    setForceWrite: vi.fn(),
     markRebooting: vi.fn(),
     ...over,
   };
@@ -57,19 +55,8 @@ describe("AccessBanner", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("只读：说明固件策略，可设置 Token 或选择仍然尝试", () => {
-    const access = make("readonly", { tokenSet: false });
-    render(<AccessBanner access={access} onEditDevice={vi.fn()} />);
-    expect(screen.getByRole("alert").textContent).toContain("CONFIG_ART_REQUIRE_AUTH");
-    fireEvent.click(screen.getByRole("button", { name: "仍然尝试写操作" }));
-    expect(access.setForceWrite).toHaveBeenCalledWith(true);
-  });
-
-  it("已选择仍然尝试：显示提示并可恢复只读", () => {
-    const access = make("ok", { tokenSet: false, forceWrite: true });
-    render(<AccessBanner access={access} onEditDevice={vi.fn()} />);
-    expect(screen.getByRole("alert").textContent).toContain("正在尝试写操作");
-    fireEvent.click(screen.getByRole("button", { name: "恢复只读" }));
-    expect(access.setForceWrite).toHaveBeenCalledWith(false);
+  it("设备未配置 Token 时默认可写，不显示只读横幅", () => {
+    const { container } = render(<AccessBanner access={make("ok", { tokenSet: false })} onEditDevice={vi.fn()} />);
+    expect(container.firstChild).toBeNull();
   });
 });

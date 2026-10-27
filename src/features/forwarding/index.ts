@@ -1,4 +1,3 @@
-export { ForwardingView } from "./components/ForwardingView";
 export { useForwardingQuery } from "./hooks/useForwarding";
 export type { ForwardDestination, ForwardingTable } from "./lib/types";
 export {
@@ -6,3 +5,4 @@ export {
   forwardingPrefillState,
   type ForwardingPrefill,
 } from "./lib/prefill";
+export { forwardingPlugin } from "./plugin";

@@ -25,7 +25,7 @@ interface TokenCardProps {
  * 访问 Token：设置 / 更换 / 清除。
  *
  * 写入时设备先用旧 Token 校验，成功后后端才更新本机凭据，所以不会出现本机与设备不一致。
- * 清除 Token 后设备回到"未配置"，固件默认会拒绝之后的所有写操作，所以要明确警告。
+ * 清除 Token 后设备回到"未配置"，之后的操作不再带鉴权，所以要先确认。
  */
 export function TokenCard({ device, access, tokenSet }: TokenCardProps) {
   const { t } = useTranslation();

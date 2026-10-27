@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Activity, ChevronLeft, ChevronRight, CirclePause, Waypoints } from "lucide-react";
+import { ChevronLeft, ChevronRight, CirclePause } from "lucide-react";
 
 import {
   Tooltip,
@@ -8,18 +8,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { openSignalChecker, SIGNAL_CHECKER_HOTKEY } from "@/features/signal-checker";
 import { cn } from "@/lib/utils";
-import {
-  NAV_ITEMS,
-  NAV_SECTIONS,
-  NAV_SECTION_LABELS,
-} from "@/shared/navigation/items";
+import { AppLogo } from "@/shared/components/AppLogo";
+import { usePageTransition } from "@/shared/appearance/pageTransition";
+import { useNavGroups } from "@/shared/plugin";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
 
 /**
- * 导航项（链接与"工具"按钮共用）的样式。
+ * 导航项（链接）的样式。
  * nav px-3 + 项 px-2.5：图标左缘 22px、宽 20px，中心 32px，恰为折叠宽度 64px 的正中。
  */
 const NAV_ITEM_CLASS = cn(
@@ -44,6 +41,9 @@ export function Sidebar() {
   // 播放器模式下，依赖实时信号的页面仍可进入（会看到原因），但在导航里标出“已暂停”
   const playerMode = useEngineStatusStore((s) => s.appMode === "player");
   const toggleLabel = collapsed ? t("nav.expand") : t("nav.collapse");
+  // 分组与导航项由各插件注册，侧栏本身不知道有哪些页面
+  const groups = useNavGroups();
+  const pageTransition = usePageTransition((s) => s.enabled);
 
   // 标签与分组标题的淡入淡出；折叠时不可见也不应被读屏朗读
   const fade = cn(
@@ -54,18 +54,21 @@ export function Sidebar() {
   return (
     <TooltipProvider delayDuration={200}>
       <aside
+        data-layout="sidebar"
         data-collapsed={collapsed}
         className={cn(
-          "relative h-full shrink-0 border-r border-sidebar-border bg-sidebar",
+          // z-20：侧栏整体压在内容列之上。折叠把手半悬在侧栏右边缘之外，
+          // 侧栏带 backdrop-filter（玻璃）时会形成独立层叠上下文，没有这一层，右半边会被后面的内容列盖住、点不到。
+          "relative z-20 h-full shrink-0 border-r border-sidebar-border bg-sidebar",
           "transition-[width] duration-200 motion-reduce:transition-none",
           collapsed ? "w-16" : "w-52",
         )}
       >
         {/* 内容层裁剪溢出；把手在它之外，才能半悬在侧栏右边缘 */}
-        <div className="flex h-full w-full flex-col overflow-hidden">
+        <div className="flex h-full w-full flex-col overflow-hidden rounded-[inherit]">
           {/* 图标列：折叠宽 64px；pl-5 (20px) + 24px 品牌图标，中心恰好落在 32px；高度与顶栏 h-14 对齐 */}
           <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border pl-5">
-            <Waypoints className="size-6 shrink-0 text-sidebar-primary" aria-hidden />
+            <AppLogo className="size-6 shrink-0" />
             <span
               className={cn(
                 fade,
@@ -85,13 +88,11 @@ export function Sidebar() {
             )}
             aria-label={t("common.appName")}
           >
-            {NAV_SECTIONS.map((section) => {
-              const items = NAV_ITEMS.filter((i) => i.section === section);
-              if (items.length === 0) return null;
+            {groups.map(({ section, items }) => {
               return (
-                <div key={section} className="mb-1 tall:mb-1.5 taller:mb-2">
+                <div key={section.id} className="mb-1 tall:mb-1.5 taller:mb-2">
                   <SectionHeading
-                    label={t(NAV_SECTION_LABELS[section])}
+                    label={t(section.labelKey)}
                     collapsed={collapsed}
                     fade={fade}
                   />
@@ -103,13 +104,14 @@ export function Sidebar() {
                       const label = paused ? `${baseLabel}（${t("nav.pausedInPlayer")}）` : baseLabel;
                       const Icon = item.icon;
                       return (
-                        <li key={item.to}>
+                        <li key={item.id}>
                           {/* Tooltip 始终挂载（结构不变，折叠切换不会重挂载链接）；仅折叠时才有提示内容 */}
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <NavLink
                                 to={item.to}
-                                end={item.to === "/"}
+                                end={item.end}
+                                viewTransition={pageTransition}
                                 aria-label={label}
                                 // 必须传字符串：外层 TooltipTrigger asChild 的 Radix Slot 会把函数形式的
                                 // className 直接 toString() 成垃圾类名，导致整个链接样式失效。
@@ -140,33 +142,6 @@ export function Sidebar() {
               );
             })}
 
-            {/* 工具：打开独立窗口的操作，不是页面，所以是按钮而不是链接 */}
-            <div className="mb-1 tall:mb-1.5 taller:mb-2">
-              <SectionHeading label={t("nav.sectionTools")} collapsed={collapsed} fade={fade} />
-              <ul className="flex flex-col gap-0.5 tall:gap-1 taller:gap-1.5">
-                <li>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className={cn(NAV_ITEM_CLASS, "text-left")}
-                        aria-label={t("nav.signalChecker")}
-                        aria-keyshortcuts="Control+Shift+T"
-                        onClick={() => void openSignalChecker()}
-                      >
-                        <Activity className="size-5 shrink-0" aria-hidden />
-                        <span className={cn(fade, "truncate")} aria-hidden={collapsed}>
-                          {t("nav.signalChecker")}
-                        </span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {t("nav.signalCheckerHint", { key: SIGNAL_CHECKER_HOTKEY })}
-                    </TooltipContent>
-                  </Tooltip>
-                </li>
-              </ul>
-            </div>
           </nav>
         </div>
 
@@ -175,6 +150,7 @@ export function Sidebar() {
           <TooltipTrigger asChild>
             <button
               type="button"
+              data-layout="sidebar-toggle"
               onClick={toggleSidebar}
               aria-label={toggleLabel}
               aria-expanded={!collapsed}

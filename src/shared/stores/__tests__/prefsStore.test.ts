@@ -11,7 +11,6 @@ vi.mock("@/shared/tauri/tauriStorage", () => ({
 }));
 
 import {
-  applyAccent,
   applyLanguageAttr,
   detectSystemLanguage,
   usePrefsStore,
@@ -23,7 +22,6 @@ beforeEach(() => {
   usePrefsStore.setState({
     ...initial,
     sidebarCollapsed: false,
-    accent: "blue",
     language: "zh",
   });
 });
@@ -52,20 +50,13 @@ describe("prefsStore", () => {
     expect(usePrefsStore.getState().sidebarCollapsed).toBe(false);
   });
 
-  it("setLanguage / setAccent 更新状态", () => {
+  it("setLanguage 更新状态", () => {
     usePrefsStore.getState().setLanguage("en");
-    usePrefsStore.getState().setAccent("rose");
     expect(usePrefsStore.getState().language).toBe("en");
-    expect(usePrefsStore.getState().accent).toBe("rose");
   });
 });
 
 describe("DOM 应用函数", () => {
-  it("applyAccent 写入 data-accent", () => {
-    applyAccent("violet");
-    expect(document.documentElement.dataset.accent).toBe("violet");
-  });
-
   it("applyLanguageAttr 写入 lang", () => {
     applyLanguageAttr("en");
     expect(document.documentElement.lang).toBe("en");

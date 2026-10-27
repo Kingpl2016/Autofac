@@ -1,60 +1,31 @@
-import { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
-import { LiveOnly } from "@/features/app-mode";
+import { Skeleton } from "@/components/ui/skeleton";
 import { MainLayout } from "@/layouts/MainLayout";
+import { toRouteObjects, type RouteContribution } from "@/shared/plugin";
 
-// 重依赖（React Flow）懒加载，避免进入首屏同步包
-const SignalFlowPage = lazy(() => import("@/pages/SignalFlowPage"));
-// 节目编辑器（时间线、拖拽、波形等重依赖）同样按需加载
-const ShowEditorPage = lazy(() => import("@/pages/ShowEditorPage"));
-import DashboardPage from "@/pages/DashboardPage";
-import UniversesPage from "@/pages/UniversesPage";
-import DiscoveryPage from "@/pages/DiscoveryPage";
-import ForwardingPage from "@/pages/ForwardingPage";
-import RecordingPage from "@/pages/RecordingPage";
-import PlayerModePage from "@/pages/PlayerModePage";
-import ThingModelPage from "@/pages/ThingModelPage";
-import NetworkPage from "@/pages/NetworkPage";
-import SettingsPage from "@/pages/SettingsPage";
-import AboutPage from "@/pages/AboutPage";
+/** 按需页面加载期间的占位：骨架屏（个性化里开启“骨架屏流光”后会有光带扫过）。 */
+const ROUTE_FALLBACK = (
+  <div aria-hidden className="space-y-4">
+    <Skeleton className="h-8 w-48" />
+    <Skeleton className="h-4 w-80 max-w-full" />
+    <Skeleton className="h-40 w-full" />
+  </div>
+);
 
 /**
- * 应用路由表：单布局 + 各功能页面。
+ * 用各插件贡献的路由创建应用路由：单布局 + 各功能页面。
+ * 路由表不再在这里手写，新增页面只需在对应 feature 的插件里声明。
+ *
+ * @param routes 路由贡献（已排序）。
+ * @returns 浏览器路由实例。
  */
-export const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <MainLayout />,
-    children: [
-      { index: true, element: <DashboardPage /> },
-      { path: "universes", element: <LiveOnly><UniversesPage /></LiveOnly> },
-      { path: "discovery", element: <LiveOnly><DiscoveryPage /></LiveOnly> },
-      { path: "forwarding", element: <ForwardingPage /> },
-      {
-        path: "signal-flow",
-        element: (
-          <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">…</div>}>
-            <SignalFlowPage />
-          </Suspense>
-        ),
-      },
-      { path: "recording", element: <RecordingPage /> },
-      { path: "player", element: <PlayerModePage /> },
-      { path: "thing-model", element: <ThingModelPage /> },
-      {
-        path: "editor",
-        // 编辑器占满内容区，由 MainLayout 读取 handle.fullBleed 去掉内边距
-        handle: { fullBleed: true },
-        element: (
-          <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">…</div>}>
-            <ShowEditorPage />
-          </Suspense>
-        ),
-      },
-      { path: "network", element: <NetworkPage /> },
-      { path: "settings", element: <SettingsPage /> },
-      { path: "about", element: <AboutPage /> },
-    ],
-  },
-]);
+export function createAppRouter(routes: readonly RouteContribution[]) {
+  return createBrowserRouter([
+    {
+      path: "/",
+      element: <MainLayout />,
+      children: toRouteObjects(routes, ROUTE_FALLBACK),
+    },
+  ]);
+}

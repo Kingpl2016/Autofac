@@ -44,13 +44,11 @@ const device: NetDevice = { id: "d1", name: "主舞台", host: "10.0.0.2", port:
 function accessWith(workMode = 4, canWrite = true): DeviceAccess {
   const status = { workMode, version: "1.4.2" } as DeviceStatus;
   return {
-    state: canWrite ? "ok" : "readonly",
+    state: canWrite ? "ok" : "offline",
     canRead: true,
     canWrite,
     status: { status, online: true, error: null, isLoading: false, refetch: vi.fn() },
     tokenSet: true,
-    forceWrite: false,
-    setForceWrite: vi.fn(),
     markRebooting: vi.fn(),
   };
 }
@@ -326,7 +324,7 @@ describe("ConfigPanel", () => {
     expect(await screen.findByText("关闭 DHCP 时 IP 不能是 0.0.0.0")).toBeTruthy();
   });
 
-  it("Token：设置走 httpToken 补丁；清除要确认并警告只读后果", async () => {
+  it("Token：设置走 httpToken 补丁；清除要先确认", async () => {
     api.netdevPutConfig.mockResolvedValue({ ok: true, netRebootRequired: false });
     wrap(<ConfigPanel device={device} access={accessWith()} />);
     const input = await screen.findByLabelText("更换 Token");
@@ -336,7 +334,7 @@ describe("ConfigPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "清除 Token" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain("只读模式");
+    expect(dialog.textContent).toContain("不再需要 Token");
     fireEvent.click(within(dialog).getByRole("button", { name: "清除 Token" }));
     await waitFor(() => expect(api.netdevPutConfig).toHaveBeenCalledWith("d1", { httpToken: "" }));
   });

@@ -1,0 +1,18 @@
+export { createPluginHost, PluginHostContext, usePluginHost } from "./host";
+export type { PluginHost } from "./host";
+export { createNavRegistry, groupNavItems } from "./navigation";
+export type { NavGroup, NavIcon, NavItemDef, NavRegistry, NavSectionDef } from "./navigation";
+export { createRegistry, DEFAULT_ORDER, useRegistryItems } from "./registry";
+export type { Disposer, Registry, RegistryItem } from "./registry";
+export { defineFeaturePlugin, namedExport } from "./defineFeaturePlugin";
+export type { FeaturePluginSpec } from "./defineFeaturePlugin";
+export { useNavGroups } from "./useNavGroups";
+export { createRouteRegistry, preloadRoutes, toRouteObjects } from "./routes";
+export type { RouteContribution, RouteLayoutHandle, RouteRegistry } from "./routes";
+export { composeProviders, composeRuntimes, resolvePluginOrder, setupPlugins } from "./runtime";
+export type { PluginRuntime } from "./runtime";
+export { Slot } from "./Slot";
+export { useSlotContributions } from "./useSlotContributions";
+export { createSlotRegistry } from "./slotRegistry";
+export type { SlotContribution, SlotName, SlotPropsMap, SlotRegistry } from "./slotRegistry";
+export type { AppPlugin, PluginContext } from "./types";

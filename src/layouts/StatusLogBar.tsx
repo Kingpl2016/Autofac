@@ -1,48 +1,126 @@
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Terminal, ChevronUp, ChevronDown, Trash2 } from "lucide-react";
+import { Activity, ChevronDown, ChevronUp, GripHorizontal, Terminal, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useLogStore, type LogLevel } from "@/shared/stores/logStore";
+import { LogList } from "@/shared/components/LogList";
+import { useLogStore } from "@/shared/stores/logStore";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 
-const LEVEL_STYLE: Record<LogLevel, string> = {
-  info: "text-muted-foreground",
-  warn: "text-warning",
-  error: "text-destructive",
-};
+/** 日志面板的最小高度（像素）。 */
+const MIN_HEIGHT = 120;
+/** 日志面板的默认高度（像素）。 */
+const DEFAULT_HEIGHT = 176;
+/** 日志面板最高占窗口高度的比例。 */
+const MAX_HEIGHT_RATIO = 0.7;
+/** 方向键每次调整的高度（像素）。 */
+const KEY_STEP = 24;
 
-/** 按当前界面语言格式化日志时间。 */
-function formatTime(ts: number, language: string): string {
-  const locale = language.startsWith("zh") ? "zh-CN" : "en-US";
-  return new Date(ts).toLocaleTimeString(locale, { hour12: false });
-}
+/** 当前窗口下允许的最大面板高度。 */
+const maxHeight = () => Math.max(MIN_HEIGHT, Math.floor(window.innerHeight * MAX_HEIGHT_RATIO));
+const clampHeight = (h: number) => Math.min(maxHeight(), Math.max(MIN_HEIGHT, Math.round(h)));
 
 /**
- * 底部状态条：可折叠的系统日志 + 包速率 / 运行时长概览。
+ * 底部状态条：左侧是可折叠的系统日志，右侧依次是“清空”和包速率。
+ * 展开的日志面板可以拖动顶边向上拉伸（也可用方向键微调，双击恢复默认高度）。
+ * 运行时长在顶栏显示（见 `UptimeBadge`）。
  */
 export function StatusLogBar() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [height, setHeight] = useState(DEFAULT_HEIGHT);
+  const [resizing, setResizing] = useState(false);
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const entries = useLogStore((s) => s.entries);
   const clear = useLogStore((s) => s.clear);
   const packetRate = useEngineStatusStore((s) => s.packetRate);
-  const uptimeSec = useEngineStatusStore((s) => s.uptimeSec);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { startY: e.clientY, startHeight: height };
+    setResizing(true);
+  };
+  // 向上拖 = 鼠标 y 变小 = 面板变高
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (d) setHeight(clampHeight(d.startHeight + (d.startY - e.clientY)));
+  };
+  const endDrag = () => {
+    dragRef.current = null;
+    setResizing(false);
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const next: Partial<Record<string, number>> = {
+      ArrowUp: height + KEY_STEP,
+      ArrowDown: height - KEY_STEP,
+      Home: maxHeight(),
+      End: MIN_HEIGHT,
+    };
+    const h = next[e.key];
+    if (h === undefined) return;
+    e.preventDefault();
+    setHeight(clampHeight(h));
+  };
 
   return (
-    <div className="shrink-0 border-t border-border bg-card">
+    <div data-layout="status-bar" className="shrink-0 border-t border-border bg-card">
+      {open && (
+        // 拖动把手：压在面板顶边上，热区比视觉上的细线更宽，方便抓取
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t("statusBar.resizeLog")}
+          aria-valuemin={MIN_HEIGHT}
+          aria-valuemax={maxHeight()}
+          aria-valuenow={height}
+          tabIndex={0}
+          title={t("statusBar.resizeLog")}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
+          onKeyDown={onKeyDown}
+          onDoubleClick={() => setHeight(DEFAULT_HEIGHT)}
+          className={cn(
+            "group relative z-10 -mb-px flex h-2 cursor-row-resize touch-none items-center justify-center",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            resizing ? "bg-primary/20" : "hover:bg-primary/10",
+          )}
+        >
+          <GripHorizontal
+            className={cn(
+              "size-4 text-muted-foreground transition-opacity motion-reduce:transition-none",
+              resizing ? "opacity-100" : "opacity-40 group-hover:opacity-100 group-focus-visible:opacity-100",
+            )}
+            aria-hidden
+          />
+        </div>
+      )}
+
+      {open && (
+        <div
+          style={{ height }}
+          className="overflow-y-auto border-b border-border bg-surface-1/40 px-6 py-2"
+        >
+          <LogList entries={entries} className="min-h-full" />
+        </div>
+      )}
+
       <div className="flex h-10 items-center justify-between px-8 text-xs">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-expanded={open}
         >
           <Terminal className="size-3.5" aria-hidden />
-          <span>{t("statusBar.systemLog")}</span>
+          <span className="font-medium">{t("statusBar.systemLog")}</span>
           {entries.length > 0 && (
-            <span className="tabular text-foreground">({entries.length})</span>
+            <span className="tabular rounded-full bg-surface-3 px-1.5 py-px text-[0.6875rem] leading-4 text-foreground">
+              {entries.length}
+            </span>
           )}
           {open ? (
             <ChevronDown className="size-3.5" aria-hidden />
@@ -51,56 +129,25 @@ export function StatusLogBar() {
           )}
         </button>
 
-        <div className="flex items-center gap-4 text-muted-foreground">
-          <span className="tabular">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            onClick={clear}
+            disabled={entries.length === 0}
+            aria-label={t("statusBar.clear")}
+          >
+            <Trash2 className="size-3.5" />
+            {t("statusBar.clear")}
+          </Button>
+          <span className="tabular flex items-center gap-1.5">
+            <Activity className="size-3.5" aria-hidden />
             {t("statusBar.packetRate")}: {packetRate} {t("dashboard.packetsPerSec")}
-          </span>
-          <span className="tabular">
-            {t("statusBar.uptime")}: {uptimeSec}s
           </span>
         </div>
       </div>
 
-      {open && (
-        <div className="flex h-40 flex-col border-t border-border">
-          <div className="flex items-center justify-end px-8 py-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clear}
-              disabled={entries.length === 0}
-            >
-              <Trash2 />
-              {t("statusBar.clear")}
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-8 pb-3 font-mono text-xs">
-            {entries.length === 0 ? (
-              <div className="py-4 text-center text-muted-foreground">—</div>
-            ) : (
-              entries
-                .slice()
-                .reverse()
-                .map((e) => (
-                  <div key={e.id} className="flex gap-3 py-1">
-                    <span className="tabular text-muted-foreground">
-                      {formatTime(e.ts, i18n.language)}
-                    </span>
-                    <span
-                      className={cn(
-                        "w-10 shrink-0 uppercase",
-                        LEVEL_STYLE[e.level],
-                      )}
-                    >
-                      {e.level}
-                    </span>
-                    <span className="text-foreground">{e.message}</span>
-                  </div>
-                ))
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

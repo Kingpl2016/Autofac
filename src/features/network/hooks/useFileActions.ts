@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { pickSavePath } from "@/shared/tauri/pickers";
 import {
+  netdevAssignPrograms,
   netdevDeleteFile,
   netdevDownloadFile,
   netdevProgramOp,
@@ -13,7 +14,14 @@ import {
   netdevUploadFile,
 } from "../lib/api";
 import { errorText, toNetError } from "../lib/errors";
-import { baseName, findOverwrites, isPlayableMode } from "../lib/files";
+import {
+  applyAssignments,
+  baseName,
+  findOverwrites,
+  isPlayableMode,
+  touchesProgramNo,
+  type ProgramAssignment,
+} from "../lib/files";
 import { netKeys } from "../lib/queryKeys";
 import { ProgramAction, type NetDevice, type NetFile } from "../lib/types";
 import { validateProgramFileName } from "../lib/validate";
@@ -46,6 +54,8 @@ interface Params {
   workMode: number | null;
   files: readonly NetFile[];
   refresh: () => unknown;
+  /** 正在播放 / 暂停的节目号；没有为 `null`。改号不得动到它 */
+  playingNo?: number | null;
 }
 
 /** 这些错误说明后续文件也不会成功，批量上传时直接中止。 */
@@ -56,12 +66,13 @@ const FATAL_CODES = new Set(["unauthorized", "network", "timeout", "not_ready", 
  *
  * 上传与下载走全局传输队列（可取消、可重试）；其余为即时请求，失败用 toast 提示。
  */
-export function useFileActions({ device, workMode, files, refresh }: Params) {
+export function useFileActions({ device, workMode, files, refresh, playingNo = null }: Params) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const run = useTransferStore((s) => s.run);
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
   const [pendingPlay, setPendingPlay] = useState<PendingPlay | null>(null);
+  const [reassigning, setReassigning] = useState(false);
   const id = device.id;
   // 重试需要再次调用 runUploads；经 ref 间接引用，避免回调在声明前引用自己
   const runUploadsRef = useRef<(items: UploadItem[]) => Promise<void>>(async () => undefined);
@@ -179,6 +190,40 @@ export function useFileActions({ device, workMode, files, refresh }: Params) {
     [id, refresh, t],
   );
 
+  /**
+   * 应用节目号分配（改号 / 互换 / 拖动排序）：先在本地列表上乐观更新，设备失败则还原。
+   * 会动到正在播放的节目号时直接拒绝（播放器按编号定位，换号会让“播放中”落到别的文件上）。
+   *
+   * 返回是否成功。
+   */
+  const reassign = useCallback(
+    async (assignments: ProgramAssignment[], label?: string): Promise<boolean> => {
+      if (assignments.length === 0 || reassigning) return false;
+      if (playingNo !== null && touchesProgramNo(files, assignments, playingNo)) {
+        toast.error(t("network.files.programPlaying", { no: playingNo }));
+        return false;
+      }
+      const key = netKeys.files(id);
+      const previous = client.getQueryData<NetFile[]>(key);
+      client.setQueryData<NetFile[]>(key, (old) => (old ? applyAssignments(old, assignments) : old));
+      setReassigning(true);
+      try {
+        await netdevAssignPrograms(id, assignments);
+        if (label) toast.success(label);
+        return true;
+      } catch (e) {
+        if (previous) client.setQueryData(key, previous);
+        toast.error(errorText(t, e));
+        return false;
+      } finally {
+        setReassigning(false);
+        void refresh();
+        refreshPlayback();
+      }
+    },
+    [client, files, id, playingNo, reassigning, refresh, refreshPlayback, t],
+  );
+
   const playNow = useCallback(
     async (file: NetFile, loop: boolean, switchMode: boolean) => {
       if (file.program === null) return;
@@ -231,6 +276,8 @@ export function useFileActions({ device, workMode, files, refresh }: Params) {
     download,
     remove,
     rename,
+    reassign,
+    reassigning,
     requestPlay,
     pendingPlay,
     confirmPlay,

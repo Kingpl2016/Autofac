@@ -1,1 +1,1 @@
-export { DiscoveryView } from "./components/DiscoveryView";
+export { discoveryPlugin } from "./plugin";

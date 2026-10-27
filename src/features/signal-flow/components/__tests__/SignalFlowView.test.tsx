@@ -157,11 +157,11 @@ describe("SignalFlowView 画布", () => {
   });
 
   it("主题跟随应用，而不是写死暗色", async () => {
-    const { usePrefsStore } = await import("@/shared/stores/prefsStore");
-    usePrefsStore.setState({ theme: "light" });
+    const { useAppearanceStore } = await import("@/features/appearance/stores/useAppearanceStore");
+    useAppearanceStore.getState().setMode("light");
     render(<SignalFlowView />);
     expect(rf.props?.colorMode).toBe("light");
-    usePrefsStore.setState({ theme: "dark" });
+    useAppearanceStore.getState().setMode("dark");
   });
 
   it("渲染图例", () => {

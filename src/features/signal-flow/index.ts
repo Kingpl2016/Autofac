@@ -1,1 +1,1 @@
-export { SignalFlowView } from "./components/SignalFlowView";
+export { signalFlowPlugin } from "./plugin";

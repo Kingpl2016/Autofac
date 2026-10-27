@@ -238,7 +238,7 @@ export function DiscoveryView() {
       />
 
       <div className="flex min-h-0 flex-1 gap-4">
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+        <section data-surface="" className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
           <div className="min-h-0 flex-1 overflow-auto">
             {devices.length === 0 ? (
               <DiscoveryEmptyState

@@ -27,7 +27,7 @@ export function UniversesView() {
     <div>
       <PageHeader title={t("universes.title")} subtitle={t("universes.subtitle")} />
 
-      <div className="mb-(--density-gutter) rounded-lg border border-border bg-card p-8">
+      <div data-surface="" className="mb-(--density-gutter) rounded-lg border border-border bg-card p-8">
         <UniversePicker
           available={available}
           selected={selected}

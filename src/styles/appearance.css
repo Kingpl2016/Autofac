@@ -1,0 +1,692 @@
+/*
+ * 个性化（外观插件）驱动的样式。
+ *
+ * 约定“默认值不写属性”：<html> 上只有用户改过的设置才带 data-* 属性，所以未设置时外观与原来完全一致，
+ * 下面的规则只针对非默认值。属性由 features/appearance/lib/computeAttrs.ts 折算并写入。
+ * 颜色、间距等变量（--accent-h、--radius、--density-* …）由同一插件写到 <html> 的行内样式上，不在这里。
+ *
+ * “卡片 / 面板”指 Card 组件（data-slot="card"）与分层面板（data-surface、panel-edge）：
+ * 描边、阴影、填充等纯外观规则对两者都生效；需要伪元素或改动定位的效果（强调条、聚光灯、高光、倾斜）
+ * 只作用于 Card，避免影响吸底等有自己定位的面板。带状态着色的面板（录制 / 播放 / 播放器模式）有自己的语义边框，不参与。
+ */
+
+/* ============================== 卡片 ============================== */
+
+/* 卡片内边距与圆角：Card 组件读取这两个变量（默认值等于原来的 p-8 与全局圆角） */
+:root {
+  --card-gap: 2rem;
+  --card-radius: var(--radius);
+}
+
+:root[data-card-padding="compact"] {
+  --card-gap: 1.25rem;
+}
+
+:root[data-card-padding="comfortable"] {
+  --card-gap: 2.5rem;
+}
+
+/* 阴影强度（默认的 sm 沿用组件自带的 shadow-sm，不需要规则）；放在样式规则之前，扁平样式的“无阴影”才能覆盖它 */
+:root[data-card-shadow="none"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  box-shadow: none;
+}
+
+:root[data-card-shadow="md"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  box-shadow:
+    0 4px 12px -2px rgb(0 0 0 / 0.1),
+    0 2px 6px -2px rgb(0 0 0 / 0.08);
+}
+
+:root[data-card-shadow="lg"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  box-shadow:
+    0 16px 36px -10px rgb(0 0 0 / 0.2),
+    0 6px 14px -6px rgb(0 0 0 / 0.12);
+}
+
+/* 悬浮：去掉描边，靠阴影区分层次 */
+:root[data-card-style="elevated"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-color: transparent;
+}
+
+/* 扁平：没有描边和阴影，用弱化色填充 */
+:root[data-card-style="flat"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-color: transparent;
+  box-shadow: none;
+  background-color: color-mix(in oklab, var(--muted) 70%, var(--card));
+}
+
+/* 毛玻璃：半透明背景 + 背景模糊 + 浅色描边；系统要求降低透明度时退回实色 */
+:root[data-card-style="glass"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  background-color: color-mix(in oklab, var(--card) 60%, transparent);
+  border-color: color-mix(in oklab, var(--foreground) 14%, transparent);
+  -webkit-backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.5);
+  backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.5);
+}
+
+/* 柔和：无描边，用主色淡染的色块，阴影极轻 */
+:root[data-card-style="soft"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-color: transparent;
+  background-color: color-mix(in oklab, var(--primary) 7%, var(--card));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+/* 渐变：卡片底部向主色渐变，保持文字区域干净 */
+:root[data-card-style="gradient"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-color: color-mix(in oklab, var(--primary) 18%, var(--border));
+  background-image: linear-gradient(
+    160deg,
+    var(--card) 45%,
+    color-mix(in oklab, var(--primary) 12%, var(--card)) 100%
+  );
+}
+
+/* 描边宽度 */
+:root[data-card-border="2"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-width: 2px;
+}
+
+:root[data-card-border="3"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-width: 3px;
+}
+
+/* 渐变描边：背景分两层，内层铺卡片底色，外层（border-box）渐变透出描边位置 */
+:root[data-card-gradient-border="on"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(135deg, var(--primary), var(--chart-2), var(--chart-4)) border-box;
+}
+
+/* 发光边框 */
+:root[data-card-glow="on"] :is([data-slot="card"], [data-surface], .panel-edge) {
+  border-color: color-mix(in oklab, var(--primary) 55%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--primary) 30%, transparent),
+    0 0 26px -6px color-mix(in oklab, var(--primary) 55%, transparent);
+}
+
+/* 悬停反馈：抬起或光晕；只在支持悬停的设备上生效 */
+@media (hover: hover) {
+  :root[data-card-hover] :is([data-slot="card"], [data-surface], .panel-edge) {
+    transition:
+      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 180ms;
+  }
+
+  :root[data-card-hover="lift"] :is([data-slot="card"], [data-surface], .panel-edge):hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 14px 28px -10px rgb(0 0 0 / 0.18),
+      0 4px 10px -4px rgb(0 0 0 / 0.1);
+  }
+
+  :root[data-card-hover="glow"] :is([data-slot="card"], [data-surface], .panel-edge):hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 45%, transparent),
+      0 0 24px -4px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+}
+
+/* —— 以下只作用于 Card —— */
+
+/* 顶部主色强调条 */
+:root[data-card-accent="on"] [data-slot="card"] {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-card-accent="on"] [data-slot="card"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--primary);
+}
+
+/* 页眉与页脚分隔线：padding 同步补上，避免线紧贴内容 */
+:root[data-card-dividers="on"] [data-slot="card-header"] {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--card-gap);
+}
+
+:root[data-card-dividers="on"] [data-slot="card-footer"] {
+  border-top: 1px solid var(--border);
+  padding-top: var(--card-gap);
+}
+
+/*
+ * 指针跟随的悬停反馈：聚光灯 / 高光扫过 / 倾斜。
+ * 外观运行时里的委托监听只往被悬停的卡片写 CSS 变量（--card-mx / --card-my / --card-gx / --card-rx / --card-ry），
+ * 样式在这里；没有指针（触屏）或要求减少动画时监听不挂载，卡片保持原样。
+ */
+:root[data-card-hover="spotlight"] [data-slot="card"],
+:root[data-card-hover="glare"] [data-slot="card"] {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-card-hover="spotlight"] [data-slot="card"]::after,
+:root[data-card-hover="glare"] [data-slot="card"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+:root[data-card-hover="spotlight"] [data-slot="card"]::after {
+  background: radial-gradient(
+    320px circle at var(--card-mx, 50%) var(--card-my, 50%),
+    color-mix(in oklab, var(--primary) 20%, transparent),
+    transparent 65%
+  );
+}
+
+:root[data-card-hover="glare"] [data-slot="card"]::after {
+  background: linear-gradient(
+    105deg,
+    transparent calc(var(--card-gx, 50%) - 22%),
+    color-mix(in oklab, white 38%, transparent) var(--card-gx, 50%),
+    transparent calc(var(--card-gx, 50%) + 22%)
+  );
+}
+
+:root[data-card-hover="spotlight"] [data-slot="card"][data-card-active]::after,
+:root[data-card-hover="glare"] [data-slot="card"][data-card-active]::after {
+  opacity: 1;
+}
+
+:root[data-card-hover="tilt"] [data-slot="card"] {
+  transform-style: preserve-3d;
+  transition: transform 120ms ease-out;
+}
+
+:root[data-card-hover="tilt"] [data-slot="card"][data-card-active] {
+  transform: perspective(900px) rotateX(var(--card-rx, 0deg)) rotateY(var(--card-ry, 0deg)) translateZ(0);
+}
+
+/* 减少动画：停用位移类的悬停反馈 */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"])[data-card-hover] :is([data-slot="card"], [data-surface], .panel-edge) {
+    transition: none;
+  }
+
+  :root:not([data-motion="full"])[data-card-hover="lift"] :is([data-slot="card"], [data-surface], .panel-edge):hover {
+    transform: none;
+  }
+
+  :root:not([data-motion="full"])[data-card-hover="tilt"] [data-slot="card"][data-card-active] {
+    transform: none;
+  }
+}
+
+:root[data-motion="reduce"][data-card-hover] :is([data-slot="card"], [data-surface], .panel-edge) {
+  transition: none;
+}
+
+:root[data-motion="reduce"][data-card-hover="lift"] :is([data-slot="card"], [data-surface], .panel-edge):hover {
+  transform: none;
+}
+
+:root[data-motion="reduce"][data-card-hover="tilt"] [data-slot="card"][data-card-active] {
+  transform: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-card-style="glass"] :is([data-slot="card"], [data-surface], .panel-edge) {
+    background-color: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ============================== 特效 ============================== */
+/*
+ * 全部默认关闭：只有对应的 data 属性存在时才起作用。
+ * - 背景特效固定在页面最底层，不拦截指针事件，不改变布局
+ * - 动画类特效在“减少动画”（系统偏好或个性化设置）下自动停用
+ * - 需要透明度的特效在系统要求降低透明度时保持可读
+ */
+
+/*
+ * ---- 页面背景 ----
+ * 强度由 --bg-strength 缩放（柔和 0.6 / 标准 1 / 强烈 1.5），速度由 --bg-duration 控制（慢 40s / 标准 24s / 快 12s）。
+ * 动画只改 @property 注册的自定义属性、transform 与 opacity：渐变位置与旋转角度可以平滑插值，
+ * transform 与 opacity 走合成层，不占主线程。
+ */
+@property --bg-shift {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --bg-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+:root {
+  --bg-strength: 1;
+  --bg-duration: 24s;
+}
+
+:root[data-bg-intensity="soft"] {
+  --bg-strength: 0.6;
+}
+
+:root[data-bg-intensity="strong"] {
+  --bg-strength: 1.5;
+}
+
+:root[data-bg-speed="slow"] {
+  --bg-duration: 40s;
+}
+
+:root[data-bg-speed="fast"] {
+  --bg-duration: 12s;
+}
+
+:root[data-bg-effect]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+:root[data-bg-effect="aurora"]::after {
+  background:
+    radial-gradient(
+      55% 45% at calc(10% + var(--bg-shift)) calc(5% + var(--bg-shift) * 0.4),
+      color-mix(in oklab, var(--primary) calc(22% * var(--bg-strength)), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      45% 40% at calc(90% - var(--bg-shift)) calc(15% + var(--bg-shift) * 0.6),
+      color-mix(in oklab, var(--chart-2) calc(20% * var(--bg-strength)), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      60% 50% at calc(50% + var(--bg-shift) * 0.5) 100%,
+      color-mix(in oklab, var(--chart-4) calc(18% * var(--bg-strength)), transparent),
+      transparent 70%
+    );
+}
+
+/* 流光：一圈缓慢旋转的锥形渐变，铺满整个页面 */
+:root[data-bg-effect="flow"]::after {
+  background: conic-gradient(
+    from var(--bg-angle) at 50% 40%,
+    color-mix(in oklab, var(--primary) calc(18% * var(--bg-strength)), transparent),
+    color-mix(in oklab, var(--chart-2) calc(16% * var(--bg-strength)), transparent),
+    color-mix(in oklab, var(--chart-4) calc(16% * var(--bg-strength)), transparent),
+    color-mix(in oklab, var(--primary) calc(18% * var(--bg-strength)), transparent)
+  );
+}
+
+:root[data-bg-effect="dots"]::after {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) calc(18% * var(--bg-strength)), transparent) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+}
+
+:root[data-bg-effect="grid"]::after {
+  background-image:
+    linear-gradient(
+      color-mix(in oklab, var(--foreground) calc(8% * var(--bg-strength)), transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--foreground) calc(8% * var(--bg-strength)), transparent) 1px,
+      transparent 1px
+    );
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 75%);
+}
+
+:root[data-bg-effect="grain"]::after {
+  opacity: calc(0.06 * var(--bg-strength));
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+:root.dark[data-bg-effect="grain"]::after {
+  opacity: calc(0.1 * var(--bg-strength));
+}
+
+/* 背景特效 / 自定义背景需要主布局让出底色（侧栏、顶栏、卡片仍保持各自的实色） */
+:root:is([data-bg-effect], [data-custom-bg]) [data-layout="root"] {
+  background-color: transparent;
+}
+
+/*
+ * 自定义背景（BackgroundLayer）固定在 z-index -2 的独立层里，背景特效在它之上（-1）。
+ * 给 html 铺上主题底色并让 body 透明：背景层加载之前、加载失败时页面依然是正确的底色，不会闪白。
+ * （html 一旦有背景，body 的背景就不再传给画布，所以 body 必须显式透明。）
+ */
+:root[data-custom-bg] {
+  background-color: var(--background);
+}
+
+:root[data-custom-bg] body {
+  background-color: transparent;
+}
+
+/* ---- 动态背景：打开“动态”后才有动画 ---- */
+@keyframes appearance-bg-drift {
+  to {
+    --bg-shift: 30%;
+  }
+}
+
+@keyframes appearance-bg-spin {
+  to {
+    --bg-angle: 360deg;
+  }
+}
+
+@keyframes appearance-bg-breathe {
+  from {
+    opacity: calc(0.55 * var(--bg-strength));
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appearance-bg-grain {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  25% {
+    transform: translate(-3%, 2%);
+  }
+
+  50% {
+    transform: translate(2%, -3%);
+  }
+
+  75% {
+    transform: translate(-2%, -2%);
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+:root[data-bg-animated="on"][data-bg-effect="aurora"]::after {
+  animation: appearance-bg-drift var(--bg-duration) ease-in-out infinite alternate;
+}
+
+:root[data-bg-animated="on"][data-bg-effect="flow"]::after {
+  animation: appearance-bg-spin calc(var(--bg-duration) * 2) linear infinite;
+}
+
+:root[data-bg-animated="on"]:is([data-bg-effect="dots"], [data-bg-effect="grid"])::after {
+  animation: appearance-bg-breathe calc(var(--bg-duration) / 3) ease-in-out infinite alternate;
+}
+
+:root[data-bg-animated="on"][data-bg-effect="grain"]::after {
+  inset: -10%;
+  animation: appearance-bg-grain 0.9s steps(5) infinite;
+}
+
+/* 页面不可见（切到别的标签页或最小化）时暂停，不在后台白白耗电 */
+:root[data-bg-paused][data-bg-effect]::after {
+  animation-play-state: paused;
+}
+
+/* 减少动画：系统偏好或个性化里选“减少”时，背景保持静态 */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"])[data-bg-animated="on"][data-bg-effect]::after {
+    animation: none;
+  }
+}
+
+:root[data-motion="reduce"][data-bg-animated="on"][data-bg-effect]::after {
+  animation: none;
+}
+
+/*
+ * ---- 按钮按下反馈 ----
+ * 作用于所有按钮（包括没有走 Button 组件、自己写样式的原生按钮）和侧栏导航项；
+ * 滑块把手、标签页与开关本身有选中态动画，不参与。
+ */
+:root[data-press-feedback="on"] :is(button:not([role="tab"], [role="switch"], [role="slider"]), [data-layout="sidebar"] a):not(:disabled) {
+  transition:
+    transform 90ms ease-out,
+    background-color 150ms,
+    color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+:root[data-press-feedback="on"]
+  :is(button:not([role="tab"], [role="switch"], [role="slider"]), [data-layout="sidebar"] a):not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* ---- 内容区进入：淡入并轻微上浮（页面是主内容区的直接子元素，切换路由会重新挂载从而重播动画） ---- */
+@keyframes appearance-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+:root[data-entrance="on"] [data-layout-main] > * {
+  animation: appearance-entrance 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- 骨架屏流光 ---- */
+@keyframes appearance-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+:root[data-shimmer="on"] [data-slot="skeleton"] {
+  animation: none;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) 10%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: appearance-shimmer 1.6s linear infinite;
+}
+
+/* ---- 细滚动条 ---- */
+:root[data-thin-scrollbar="on"] * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--foreground) 28%, transparent) transparent;
+}
+
+:root[data-thin-scrollbar="on"] *::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+/* ---- 焦点环加强（默认只在键盘导航时显示组件自带的焦点环） ---- */
+:root[data-focus-ring="strong"] :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ---- 减少动画：停用上面所有动画类特效 ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"])[data-entrance="on"] [data-layout-main] > *,
+  :root:not([data-motion="full"])[data-shimmer="on"] [data-slot="skeleton"] {
+    animation: none;
+  }
+
+  :root:not([data-motion="full"])[data-press-feedback="on"] :is(button, [data-layout="sidebar"] a):active {
+    transform: none;
+  }
+}
+
+:root[data-motion="reduce"][data-entrance="on"] [data-layout-main] > *,
+:root[data-motion="reduce"][data-shimmer="on"] [data-slot="skeleton"] {
+  animation: none;
+}
+
+:root[data-motion="reduce"][data-press-feedback="on"] :is(button, [data-layout="sidebar"] a):active {
+  transform: none;
+}
+
+/* ============================== 页面切换过渡 ============================== */
+/* 开启“页面切换动画”后，侧栏导航使用 View Transition：轻量淡入淡出 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"])::view-transition-group(*),
+  :root:not([data-motion="full"])::view-transition-old(*),
+  :root:not([data-motion="full"])::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+:root[data-motion="reduce"]::view-transition-group(*),
+:root[data-motion="reduce"]::view-transition-old(*),
+:root[data-motion="reduce"]::view-transition-new(*) {
+  animation: none !important;
+}
+
+/* ============================== 布局 ============================== */
+/*
+ * 主布局的元素带 data-layout 钩子：root（整体）、sidebar（侧栏）、sidebar-toggle（折叠把手）、
+ * content（顶栏 + 内容 + 状态条所在的列）、status-bar（底部状态条）。
+ */
+
+/*
+ * —— 侧栏 / 顶栏 / 状态条 与卡片风格、背景联动 ——
+ * 这三块“外壳”不是卡片，但属于同一套视觉：
+ * - 选了毛玻璃卡片、背景特效或自定义背景时，外壳变成半透明 + 背景模糊，让背景透出来（卡片同样如此）；
+ * - 卡片的“顶部强调条 / 发光边框”同样落在侧栏当前页上（左侧强调条 / 光晕）；
+ * - 卡片的描边宽度同样作用于侧栏与顶栏的分隔线。
+ * 系统要求降低透明度时退回实色。
+ */
+:root:is([data-bg-effect], [data-custom-bg], [data-card-style="glass"]) [data-layout="sidebar"] {
+  background-color: color-mix(in oklab, var(--sidebar) 72%, transparent);
+  -webkit-backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.4);
+  backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.4);
+}
+
+:root:is([data-bg-effect], [data-custom-bg], [data-card-style="glass"]) :is([data-layout="header"], [data-layout="status-bar"]) {
+  background-color: color-mix(in oklab, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.4);
+  backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.4);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root:is([data-bg-effect], [data-custom-bg], [data-card-style="glass"]) [data-layout="sidebar"] {
+    background-color: var(--sidebar);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  :root:is([data-bg-effect], [data-custom-bg], [data-card-style="glass"]) :is([data-layout="header"], [data-layout="status-bar"]) {
+    background-color: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+:root[data-card-accent="on"] [data-layout="sidebar"] a[aria-current="page"] {
+  box-shadow: inset 3px 0 0 0 var(--primary);
+}
+
+:root[data-card-glow="on"] [data-layout="sidebar"] a[aria-current="page"] {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--primary) 35%, transparent),
+    0 0 18px -4px color-mix(in oklab, var(--primary) 45%, transparent);
+}
+
+:root:is([data-card-border="2"], [data-card-border="3"]) [data-layout="sidebar"] {
+  border-right-width: 2px;
+}
+
+:root:is([data-card-border="2"], [data-card-border="3"]) [data-layout="header"] {
+  border-bottom-width: 2px;
+}
+
+:root:is([data-card-border="2"], [data-card-border="3"]) [data-layout="status-bar"] {
+  border-top-width: 2px;
+}
+
+/* 侧栏样式：悬浮 —— 侧栏是浮在页面上的圆角卡片，四周留出间距 */
+:root[data-sidebar-style="floating"] [data-layout="sidebar"] {
+  /* 四周都留间距：右侧的间距同时给半悬在边缘的折叠把手让出位置 */
+  margin: 0.5rem;
+  height: calc(100% - 1rem);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 8px 24px -10px rgb(0 0 0 / 0.35);
+}
+
+/* 侧栏样式：内嵌 —— 侧栏与页面底色融为一体，顶栏 + 内容 + 状态条整体是一张圆角卡片 */
+:root[data-sidebar-style="inset"] [data-layout="root"] {
+  background-color: var(--sidebar);
+}
+
+:root[data-sidebar-style="inset"] [data-layout="sidebar"] {
+  border-right-color: transparent;
+  background-color: transparent;
+}
+
+:root[data-sidebar-style="inset"] [data-layout="content"] {
+  margin: 0.5rem 0.5rem 0.5rem 0;
+  height: calc(100% - 1rem);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background-color: var(--background);
+}
+
+/* 内嵌样式下，内容卡片同样让背景透出来 */
+:root:is([data-bg-effect], [data-custom-bg], [data-card-style="glass"])[data-sidebar-style="inset"] [data-layout="content"] {
+  background-color: color-mix(in oklab, var(--background) 72%, transparent);
+  -webkit-backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.4);
+  backdrop-filter: blur(var(--card-blur, 14px)) saturate(1.4);
+}
+
+/* 侧栏固定展开：不提供折叠把手（切换到该选项时设置面板会同时把侧栏展开） */
+:root[data-sidebar-collapsible="none"] [data-layout="sidebar-toggle"] {
+  display: none;
+}
+
+/* 隐藏底部状态条 */
+:root[data-status-bar="off"] [data-layout="status-bar"] {
+  display: none;
+}
+
+/*
+ * —— 内容区最大宽度 ——
+ * 不加包裹元素（页面依赖直接挂在滚动容器下的高度），而是把超出最大宽度的部分变成左右内边距，
+ * 内容因此居中；窗口比最大宽度窄时仍保持原来的页面边距。占满内容区的页面（编辑器）不参与。
+ */
+:root[data-content-width="narrow"] [data-layout-main="padded"] {
+  padding-inline: max(var(--density-gutter), calc((100% - 56rem) / 2));
+}
+
+:root[data-content-width="default"] [data-layout-main="padded"] {
+  padding-inline: max(var(--density-gutter), calc((100% - 84rem) / 2));
+}

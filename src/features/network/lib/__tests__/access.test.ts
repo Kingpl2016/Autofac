@@ -7,9 +7,7 @@ const base: AccessInput = {
   checking: false,
   online: true,
   error: null,
-  config: { tokenSet: true },
   rebooting: false,
-  forceWrite: false,
 };
 
 describe("deriveAccess", () => {
@@ -17,18 +15,8 @@ describe("deriveAccess", () => {
     expect(deriveAccess({ ...base, hasDevice: false }).state).toBe("none");
   });
 
-  it("在线且已配置 Token：可读可写", () => {
+  it("在线：默认可读可写（无论设备是否配置 Token）", () => {
     expect(deriveAccess(base)).toEqual({ state: "ok", canRead: true, canWrite: true });
-  });
-
-  it("设备没配置 Token：只读；选择仍然尝试后可写", () => {
-    const cfg = { tokenSet: false };
-    expect(deriveAccess({ ...base, config: cfg })).toEqual({ state: "readonly", canRead: true, canWrite: false });
-    expect(deriveAccess({ ...base, config: cfg, forceWrite: true }).canWrite).toBe(true);
-  });
-
-  it("配置尚未取到时不提前判定只读", () => {
-    expect(deriveAccess({ ...base, config: null }).state).toBe("ok");
   });
 
   it("未授权优先于离线", () => {

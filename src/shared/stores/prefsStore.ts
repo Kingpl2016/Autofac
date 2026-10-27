@@ -3,36 +3,11 @@ import { persist } from "zustand/middleware";
 
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
 
-/** 主题模式 */
-export type ThemeMode = "dark" | "light";
-
 /** 界面语言 */
 export type Language = "zh" | "en";
 
-/** 强调色预设 */
-export type AccentColor =
-  | "blue"
-  | "cyan"
-  | "green"
-  | "orange"
-  | "violet"
-  | "rose";
-
-/** 全部强调色（显示顺序） */
-export const ACCENT_COLORS: readonly AccentColor[] = [
-  "blue",
-  "cyan",
-  "green",
-  "orange",
-  "violet",
-  "rose",
-];
-
 /** 全部可选语言（显示顺序） */
 export const LANGUAGES: readonly Language[] = ["zh", "en"];
-
-/** 全部主题模式。 */
-const THEMES: readonly ThemeMode[] = ["dark", "light"];
 
 /** 录制开始 / 停止的全局快捷键。 */
 export interface RecordHotkeys {
@@ -49,24 +24,14 @@ export const DEFAULT_RECORD_HOTKEYS: RecordHotkeys = {
 };
 
 interface PrefsState {
-  /** 当前主题（深色为默认） */
-  theme: ThemeMode;
   /** 界面语言（首次启动取系统语言） */
   language: Language;
-  /** 强调色 */
-  accent: AccentColor;
   /** 侧栏是否折叠为图标栏 */
   sidebarCollapsed: boolean;
   /** 录制开始 / 停止的全局快捷键 */
   recordHotkeys: RecordHotkeys;
-  /** 切换主题 */
-  toggleTheme: () => void;
-  /** 设置主题 */
-  setTheme: (theme: ThemeMode) => void;
   /** 设置界面语言 */
   setLanguage: (language: Language) => void;
-  /** 设置强调色 */
-  setAccent: (accent: AccentColor) => void;
   /** 切换侧栏折叠状态 */
   toggleSidebar: () => void;
   /** 设置侧栏折叠状态 */
@@ -91,9 +56,7 @@ export function detectSystemLanguage(): Language {
 
 /** 落盘的外观偏好字段。 */
 interface PrefsData {
-  theme: ThemeMode;
   language: Language;
-  accent: AccentColor;
   sidebarCollapsed: boolean;
   recordHotkeys: RecordHotkeys;
 }
@@ -119,15 +82,9 @@ function validAccelerator(v: unknown, fallback: string): string {
 function sanitizePrefs(raw: unknown, current: PrefsData): PrefsData {
   const r = (raw ?? {}) as Partial<Record<keyof PrefsData, unknown>>;
   return {
-    theme: THEMES.includes(r.theme as ThemeMode)
-      ? (r.theme as ThemeMode)
-      : current.theme,
     language: LANGUAGES.includes(r.language as Language)
       ? (r.language as Language)
       : current.language,
-    accent: ACCENT_COLORS.includes(r.accent as AccentColor)
-      ? (r.accent as AccentColor)
-      : current.accent,
     sidebarCollapsed:
       typeof r.sidebarCollapsed === "boolean"
         ? r.sidebarCollapsed
@@ -151,16 +108,10 @@ function sanitizePrefs(raw: unknown, current: PrefsData): PrefsData {
 export const usePrefsStore = create<PrefsState>()(
   persist(
     (set) => ({
-      theme: "dark",
       language: detectSystemLanguage(),
-      accent: "blue",
       sidebarCollapsed: false,
       recordHotkeys: { ...DEFAULT_RECORD_HOTKEYS },
-      toggleTheme: () =>
-        set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
-      setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
-      setAccent: (accent) => set({ accent }),
       toggleSidebar: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
@@ -175,10 +126,8 @@ export const usePrefsStore = create<PrefsState>()(
       name: "prefs",
       version: 1,
       storage: createTauriPersistStorage<PrefsData>(),
-      partialize: ({ theme, language, accent, sidebarCollapsed, recordHotkeys }) => ({
-        theme,
+      partialize: ({ language, sidebarCollapsed, recordHotkeys }) => ({
         language,
-        accent,
         sidebarCollapsed,
         recordHotkeys,
       }),
@@ -190,29 +139,6 @@ export const usePrefsStore = create<PrefsState>()(
     },
   ),
 );
-
-/**
- * 把主题应用到 <html> 的 class 上。
- *
- * # Arguments
- *
- * * `theme` - 目标主题模式。
- */
-export function applyThemeClass(theme: ThemeMode): void {
-  const root = document.documentElement;
-  root.classList.toggle("dark", theme === "dark");
-}
-
-/**
- * 把强调色应用到 <html> 的 `data-accent` 属性上。
- *
- * # Arguments
- *
- * * `accent` - 目标强调色。
- */
-export function applyAccent(accent: AccentColor): void {
-  document.documentElement.dataset.accent = accent;
-}
 
 /**
  * 把界面语言应用到 <html> 的 `lang` 属性上（便于读屏与字体回退）。

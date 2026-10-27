@@ -46,8 +46,6 @@ const access: DeviceAccess = {
   canWrite: true,
   status: { status: null, online: true, error: null, isLoading: false, refetch: vi.fn() },
   tokenSet: true,
-  forceWrite: false,
-  setForceWrite: vi.fn(),
   markRebooting: vi.fn(),
 };
 
@@ -67,7 +65,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   useUpgradeStore.setState({ stage: "idle", firmware: null, path: null, targets: [], stopRequested: false });
   useTransferStore.setState({ items: [] });
-  useDeviceSessionStore.setState({ rebooting: {}, forceWrite: {} });
+  useDeviceSessionStore.setState({ rebooting: {} });
   api.netdevOtaStatus.mockResolvedValue({
     running: "ota_0",
     version: "1.4.2",

@@ -127,6 +127,7 @@ export function DeviceDetailPanel({
     <aside
       aria-label={t("discovery.panelTitle")}
       onKeyDown={handlePanelKey}
+      data-surface=""
       className="flex w-80 shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card"
     >
       <header className="flex items-start gap-2 border-b border-border p-4">

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./appearance.css";
 
 /* 深色为默认主题：现场操作员多在暗环境作业 */
 @custom-variant dark (&:is(.dark *));
@@ -15,7 +16,7 @@
 :root {
   --radius: 0.5rem;
 
-  /* 强调色色相 / 彩度：由 <html data-accent="..."> 覆盖（见文件下方预设） */
+  /* 强调色色相 / 彩度：个性化选了主色时由外观插件写到 <html> 的行内样式上覆盖；状态语义色（成功 / 告警 / 录制）不受影响 */
   --accent-h: 255;
   --accent-c: 0.2;
 
@@ -124,37 +125,6 @@
   --sidebar-ring: oklch(0.7 calc(var(--accent-c) * 0.8) var(--accent-h));
 }
 
-/* 强调色预设：只改色相 / 彩度，状态语义色（成功/告警/录制）保持不变 */
-[data-accent="blue"] {
-  --accent-h: 255;
-  --accent-c: 0.2;
-}
-
-[data-accent="cyan"] {
-  --accent-h: 205;
-  --accent-c: 0.13;
-}
-
-[data-accent="green"] {
-  --accent-h: 150;
-  --accent-c: 0.15;
-}
-
-[data-accent="orange"] {
-  --accent-h: 50;
-  --accent-c: 0.17;
-}
-
-[data-accent="violet"] {
-  --accent-h: 295;
-  --accent-c: 0.2;
-}
-
-[data-accent="rose"] {
-  --accent-h: 5;
-  --accent-c: 0.2;
-}
-
 /* 不确定进度条：只动 transform（不触发布局），仅用于“扫描中”这类加载指示 */
 @keyframes indeterminate {
   0% {
@@ -167,6 +137,24 @@
 
 @utility animate-indeterminate {
   animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+/*
+ * 明暗切换的圆形扩散（View Transition）：动画由 JS 驱动 clip-path，
+ * 这里关掉浏览器默认的淡入淡出，并让新画面盖在旧画面之上。
+ */
+:root.theme-transition::view-transition-old(root),
+:root.theme-transition::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+:root.theme-transition::view-transition-old(root) {
+  z-index: 1;
+}
+
+:root.theme-transition::view-transition-new(root) {
+  z-index: 2;
 }
 
 /* 暴露给 Tailwind v4 的语义 token 映射 */
@@ -235,6 +223,8 @@
     color-scheme: light;
     height: 100%;
     overflow: hidden;
+    /* 个性化的“界面缩放”：外观插件写入不带单位的百分数（如 105）；未设置时恒为 100%。rem 为单位的界面整体缩放 */
+    font-size: calc(var(--ui-scale, 100) * 1%);
   }
 
   html.dark {
@@ -286,21 +276,68 @@
     background: transparent;
   }
 
+  /* 所有可点击元素都显示手形光标；禁用时显示禁止光标，让“能不能点”一眼可辨 */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="switch"],
+  [role="radio"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="option"],
+  summary,
+  label[for],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* 原生控件（滑块、复选框、单选框、进度条）和插入符跟随主色；选中文字用主色淡染 */
+  html {
+    accent-color: var(--primary);
+  }
+
+  input,
+  textarea {
+    caret-color: var(--primary);
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 30%, transparent);
+  }
+
   /* 等宽数字：DMX 值 / 时间码 / 偏移对齐 */
   .tabular {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 
-  /* 尊重 reduced-motion */
+  /*
+   * 尊重 reduced-motion（WCAG 2.3.3）：
+   * - 默认跟随系统的 prefers-reduced-motion；
+   * - 个性化里选“减少动画”时 <html data-motion="reduce"> 强制减少；
+   * - 选“完整动画”时 <html data-motion="full"> 覆盖系统偏好，保留全部动画。
+   */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
+    :root:not([data-motion="full"]) *,
+    :root:not([data-motion="full"]) *::before,
+    :root:not([data-motion="full"]) *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+
+  :root[data-motion="reduce"] *,
+  :root[data-motion="reduce"] *::before,
+  :root[data-motion="reduce"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

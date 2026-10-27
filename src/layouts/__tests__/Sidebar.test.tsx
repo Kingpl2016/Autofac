@@ -1,21 +1,33 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 
+import { appPlugins } from "@/app/plugins";
 import i18n from "@/shared/i18n";
+import { PluginHostContext, type PluginHost } from "@/shared/plugin";
+import { createTestHost } from "@/shared/plugin/testing";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
 import { Sidebar } from "../Sidebar";
 
+let host: PluginHost;
+
+beforeAll(async () => {
+  // 侧栏的分组与导航项由插件注册：用真实的插件清单装配宿主
+  ({ host } = await createTestHost(appPlugins));
+});
+
 function renderSidebar() {
   return render(
-    <MemoryRouter>
-      <Sidebar />
-    </MemoryRouter>,
+    <PluginHostContext value={host}>
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    </PluginHostContext>,
   );
 }
 
@@ -60,28 +72,20 @@ describe("Sidebar 与播放器模式", () => {
   });
 });
 
-describe("Sidebar 的“工具”分组", () => {
-  it("信号检测器是按钮而不是页面链接：点击打开独立窗口", () => {
+describe("Sidebar 不再包含信号检测器", () => {
+  it("侧栏里没有“工具”分组和信号检测器入口（已移到顶栏）", () => {
     renderSidebar();
-    expect(screen.getByText("工具")).toBeTruthy();
+    expect(screen.queryByText("工具")).toBeNull();
+    expect(screen.queryByRole("button", { name: "信号检测器" })).toBeNull();
     expect(screen.queryByRole("link", { name: "信号检测器" })).toBeNull();
-
-    const button = screen.getByRole("button", { name: "信号检测器" });
-    expect(button.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+T");
-    fireEvent.click(button);
-    expect(invoke).toHaveBeenCalledWith("signal_checker_open");
   });
 
-  it("折叠后按钮仍可访问，样式与导航链接一致（图标位置不跳）", () => {
+  it("“节目”分组按 录制、节目编辑、灯具素材库 排列", () => {
     renderSidebar();
-    const link = screen.getAllByRole("link")[0];
-    const button = screen.getByRole("button", { name: "信号检测器" });
-    fireEvent.click(screen.getByRole("button", { name: "收起侧栏" }));
-    expect(screen.getByRole("button", { name: "信号检测器" })).toBe(button);
-    for (const token of ["flex", "items-center", "gap-3", "px-2.5", "overflow-hidden"]) {
-      expect(button.className.split(/\s+/)).toContain(token);
-      expect(link.className.split(/\s+/)).toContain(token);
-    }
+    const labels = screen.getAllByRole("link").map((l) => l.getAttribute("aria-label"));
+    const at = (name: string) => labels.findIndex((l) => l?.startsWith(name));
+    expect(at("录制")).toBeLessThan(at("节目编辑"));
+    expect(at("节目编辑")).toBeLessThan(at("灯具素材库"));
   });
 });
 

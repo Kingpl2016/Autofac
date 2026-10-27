@@ -5,3 +5,4 @@ export {
   useSignalCheckerHotkey,
 } from "./hooks/useSignalCheckerHotkey";
 export { openSignalChecker } from "./lib/api";
+export { signalCheckerPlugin } from "./plugin";

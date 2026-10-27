@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   netdevListFiles: vi.fn(),
   netdevDeleteFile: vi.fn(),
   netdevRenameFile: vi.fn(),
+  netdevAssignPrograms: vi.fn(),
   netdevProgramOp: vi.fn(),
   netdevSetWorkmode: vi.fn(),
   netdevUploadFile: vi.fn(),
@@ -53,8 +54,6 @@ function accessWith(over: Partial<Omit<DeviceAccess, "status">> & { status?: Par
     canWrite: true,
     status: { status: full, online: true, error: null, isLoading: false, refetch: vi.fn() },
     tokenSet: true,
-    forceWrite: false,
-    setForceWrite: vi.fn(),
     markRebooting: vi.fn(),
     ...rest,
   };
@@ -106,8 +105,8 @@ describe("FilesTab 列表", () => {
     expect(await screen.findAllByText("SD 卡未挂载")).toBeTruthy();
   });
 
-  it("只读模式：上传 / 重命名 / 删除 / 播放全部禁用，下载仍可用", async () => {
-    renderTab(accessWith({ state: "readonly", canWrite: false }));
+  it("不可写：上传 / 重命名 / 删除 / 播放全部禁用，下载仍可用", async () => {
+    renderTab(accessWith({ state: "offline", canWrite: false }));
     await screen.findByText("a.artrec");
     expect((screen.getByRole("button", { name: "选择文件" }) as HTMLButtonElement).disabled).toBe(true);
     const r = within(row("a.artrec"));
@@ -234,6 +233,94 @@ describe("FilesTab 删除与重命名", () => {
     fireEvent.keyDown(screen.getByRole("textbox", { name: "重命名" }), { key: "Escape" });
     expect(screen.queryByRole("textbox", { name: "重命名" })).toBeNull();
     expect(api.netdevRenameFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("FilesTab 修改节目号与拖动手柄", () => {
+  const openEditor = (name: string) =>
+    fireEvent.click(within(row(name)).getByRole("button", { name: new RegExp(`修改节目号: ${name}`) }));
+  const editorInput = () => screen.getByRole("spinbutton", { name: "节目号" }) as HTMLInputElement;
+
+  it("只有有节目号的文件有拖动手柄；没有节目号的排在后面且不能拖", async () => {
+    renderTab();
+    await screen.findByText("a.artrec");
+    expect(within(row("a.artrec")).getByRole("button", { name: /拖动排序: a.artrec/ })).toBeTruthy();
+    expect(within(row("b.artrec")).getByRole("button", { name: /拖动排序: b.artrec/ })).toBeTruthy();
+    expect(within(row("new.artrec")).queryByRole("button", { name: /拖动排序/ })).toBeNull();
+  });
+
+  it("不可写时手柄和节目号都不能操作", async () => {
+    renderTab(accessWith({ state: "offline", canWrite: false }));
+    await screen.findByText("a.artrec");
+    const handle = within(row("a.artrec")).getByRole("button", { name: /拖动排序/ }) as HTMLButtonElement;
+    expect(handle.disabled).toBe(true);
+    expect(within(row("a.artrec")).queryByRole("button", { name: /修改节目号/ })).toBeNull();
+  });
+
+  it("目标号空闲：直接改，并提交一条分配", async () => {
+    api.netdevAssignPrograms.mockResolvedValue(undefined);
+    renderTab();
+    await screen.findByText("a.artrec");
+    openEditor("a.artrec");
+    fireEvent.change(editorInput(), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() =>
+      expect(api.netdevAssignPrograms).toHaveBeenCalledWith("d1", [{ no: 7, file: "a.artrec" }]),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("“a.artrec”的节目号已改为 #7"));
+  });
+
+  it("目标号被占用：写明将与对方互换，确认后提交两条分配", async () => {
+    api.netdevAssignPrograms.mockResolvedValue(undefined);
+    renderTab();
+    await screen.findByText("a.artrec");
+    openEditor("a.artrec");
+    fireEvent.change(editorInput(), { target: { value: "2" } });
+    expect(await screen.findByText(/#2 已被“b.artrec”使用，确认后两个文件互换节目号/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "互换" }));
+    await waitFor(() =>
+      expect(api.netdevAssignPrograms).toHaveBeenCalledWith("d1", [
+        { no: 2, file: "a.artrec" },
+        { no: 1, file: "b.artrec" },
+      ]),
+    );
+  });
+
+  it("没有节目号的文件不能抢别人的号；不合法的号也不能提交", async () => {
+    renderTab();
+    await screen.findByText("new.artrec");
+    openEditor("new.artrec");
+    // 预填最小空闲号 3
+    expect(editorInput().value).toBe("3");
+    fireEvent.change(editorInput(), { target: { value: "1" } });
+    expect((await screen.findByRole("alert")).textContent).toContain("#1 已被“a.artrec”使用");
+    expect((screen.getByRole("button", { name: "确认" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(editorInput(), { target: { value: "300" } });
+    expect((await screen.findByRole("alert")).textContent).toContain("1~255");
+    expect((screen.getByRole("button", { name: "确认" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
+  });
+
+  it("正在播放的节目不能改号（含被它占用的号）", async () => {
+    renderTab(accessWith({ status: { player: { state: 2, programNo: 1, posMs: 0, durMs: 0 } } }));
+    await screen.findByText("a.artrec");
+    openEditor("b.artrec");
+    fireEvent.change(editorInput(), { target: { value: "1" } });
+    expect((await screen.findByRole("alert")).textContent).toContain("正在播放的节目 #1");
+    expect((screen.getByRole("button", { name: "互换" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
+  });
+
+  it("设备改号失败：提示原因并还原列表", async () => {
+    api.netdevAssignPrograms.mockRejectedValue({ code: "busy", message: "x" });
+    renderTab();
+    await screen.findByText("a.artrec");
+    openEditor("a.artrec");
+    fireEvent.change(editorInput(), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(within(row("a.artrec")).getByText("#1")).toBeTruthy();
   });
 });
 

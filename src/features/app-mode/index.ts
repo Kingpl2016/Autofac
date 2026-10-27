@@ -8,3 +8,4 @@ export { PlayerModeBanner } from "./components/PlayerModeBanner";
 export { useAppModeListeners } from "./hooks/useAppModeListeners";
 export { PLAYER_ROUTE, useModeActions } from "./hooks/useModeActions";
 export { useAppModeStore } from "./stores/useAppModeStore";
+export { appModePlugin } from "./plugin";

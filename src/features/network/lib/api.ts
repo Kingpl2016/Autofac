@@ -124,6 +124,17 @@ export function netdevRenameFile(id: string, from: string, to: string): Promise<
   return invoke<void>("netdev_rename_file", { id, from, to });
 }
 
+/**
+ * 应用一组节目号分配（改号 / 互换 / 拖动排序）；设备端中途失败会尽力回滚。
+ * 节目号与文件名都不得重复。
+ */
+export function netdevAssignPrograms(
+  id: string,
+  assignments: ReadonlyArray<{ no: number; file: string }>,
+): Promise<void> {
+  return invoke<void>("netdev_assign_programs", { id, assignments });
+}
+
 // ===================== 固件 =====================
 
 /** 读取 OTA 状态。 */

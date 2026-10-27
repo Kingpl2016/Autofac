@@ -25,7 +25,7 @@ import { Segmented } from "@/shared/components/Segmented";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useOutputStore } from "@/shared/stores/outputStore";
-import { usePrefsStore } from "@/shared/stores/prefsStore";
+import { useResolvedMode } from "@/features/appearance";
 import { useForwardingQuery } from "@/features/forwarding/hooks/useForwarding";
 import { usePlayerStore } from "@/features/recording";
 import { useProtocolFlags, useSettingsQuery } from "@/features/settings";
@@ -69,7 +69,7 @@ export function SignalFlowView() {
 
 function SignalFlowContent() {
   const { t } = useTranslation();
-  const theme = usePrefsStore((s) => s.theme);
+  const theme = useResolvedMode();
   const liveUniverses = useEngineDataStore((s) => s.universes);
   const playback = usePlayerStore((s) => s.status);
   const forwarding = useForwardingQuery();
@@ -173,8 +173,9 @@ function SignalFlowContent() {
         title={t("nav.signalFlow")}
         subtitle={t("signalFlow.subtitle")}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Segmented<FlowViewMode>
+              size="md"
               value={view}
               onChange={setView}
               ariaLabel={t("signalFlow.view.label")}
@@ -202,7 +203,7 @@ function SignalFlowContent() {
                   type="number"
                   min={1}
                   max={9999}
-                  className="tabular w-20"
+                  className="tabular h-10 w-20"
                   title={t("signalFlow.thresholdHint")}
                   value={thresholdDraft ?? threshold}
                   onChange={(e) => {

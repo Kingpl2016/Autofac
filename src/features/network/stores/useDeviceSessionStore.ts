@@ -11,27 +11,22 @@ export interface RebootEntry {
 interface DeviceSessionState {
   /** 设备 id → 重启跟踪。 */
   rebooting: Record<string, RebootEntry>;
-  /** 设备 id → 用户选择"仍然尝试写操作"（设备没配置 Token 时的只读模式覆盖）。 */
-  forceWrite: Record<string, boolean>;
   /** 标记设备开始重启。 */
   markRebooting: (id: string, waitMs?: number) => void;
   /** 记录观察到设备掉线。 */
   markSawOffline: (id: string) => void;
   /** 结束重启跟踪。 */
   clearRebooting: (id: string) => void;
-  /** 切换"仍然尝试写操作"。 */
-  setForceWrite: (id: string, force: boolean) => void;
 }
 
 /** 默认的重启等待上限（毫秒）。 */
 export const DEFAULT_REBOOT_WAIT_MS = 90_000;
 
 /**
- * 仅存活于本次运行的设备会话状态（不持久化）：重启跟踪与只读覆盖。
+ * 仅存活于本次运行的设备会话状态（不持久化）：重启跟踪。
  */
 export const useDeviceSessionStore = create<DeviceSessionState>()((set) => ({
   rebooting: {},
-  forceWrite: {},
   markRebooting: (id, waitMs = DEFAULT_REBOOT_WAIT_MS) =>
     set((s) => ({
       rebooting: { ...s.rebooting, [id]: { until: Date.now() + waitMs, sawOffline: false } },
@@ -49,5 +44,4 @@ export const useDeviceSessionStore = create<DeviceSessionState>()((set) => ({
       delete next[id];
       return { rebooting: next };
     }),
-  setForceWrite: (id, force) => set((s) => ({ forceWrite: { ...s.forceWrite, [id]: force } })),
 }));

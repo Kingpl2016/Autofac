@@ -13,13 +13,12 @@ import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useForwardingQuery } from "@/features/forwarding";
 import { StatCard } from "./StatCard";
 import { ActiveUniverseList } from "./ActiveUniverseList";
-import { SystemLogCard } from "./SystemLogCard";
 import { OutputHealthStrip } from "./OutputHealthStrip";
 import { countDestinations, countDevices } from "../lib/counts";
 import { formatMemory, formatPacketRate, formatUptime } from "../lib/format";
 
 /**
- * 仪表盘：6 张统计卡 + 输出健康条 + 活跃 Universe + 系统日志。
+ * 仪表盘：6 张统计卡 + 输出健康条 + 活跃 Universe。系统日志见底部状态条。
  */
 export function DashboardView() {
   const { t } = useTranslation();
@@ -90,10 +89,6 @@ export function DashboardView() {
 
       <div className="mt-5">
         <ActiveUniverseList />
-      </div>
-
-      <div className="mt-5">
-        <SystemLogCard />
       </div>
     </div>
   );

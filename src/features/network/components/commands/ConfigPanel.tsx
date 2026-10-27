@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { RotateCw, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -32,7 +33,7 @@ export function ConfigPanel({ device, access }: ConfigPanelProps) {
   const [confirmReboot, setConfirmReboot] = useState(false);
 
   if (isLoading) {
-    return <div aria-busy="true" className="h-64 animate-pulse rounded-xl bg-surface-2 motion-reduce:animate-none" />;
+    return <Skeleton aria-busy="true" className="h-64 rounded-xl bg-surface-2" />;
   }
   if (error || !config) {
     return (

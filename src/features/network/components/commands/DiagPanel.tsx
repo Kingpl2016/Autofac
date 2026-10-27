@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { OctagonAlert, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -26,7 +27,7 @@ export function DiagPanel({ device, access, active }: DiagPanelProps) {
   const { diag, samples, error, isLoading } = useDiag(device.id, active && access.canRead);
 
   if (isLoading || (!diag && !error)) {
-    return <div aria-busy="true" className="h-64 animate-pulse rounded-xl bg-surface-2 motion-reduce:animate-none" />;
+    return <Skeleton aria-busy="true" className="h-64 rounded-xl bg-surface-2" />;
   }
   if (!diag) {
     return (

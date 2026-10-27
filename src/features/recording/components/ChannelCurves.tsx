@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { usePrefsStore } from "@/shared/stores/prefsStore";
+import { useAppearanceRevision } from "@/features/appearance";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useSeries } from "../hooks/useSeries";
 import {
@@ -50,8 +50,7 @@ interface ChannelCurvesProps {
  */
 export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCurvesProps) {
   const { t } = useTranslation();
-  const theme = usePrefsStore((s) => s.theme);
-  const accent = usePrefsStore((s) => s.accent);
+  const appearanceRevision = useAppearanceRevision();
 
   const [universeChoice, setUniverseChoice] = useState<number | null>(null);
   const universe =
@@ -101,8 +100,8 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
       ),
       gridColor: themeColor(canvas, "--border", "currentColor"),
     });
-    // theme / accent 只用于触发重绘：颜色变量变化后重新取色
-  }, [series, t0, t1, width, theme, accent]);
+    // appearanceRevision 只用于触发重绘：颜色变量变化后重新取色
+  }, [series, t0, t1, width, appearanceRevision]);
 
   const summary = useMemo(() => (series ? summarizeSeries(series) : []), [series]);
   const playheadVisible = posUs >= t0 && posUs <= t1 && t1 > t0;

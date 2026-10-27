@@ -25,6 +25,8 @@ export function SurfacePanel({
 }: SurfacePanelProps) {
   return (
     <section
+      // 个性化的卡片样式作用于带 data-surface 的面板；带状态着色的面板保持自己的语义边框
+      data-surface={tone === "default" ? "" : undefined}
       className={cn(
         "rounded-xl border border-border bg-surface-2 p-(--panel-pad) transition-shadow",
         tone === "default" && "panel-edge",

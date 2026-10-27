@@ -507,6 +507,28 @@ export function createNetdevModule(world: World, library: Library): DemoModule {
         return m.files.flatMap((f) => (f.program ? [{ no: f.program, file: f.name, size: f.size }] : []));
       },
 
+      netdev_assign_programs: async (args: CommandArgs) => {
+        const m = await call({ id: str(args, "id") }, true);
+        const list = (args.assignments ?? []) as Array<{ no: number; file: string }>;
+        if (list.length === 0) netFail("invalid", "没有要应用的节目号分配");
+        for (const a of list) {
+          if (!Number.isInteger(a.no) || a.no < 1 || a.no > 255) netFail("invalid", "节目号必须在 1~255 之间");
+          checkFileName(a.file);
+          if (!m.files.some((f) => f.name === a.file)) netFail("not_found", "设备上未找到目标");
+        }
+        if (new Set(list.map((a) => a.no)).size !== list.length || new Set(list.map((a) => a.file)).size !== list.length) {
+          netFail("invalid", "节目号或文件名重复");
+        }
+        // 与固件一致：一个文件只对应一个编号；被占用的编号会被覆盖
+        for (const a of list) {
+          m.files = m.files.map((f) => {
+            if (f.name === a.file) return { ...f, program: a.no };
+            return f.program === a.no ? { ...f, program: null } : f;
+          });
+        }
+        log(m, `调整节目号：${list.map((a) => `${a.no}→${a.file}`).join("，")}`);
+      },
+
       netdev_delete_file: async (args: CommandArgs) => {
         const m = await call({ id: str(args, "id") }, true);
         const name = str(args, "name");

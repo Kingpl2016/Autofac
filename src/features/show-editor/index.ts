@@ -1,1 +1,1 @@
-export { ShowEditorView } from "./components/ShowEditorView";
+export { showEditorPlugin } from "./plugin";

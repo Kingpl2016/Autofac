@@ -12,10 +12,6 @@ export interface DeviceAccess extends Access {
   status: DeviceStatusResult;
   /** 设备配置（用于判断 Token 是否已配置；未取到为 `null`） */
   tokenSet: boolean | null;
-  /** 用户是否选择了"仍然尝试写操作" */
-  forceWrite: boolean;
-  /** 切换"仍然尝试写操作" */
-  setForceWrite: (force: boolean) => void;
   /** 下发重启 / 升级后调用，进入"重启中"并加快探测 */
   markRebooting: (waitMs?: number) => void;
 }
@@ -36,7 +32,6 @@ export interface DeviceAccess extends Access {
 export function useDeviceAccess(device: NetDevice | null): DeviceAccess {
   const id = device?.id ?? null;
   const entry = useDeviceSessionStore((s) => (id ? s.rebooting[id] : undefined));
-  const forceWrite = useDeviceSessionStore((s) => (id ? (s.forceWrite[id] ?? false) : false));
   const rebooting = entry !== undefined;
 
   const status = useDeviceStatus(id, rebooting);
@@ -62,19 +57,13 @@ export function useDeviceAccess(device: NetDevice | null): DeviceAccess {
     checking: status.isLoading,
     online: status.online,
     error: status.error,
-    config,
     rebooting,
-    forceWrite,
   });
 
   return {
     ...access,
     status,
     tokenSet: config ? config.tokenSet : null,
-    forceWrite,
-    setForceWrite: (force) => {
-      if (id) useDeviceSessionStore.getState().setForceWrite(id, force);
-    },
     markRebooting: (waitMs) => {
       if (id) useDeviceSessionStore.getState().markRebooting(id, waitMs);
     },

@@ -1,4 +1,4 @@
-import { KeyRound, Lock, LockOpen, RotateCw, WifiOff } from "lucide-react";
+import { KeyRound, RotateCw, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -13,19 +13,17 @@ interface AccessBannerProps {
 }
 
 /**
- * 设备不可用 / 只读时显示在内容区顶部的说明横幅：写明原因，并给出下一步操作。
- * 可用（`ok`）且没有覆盖时不渲染。
+ * 设备不可用时显示在内容区顶部的说明横幅：写明原因，并给出下一步操作。
+ * 可用（`ok`）时不渲染。
  */
 export function AccessBanner({ access, onEditDevice }: AccessBannerProps) {
   const { t } = useTranslation();
   const { state } = access;
 
-  const overridden = state === "ok" && access.forceWrite && access.tokenSet === false;
-  if (state === "ok" && !overridden) return null;
-  if (state === "none" || state === "checking") return null;
+  if (state === "ok" || state === "none" || state === "checking") return null;
 
   let tone = "border-warning/40 bg-warning/10 text-warning";
-  let icon = <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />;
+  let icon: React.ReactNode;
   let title: string;
   let body: string;
   let actions: React.ReactNode = null;
@@ -53,30 +51,8 @@ export function AccessBanner({ access, onEditDevice }: AccessBannerProps) {
     icon = <RotateCw className="mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />;
     title = t("network.access.rebootingTitle");
     body = t("network.access.rebootingBody");
-  } else if (state === "readonly") {
-    title = t("network.access.readonlyTitle");
-    body = t("network.access.readonlyBody");
-    actions = (
-      <>
-        <Button size="sm" onClick={onEditDevice}>
-          {t("network.access.setToken")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => access.setForceWrite(true)}>
-          {t("network.access.forceWrite")}
-        </Button>
-      </>
-    );
   } else {
-    // 已覆盖只读：提示当前在"尝试写操作"，可随时恢复
-    tone = "border-border bg-surface-1 text-muted-foreground";
-    icon = <LockOpen className="mt-0.5 size-4 shrink-0" aria-hidden />;
-    title = t("network.access.forcedTitle");
-    body = t("network.access.forcedBody");
-    actions = (
-      <Button size="sm" variant="outline" onClick={() => access.setForceWrite(false)}>
-        {t("network.access.restoreReadonly")}
-      </Button>
-    );
+    return null;
   }
 
   return (

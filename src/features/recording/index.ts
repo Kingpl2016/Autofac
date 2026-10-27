@@ -1,10 +1,9 @@
 export { HeaderRecordButton } from "./components/HeaderRecordButton";
-export { PlayerModeView } from "./components/PlayerModeView";
-export { RecordingView } from "./components/RecordingView";
 export { useRecordingListeners } from "./hooks/useRecordingListeners";
 export { usePlayerListeners } from "./hooks/usePlayerListeners";
 export { useRecordingHotkeys } from "./hooks/useRecordingHotkeys";
 export { usePlayerStore } from "./stores/usePlayerStore";
+export { recordingPlugin } from "./plugin";
 export type { PlaybackStatus } from "./lib/types";
 export { PlayerTargetPicker } from "./components/PlayerTargetPicker";
 export { RECORDINGS_QUERY_KEY, recordingsList } from "./lib/api";

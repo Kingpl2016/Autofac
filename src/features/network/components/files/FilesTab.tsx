@@ -1,4 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type Modifier,
+} from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { FilePlus2, HardDrive, RefreshCw, UploadCloud } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -11,9 +24,13 @@ import { useDeviceFiles } from "../../hooks/useDeviceFiles";
 import { useFileActions } from "../../hooks/useFileActions";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { errorText } from "../../lib/errors";
-import { filePlayState, sortFiles } from "../../lib/files";
+import { activeProgramNo, filePlayState, planReorder, sortFiles } from "../../lib/files";
 import type { NetDevice, NetFile } from "../../lib/types";
-import { FileRow } from "./FileRow";
+import { FILE_GRID, FileRow } from "./FileRow";
+import { SortableFileRow } from "./SortableFileRow";
+
+/** 只允许纵向拖动。 */
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 
 interface FilesTabProps {
   device: NetDevice;
@@ -29,13 +46,48 @@ export function FilesTab({ device, access }: FilesTabProps) {
   const sdMounted = access.status.status?.sdMounted ?? true;
   const workMode = access.status.status?.workMode ?? null;
   const player = access.status.status?.player ?? null;
-  const actions = useFileActions({ device, workMode, files, refresh });
+  const playingNo = activeProgramNo(player);
+  const actions = useFileActions({ device, workMode, files, refresh, playingNo });
   const [hovering, setHovering] = useState(false);
   const [deleting, setDeleting] = useState<NetFile | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
 
-  const sorted = sortFiles(files);
+  const sorted = useMemo(() => sortFiles(files), [files]);
+  const numbered = useMemo(() => sorted.filter((f) => f.program !== null), [sorted]);
+  const unnumbered = useMemo(() => sorted.filter((f) => f.program === null), [sorted]);
   const canWrite = access.canWrite && sdMounted;
+  const sortDisabled = !canWrite || actions.reassigning;
+
+  // 6px 后才算开始拖动，避免点击手柄被误判；键盘：空格拿起、方向键移动、空格放下、Esc 取消
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const from = numbered.findIndex((f) => f.name === active.id);
+    const to = numbered.findIndex((f) => f.name === over.id);
+    const moved = numbered[from];
+    const plan = planReorder(numbered, from, to);
+    if (!moved || plan.length === 0) return;
+    const no = plan.find((a) => a.file === moved.name)?.no;
+    void actions.reassign(plan, no === undefined ? undefined : t("network.files.renumbered", { name: moved.name, no }));
+  };
+
+  // 读屏播报：dnd-kit 默认是英文，这里换成本地化文案
+  const announcements = useMemo<Announcements>(() => {
+    const total = numbered.length;
+    const pos = (id: string | number) => numbered.findIndex((f) => f.name === id) + 1;
+    return {
+      onDragStart: ({ active }) => t("network.files.announceLift", { name: active.id, pos: pos(active.id), total }),
+      onDragOver: ({ active, over }) =>
+        over ? t("network.files.announceOver", { name: active.id, pos: pos(over.id), total }) : undefined,
+      onDragEnd: ({ active, over }) =>
+        over ? t("network.files.announceDrop", { name: active.id, pos: pos(over.id) }) : t("network.files.announceCancel", { name: active.id }),
+      onDragCancel: ({ active }) => t("network.files.announceCancel", { name: active.id }),
+    };
+  }, [numbered, t]);
 
   // 系统文件拖放：Tauri 会拦截原生拖放，只能用 webview 事件拿到本地路径
   const uploadRef = useRef(actions.uploadPaths);
@@ -57,6 +109,27 @@ export function FilesTab({ device, access }: FilesTabProps) {
       off?.();
     };
   }, [canWrite]);
+
+  /** 每一行共用的属性（行内按钮的动作都接到 `actions`）。 */
+  const rowProps = (file: NetFile) => ({
+    file,
+    files: sorted,
+    playState: filePlayState(file, player),
+    playingNo,
+    canWrite: canWrite,
+    renaming: renaming === file.name,
+    onStartRename: () => setRenaming(file.name),
+    onCancelRename: () => setRenaming(null),
+    onRename: async (to: string) => {
+      const ok = to === file.name || (await actions.rename(file.name, to));
+      if (ok) setRenaming(null);
+    },
+    onReassign: actions.reassign,
+    onPlay: (loop: boolean) => actions.requestPlay(file, loop),
+    onStop: () => void actions.stop(file),
+    onDownload: () => void actions.download(file),
+    onDelete: () => setDeleting(file),
+  });
 
   const pick = async () => {
     const paths = await pickArtrecFiles();
@@ -100,19 +173,25 @@ export function FilesTab({ device, access }: FilesTabProps) {
 
       <section className="overflow-hidden rounded-xl border border-border bg-surface-2 panel-edge">
         <div
-          className="grid grid-cols-[minmax(0,1fr)_4.5rem_6rem_auto] items-center gap-x-4 border-b border-border px-4 py-2 text-xs font-medium text-muted-foreground"
+          className={cn(
+            "grid items-center gap-x-4 border-b border-border bg-surface-1/60 px-5 py-3 text-sm font-medium text-muted-foreground",
+            FILE_GRID,
+          )}
           role="row"
         >
+          {/* 与行内“手柄 + 节目号”对齐：手柄 2.25rem + 间距 0.25rem + 按钮内边距 0.5rem */}
+          <span className="pl-12">{t("network.files.colProgram")}</span>
           <span>{t("network.files.colName")}</span>
-          <span className="text-right">{t("network.files.colProgram")}</span>
           <span className="text-right">{t("network.files.colSize")}</span>
-          <span className="w-[13.5rem] text-right">{t("network.files.colActions")}</span>
+          <span className="w-[14rem] text-right">{t("network.files.colActions")}</span>
         </div>
 
         {isLoading ? (
           <ul aria-busy="true" aria-label={t("common.loading")}>
             {[0, 1, 2].map((i) => (
-              <li key={i} className="mx-4 my-3 h-5 animate-pulse rounded bg-surface-1 motion-reduce:animate-none" />
+              <li key={i} className="mx-4 my-3">
+                <Skeleton className="h-5 rounded bg-surface-1" />
+              </li>
             ))}
           </ul>
         ) : error ? (
@@ -141,32 +220,36 @@ export function FilesTab({ device, access }: FilesTabProps) {
             }
           />
         ) : (
-          <ul>
-            {sorted.map((file) => (
-              <FileRow
-                key={file.name}
-                file={file}
-                playState={filePlayState(file, player)}
-                canWrite={access.canWrite}
-                renaming={renaming === file.name}
-                onStartRename={() => setRenaming(file.name)}
-                onCancelRename={() => setRenaming(null)}
-                onRename={async (to) => {
-                  const ok = to === file.name || (await actions.rename(file.name, to));
-                  if (ok) setRenaming(null);
-                }}
-                onPlay={(loop) => actions.requestPlay(file, loop)}
-                onStop={() => void actions.stop(file)}
-                onDownload={() => void actions.download(file)}
-                onDelete={() => setDeleting(file)}
-              />
-            ))}
-          </ul>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragEnd={onDragEnd}
+            accessibility={{
+              announcements,
+              screenReaderInstructions: { draggable: t("network.files.dragInstructions") },
+            }}
+          >
+            <ul aria-busy={actions.reassigning}>
+              <SortableContext items={numbered.map((f) => f.name)} strategy={verticalListSortingStrategy} disabled={sortDisabled}>
+                {numbered.map((file) => (
+                  <SortableFileRow key={file.name} sortDisabled={sortDisabled} {...rowProps(file)} />
+                ))}
+              </SortableContext>
+              {/* 没有节目号的文件不参与排序（先在“节目号”里给它分配一个） */}
+              {unnumbered.map((file) => (
+                <FileRow key={file.name} {...rowProps(file)} />
+              ))}
+            </ul>
+          </DndContext>
         )}
 
-        <footer className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+        <footer className="flex items-center gap-2 border-t border-border px-5 py-3 text-sm text-muted-foreground">
           <HardDrive className="size-3.5" aria-hidden />
           {t("network.files.count", { count: sorted.length })}
+          {canWrite && numbered.length > 1 && (
+            <span className="ml-auto">{t("network.files.sortHint")}</span>
+          )}
         </footer>
       </section>
 

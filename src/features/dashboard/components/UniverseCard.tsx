@@ -27,7 +27,7 @@ export function UniverseCard({ universe: u, mergeMode, showProtocol }: UniverseC
   const multi = u.sourceCount > 1;
 
   return (
-    <li className="rounded-lg border border-border bg-surface-2 p-3">
+    <li data-surface="" className="rounded-lg border border-border bg-surface-2 p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="tabular text-base font-semibold">

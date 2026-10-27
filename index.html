@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Art-Net Studio</title>
+    <!-- 防闪烁：首次绘制前同步还原上次的明暗与 CSS 变量。键与 features/appearance/lib/snapshot.ts 一致（有测试保证） -->
+    <script>
+      try {
+        var s = JSON.parse(localStorage.getItem('art-net-studio:appearance') || 'null');
+        if (s && s.mode) {
+          var dark = s.mode === 'system' ? !window.matchMedia || window.matchMedia('(prefers-color-scheme: dark)').matches : s.mode === 'dark';
+          var r = document.documentElement;
+          r.classList.toggle('dark', dark);
+          r.style.colorScheme = dark ? 'dark' : 'light';
+          var v = (s.vars && s.vars[dark ? 'dark' : 'light']) || {};
+          for (var k in v) if (k.indexOf('--') === 0) r.style.setProperty(k, String(v[k]));
+          var a = s.attrs || {};
+          for (var n in a) if (/^[a-zA-Z]+$/.test(n)) r.dataset[n] = String(a[n]);
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

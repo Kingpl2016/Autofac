@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -39,7 +40,7 @@ export function OtaStatusCard({ device, access }: OtaStatusCardProps) {
   return (
     <SurfacePanel title={t("network.fw.currentTitle")}>
       {query.isLoading ? (
-        <div aria-busy="true" className="h-16 animate-pulse rounded bg-surface-1 motion-reduce:animate-none" />
+        <Skeleton aria-busy="true" className="h-16 rounded bg-surface-1" />
       ) : !ota ? (
         <p className="text-sm text-muted-foreground">{query.error ? errorText(t, query.error) : t("network.fw.unavailable")}</p>
       ) : (

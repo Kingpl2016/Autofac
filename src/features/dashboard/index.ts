@@ -1,1 +1,1 @@
-export { DashboardView } from "./components/DashboardView";
+export { dashboardPlugin } from "./plugin";

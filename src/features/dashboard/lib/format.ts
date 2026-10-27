@@ -4,21 +4,7 @@ import { trimFraction, type ValueWithUnit } from "@/shared/lib/format";
 
 // 包速率格式化已提升到共享库，这里再导出以保持既有引用路径可用
 export { formatPacketRate, type ValueWithUnit } from "@/shared/lib/format";
-
-/**
- * 将秒数格式化为 `h:mm:ss` 或 `mm:ss`。
- *
- * @param sec 秒数。
- * @returns 可读时长字符串。
- */
-export function formatUptime(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
+export { formatUptime } from "@/shared/lib/uptime";
 
 /**
  * 格式化进程内存：不足 1 GB 用 MB（取整），否则用 GB（保留 1 位小数）。
