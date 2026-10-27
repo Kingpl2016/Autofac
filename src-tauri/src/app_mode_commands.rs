@@ -7,7 +7,7 @@ use std::sync::Arc;
 use host_core::app_mode::{AppMode, ModeStatus};
 use host_core::recording::Emitter;
 use host_core::ArtnetCoreExt;
-use tauri::{AppHandle, Emitter as _};
+use tauri::{AppHandle, Emitter as _, Manager as _};
 
 /// 读取当前应用模式状态。
 ///
@@ -69,6 +69,13 @@ pub async fn app_mode_set(app: AppHandle, mode: AppMode) -> Result<ModeStatus, S
 pub async fn app_quit(app: AppHandle) -> Result<(), String> {
     let core = app.artnet_core();
     core.playback().close();
+    // 编辑器的灯光输出先收尾（发黑场），进行中的烘焙取消，免得留下临时文件
+    if let Some(rt) = app.try_state::<crate::show_runtime::ShowRuntime>() {
+        rt.shutdown_blocking(std::time::Duration::from_millis(800));
+    }
+    if let Some(bake) = app.try_state::<crate::show_bake::ShowBakeState>() {
+        bake.cancel_all_and_wait();
+    }
     let mut result = Ok(());
     if core.recording().is_recording() {
         let ctl = core.recording().clone();

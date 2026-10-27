@@ -1,0 +1,495 @@
+{
+  "models": [
+    {
+      "id": "1.1.1.1",
+      "name": "开关灯",
+      "system": "照明",
+      "productType": "开关",
+      "builtin": true,
+      "properties": [
+        {
+          "name": "开关",
+          "code": "Switch",
+          "function": "switch",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0:关,1~255:开",
+          "description": "开关"
+        }
+      ]
+    },
+    {
+      "id": "1.2.1.2",
+      "name": "可调白光灯",
+      "system": "照明",
+      "productType": "调光",
+      "builtin": true,
+      "properties": [
+        {
+          "name": "亮度",
+          "code": "Bright",
+          "function": "dimmer",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:亮度",
+          "description": "0为关，255为最亮"
+        }
+      ]
+    },
+    {
+      "id": "1.3.1.3",
+      "name": "冷暖白光灯",
+      "system": "照明",
+      "productType": "冷暖白光",
+      "builtin": true,
+      "properties": [
+        {
+          "name": "冷白",
+          "code": "CoolWhite",
+          "function": "coolWhite",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:冷光亮度",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "暖白",
+          "code": "WarmWhite",
+          "function": "warmWhite",
+          "channel": 2,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:暖光亮度",
+          "description": "0为关，255为最亮"
+        }
+      ]
+    },
+    {
+      "id": "1.4.1.4",
+      "name": "RGB全彩灯",
+      "system": "照明",
+      "productType": "全彩",
+      "builtin": true,
+      "properties": [
+        {
+          "name": "红光",
+          "code": "Red",
+          "function": "red",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:红光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "绿光",
+          "code": "Green",
+          "function": "green",
+          "channel": 2,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:绿光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "蓝光",
+          "code": "Blue",
+          "function": "blue",
+          "channel": 3,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:蓝光值",
+          "description": "0为关，255为最亮"
+        }
+      ]
+    },
+    {
+      "id": "1.5.1.4",
+      "name": "RGBW全彩灯",
+      "system": "照明",
+      "productType": "全彩",
+      "builtin": true,
+      "properties": [
+        {
+          "name": "红光",
+          "code": "Red",
+          "function": "red",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:红光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "绿光",
+          "code": "Green",
+          "function": "green",
+          "channel": 2,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:绿光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "蓝光",
+          "code": "Blue",
+          "function": "blue",
+          "channel": 3,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:蓝光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "白光",
+          "code": "White",
+          "function": "white",
+          "channel": 4,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:白光值",
+          "description": "0为关，255为最亮"
+        }
+      ]
+    },
+    {
+      "id": "1.6.1.5",
+      "name": "RGBCW全彩灯",
+      "system": "照明",
+      "productType": "全彩+冷暖",
+      "builtin": true,
+      "properties": [
+        {
+          "name": "红光",
+          "code": "Red",
+          "function": "red",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:红光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "绿光",
+          "code": "Green",
+          "function": "green",
+          "channel": 2,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:绿光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "蓝光",
+          "code": "Blue",
+          "function": "blue",
+          "channel": 3,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:蓝光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "冷白",
+          "code": "CoolWhite",
+          "function": "coolWhite",
+          "channel": 4,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:冷光亮度",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "暖白",
+          "code": "WarmWhite",
+          "function": "warmWhite",
+          "channel": 5,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:暖光亮度",
+          "description": "0为关，255为最亮"
+        }
+      ]
+    },
+    {
+      "id": "2.1.2.1",
+      "name": "通用16CH摇头灯",
+      "system": "电动照明",
+      "productType": "摇头灯",
+      "builtin": false,
+      "properties": [
+        {
+          "name": "水平",
+          "code": "Pan",
+          "function": "pan",
+          "channel": 1,
+          "width": 2,
+          "bigEndian": true,
+          "defaultValue": 32768,
+          "valueDesc": "0~65535:水平旋转",
+          "description": "0~540° 水平旋转"
+        },
+        {
+          "name": "垂直",
+          "code": "Tilt",
+          "function": "tilt",
+          "channel": 3,
+          "width": 2,
+          "bigEndian": true,
+          "defaultValue": 32768,
+          "valueDesc": "0~65535:俯仰",
+          "description": "0~270° 俯仰"
+        },
+        {
+          "name": "速度",
+          "code": "Speed",
+          "function": "speed",
+          "channel": 5,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:速度",
+          "description": "0 = 最快，255 = 最慢"
+        },
+        {
+          "name": "调光",
+          "code": "Dimmer",
+          "function": "dimmer",
+          "channel": 6,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:亮度",
+          "description": "0%～100% 亮度"
+        },
+        {
+          "name": "频闪 / 切光",
+          "code": "Shutter/Strobe",
+          "function": "shutter",
+          "channel": 7,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 105,
+          "valueDesc": "0~3:黑场关闭,4~103:慢→快频闪,104~107:常亮开光",
+          "description": ""
+        },
+        {
+          "name": "颜色轮",
+          "code": "Color Wheel",
+          "function": "colorWheel",
+          "channel": 8,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~14:白光,15:依次各色片,128~255:彩虹连续旋转",
+          "description": "机械色片盘，不是 RGB"
+        },
+        {
+          "name": "图案盘",
+          "code": "Gobo",
+          "function": "gobo",
+          "channel": 9,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~15:空 / 白光,16:依次各个图案,128~255:图案盘自转",
+          "description": "金属图案片"
+        },
+        {
+          "name": "棱镜",
+          "code": "Prism",
+          "function": "prism",
+          "channel": 10,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~15:棱镜收回,16–255:棱镜推入",
+          "description": "常见 8 棱、16 棱"
+        },
+        {
+          "name": "棱镜旋转",
+          "code": "PrismRotate",
+          "function": "prismRotate",
+          "channel": 11,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~127：顺时针慢→快,128~255:逆时针慢→快",
+          "description": ""
+        },
+        {
+          "name": "雾化",
+          "code": "Frost",
+          "function": "frost",
+          "channel": 12,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~15:无雾化,16~255:由浅到深雾化柔化",
+          "description": ""
+        },
+        {
+          "name": "调焦",
+          "code": "Focus",
+          "function": "focus",
+          "channel": 13,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 128,
+          "valueDesc": "0~255",
+          "description": "焦点前后移动"
+        },
+        {
+          "name": "图案抖动",
+          "code": "GoboShake",
+          "function": "goboShake",
+          "channel": 14,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~15:关闭抖动,16~255:慢→快抖动",
+          "description": ""
+        },
+        {
+          "name": "宏功能",
+          "code": "Macro",
+          "function": "macro",
+          "channel": 15,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~15:关闭宏,16~255: 内置自动走灯、声控",
+          "description": ""
+        },
+        {
+          "name": "灯具复位",
+          "code": "Reset",
+          "function": "reset",
+          "channel": 16,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~15:正常工作,200–255:整机复位",
+          "description": ""
+        }
+      ]
+    },
+    {
+      "id": "2.2.1.4",
+      "name": "RGBW全彩灯1",
+      "system": "照明",
+      "productType": "全彩",
+      "builtin": false,
+      "properties": [
+        {
+          "name": "绿光",
+          "code": "Green",
+          "function": "green",
+          "channel": 1,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:绿光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "红光",
+          "code": "Red",
+          "function": "red",
+          "channel": 2,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:红光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "白光",
+          "code": "White",
+          "function": "white",
+          "channel": 3,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:白光值",
+          "description": "0为关，255为最亮"
+        },
+        {
+          "name": "蓝光",
+          "code": "Blue",
+          "function": "blue",
+          "channel": 4,
+          "width": 1,
+          "bigEndian": false,
+          "defaultValue": 0,
+          "valueDesc": "0~255:蓝光值",
+          "description": "0为关，255为最亮"
+        }
+      ]
+    }
+  ],
+  "importOutcome": {
+    "added": [],
+    "updated": [
+      "2.1.2.1",
+      "2.2.1.4"
+    ],
+    "skipped": [
+      "1.1.1.1",
+      "1.2.1.2",
+      "1.3.1.3",
+      "1.4.1.4",
+      "1.5.1.4",
+      "1.6.1.5"
+    ],
+    "warnings": [
+      {
+        "kind": "channelsReassigned",
+        "sheet": "1-标准物模型",
+        "row": 6,
+        "modelId": "1.3.1.3",
+        "detail": null
+      },
+      {
+        "kind": "channelsReassigned",
+        "sheet": "1-标准物模型",
+        "row": 8,
+        "modelId": "1.4.1.4",
+        "detail": null
+      },
+      {
+        "kind": "channelsReassigned",
+        "sheet": "1-标准物模型",
+        "row": 11,
+        "modelId": "1.5.1.4",
+        "detail": null
+      },
+      {
+        "kind": "channelsReassigned",
+        "sheet": "1-标准物模型",
+        "row": 15,
+        "modelId": "1.6.1.5",
+        "detail": null
+      }
+    ]
+  }
+}

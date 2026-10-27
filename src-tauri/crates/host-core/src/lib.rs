@@ -18,6 +18,7 @@ pub mod routes;
 pub mod runtime;
 pub mod sacn;
 pub mod sender;
+pub mod show_output;
 pub mod stream;
 mod util;
 
@@ -73,9 +74,31 @@ impl<R: TauriRuntime, T: Manager<R>> ArtnetCoreExt<R> for T {
 /// 仅注册 setup 生命周期的 [`TauriPlugin`]；命令由宿主另行注册。
 #[must_use]
 pub fn init<R: TauriRuntime>() -> TauriPlugin<R> {
+    build_plugin(None)
+}
+
+/// 同 [`init`]，但配置与设备名 / 转发表等文件放在指定目录（便携模式：数据随软件放在 `data` 目录）。
+///
+/// # Arguments
+///
+/// * `config_dir` - 存放 `settings.json`、`devices.json`、`forwarding.json` 的目录，须由调用方保证存在且可写。
+///
+/// # Returns
+///
+/// 与 [`init`] 相同的插件。
+#[must_use]
+pub fn init_in<R: TauriRuntime>(config_dir: PathBuf) -> TauriPlugin<R> {
+    build_plugin(Some(config_dir))
+}
+
+/// 构造插件：`dir` 为 `None` 时使用系统的应用配置目录。
+fn build_plugin<R: TauriRuntime>(dir: Option<PathBuf>) -> TauriPlugin<R> {
     Builder::new("artnet-core")
-        .setup(|app, _api| {
-            let config_dir = app.path().app_config_dir()?;
+        .setup(move |app, _api| {
+            let config_dir = match dir {
+                Some(dir) => dir,
+                None => app.path().app_config_dir()?,
+            };
             let settings_path = config_dir.join("settings.json");
             let cfg = settings::load(&settings_path).unwrap_or_default();
             app.manage(SettingsState {

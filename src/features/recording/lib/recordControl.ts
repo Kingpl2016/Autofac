@@ -5,6 +5,7 @@ import { recordingStart, recordingStop } from "./api";
 import { EMPTY_FILTER, buildFileStem } from "./filter";
 import {
   PLAYER_ERR_PLAYBACK_ACTIVE,
+  PLAYER_ERR_SHOW_ACTIVE,
   REC_ERR_ALREADY,
   REC_ERR_DISK_LOW,
   REC_ERR_NOT_RECORDING,
@@ -91,6 +92,7 @@ export function describeRecordingError(
   if (raw === REC_ERR_NO_UNIVERSES) return t("recording.errNoUniverses");
   if (raw === REC_ERR_ALREADY) return t("recording.errAlready");
   if (raw === PLAYER_ERR_PLAYBACK_ACTIVE) return t("recording.errPlaybackActive");
+  if (raw === PLAYER_ERR_SHOW_ACTIVE) return t("recording.errShowActive");
   if (raw === REC_ERR_NOT_RECORDING) return t("recording.errNotRecording");
   if (raw === REC_ERR_DISK_LOW) return t("recording.errDiskLow");
   return t(fallbackKey, { reason: raw });

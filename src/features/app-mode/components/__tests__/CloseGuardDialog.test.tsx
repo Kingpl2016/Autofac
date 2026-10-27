@@ -19,7 +19,13 @@ vi.mock("@/shared/tauri/events", () => ({
 
 import { CloseGuardDialog } from "../CloseGuardDialog";
 
-const requestClose = (payload: { recording: boolean; playing: boolean }) =>
+const requestClose = (payload: {
+  recording: boolean;
+  playing: boolean;
+  showOutput?: boolean;
+  showUnsaved?: boolean;
+  baking?: boolean;
+}) =>
   act(() => events.handlers.get("app:close-requested")!(payload));
 
 beforeEach(async () => {
@@ -59,6 +65,16 @@ describe("CloseGuardDialog", () => {
     expect(dialog.textContent).toContain("正在播放的节目");
   });
 
+  it("节目编辑器：输出灯光、未保存修改、正在烘焙各自列出后果", async () => {
+    render(<CloseGuardDialog />);
+    await waitFor(() => expect(events.handlers.has("app:close-requested")).toBe(true));
+    requestClose({ recording: false, playing: false, showOutput: true, showUnsaved: true, baking: true });
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("节目编辑器正在输出灯光");
+    expect(dialog.textContent).toContain("节目编辑器里有未保存的修改");
+    expect(dialog.textContent).toContain("正在生成回放文件");
+    expect(dialog.textContent).not.toContain("正在录制的节目");
+  });
   it("“继续使用”只关闭对话框，不退出", async () => {
     render(<CloseGuardDialog />);
     await waitFor(() => expect(events.handlers.has("app:close-requested")).toBe(true));

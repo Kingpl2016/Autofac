@@ -120,8 +120,12 @@ export interface LibraryEntry {
   universes: number[];
   sources: string[];
   recovered: boolean;
-  /** 文件头是否可解析 */
+  /** 文件头是否可解析（未导出的节目为 false） */
   valid: boolean;
+  /** 带有可在节目编辑器里打开的工程 */
+  editable: boolean;
+  /** `.artrec` 文件是否存在；`false` 且可编辑表示工程已保存但还没导出 */
+  exported: boolean;
 }
 
 /** 节目库错误码。 */
@@ -263,6 +267,8 @@ export interface SeriesQuery {
 /** 回放相关后端错误码。 */
 export const PLAYER_ERR_RECORDING_ACTIVE = "recording_active";
 export const PLAYER_ERR_PLAYBACK_ACTIVE = "playback_active";
+/** 后端错误码：节目编辑器正在输出灯光，不能录制或打开回放节目。 */
+export const PLAYER_ERR_SHOW_ACTIVE = "show_active";
 export const PLAYER_ERR_NO_PLAYER = "no_player";
 export const PLAYER_ERR_BAD_TARGET = "bad_target";
 export const PLAYER_ERR_BAD_PATH = "bad_path";

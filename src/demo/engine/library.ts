@@ -11,6 +11,8 @@ export interface ProgramRecord {
   durationSec: number;
   /** 回放时会报告的损坏帧数。 */
   corruptFrames: number;
+  /** 节目编辑器保存的工程 JSON（只有编辑器节目才有）。 */
+  show?: string;
 }
 
 /** 内存里的节目库（`.artrec` 文件列表）。 */
@@ -84,6 +86,8 @@ function recordFromSeed(seed: ProgramSeed, dir: string, nowMs: number): ProgramR
       sources: seed.sources,
       recovered: seed.recovered ?? false,
       valid,
+      editable: false,
+      exported: true,
     },
     universes: seed.universes,
     durationSec: valid ? seed.durationSec : 0,

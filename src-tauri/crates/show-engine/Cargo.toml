@@ -1,0 +1,21 @@
+[package]
+name = "show-engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "节目编辑引擎：灯具物模型、Excel 导入、工程编译与求值、30 FPS 输出与 .artrec 烘焙（纯逻辑，无 Tauri 依赖）"
+[lints.clippy]
+pedantic = "warn"
+# 领域专有名词（ArtRec/DMX/Universe/RGBW 等）无需反引号，关闭噪音项
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+module_name_repetitions = "allow"
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+calamine = { workspace = true }
+symphonia = { version = "=0.5.5", default-features = false, features = ["mp3", "wav", "flac", "aac", "isomp4", "ogg", "vorbis", "pcm", "alac", "adpcm", "mkv"] }

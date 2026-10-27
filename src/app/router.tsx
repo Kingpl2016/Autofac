@@ -6,6 +6,8 @@ import { MainLayout } from "@/layouts/MainLayout";
 
 // 重依赖（React Flow）懒加载，避免进入首屏同步包
 const SignalFlowPage = lazy(() => import("@/pages/SignalFlowPage"));
+// 节目编辑器（时间线、拖拽、波形等重依赖）同样按需加载
+const ShowEditorPage = lazy(() => import("@/pages/ShowEditorPage"));
 import DashboardPage from "@/pages/DashboardPage";
 import UniversesPage from "@/pages/UniversesPage";
 import DiscoveryPage from "@/pages/DiscoveryPage";
@@ -13,8 +15,6 @@ import ForwardingPage from "@/pages/ForwardingPage";
 import RecordingPage from "@/pages/RecordingPage";
 import PlayerModePage from "@/pages/PlayerModePage";
 import ThingModelPage from "@/pages/ThingModelPage";
-import LoopsPage from "@/pages/LoopsPage";
-import ScenesPage from "@/pages/ScenesPage";
 import NetworkPage from "@/pages/NetworkPage";
 import SettingsPage from "@/pages/SettingsPage";
 import AboutPage from "@/pages/AboutPage";
@@ -42,8 +42,16 @@ export const router = createBrowserRouter([
       { path: "recording", element: <RecordingPage /> },
       { path: "player", element: <PlayerModePage /> },
       { path: "thing-model", element: <ThingModelPage /> },
-      { path: "loops", element: <LoopsPage /> },
-      { path: "scenes", element: <ScenesPage /> },
+      {
+        path: "editor",
+        // 编辑器占满内容区，由 MainLayout 读取 handle.fullBleed 去掉内边距
+        handle: { fullBleed: true },
+        element: (
+          <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">…</div>}>
+            <ShowEditorPage />
+          </Suspense>
+        ),
+      },
       { path: "network", element: <NetworkPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "about", element: <AboutPage /> },

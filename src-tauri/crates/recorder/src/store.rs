@@ -333,7 +333,7 @@ pub fn sanitize_file_stem(name: &str) -> String {
 }
 
 /// 在目录内为 `stem` 找一个不与任何 `suffixes` 冲突的名字（冲突时追加 `-2`、`-3`…）。
-fn unique_stem(dir: &Path, stem: &str, suffixes: &[&str]) -> String {
+pub(crate) fn unique_stem(dir: &Path, stem: &str, suffixes: &[&str]) -> String {
     let taken = |s: &str| {
         suffixes
             .iter()

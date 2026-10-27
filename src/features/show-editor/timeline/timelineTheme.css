@@ -1,0 +1,296 @@
+/*
+ * 时间线库（@xzdarcy/react-timeline-editor）的主题化样式。
+ *
+ * 不引入库自带的 react-timeline-editor.css：它写死了十六进制颜色和渐变，
+ * 与本项目“颜色只走语义令牌、禁止渐变”的约束冲突。这里按库的类名重写同样的结构规则，
+ * 颜色全部取自 globals.css 的令牌，亮色 / 深色 / 强调色切换会自动生效。
+ */
+
+/* 容器：撑满所在面板（库默认是固定 600×600） */
+.timeline-editor {
+  height: 100%;
+  width: 100%;
+  min-height: 2rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  background-color: var(--surface-1);
+}
+
+/* 播放头 */
+.timeline-editor-cursor {
+  cursor: ew-resize;
+  position: absolute;
+  top: 2rem;
+  height: calc(100% - 2rem);
+  box-sizing: border-box;
+  border-left: 1px solid var(--primary);
+  border-right: 1px solid var(--primary);
+  transform: translate(-25%) scaleX(0.5);
+}
+
+.timeline-editor-cursor-top {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%) scaleX(2);
+  margin: auto;
+}
+
+/* 播放头手柄的 SVG 路径用属性写死了颜色；CSS 优先于呈现属性 */
+.timeline-editor-cursor-top path {
+  fill: var(--primary);
+}
+
+.timeline-editor-cursor-area {
+  width: 1rem;
+  height: 100%;
+  cursor: ew-resize;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%);
+}
+
+/* 拖动时的吸附辅助线 */
+.timeline-editor-drag-line-container {
+  position: absolute;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+.timeline-editor-drag-line {
+  width: 0;
+  position: absolute;
+  top: 0;
+  height: 99%;
+  border-left: 1px dashed color-mix(in oklab, var(--primary) 60%, transparent);
+}
+
+/* 编辑区 */
+.timeline-editor-edit-area {
+  flex: 1 1 auto;
+  margin-top: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.timeline-editor-edit-area .ReactVirtualized__Grid {
+  outline: none !important;
+  overflow: overlay !important;
+}
+
+/* 竖向滚动条由外层承担，库内网格隐藏自己的滚动条 */
+.timeline-editor-edit-area .ReactVirtualized__Grid::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 横向滚动条只在悬停时露出一条细线 */
+.timeline-editor:hover .timeline-editor-edit-area .ReactVirtualized__Grid::-webkit-scrollbar {
+  height: 4px;
+}
+
+.timeline-editor-edit-area .ReactVirtualized__Grid::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+  border-radius: 9999px;
+}
+
+/* 选中的 Cue：强调色描边，盖在相邻块之上 */
+.timeline-editor-action-selected {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  z-index: 2;
+}
+
+/* 不可移动（轨道被锁定）的 Cue 使用默认光标 */
+.timeline-editor-action:not(.timeline-editor-action-movable) {
+  cursor: default;
+}
+
+/* Cue 块（外观由 getActionRender 自绘，这里只给底色与定位） */
+.timeline-editor-action {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background-color: var(--surface-3);
+}
+
+.timeline-editor-action .timeline-editor-action-left-stretch,
+.timeline-editor-action .timeline-editor-action-right-stretch {
+  position: absolute;
+  top: 0;
+  width: 0.625rem;
+  height: 100%;
+  overflow: hidden;
+}
+
+.timeline-editor-action .timeline-editor-action-left-stretch {
+  left: 0;
+}
+
+.timeline-editor-action .timeline-editor-action-right-stretch {
+  right: 0;
+}
+
+/* 拉伸手柄：块两端的细竖条，悬停时更明显 */
+.timeline-editor-action .timeline-editor-action-left-stretch::after,
+.timeline-editor-action .timeline-editor-action-right-stretch::after {
+  content: "";
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  width: 0.1875rem;
+  border-radius: 9999px;
+  background-color: color-mix(in oklab, var(--foreground) 35%, transparent);
+  transition: background-color var(--dur-fast);
+}
+
+.timeline-editor-action .timeline-editor-action-left-stretch::after {
+  left: 0.1875rem;
+}
+
+.timeline-editor-action .timeline-editor-action-right-stretch::after {
+  right: 0.1875rem;
+}
+
+.timeline-editor-action:hover .timeline-editor-action-left-stretch::after,
+.timeline-editor-action:hover .timeline-editor-action-right-stretch::after {
+  background-color: var(--foreground);
+}
+
+/* 轨道行：底部细线分隔，取代库默认的渐变网格 */
+.timeline-editor-edit-row {
+  display: flex;
+  flex-direction: row;
+  box-sizing: border-box;
+  position: relative;
+  background-color: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.timeline-editor-edit-row-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.timeline-editor-edit-row-drag-handle {
+  position: absolute;
+  left: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  user-select: none;
+  z-index: 10;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.timeline-editor-edit-row-drag-handle:hover {
+  opacity: 1;
+  color: var(--foreground);
+}
+
+.timeline-editor-edit-row-dragged {
+  opacity: 0.5;
+  transform: scale(0.98);
+  pointer-events: none;
+  z-index: 1000;
+  position: relative;
+}
+
+.timeline-editor-edit-row-placeholder {
+  background-color: color-mix(in oklab, var(--primary) 10%, transparent);
+  border: 2px dashed var(--primary);
+  height: 4px;
+  min-height: 4px;
+  margin: 2px 0;
+  opacity: 0.8;
+}
+
+.timeline-editor-edit-row-placeholder .timeline-editor-edit-row-drag-handle,
+.timeline-editor-edit-row-placeholder .timeline-editor-edit-action {
+  display: none;
+}
+
+.timeline-editor-edit-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--primary);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.timeline-editor-edit-row[data-insert-position="top"]::before {
+  top: -1px;
+  opacity: 1;
+}
+
+.timeline-editor-edit-row[data-insert-position="bottom"]::before {
+  bottom: -1px;
+  opacity: 1;
+}
+
+/* 标尺 */
+.timeline-editor-time-area {
+  position: relative;
+  height: 2rem;
+  flex: 0 0 auto;
+  background-color: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-editor-time-area .ReactVirtualized__Grid {
+  outline: none;
+}
+
+.timeline-editor-time-area .ReactVirtualized__Grid::-webkit-scrollbar {
+  display: none;
+}
+
+.timeline-editor-time-area-interact {
+  position: absolute;
+  cursor: pointer;
+  left: 0;
+  top: 0;
+}
+
+.timeline-editor-time-unit {
+  border-right: 1px solid color-mix(in oklab, var(--foreground) 20%, transparent);
+  position: relative;
+  box-sizing: content-box;
+  height: 4px !important;
+  bottom: 0 !important;
+  top: auto !important;
+}
+
+.timeline-editor-time-unit-big {
+  height: 8px !important;
+}
+
+.timeline-editor-time-unit-scale {
+  color: var(--muted-foreground);
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translate(50%, -100%);
+  font-variant-numeric: tabular-nums;
+}

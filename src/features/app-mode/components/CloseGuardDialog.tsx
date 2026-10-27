@@ -18,13 +18,20 @@ import { appQuit } from "../lib/api";
 interface CloseRequest {
   recording: boolean;
   playing: boolean;
+  /** 节目编辑器正在输出灯光 */
+  showOutput?: boolean;
+  /** 节目编辑器里有未保存的修改 */
+  showUnsaved?: boolean;
+  /** 后台正在生成回放文件 */
+  baking?: boolean;
 }
 
 /**
  * 退出守卫：录制或播放进行中关闭窗口时，后端会拦下这次关闭并通知前端，由本对话框确认。
  *
  * 正文逐条写出会发生什么：录制会先停止并保存（不会丢数据），播放会停止输出
- * （现场灯光不再更新，这是真正需要确认的后果）。默认聚焦“继续使用”（防误触）。
+ * （现场灯光不再更新，这是真正需要确认的后果）；节目编辑器的灯光输出同样会熄灭，
+ * 未保存的修改只能从自动存档恢复，进行中的回放文件生成会被中断。默认聚焦“继续使用”（防误触）。
  * 确认后调用 `app_quit`：后端卸载节目、收尾录制，然后退出。
  */
 export function CloseGuardDialog() {
@@ -66,6 +73,9 @@ export function CloseGuardDialog() {
         <ul className="grid gap-1.5 text-sm">
           {request?.recording && <li>{t("closeGuard.recording")}</li>}
           {request?.playing && <li>{t("closeGuard.playing")}</li>}
+          {request?.showOutput && <li>{t("closeGuard.showOutput")}</li>}
+          {request?.showUnsaved && <li>{t("closeGuard.showUnsaved")}</li>}
+          {request?.baking && <li>{t("closeGuard.baking")}</li>}
         </ul>
         <DialogFooter>
           <Button

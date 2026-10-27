@@ -16,15 +16,17 @@ use artnet_net::DmxFrame;
 /// 接收循环据 [`RuntimeMode::is_playback`] 与 [`RuntimeMode::is_player`] 决定是否丢弃实时帧；
 /// 录制与回放各自在进入/退出时置位对应标志，并在进入前检查对方是否已激活。
 ///
-/// 三个标志含义不同：
+/// 四个标志含义不同：
 /// - `playback`：已打开节目（输出由回放任务产生）；
 /// - `player`：处于**播放器模式**（实时接收已被整体停止，接收任务已拆除）；
-/// - `recording`：正在录制。
+/// - `recording`：正在录制；
+/// - `show`：节目编辑器正在输出灯光。
 #[derive(Debug, Default)]
 pub struct RuntimeMode {
     playback: AtomicBool,
     recording: AtomicBool,
     player: AtomicBool,
+    show: AtomicBool,
 }
 
 impl RuntimeMode {
@@ -62,6 +64,23 @@ impl RuntimeMode {
     /// * `on` - `true` 表示进入播放器模式。
     pub fn set_player(&self, on: bool) {
         self.player.store(on, Ordering::Release);
+    }
+
+    /// 节目编辑器是否正在输出灯光（预览播放或灯具定位）。
+    ///
+    /// 输出期间接收循环丢弃实时帧（避免实时转发与编辑器输出叠加），也不允许打开回放节目或开始录制。
+    #[must_use]
+    pub fn is_show(&self) -> bool {
+        self.show.load(Ordering::Acquire)
+    }
+
+    /// 置位节目编辑器输出标志（开始 / 结束输出时调用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `on` - `true` 表示编辑器开始输出。
+    pub fn set_show(&self, on: bool) {
+        self.show.store(on, Ordering::Release);
     }
 
     /// 置位回放标志（进入/退出回放时调用）。

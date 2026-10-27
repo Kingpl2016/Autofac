@@ -16,6 +16,7 @@
     "verify": "tsc -b && eslint . && vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@dnd-kit/core": "6.3.1",
     "@tanstack/react-query": "5.104.5",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.3",
@@ -27,17 +28,23 @@
     "@tauri-apps/plugin-updater": "^2.14.0",
     "@tauri-apps/plugin-upload": "^2.5.0",
     "@xyflow/react": "^12.12.0",
+    "@xzdarcy/react-timeline-editor": "1.0.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "i18next": "26.5.10",
+    "immer": "11.2.9",
     "lucide-react": "1.61.0",
     "radix-ui": "1.8.1",
     "react": "19.3.1",
+    "react-colorful": "5.8.1",
     "react-dom": "19.3.1",
     "react-i18next": "17.1.8",
+    "react-resizable-panels": "4.15.0",
     "react-router-dom": "7.18.4",
     "sonner": "2.0.8",
     "tailwind-merge": "3.7.0",
+    "zod": "4.6.7",
+    "zundo": "2.3.0",
     "zustand": "5.0.16"
   },
   "devDependencies": {

@@ -55,6 +55,9 @@ export function recordingStatus(): Promise<RecordingStatus> {
   return invoke<RecordingStatus>("recording_status");
 }
 
+/** 节目库列表的查询键；其他功能（如节目编辑器保存节目）据此刷新列表。 */
+export const RECORDINGS_QUERY_KEY = ["recordings"] as const;
+
 /** 列出节目库（按修改时间从新到旧）。 */
 export function recordingsList(): Promise<LibraryEntry[]> {
   return invoke<LibraryEntry[]>("recordings_list");

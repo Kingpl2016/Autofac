@@ -6,3 +6,6 @@ export { usePlayerListeners } from "./hooks/usePlayerListeners";
 export { useRecordingHotkeys } from "./hooks/useRecordingHotkeys";
 export { usePlayerStore } from "./stores/usePlayerStore";
 export type { PlaybackStatus } from "./lib/types";
+export { PlayerTargetPicker } from "./components/PlayerTargetPicker";
+export { RECORDINGS_QUERY_KEY, recordingsList } from "./lib/api";
+export type { LibraryEntry } from "./lib/types";

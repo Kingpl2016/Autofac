@@ -345,6 +345,30 @@ impl Runtime {
         &self.stream
     }
 
+    /// 节目编辑器输出所需的句柄（分发器、运行模式仲裁、运行时起点）。
+    ///
+    /// # Returns
+    ///
+    /// 可传给 [`ShowOutput::begin`](crate::show_output::ShowOutput::begin) 的 [`OutputHandle`](crate::show_output::OutputHandle)。
+    #[must_use]
+    pub fn show_output_handle(&self) -> crate::show_output::OutputHandle {
+        crate::show_output::OutputHandle::new(
+            self.dispatcher.clone(),
+            self.mode.clone(),
+            self.start,
+        )
+    }
+
+    /// 节目编辑器是否正在输出灯光。
+    ///
+    /// # Returns
+    ///
+    /// 有编辑器输出会话（预览播放或灯具定位）时为 `true`。
+    #[must_use]
+    pub fn is_show_active(&self) -> bool {
+        self.mode.is_show()
+    }
+
     /// 打开节目并进入回放：分发器 / 回放模式标志 / 运行时起点 / 录制状态均由运行时内部填充。
     ///
     /// # Arguments

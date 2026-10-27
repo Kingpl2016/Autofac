@@ -2,6 +2,7 @@ import { installDemoBackend, installDemoStream, type DemoBackend } from "@/share
 import { useLogStore } from "@/shared/stores/logStore";
 import { loadDemoData } from "./data";
 import { createDevicesModule } from "./engine/devices";
+import { createFixturesModule } from "./engine/fixtures";
 import { createForwardingModule } from "./engine/forwarding";
 import { createLiveEngine } from "./engine/live";
 import { createLogsModule } from "./engine/logs";
@@ -10,6 +11,8 @@ import { createNetdevModule } from "./engine/netdev";
 import { createOutputModule } from "./engine/output";
 import { createPlayerModule } from "./engine/player";
 import { createRecordingModule } from "./engine/recording";
+import { createShowModule } from "./engine/show";
+import { createShowPlaybackModule } from "./engine/showPlayback";
 import { createSystemModule } from "./engine/system";
 import { createUpdateChecker } from "./engine/updater";
 import { sleep, type CommandHandler, type DemoModule, type World } from "./engine/world";
@@ -36,6 +39,8 @@ const DEMO_EVENTS: ReadonlySet<string> = new Set([
   "recording:disk",
   "recording:finished",
   "recording:stats",
+  "show:bake",
+  "show:state",
 ]);
 
 /**
@@ -64,6 +69,7 @@ export async function installDemo(): Promise<void> {
     hooks: {
       isRecording: () => false,
       playerLoaded: () => false,
+      showOutputting: () => false,
       closePlayer: () => undefined,
       enterPlayerMode: () => undefined,
       settings: () => data.settings,
@@ -83,6 +89,9 @@ export async function installDemo(): Promise<void> {
   const output = createOutputModule(world, live, forwarding, player);
   const netdev = createNetdevModule(world, recording.library);
   const logs = createLogsModule(world);
+  const fixtures = createFixturesModule(world);
+  const show = createShowModule(world, recording.library);
+  const showPlayback = createShowPlaybackModule(world);
   const checkForUpdate = createUpdateChecker(world);
 
   const modules: DemoModule[] = [
@@ -96,6 +105,9 @@ export async function installDemo(): Promise<void> {
     output,
     netdev,
     logs,
+    fixtures,
+    show,
+    showPlayback,
   ];
 
   const commands = new Map<string, CommandHandler>();

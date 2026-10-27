@@ -11,6 +11,7 @@ import type { ForwardingTable } from "@/features/forwarding/lib/types";
 import type { NetworkInterface, AppSettings } from "@/features/settings/lib/types";
 import type { AppInfo } from "@/features/about/lib/api";
 import type { DeviceConfig } from "@/features/network/lib/types";
+import type { FixtureModel, ImportOutcome } from "@/features/fixtures/lib/types";
 import type { PatternSpec, UniverseProgram } from "./lib/patterns";
 
 /** `app.json`：应用信息、录制目录、磁盘与目录检查。 */
@@ -194,6 +195,13 @@ export interface LogsSeed {
   periodic: LogPeriodicSeed[];
 }
 
+/** `fixtures.json`。 */
+export interface FixturesSeed {
+  /** 初始的灯具模型：内置标准模型 + 两个自定义示例（摇头灯、自定义通道顺序的 RGBW） */
+  models: FixtureModel[];
+  /** “导入物模型表”命令返回的固定结果 */
+  importOutcome: ImportOutcome;
+}
 /** 全部演示数据。 */
 export interface DemoData {
   app: AppSeed;
@@ -207,4 +215,5 @@ export interface DemoData {
   recordings: RecordingsSeed;
   netdev: NetdevSeed;
   logs: LogsSeed;
+  fixtures: FixturesSeed;
 }

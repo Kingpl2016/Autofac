@@ -4,7 +4,7 @@
 //! 传输类命令通过 `Channel<Progress>` 回传进度，用 `transfer_id` 登记取消令牌（见 [`netdev_cancel`]）。
 //! 错误统一序列化为 `{ code, message }`，前端据 `code` 映射国际化文案。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use netdev::model::{
@@ -20,7 +20,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::recording_commands::resolved_dir;
 
-/// 注册表文件名（位于 `app_data_dir`）。
+/// 注册表文件名（位于数据根目录）。
 const REGISTRY_FILE: &str = "net-devices.json";
 
 /// 命令返回类型：错误序列化为 [`ErrorPayload`]。
@@ -37,7 +37,7 @@ impl NetdevState {
     ///
     /// # Arguments
     ///
-    /// * `app` - 应用句柄，用于定位 `app_data_dir`。
+    /// * `app` - 应用句柄，用于定位数据根目录。
     /// * `secrets` - Token 存储（生产传系统凭据管理器）。
     ///
     /// # Returns
@@ -45,7 +45,7 @@ impl NetdevState {
     /// 已从磁盘加载注册表的状态；数据目录不可用时回退到当前目录。
     #[must_use]
     pub fn new(app: &AppHandle, secrets: Arc<dyn SecretStore>) -> Self {
-        let dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let dir = app.state::<crate::data_dir::DataRoot>().path().to_path_buf();
         Self {
             registry: DeviceRegistry::load(dir.join(REGISTRY_FILE), secrets),
             transfers: Arc::new(TransferTable::default()),

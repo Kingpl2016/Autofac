@@ -171,6 +171,8 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
         sources: s.sources,
         recovered: false,
         valid: true,
+        editable: false,
+        exported: true,
       };
       library.add({
         entry,
@@ -205,6 +207,7 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
         const a = args.args as RecordingStartArgs | undefined;
         if (!a) fail("invalid_args");
         if (session) fail("already_recording");
+        if (world.hooks.showOutputting()) fail("show_active");
         if (world.mode.mode === "player" || world.hooks.playerLoaded()) fail("playback_active");
         if (!diskInfoOf("", diskFree).canStart) fail("disk_low");
 

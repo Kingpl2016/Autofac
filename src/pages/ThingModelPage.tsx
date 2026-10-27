@@ -1,14 +1,6 @@
-import { useTranslation } from "react-i18next";
+import { FixtureLibraryView } from "@/features/fixtures";
 
-import { PageHeader } from "@/shared/components/PageHeader";
-import { Placeholder } from "@/shared/components/Placeholder";
-
+/** 灯具素材库（原“物模型”页）。 */
 export default function ThingModelPage() {
-  const { t } = useTranslation();
-  return (
-    <div>
-      <PageHeader title={t("nav.thingModel")} />
-      <Placeholder />
-    </div>
-  );
+  return <FixtureLibraryView />;
 }

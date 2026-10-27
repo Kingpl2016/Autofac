@@ -1,0 +1,1803 @@
+{
+  "_doc": "Rust show-engine 与 TS color.ts 共用的黄金向量。models 为简写：通道功能按顺序排布，可写 name:默认值。tsPreview=false 的用例只由 Rust 校验（TS 预览不模拟 RGBW/色温/调光等通道映射）。",
+  "cases": [
+    {
+      "name": "rgb 基础颜色与区间半开",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            128,
+            0
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 128,
+            "3": 0
+          }
+        },
+        {
+          "t": 1000,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "亮度 50% 四舍五入",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            255,
+            255
+          ],
+          "brightness": 50
+        }
+      ],
+      "samples": [
+        {
+          "t": 10,
+          "universe": 0,
+          "expect": {
+            "1": 128,
+            "2": 128,
+            "3": 128
+          }
+        }
+      ]
+    },
+    {
+      "name": "gamma 2.0 作用于线性分数",
+      "gamma": 2,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            255,
+            255
+          ],
+          "brightness": 50
+        }
+      ],
+      "samples": [
+        {
+          "t": 10,
+          "universe": 0,
+          "expect": {
+            "1": 64,
+            "2": 64,
+            "3": 64
+          }
+        }
+      ]
+    },
+    {
+      "name": "线性淡入淡出",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            0,
+            0
+          ],
+          "fadeInMs": 400,
+          "fadeOutMs": 400
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        },
+        {
+          "t": 200,
+          "universe": 0,
+          "expect": {
+            "1": 128
+          }
+        },
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        },
+        {
+          "t": 900,
+          "universe": 0,
+          "expect": {
+            "1": 64
+          }
+        },
+        {
+          "t": 999,
+          "universe": 0,
+          "expect": {
+            "1": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "S 曲线淡入",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            0,
+            0
+          ],
+          "fadeInMs": 400,
+          "easing": "sCurve"
+        }
+      ],
+      "samples": [
+        {
+          "t": 100,
+          "universe": 0,
+          "expect": {
+            "1": 40
+          }
+        }
+      ]
+    },
+    {
+      "name": "缓入缓出淡入",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            0,
+            0
+          ],
+          "fadeInMs": 400,
+          "easing": "easeInOut"
+        }
+      ],
+      "samples": [
+        {
+          "t": 100,
+          "universe": 0,
+          "expect": {
+            "1": 16
+          }
+        },
+        {
+          "t": 300,
+          "universe": 0,
+          "expect": {
+            "1": 239
+          }
+        }
+      ]
+    },
+    {
+      "name": "多轨道同一灯具取最大值",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "tracks": [
+        {
+          "fixture": 0
+        },
+        {
+          "fixture": 0
+        }
+      ],
+      "cues": [
+        {
+          "track": 0,
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            200,
+            0,
+            0
+          ]
+        },
+        {
+          "track": 1,
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            100,
+            100,
+            0
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 200,
+            "2": 100,
+            "3": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "多 Universe 与地址偏移",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 5,
+          "address": 10
+        }
+      ],
+      "cues": [
+        {
+          "track": 0,
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "track": 1,
+          "startMs": 500,
+          "endMs": 1500,
+          "rgb": [
+            0,
+            0,
+            255
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 700,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 0,
+            "3": 0
+          }
+        },
+        {
+          "t": 700,
+          "universe": 5,
+          "expect": {
+            "10": 0,
+            "11": 0,
+            "12": 255
+          }
+        },
+        {
+          "t": 1200,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        },
+        {
+          "t": 1200,
+          "universe": 5,
+          "expect": {
+            "12": 255
+          }
+        }
+      ]
+    },
+    {
+      "name": "独奏只输出独奏轨道",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        }
+      ],
+      "tracks": [
+        {
+          "fixture": 0,
+          "solo": true
+        },
+        {
+          "fixture": 1
+        }
+      ],
+      "cues": [
+        {
+          "track": 0,
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "track": 1,
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            255,
+            255
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "4": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "静音轨道不输出",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "tracks": [
+        {
+          "fixture": 0,
+          "mute": true
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            255,
+            255
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "同轨道相邻 Cue 在边界处切换",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 500,
+          "rgb": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "startMs": 500,
+          "endMs": 1000,
+          "rgb": [
+            0,
+            255,
+            0
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 499,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 0
+          }
+        },
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "2": 255
+          }
+        }
+      ]
+    },
+    {
+      "name": "RGBW 提取白光",
+      "tsPreview": false,
+      "gamma": 1,
+      "models": {
+        "rgbw": [
+          "red",
+          "green",
+          "blue",
+          "white"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgbw",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            153,
+            51
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 204,
+            "2": 102,
+            "3": 0,
+            "4": 51
+          }
+        }
+      ]
+    },
+    {
+      "name": "带调光通道时颜色不缩放",
+      "tsPreview": false,
+      "gamma": 1,
+      "models": {
+        "rgbd": [
+          "red",
+          "green",
+          "blue",
+          "dimmer"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgbd",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            128,
+            0
+          ],
+          "brightness": 50
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 128,
+            "3": 0,
+            "4": 128
+          }
+        }
+      ]
+    },
+    {
+      "name": "冷暖白按红蓝比例",
+      "tsPreview": false,
+      "gamma": 1,
+      "models": {
+        "cct": [
+          "coolWhite",
+          "warmWhite"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "cct",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "startMs": 1000,
+          "endMs": 2000,
+          "rgb": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "startMs": 2000,
+          "endMs": 3000,
+          "rgb": [
+            255,
+            0,
+            255
+          ],
+          "brightness": 50
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "2": 255
+          }
+        },
+        {
+          "t": 1500,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 0
+          }
+        },
+        {
+          "t": 2500,
+          "universe": 0,
+          "expect": {
+            "1": 128,
+            "2": 128
+          }
+        }
+      ]
+    },
+    {
+      "name": "仅调光灯取峰值乘级别",
+      "tsPreview": false,
+      "gamma": 1,
+      "models": {
+        "dim": [
+          "dimmer"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "dim",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            0,
+            204,
+            0
+          ],
+          "brightness": 50
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 102
+          }
+        }
+      ]
+    },
+    {
+      "name": "开关灯有亮度即开",
+      "tsPreview": false,
+      "gamma": 1,
+      "models": {
+        "sw": [
+          "switch"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "sw",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "rgb": [
+            0,
+            0,
+            1
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        },
+        {
+          "t": 1500,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "不受驱动的通道输出默认值",
+      "tsPreview": false,
+      "gamma": 1,
+      "models": {
+        "head": [
+          "red",
+          "shutter:105"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "head",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "2": 105
+          }
+        }
+      ]
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "breathe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 1000
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        },
+        {
+          "t": 250,
+          "universe": 0,
+          "expect": {
+            "1": 128
+          }
+        },
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        },
+        {
+          "t": 1000,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        }
+      ],
+      "name": "特效：呼吸（毫秒周期）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "breathe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 1000,
+          "range": [
+            20,
+            100
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 51
+          }
+        },
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        }
+      ],
+      "name": "特效：呼吸（亮度范围 20%~100%）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "tempo": {
+        "bpm": 120
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 1000,
+          "endMs": 10000,
+          "effect": "breathe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "beats": 2
+        }
+      ],
+      "samples": [
+        {
+          "t": 1000,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        },
+        {
+          "t": 1250,
+          "universe": 0,
+          "expect": {
+            "1": 128
+          }
+        },
+        {
+          "t": 1500,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        }
+      ],
+      "name": "特效：呼吸（按拍，时间相对 Cue 起点）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 10
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "rainbow",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 1000,
+          "phaseSpread": 1
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 0,
+            "3": 0,
+            "4": 128,
+            "5": 255,
+            "6": 0,
+            "7": 0,
+            "8": 255,
+            "9": 255,
+            "10": 128,
+            "11": 0,
+            "12": 255
+          }
+        }
+      ],
+      "name": "特效：彩虹（相位沿灯具均匀分布）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 10
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "rainbow",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 1000,
+          "phaseSpread": 1,
+          "direction": -1
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 128,
+            "2": 0,
+            "3": 255,
+            "4": 0,
+            "5": 255,
+            "6": 255,
+            "7": 128,
+            "8": 255,
+            "9": 0,
+            "10": 255,
+            "11": 0,
+            "12": 0
+          }
+        }
+      ],
+      "name": "特效：彩虹（反向）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 10
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "chase",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 4000
+        }
+      ],
+      "samples": [
+        {
+          "t": 1000,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "4": 255,
+            "7": 0,
+            "10": 0
+          }
+        },
+        {
+          "t": 1500,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "4": 128,
+            "7": 128,
+            "10": 0
+          }
+        }
+      ],
+      "name": "特效：追逐"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 10
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "wipe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 4000
+        }
+      ],
+      "samples": [
+        {
+          "t": 2400,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "4": 255,
+            "7": 0,
+            "10": 0
+          }
+        }
+      ],
+      "name": "特效：擦除（单色）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 10
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "wipe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              255
+            ]
+          ],
+          "periodMs": 4000
+        }
+      ],
+      "samples": [
+        {
+          "t": 2400,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "3": 0,
+            "4": 255,
+            "7": 0,
+            "9": 255,
+            "10": 0,
+            "12": 255
+          }
+        }
+      ],
+      "name": "特效：擦除（第二色作底色）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "gradient",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              255
+            ]
+          ],
+          "periodMs": 2000,
+          "phaseSpread": 1
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "3": 0,
+            "4": 0,
+            "6": 255
+          }
+        },
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 128,
+            "3": 128,
+            "4": 128,
+            "6": 128
+          }
+        }
+      ],
+      "name": "特效：渐变（颜色首尾相接）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "pulse",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 1000
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        },
+        {
+          "t": 250,
+          "universe": 0,
+          "expect": {
+            "1": 108
+          }
+        },
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 32
+          }
+        }
+      ],
+      "name": "特效：脉冲"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 10
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 13
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 16
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "sparkle",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 200,
+          "seed": 7
+        }
+      ],
+      "samples": [
+        {
+          "t": 100,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "4": 128,
+            "7": 0,
+            "10": 0,
+            "13": 0,
+            "16": 128
+          }
+        },
+        {
+          "t": 300,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "4": 0,
+            "7": 0,
+            "10": 128,
+            "13": 128,
+            "16": 128
+          }
+        }
+      ],
+      "name": "特效：闪烁（确定性随机）"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "strobe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 200
+        }
+      ],
+      "samples": [
+        {
+          "t": 50,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        },
+        {
+          "t": 150,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        },
+        {
+          "t": 250,
+          "universe": 0,
+          "expect": {
+            "1": 255
+          }
+        }
+      ],
+      "name": "特效：频闪"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "strobe",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 200,
+          "brightness": 50
+        }
+      ],
+      "samples": [
+        {
+          "t": 50,
+          "universe": 0,
+          "expect": {
+            "1": 128
+          }
+        }
+      ],
+      "name": "特效：频闪叠加 Cue 亮度 50%"
+    },
+    {
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 10000,
+          "effect": "pulse",
+          "colors": [
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "periodMs": 1000,
+          "fadeInMs": 500
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 0
+          }
+        },
+        {
+          "t": 250,
+          "universe": 0,
+          "expect": {
+            "1": 54
+          }
+        }
+      ],
+      "name": "特效：特效同样受淡入包络约束"
+    }
+  ]
+}

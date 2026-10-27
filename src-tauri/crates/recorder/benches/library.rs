@@ -312,6 +312,7 @@ fn sidecar(i: usize, bytes: u64) -> Sidecar {
         frames: FRAMES as u64,
         bytes,
         recovered: false,
+        source: String::new(),
     }
 }
 

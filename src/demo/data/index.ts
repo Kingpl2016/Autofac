@@ -1,6 +1,7 @@
 import type { DemoData } from "../types";
 import app from "./app.json";
 import devices from "./devices.json";
+import fixtures from "./fixtures.json";
 import forwarding from "./forwarding.json";
 import live from "./live.json";
 import logs from "./logs.json";
@@ -34,6 +35,7 @@ export function loadDemoData(): DemoData {
     recordings,
     netdev,
     logs,
+    fixtures,
   };
   return structuredClone(raw) as unknown as DemoData;
 }

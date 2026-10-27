@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
 
@@ -356,5 +356,64 @@ describe("LibraryPanel 回放入口", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.error.mock.calls[0][0]).toContain("文件头损坏");
     expect(toast.error.mock.calls[0][0]).not.toContain("切换模式失败");
+  });
+});
+
+describe("LibraryPanel 节目编辑器的节目", () => {
+  /** 显示当前地址，用来断言“在编辑器中打开”的跳转。 */
+  function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="location">{location.pathname + location.search}</output>;
+  }
+
+  const editorEntries = () => [
+    entry({ path: "D:/rec/已导出.artrec", fileName: "已导出.artrec", name: "已导出的秀", editable: true, exported: true }),
+    entry({ path: "D:/rec/新做的.artrec", fileName: "新做的.artrec", name: "新做的秀", editable: true, exported: false, valid: false, frames: 0 }),
+    entry({ path: "D:/rec/录的.artrec", fileName: "录的.artrec", name: "录的", editable: false, exported: true }),
+    entry({ path: "D:/rec/坏的.artrec", fileName: "坏的.artrec", name: "坏的", valid: false, editable: false, exported: true }),
+  ];
+
+  function renderWithLocation() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <MemoryRouter initialEntries={["/recording"]}>
+        <QueryClientProvider client={client}>
+          <LibraryPanel />
+          <LocationProbe />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("可编辑的节目带“可编辑”徽标；只有工程的显示“未导出”而不是“文件损坏”", async () => {
+    api.recordingsList.mockResolvedValue(editorEntries());
+    renderWithLocation();
+    await screen.findByText("已导出的秀");
+    expect(screen.getAllByText("可编辑")).toHaveLength(2);
+    expect(screen.getAllByText("未导出")).toHaveLength(1);
+    // 只有真正损坏的文件才标“文件损坏”
+    expect(screen.getAllByText("文件损坏")).toHaveLength(1);
+  });
+
+  it("只有可编辑的节目有“在节目编辑器中打开”按钮，点击跳转并带上节目路径", async () => {
+    api.recordingsList.mockResolvedValue(editorEntries());
+    renderWithLocation();
+    await screen.findByText("已导出的秀");
+    const buttons = screen.getAllByRole("button", { name: "在节目编辑器中打开" });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]);
+    expect(screen.getByTestId("location").textContent).toBe(`/editor?open=${encodeURIComponent("D:/rec/已导出.artrec")}`);
+  });
+
+  it("只有工程的节目不能回放或上传，但仍能编辑", async () => {
+    api.recordingsList.mockResolvedValue(editorEntries());
+    renderWithLocation();
+    await screen.findByText("新做的秀");
+    const card = screen.getByText("新做的秀").closest("li") as HTMLElement;
+    const play = card.querySelector("button[aria-label=\"播放节目\"], button[title=\"播放节目\"]") as HTMLButtonElement | null;
+    if (play) expect(play.disabled).toBe(true);
+    const upload = card.querySelector("button[aria-label=\"上传到设备\"]") as HTMLButtonElement;
+    expect(upload.disabled).toBe(true);
+    expect(card.querySelector("button[aria-label=\"在节目编辑器中打开\"]")).not.toBeNull();
   });
 });

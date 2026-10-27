@@ -1,0 +1,164 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { FileSpreadsheet, Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { PageHeader } from "@/shared/components/PageHeader";
+import { pickXlsxFile } from "@/shared/tauri/pickers";
+import { blankModel, cloneAsCustom, nextCustomId } from "../lib/draft";
+import { fixtureErrorText } from "../lib/errors";
+import type { FixtureModel, ImportOutcome } from "../lib/types";
+import { useFixtureStore } from "../stores/useFixtureStore";
+import { FixtureDetail } from "./FixtureDetail";
+import { FixtureEditorDialog } from "./FixtureEditorDialog";
+import { FixtureList } from "./FixtureList";
+import { ImportResultDialog } from "./ImportResultDialog";
+
+/** 正在编辑的内容：新建 / 复制（编号可改）或编辑现有自定义模型（编号锁定）。 */
+interface EditingState {
+  model: FixtureModel;
+  lockId: boolean;
+}
+
+/**
+ * 灯具素材库页面：左侧模型列表，右侧通道布局与属性；
+ * 支持导入物模型 Excel、新建 / 编辑 / 复制 / 删除自定义模型。
+ */
+export function FixtureLibraryView() {
+  const { t } = useTranslation();
+  const models = useFixtureStore((s) => s.models);
+  const status = useFixtureStore((s) => s.status);
+  const error = useFixtureStore((s) => s.error);
+  const load = useFixtureStore((s) => s.load);
+  const importXlsx = useFixtureStore((s) => s.importXlsx);
+  const save = useFixtureStore((s) => s.save);
+  const remove = useFixtureStore((s) => s.remove);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // 选中项被删除或尚未选择时，回落到第一项
+  const selected = models.find((m) => m.id === selectedId) ?? models[0] ?? null;
+
+  const onImport = async () => {
+    const path = await pickXlsxFile(t("fixtures.import.fileType"));
+    if (!path) return;
+    setImporting(true);
+    try {
+      const result = await importXlsx(path);
+      setOutcome(result);
+      const first = result.added[0] ?? result.updated[0];
+      if (first) setSelectedId(first);
+    } catch (e) {
+      toast.error(t("fixtures.import.failed", { reason: fixtureErrorText(t, e) }));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const onSave = async (model: FixtureModel) => {
+    const saved = await save(model);
+    setSelectedId(saved.id);
+    toast.success(t("fixtures.editor.saved", { name: saved.name }));
+  };
+
+  const onDelete = async () => {
+    if (!selected) return;
+    try {
+      await remove(selected.id);
+      setSelectedId(null);
+      toast.success(t("fixtures.detail.deleted", { name: selected.name }));
+    } catch (e) {
+      toast.error(fixtureErrorText(t, e));
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title={t("nav.thingModel")}
+        subtitle={t("fixtures.subtitle")}
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={() => void onImport()} disabled={importing}>
+              {importing ? <Loader2 className="animate-spin" aria-hidden /> : <FileSpreadsheet aria-hidden />}
+              {t("fixtures.import.button")}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setEditing({ model: blankModel(nextCustomId(models)), lockId: false })}
+            >
+              <Plus aria-hidden />
+              {t("fixtures.editor.create")}
+            </Button>
+          </>
+        }
+      />
+
+      {status === "error" ? (
+        <div role="alert" className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+          <span className="text-destructive">{t("fixtures.loadFailed", { reason: fixtureErrorText(t, error) })}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+            {t("fixtures.retry")}
+          </Button>
+        </div>
+      ) : (
+        <div className="grid items-start gap-(--density-gap) lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <FixtureList
+            models={models}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelectedId}
+            query={query}
+            onQueryChange={setQuery}
+          />
+          {selected ? (
+            <FixtureDetail
+              model={selected}
+              onEdit={() => setEditing({ model: structuredClone(selected), lockId: true })}
+              onClone={() =>
+                setEditing({
+                  model: cloneAsCustom(selected, nextCustomId(models), t("fixtures.detail.copySuffix")),
+                  lockId: false,
+                })
+              }
+              onDelete={() => setConfirmDelete(true)}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {status === "loading" ? t("common.loading") : t("fixtures.detail.none")}
+            </p>
+          )}
+        </div>
+      )}
+
+      <FixtureEditorDialog
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+        initial={editing?.model ?? blankModel("")}
+        lockId={editing?.lockId ?? false}
+        takenIds={models.map((m) => m.id)}
+        onSave={onSave}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={t("fixtures.detail.deleteTitle", { name: selected?.name ?? "" })}
+        description={t("fixtures.detail.deleteDescription")}
+        confirmLabel={t("common.delete")}
+        destructive
+        onConfirm={() => void onDelete()}
+      />
+      <ImportResultDialog outcome={outcome} onClose={() => setOutcome(null)} />
+    </div>
+  );
+}

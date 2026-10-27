@@ -14,16 +14,17 @@ use host_core::recording::{
     DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult,
     RecordingStatus,
 };
+use crate::data_dir::DataRoot;
 use host_core::ArtnetCoreExt;
 use host_core::SettingsExt;
 
-/// 默认录制目录：文档目录下的 `ArtNet Studio Recordings`，取不到时回落到应用数据目录。
+/// 默认录制目录：软件目录下 `data/recordings`。
+///
+/// 旧版本默认放在“文档”下的 `ArtNet Studio Recordings`；那里已有录制而新目录还没建立时继续使用旧目录，
+/// 避免升级后已有的节目“消失”（见 [`DataRoot::recordings_dir`]）。
 fn default_dir(app: &AppHandle) -> PathBuf {
-    app.path()
-        .document_dir()
-        .map(|d| d.join("ArtNet Studio Recordings"))
-        .or_else(|_| app.path().app_data_dir().map(|d| d.join("recordings")))
-        .unwrap_or_else(|_| PathBuf::from("recordings"))
+    app.state::<DataRoot>()
+        .recordings_dir(crate::data_dir::legacy_recordings_dir().as_deref())
 }
 
 /// 按配置解析实际录制目录。
@@ -261,7 +262,7 @@ pub const LIB_ERR_NOT_FOUND: &str = "not_found";
 pub const LIB_ERR_TRASH: &str = "trash_failed";
 
 /// 把库错误转换为前端可翻译的错误码（其余原样返回描述）。
-fn lib_err(e: LibraryError) -> String {
+pub(crate) fn lib_err(e: LibraryError) -> String {
     match e {
         LibraryError::AlreadyExists => LIB_ERR_EXISTS.to_string(),
         LibraryError::OutsideLibrary => LIB_ERR_OUTSIDE.to_string(),

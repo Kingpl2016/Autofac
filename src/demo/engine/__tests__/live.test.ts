@@ -21,6 +21,7 @@ function makeWorld(): World {
     hooks: {
       isRecording: () => false,
       playerLoaded: () => false,
+      showOutputting: () => false,
       closePlayer: () => undefined,
       enterPlayerMode: () => undefined,
       settings: () => data.settings,

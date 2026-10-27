@@ -91,8 +91,8 @@ impl IngestPipeline {
     /// * `frames` - 按到达顺序排列的帧。
     /// * `jobs` - 发送任务输出缓冲（追加，不清空；调用方复用以免重复分配）。
     pub fn process_batch(&self, frames: &[DmxFrame], jobs: &mut Vec<ForwardJob>) {
-        // 回放 / 播放器模式：整批丢弃
-        if self.mode.is_playback() || self.mode.is_player() {
+        // 回放 / 播放器模式 / 节目编辑器输出期间：整批丢弃
+        if self.mode.is_playback() || self.mode.is_player() || self.mode.is_show() {
             return;
         }
         // sACN 已关闭：丢弃通道里迟到的 sACN 帧，避免关闭后又被摄取、录制或转发
@@ -359,14 +359,19 @@ mod tests {
         assert_eq!(targets, vec![("art", 106)]);
     }
 
-    /// 回放 / 播放器模式下整批丢弃。
+    /// 回放 / 播放器 / 节目编辑器输出模式下整批丢弃。
     #[test]
     fn playback_and_player_modes_drop_everything() {
         let r = rig(two_dests(), SenderSlot::default());
         let mut jobs = Vec::new();
-        for (playback, player) in [(true, false), (false, true)] {
+        for (playback, player, show) in [
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+        ] {
             r.mode.set_playback(playback);
             r.mode.set_player(player);
+            r.mode.set_show(show);
             r.pipeline
                 .process_batch(&[frame(&r, Protocol::ArtNet, 1, 1, &[1], 0)], &mut jobs);
             assert!(jobs.is_empty());
@@ -375,6 +380,7 @@ mod tests {
         }
         r.mode.set_playback(false);
         r.mode.set_player(false);
+        r.mode.set_show(false);
         r.pipeline
             .process_batch(&[frame(&r, Protocol::ArtNet, 1, 1, &[1], 0)], &mut jobs);
         assert_eq!(jobs.len(), 2, "回到实时后恢复");

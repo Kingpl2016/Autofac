@@ -64,6 +64,8 @@ const TICK_GUARD: Duration = Duration::from_millis(1);
 
 /// 错误码：录制进行中，不能进入回放。
 pub const ERR_RECORDING_ACTIVE: &str = "recording_active";
+/// 错误码：节目编辑器正在输出灯光，不能打开回放节目。
+pub const ERR_SHOW_ACTIVE: &str = "show_active";
 /// 错误码：没有已打开的节目。
 pub const ERR_NO_PLAYER: &str = "no_player";
 /// 错误码：Direct 目标的 IP 非法。
@@ -402,6 +404,7 @@ impl PlaybackController {
     /// # Errors
     ///
     /// - [`ERR_RECORDING_ACTIVE`]：录制进行中。
+    /// - [`ERR_SHOW_ACTIVE`]：节目编辑器正在输出灯光。
     /// - [`ERR_BAD_TARGET`]：目标 IP 非法。
     /// - 文件无法解析时返回描述；此时已打开的节目不受影响。
     /// - 回放线程无法创建时返回描述；此时已退出回放模式。
@@ -419,6 +422,9 @@ impl PlaybackController {
         } = params;
         if mode.is_recording() {
             return Err(ERR_RECORDING_ACTIVE.to_string());
+        }
+        if mode.is_show() {
+            return Err(ERR_SHOW_ACTIVE.to_string());
         }
         let target = Arc::new(normalize_target(target)?);
         let reader = ArtRecReader::open_file(&path).map_err(|e| e.to_string())?;

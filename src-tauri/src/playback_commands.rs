@@ -29,6 +29,8 @@ pub const ERR_BAD_PATH: &str = "bad_path";
 pub const ERR_UNKNOWN_UNIVERSE: &str = "unknown_universe";
 /// 错误码：回放进行中，不能开始录制。
 pub const ERR_PLAYBACK_ACTIVE: &str = "playback_active";
+/// 错误码：节目编辑器正在输出灯光，不能开始录制。
+pub const ERR_SHOW_ACTIVE: &str = host_core::playback::ERR_SHOW_ACTIVE;
 
 /// 串行化"打开节目"与"开始录制"两条会改变录制 / 回放状态的命令路径。
 ///
@@ -495,9 +497,13 @@ pub struct SeriesQuery {
 ///
 /// # Errors
 ///
-/// 已打开节目，或处于播放器模式（此时实时接收已停止，没有东西可录）时返回 [`ERR_PLAYBACK_ACTIVE`]。
+/// - 已打开节目，或处于播放器模式（此时实时接收已停止，没有东西可录）时返回 [`ERR_PLAYBACK_ACTIVE`]。
+/// - 节目编辑器正在输出灯光（此时实时帧被丢弃）时返回 [`ERR_SHOW_ACTIVE`]。
 pub fn ensure_not_playing(app: &AppHandle) -> Result<(), String> {
     let core = app.artnet_core();
+    if core.is_show_active() {
+        return Err(ERR_SHOW_ACTIVE.to_string());
+    }
     if core.playback().is_loaded()
         || core.app_mode_status().mode == host_core::app_mode::AppMode::Player
     {

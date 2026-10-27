@@ -18,7 +18,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -48,6 +48,10 @@ host-core = { path = "crates/host-core" }
 signal-gen = { path = "crates/signal-gen" }
 netif = { path = "crates/netif" }
 settings = { path = "crates/settings" }
+# 节目编辑引擎：灯具物模型 / Excel 导入 / 工程求值与烘焙。
+show-engine = { path = "crates/show-engine" }
+# 预览引擎 30 FPS 计时线程的高精度等待（与 host-core 回放线程相同）。
+spin_sleep = { workspace = true }
 
 [workspace]
 members = ["crates/*"]

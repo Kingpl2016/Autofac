@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import { Check, Clapperboard, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ import { ProgramThumb } from "./ProgramThumb";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import {
+  RECORDINGS_QUERY_KEY,
   playerOpen,
   recordingsDelete,
   recordingsList,
@@ -42,10 +44,11 @@ import {
   LIB_ERR_TRASH,
   PLAYER_ERR_BAD_PATH,
   PLAYER_ERR_RECORDING_ACTIVE,
+  PLAYER_ERR_SHOW_ACTIVE,
   type LibraryEntry,
 } from "../lib/types";
 
-const LIBRARY_KEY = ["recordings"] as const;
+const LIBRARY_KEY = RECORDINGS_QUERY_KEY;
 /** 入场交错的最大档位与步长（毫秒），超过后不再递增以免长列表显得迟钝。 */
 const STAGGER_MAX_STEPS = 8;
 const STAGGER_STEP_MS = 30;
@@ -76,6 +79,7 @@ interface LibraryPanelProps {
  */
 export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const client = useQueryClient();
   const { device: netDevice } = useActiveDevice();
   const netStatus = useDeviceStatus(netDevice?.id ?? null);
@@ -146,6 +150,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const describeOpenError = (e: unknown): string => {
     const raw = messageOf(e);
     if (raw === PLAYER_ERR_RECORDING_ACTIVE) return t("player.errRecordingActive");
+    if (raw === PLAYER_ERR_SHOW_ACTIVE) return t("player.errShowActive");
     if (raw === PLAYER_ERR_BAD_PATH) return t("recording.libErrOutside");
     return t("player.openFailed", { reason: describeError(e) });
   };
@@ -323,7 +328,11 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                           {freshPaths.has(e.path.replaceAll("\\", "/")) && (
                             <Badge>{t("recording.libNew")}</Badge>
                           )}
-                          {!e.valid && (
+                          {e.editable && <Badge variant="outline">{t("recording.libEditable")}</Badge>}
+                          {e.editable && !e.exported && (
+                            <Badge variant="warning">{t("recording.libNotExported")}</Badge>
+                          )}
+                          {!e.valid && e.exported !== false && (
                             <Badge variant="destructive">{t("recording.libInvalid")}</Badge>
                           )}
                           {e.recovered && (
@@ -360,6 +369,17 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       <Play className="fill-current" />
                       {t("recording.tabPlayer")}
                     </Button>
+                    {e.editable && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("recording.libEdit")}
+                        title={t("recording.libEdit")}
+                        onClick={() => void navigate(`/editor?open=${encodeURIComponent(e.path)}`)}
+                      >
+                        <Clapperboard className="size-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

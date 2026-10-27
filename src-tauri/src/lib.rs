@@ -5,10 +5,16 @@
 //! 宿主层只做装配与命令注册。
 
 mod about_commands;
+mod data_dir;
 mod app_mode_commands;
+mod fixture_commands;
+mod media_commands;
 mod netdev_commands;
 mod playback_commands;
 mod recording_commands;
+mod show_bake;
+mod show_commands;
+mod show_runtime;
 mod signal_checker_commands;
 
 use tauri::Manager;
@@ -31,15 +37,24 @@ fn app_version() -> String {
 ///
 /// 当 Tauri 运行时初始化失败时 panic（仅应用入口，不在库边界）。
 pub fn run() {
+    // 数据放在软件目录下的 `data`（确认有写权限；没有则退回系统应用数据目录），并迁移旧位置的设置。
+    let data_root = data_dir::resolve();
+    let log_dir = data_root.logs_dir();
+    if data_root.fallback_used() {
+        // 日志插件此时还没初始化，这条只会出现在标准错误；界面上由前端读取 `data_dir_info` 后提示用户
+        eprintln!("软件目录没有写权限，数据保存在 {}", data_root.path().display());
+    }
     let mut builder = tauri::Builder::default()
-        // 统一日志：stdout + 滚动文件（LogDir）+ webview。Rust 侧 `tracing` 事件经 `log`
+        .manage(data_root.clone())
+        // 统一日志：stdout + 滚动文件（data/logs）+ webview。Rust 侧 `tracing` 事件经 `log`
         // 桥接特性转为 `log` 记录后也由本插件处理，前端经 attachLogger 汇入应用内日志面板。
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
+                        path: log_dir,
                         file_name: None,
                     }),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
@@ -51,9 +66,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         // 文件传输（HTTP 上传 / 下载，带进度）。
         .plugin(tauri_plugin_upload::init())
-        // 键值持久化：前端界面偏好（如外观 / 设备发现的筛选、排序）落盘到 app_data_dir。
+        // 键值持久化：前端界面偏好（如外观 / 设备发现的筛选、排序）；前端用数据根目录下的绝对路径打开。
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(host_core::init());
+        .plugin(host_core::init_in(data_root.path().to_path_buf()));
 
     // 桌面专用插件：全局快捷键 / 持久化已授权的文件范围 / 自动更新。
     #[cfg(desktop)]
@@ -71,6 +86,12 @@ pub fn run() {
                 app.handle(),
                 std::sync::Arc::new(netdev::KeyringStore),
             ));
+            // 灯具素材库：内置模型 + 用户模型（app_data_dir/fixtures.json）。
+            app.manage(fixture_commands::FixtureState::new(app.handle()));
+            // 节目预览引擎：30 FPS 灯光输出会话按需创建。
+            app.manage(show_runtime::ShowRuntime::new());
+            // 保存时的后台烘焙（.artrec）：串行调度。
+            app.manage(show_bake::ShowBakeState::default());
             // 信号检测器（测试信号发生器）：发送器常驻，窗口按需打开。
             app.manage(signal_checker_commands::SignalCheckerState::new(
                 app.handle(),
@@ -108,7 +129,7 @@ pub fn run() {
             }
             Ok(())
         })
-        // 关闭窗口：录制或播放进行中先拦下，交给前端确认（见 `app_quit`）；否则直接关闭。
+        // 关闭窗口：录制、播放、编辑器输出灯光 / 有未保存修改 / 正在烘焙时先拦下，交给前端确认（见 `app_quit`）；否则直接关闭。
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 let app = window.app_handle();
@@ -116,12 +137,22 @@ pub fn run() {
                 let recording = core.recording().is_recording();
                 let playing =
                     core.playback().status().state == host_core::playback::PlaybackState::Playing;
-                if recording || playing {
+                // 节目编辑器：正在输出灯光、工程有未保存的修改、后台正在生成回放文件，都需要用户确认
+                let show_output = core.is_show_active();
+                let show_unsaved = app.state::<show_runtime::ShowRuntime>().is_dirty();
+                let baking = app.state::<show_bake::ShowBakeState>().is_busy();
+                if recording || playing || show_output || show_unsaved || baking {
                     api.prevent_close();
                     let _ = tauri::Emitter::emit(
                         window,
                         "app:close-requested",
-                        serde_json::json!({ "recording": recording, "playing": playing }),
+                        serde_json::json!({
+                            "recording": recording,
+                            "playing": playing,
+                            "showOutput": show_output,
+                            "showUnsaved": show_unsaved,
+                            "baking": baking,
+                        }),
                     );
                 }
             }
@@ -131,6 +162,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            data_dir::data_dir_info,
             about_commands::app_info,
             host_core::commands::get_settings,
             host_core::commands::save_settings,
@@ -175,6 +207,28 @@ pub fn run() {
             playback_commands::player_status,
             playback_commands::player_overview,
             playback_commands::player_series,
+            show_commands::show_project_save,
+            show_commands::show_project_open,
+            show_commands::show_external_save,
+            show_commands::show_external_read,
+            show_commands::show_autosave_write,
+            show_commands::show_autosave_read,
+            show_commands::show_autosave_clear,
+            media_commands::media_probe,
+            media_commands::media_authorize,
+            media_commands::media_peaks,
+            show_runtime::show_load,
+            show_runtime::show_play,
+            show_runtime::show_pause,
+            show_runtime::show_stop,
+            show_runtime::show_seek,
+            show_runtime::show_locate,
+            show_runtime::show_status,
+            show_runtime::show_set_dirty,
+            fixture_commands::fixture_list,
+            fixture_commands::fixture_import_xlsx,
+            fixture_commands::fixture_save,
+            fixture_commands::fixture_delete,
             netdev_commands::netdev_list,
             netdev_commands::netdev_save,
             netdev_commands::netdev_remove,

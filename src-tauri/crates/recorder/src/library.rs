@@ -18,12 +18,19 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use artrec_core::{read_header_and_unis, FRAMEINDEX_SIZE};
 use serde::Serialize;
 
-use crate::sidecar::{overview_cache_path, read_sidecar, sidecar_path, write_sidecar};
+use crate::sidecar::{
+    overview_cache_path, read_sidecar, show_project_path, sidecar_path, write_sidecar,
+    SHOW_SUFFIX,
+};
 use crate::store::{sanitize_file_stem, ARTREC_SUFFIX};
 
 /// 节目库中的一条节目（面向前端 DTO，camelCase）。
+///
+/// 几个布尔字段是各自独立的事实（头部有效 / 来自崩溃恢复 / 有工程 / 已导出），
+/// 前端直接按字段显示徽标，不拆成状态枚举。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct LibraryEntry {
     /// `.artrec` 绝对路径。
     pub path: String,
@@ -47,8 +54,12 @@ pub struct LibraryEntry {
     pub sources: Vec<String>,
     /// 是否由崩溃恢复生成。
     pub recovered: bool,
-    /// 文件头是否可解析（false 表示文件损坏或不是 ArtRec）。
+    /// 文件头是否可解析（false 表示文件损坏、不是 ArtRec，或节目还没有导出过 `.artrec`）。
     pub valid: bool,
+    /// 是否带有可在节目编辑器里打开的工程（旁边有 `名称.artrec.show`）。
+    pub editable: bool,
+    /// `.artrec` 文件是否存在。`false` 且 `editable` 表示工程已保存但还没导出（或导出失败）。
+    pub exported: bool,
 }
 
 /// 库操作错误。
@@ -108,6 +119,58 @@ pub fn resolve_in_dir(dir: &Path, path: &Path) -> Result<PathBuf, LibraryError> 
     Ok(file)
 }
 
+/// 校验 `path` 指向录制目录里的一个节目条目，返回规整后的 `.artrec` 路径。
+///
+/// 与 [`resolve_in_dir`] 的区别：节目编辑器保存的工程可能还没有导出过 `.artrec`
+/// （或导出失败），此时 `.artrec` 不存在、只有 `名称.artrec.show`，也算有效条目。
+/// 播放、上传等需要真实 `.artrec` 的操作仍须使用 [`resolve_in_dir`]。
+///
+/// # Arguments
+///
+/// * `dir` - 录制目录。
+/// * `path` - 外部传入的 `.artrec` 路径（文件可以不存在）。
+///
+/// # Returns
+///
+/// 目录规范化后与文件名拼成的路径（`.artrec` 存在时即其规范化路径）。
+///
+/// # Errors
+///
+/// - [`LibraryError::OutsideLibrary`]：扩展名不是 `.artrec`、文件名含路径成分，或不在目录直接子级。
+/// - [`LibraryError::NotFound`]：`.artrec` 与 `.artrec.show` 都不存在。
+pub fn resolve_entry(dir: &Path, path: &Path) -> Result<PathBuf, LibraryError> {
+    let ext_ok = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("artrec"));
+    let name = path.file_name().ok_or(LibraryError::OutsideLibrary)?;
+    if !ext_ok {
+        return Err(LibraryError::OutsideLibrary);
+    }
+    let root = std::fs::canonicalize(dir)?;
+    // 父目录必须就是录制目录：先规范化父目录（文件本身可能不存在，不能直接规范化它）
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let parent = std::fs::canonicalize(parent).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            LibraryError::OutsideLibrary
+        } else {
+            LibraryError::Io(e)
+        }
+    })?;
+    if parent != root {
+        return Err(LibraryError::OutsideLibrary);
+    }
+    let file = root.join(name);
+    if file.is_file() || show_project_path(&file).is_file() {
+        Ok(file)
+    } else {
+        Err(LibraryError::NotFound)
+    }
+}
+
 fn modified_ms(meta: &Metadata) -> u64 {
     meta.modified()
         .ok()
@@ -158,13 +221,15 @@ fn probe_header(path: &Path) -> Option<HeaderSummary> {
 ///
 /// # Arguments
 ///
-/// * `path` - `.artrec` 路径。
-/// * `meta` - 该文件的元数据（提供字节数与修改时间）。
+/// * `path` - `.artrec` 路径（`exported` 为 `false` 时文件并不存在）。
+/// * `meta` - 条目主文件的元数据（提供字节数与修改时间）：已导出时是 `.artrec`，
+///   只有工程时是 `.artrec.show`。
+/// * `exported` - `.artrec` 是否存在。
 ///
 /// # Returns
 ///
 /// 节目条目；路径没有文件名时返回 `None`。
-fn entry_from(path: &Path, meta: &Metadata) -> Option<LibraryEntry> {
+fn entry_from(path: &Path, meta: &Metadata, exported: bool) -> Option<LibraryEntry> {
     let file_name = path.file_name()?.to_string_lossy().into_owned();
     let stem = file_name
         .strip_suffix(ARTREC_SUFFIX)
@@ -183,10 +248,12 @@ fn entry_from(path: &Path, meta: &Metadata) -> Option<LibraryEntry> {
         sources: Vec::new(),
         recovered: false,
         valid: false,
+        editable: show_project_path(path).is_file(),
+        exported,
     };
 
     // 事实以 `.artrec` 本体为准（头可解析才算有效）；sidecar 只补充名称与来源等元信息
-    if let Some(h) = probe_header(path) {
+    if let Some(h) = exported.then(|| probe_header(path)).flatten() {
         entry.valid = true;
         entry.duration_us = h.duration_us;
         entry.frames = h.frames;
@@ -247,12 +314,9 @@ pub fn list_library(dir: &Path) -> Vec<LibraryEntry> {
 /// 同 [`list_library`]。
 #[must_use]
 pub fn list_library_uncached(dir: &Path) -> Vec<LibraryEntry> {
-    let mut out: Vec<LibraryEntry> = crate::store::list_artrec_files(dir)
+    let mut out: Vec<LibraryEntry> = scan_dir(dir)
         .iter()
-        .filter_map(|p| {
-            let meta = std::fs::metadata(p).ok()?;
-            entry_from(p, &meta)
-        })
+        .filter_map(|(p, meta, fp)| entry_from(p, meta, fp.exported))
         .collect();
     sort_entries(&mut out);
     out
@@ -265,15 +329,25 @@ pub fn list_library_uncached(dir: &Path) -> Vec<LibraryEntry> {
 /// 即可排除这种情况（与 git 索引处理 racy 文件的思路相同）。
 const RACY_WINDOW: Duration = Duration::from_secs(3);
 
-/// 节目文件指纹：`.artrec` 的 (字节数, 修改时间) + sidecar 的 (是否存在, 字节数, 修改时间)。
+/// 一个文件的 (字节数, 修改时间)。
+type FileStamp = (u64, Option<SystemTime>);
+
+/// 节目文件指纹：主文件的 (字节数, 修改时间) + sidecar 与工程文件各自的 (字节数, 修改时间)
+/// + `.artrec` 是否存在。
+///
+/// 主文件是 `.artrec`；节目只有工程（还没导出）时是 `.artrec.show`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Fingerprint {
-    /// `.artrec` 字节数。
+    /// 主文件字节数。
     len: u64,
-    /// `.artrec` 修改时间；平台不支持时为 `None`。
+    /// 主文件修改时间；平台不支持时为 `None`。
     modified: Option<SystemTime>,
     /// sidecar 的 (字节数, 修改时间)；sidecar 不存在时为 `None`。
-    sidecar: Option<(u64, Option<SystemTime>)>,
+    sidecar: Option<FileStamp>,
+    /// 工程文件 `.artrec.show` 的 (字节数, 修改时间)；不存在时为 `None`。
+    show: Option<FileStamp>,
+    /// `.artrec` 是否存在。
+    exported: bool,
 }
 
 impl Fingerprint {
@@ -281,17 +355,26 @@ impl Fingerprint {
     ///
     /// # Arguments
     ///
-    /// * `artrec` - `.artrec` 的元数据。
+    /// * `primary` - 主文件的元数据。
     /// * `sidecar` - sidecar 的元数据；不存在时为 `None`。
+    /// * `show` - 工程文件的元数据；不存在时为 `None`。
+    /// * `exported` - `.artrec` 是否存在。
     ///
     /// # Returns
     ///
     /// 对应的指纹。
-    fn of(artrec: &Metadata, sidecar: Option<&Metadata>) -> Self {
+    fn of(
+        primary: &Metadata,
+        sidecar: Option<&Metadata>,
+        show: Option<&Metadata>,
+        exported: bool,
+    ) -> Self {
         Self {
-            len: artrec.len(),
-            modified: artrec.modified().ok(),
+            len: primary.len(),
+            modified: primary.modified().ok(),
             sidecar: sidecar.map(|m| (m.len(), m.modified().ok())),
+            show: show.map(|m| (m.len(), m.modified().ok())),
+            exported,
         }
     }
 
@@ -308,7 +391,9 @@ impl Fingerprint {
         let recent = |t: Option<SystemTime>| {
             t.is_none_or(|t| now.duration_since(t).map_or(true, |d| d < RACY_WINDOW))
         };
-        recent(self.modified) || self.sidecar.is_some_and(|(_, m)| recent(m))
+        recent(self.modified)
+            || self.sidecar.is_some_and(|(_, m)| recent(m))
+            || self.show.is_some_and(|(_, m)| recent(m))
     }
 }
 
@@ -375,7 +460,7 @@ impl LibraryCache {
             if slot.is_some() {
                 continue;
             }
-            if let Some(e) = entry_from(p, meta) {
+            if let Some(e) = entry_from(p, meta, fp.exported) {
                 if !fp.is_racy(now) {
                     fresh.push((p.clone(), *fp, e.clone()));
                 }
@@ -444,6 +529,7 @@ fn scan_dir(dir: &Path) -> Vec<(PathBuf, Metadata, Fingerprint)> {
     };
     let mut programs: Vec<(PathBuf, Metadata)> = Vec::new();
     let mut sidecars: HashMap<OsString, Metadata> = HashMap::new();
+    let mut shows: HashMap<OsString, Metadata> = HashMap::new();
     for e in rd.filter_map(Result::ok) {
         let path = e.path();
         let Some(ext) = path.extension().and_then(|x| x.to_str()) else {
@@ -457,12 +543,37 @@ fn scan_dir(dir: &Path) -> Vec<(PathBuf, Metadata, Fingerprint)> {
             if let Some(meta) = entry_metadata(&e, &path) {
                 sidecars.insert(e.file_name(), meta);
             }
+        } else if ext == "show" {
+            if let Some(meta) = entry_metadata(&e, &path) {
+                shows.insert(e.file_name(), meta);
+            }
         }
     }
-    programs.sort_by(|a, b| a.0.cmp(&b.0));
-    programs
+
+    // 只有工程、还没有 `.artrec` 的节目：用工程文件充当主文件，路径是推算出的 `.artrec` 路径
+    let exported: HashSet<OsString> = programs
+        .iter()
+        .filter_map(|(p, _)| p.file_name().map(OsString::from))
+        .collect();
+    let mut entries: Vec<(PathBuf, Metadata, bool)> =
+        programs.into_iter().map(|(p, m)| (p, m, true)).collect();
+    for (name, meta) in &shows {
+        let Some(artrec_name) = name.to_str().and_then(|n| n.strip_suffix(SHOW_SUFFIX)) else {
+            continue;
+        };
+        let is_artrec = Path::new(artrec_name)
+            .extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| x.eq_ignore_ascii_case("artrec"));
+        if is_artrec && !exported.contains(OsString::from(artrec_name).as_os_str()) {
+            entries.push((dir.join(artrec_name), meta.clone(), false));
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    entries
         .into_iter()
-        .map(|(path, meta)| {
+        .map(|(path, meta, is_exported)| {
             let side_path = sidecar_path(&path);
             let listed = side_path.file_name().and_then(|n| sidecars.get(n));
             let probed = if listed.is_none() {
@@ -470,7 +581,16 @@ fn scan_dir(dir: &Path) -> Vec<(PathBuf, Metadata, Fingerprint)> {
             } else {
                 None
             };
-            let fp = Fingerprint::of(&meta, listed.or(probed.as_ref()));
+            // 已导出的节目才需要另外查找它的工程文件；孤立工程的主文件就是工程本身
+            let show = if is_exported {
+                show_project_path(&path)
+                    .file_name()
+                    .and_then(|n| shows.get(n))
+                    .cloned()
+            } else {
+                Some(meta.clone())
+            };
+            let fp = Fingerprint::of(&meta, listed.or(probed.as_ref()), show.as_ref(), is_exported);
             (path, meta, fp)
         })
         .collect()
@@ -492,15 +612,29 @@ fn scan_dir(dir: &Path) -> Vec<(PathBuf, Metadata, Fingerprint)> {
 ///
 /// 路径非法、目标已存在或文件系统失败。
 pub fn rename_recording(dir: &Path, path: &Path, new_name: &str) -> Result<PathBuf, LibraryError> {
-    let src = resolve_in_dir(dir, path)?;
+    let src = resolve_entry(dir, path)?;
     let stem = sanitize_file_stem(new_name);
     let dst = src.with_file_name(format!("{stem}{ARTREC_SUFFIX}"));
-    if dst != src && dst.exists() {
+    if dst != src && (dst.exists() || show_project_path(&dst).exists()) {
         return Err(LibraryError::AlreadyExists);
     }
     let mut meta = read_sidecar(&src).unwrap_or_default();
     if dst != src {
-        std::fs::rename(&src, &dst)?;
+        // 节目的几个文件是一组：`.artrec`（可能还没导出）与工程 `.artrec.show` 一起改名，
+        // 第二步失败时把第一步改回来，不留下改了一半的状态
+        let (src_show, dst_show) = (show_project_path(&src), show_project_path(&dst));
+        let moved_artrec = src.is_file();
+        if moved_artrec {
+            std::fs::rename(&src, &dst)?;
+        }
+        if src_show.is_file() {
+            if let Err(e) = std::fs::rename(&src_show, &dst_show) {
+                if moved_artrec {
+                    let _ = std::fs::rename(&dst, &src);
+                }
+                return Err(e.into());
+            }
+        }
         let _ = std::fs::remove_file(sidecar_path(&src));
         move_overview_cache(&src, &dst);
     }
@@ -576,13 +710,17 @@ pub fn delete_recording_with(
     path: &Path,
     trash: TrashFn<'_>,
 ) -> Result<(), LibraryError> {
-    let src = resolve_in_dir(dir, path)?;
-    let mut items = vec![src.clone()];
-    items.extend(
-        [sidecar_path(&src), overview_cache_path(&src)]
-            .into_iter()
-            .filter(|p| p.exists()),
-    );
+    let src = resolve_entry(dir, path)?;
+    // 节目、sidecar、概览缓存、工程文件：存在的都在同一次操作里移入回收站
+    let items: Vec<PathBuf> = [
+        src.clone(),
+        sidecar_path(&src),
+        overview_cache_path(&src),
+        show_project_path(&src),
+    ]
+    .into_iter()
+    .filter(|p| p.exists())
+    .collect();
     trash(&items).map_err(LibraryError::Trash)
 }
 

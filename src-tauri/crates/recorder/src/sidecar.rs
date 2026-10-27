@@ -24,6 +24,12 @@ pub const SIDECAR_VERSION: u32 = 1;
 /// 概览缓存文件相对 `.artrec` 路径追加的后缀（`show.artrec` → `show.artrec.ovw`）。
 pub const OVERVIEW_CACHE_SUFFIX: &str = ".ovw";
 
+/// 节目编辑器工程文件相对 `.artrec` 路径追加的后缀（`show.artrec` → `show.artrec.show`）。
+pub const SHOW_SUFFIX: &str = ".show";
+
+/// sidecar 的 `source` 取值：节目由节目编辑器保存（有可编辑的工程）。
+pub const SOURCE_EDITOR: &str = "editor";
+
 /// 节目元数据。所有字段带默认值，保证读取旧版或手写 JSON 时前向兼容；
 /// 未知字段（含旧版内嵌的 `overview` 概览）读取时被忽略、写回时不再保留。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -59,6 +65,8 @@ pub struct Sidecar {
     pub bytes: u64,
     /// 是否由崩溃恢复生成。
     pub recovered: bool,
+    /// 节目来源：空串表示录制得到，[`SOURCE_EDITOR`] 表示由节目编辑器保存。
+    pub source: String,
 }
 
 /// 探测 sidecar 里是否残留旧版内嵌的 `overview` 字段（内容不解析，`IgnoredAny` 直接跳过）。
@@ -116,6 +124,20 @@ fn write_atomic(target: &Path, bytes: &[u8]) -> io::Result<()> {
 #[must_use]
 pub fn sidecar_path(artrec: &Path) -> PathBuf {
     with_suffix(artrec, ".json")
+}
+
+/// 给定 `.artrec` 路径，返回节目编辑器工程文件的路径（追加 `.show`）。
+///
+/// # Arguments
+///
+/// * `artrec` - `.artrec` 文件路径（文件本身可以不存在）。
+///
+/// # Returns
+///
+/// 在 `artrec` 末尾追加 `.show` 后的路径，如 `show.artrec` 对应 `show.artrec.show`。
+#[must_use]
+pub fn show_project_path(artrec: &Path) -> PathBuf {
+    with_suffix(artrec, SHOW_SUFFIX)
 }
 
 /// 读取 sidecar；文件不存在或损坏时返回 `None`（不视为错误）。

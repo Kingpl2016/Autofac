@@ -46,6 +46,8 @@ export interface World {
   hooks: {
     isRecording(): boolean;
     playerLoaded(): boolean;
+    /** 节目编辑器是否正在输出灯光（预览播放或灯具定位）。 */
+    showOutputting(): boolean;
     closePlayer(): void;
     enterPlayerMode(): void;
     /** 当前设置（由 system 模块维护，保存后立即生效）。 */

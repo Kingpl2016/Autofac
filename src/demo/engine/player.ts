@@ -234,6 +234,7 @@ export function createPlayerModule(
     commands: {
       player_open: (args: CommandArgs) => {
         if (world.hooks.isRecording()) fail("recording_active");
+        if (world.hooks.showOutputting()) fail("show_active");
         const rec = programAt(str(args, "path"));
         return open(rec, normalizeTarget(args.target));
       },
