@@ -98,6 +98,16 @@ pub struct ProgramEntry {
     pub size: u64,
 }
 
+/// 一条节目号分配：把 `no` 指到 `file`（`PUT /api/programs/{no}`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramAssign {
+    /// 目标节目号 1~255。
+    pub no: u16,
+    /// 要指向的文件名。
+    pub file: String,
+}
+
 /// 文件上传成功后的设备回执（`PUT /files/{name}`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]

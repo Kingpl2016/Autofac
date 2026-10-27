@@ -12,7 +12,7 @@ use serde_json::json;
 use crate::error::{NetdevError, Result};
 use crate::model::{
     ConfigPatch, ConfigResult, DeviceConfig, DeviceStatus, Diag, FileEntry, OtaStatus,
-    PlayerStatus, ProgramEntry,
+    PlayerStatus, ProgramAssign, ProgramEntry,
 };
 use crate::validate::{check_host, check_port, check_program_file_name, check_token};
 
@@ -354,6 +354,91 @@ impl DeviceClient {
         Ok(w.programs)
     }
 
+    /// 把节目号指到某文件（`PUT /api/programs/{no}`）。
+    ///
+    /// 设备会先解除该文件原有的节目号（一个文件只对应一个编号）。
+    ///
+    /// # Arguments
+    ///
+    /// * `no` - 目标节目号（1~255）。
+    /// * `file` - 目标文件名（须已存在于设备）。
+    /// * `force` - 编号已被别的文件占用时是否覆盖（被覆盖的文件会失去节目号）。
+    ///
+    /// # Errors
+    ///
+    /// 节目号越界、文件名非法、编号被占用且未强制（[`NetdevError::Busy`]）、
+    /// 文件不存在、网络或设备错误时返回 [`NetdevError`]。
+    pub async fn assign_program(&self, no: u16, file: &str, force: bool) -> Result<()> {
+        if !(1..=255).contains(&no) {
+            return Err(NetdevError::Invalid("节目号必须在 1~255 之间".into()));
+        }
+        check_program_file_name(file)?;
+        self.send(
+            self.request(Method::PUT, &format!("/api/programs/{no}"))
+                .json(&json!({ "file": file, "force": force })),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// 解除某节目号的映射（`DELETE /api/programs/{no}`，不删文件）。
+    ///
+    /// # Arguments
+    ///
+    /// * `no` - 节目号（1~255）。
+    ///
+    /// # Errors
+    ///
+    /// 节目号越界、网络或设备错误时返回 [`NetdevError`]。
+    pub async fn unassign_program(&self, no: u16) -> Result<()> {
+        if !(1..=255).contains(&no) {
+            return Err(NetdevError::Invalid("节目号必须在 1~255 之间".into()));
+        }
+        self.send(self.request(Method::DELETE, &format!("/api/programs/{no}")))
+            .await
+            .map(drop)
+    }
+
+    /// 按顺序应用一组节目号分配（用于改号 / 交换 / 拖动排序）；中途失败会尽力回滚。
+    ///
+    /// 每条都用 `force` 覆盖：被覆盖的文件必须也在本批里被重新分配（调用方保证这是一个排列），
+    /// 否则它会失去节目号。失败时按开始前的映射把涉及的编号与文件恢复原状。
+    ///
+    /// # Arguments
+    ///
+    /// * `assignments` - 要应用的分配；节目号与文件名都不得重复。
+    ///
+    /// # Errors
+    ///
+    /// 参数不合法（空、重复、越界）时返回 [`NetdevError::Invalid`]；
+    /// 某条分配失败时返回该条的 [`NetdevError`]（已尽力回滚）。
+    pub async fn assign_programs(&self, assignments: &[ProgramAssign]) -> Result<()> {
+        validate_assignments(assignments)?;
+        let before = self.list_programs().await?;
+        for a in assignments {
+            if let Err(e) = self.assign_program(a.no, &a.file, true).await {
+                self.rollback_assignments(assignments, &before).await;
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    /// 尽力把 `assignments` 涉及的编号与文件恢复为 `before` 里的映射（忽略恢复中的错误）。
+    async fn rollback_assignments(&self, assignments: &[ProgramAssign], before: &[ProgramEntry]) {
+        let touched = |e: &ProgramEntry| {
+            assignments.iter().any(|a| a.no == e.no || a.file == e.file)
+        };
+        for a in assignments {
+            if !before.iter().any(|e| e.no == a.no) {
+                let _ = self.unassign_program(a.no).await;
+            }
+        }
+        for e in before.iter().filter(|e| touched(e)) {
+            let _ = self.assign_program(e.no, &e.file, true).await;
+        }
+    }
+
     /// 删除文件（`DELETE /files/{name}`）。
     ///
     /// # Arguments
@@ -388,6 +473,33 @@ impl DeviceClient {
         .await
         .map(drop)
     }
+}
+
+/// 校验一批节目号分配：非空、编号在 1~255、编号与文件名都不重复、文件名合法。
+///
+/// # Arguments
+///
+/// * `assignments` - 待校验的分配。
+///
+/// # Errors
+///
+/// 任一规则不满足时返回 [`NetdevError::Invalid`]。
+fn validate_assignments(assignments: &[ProgramAssign]) -> Result<()> {
+    if assignments.is_empty() {
+        return Err(NetdevError::Invalid("没有要应用的节目号分配".into()));
+    }
+    let mut nos = std::collections::HashSet::new();
+    let mut files = std::collections::HashSet::new();
+    for a in assignments {
+        if !(1..=255).contains(&a.no) {
+            return Err(NetdevError::Invalid("节目号必须在 1~255 之间".into()));
+        }
+        check_program_file_name(&a.file)?;
+        if !nos.insert(a.no) || !files.insert(a.file.as_str()) {
+            return Err(NetdevError::Invalid("节目号或文件名重复".into()));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -514,6 +626,117 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].program, Some(1));
         assert_eq!(c.list_programs().await.unwrap()[0].file, "a.artrec");
+    }
+
+    fn assign(no: u16, file: &str) -> ProgramAssign {
+        ProgramAssign { no, file: file.into() }
+    }
+
+    #[tokio::test]
+    async fn assign_program_sends_file_and_force() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/api/programs/7"))
+            .and(body_json(json!({ "file": "a.artrec", "force": true })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/programs/9"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let c = client_for(&server, None);
+        c.assign_program(7, "a.artrec", true).await.unwrap();
+        c.unassign_program(9).await.unwrap();
+        assert!(matches!(c.assign_program(0, "a.artrec", false).await, Err(NetdevError::Invalid(_))));
+        assert!(matches!(c.assign_program(256, "a.artrec", false).await, Err(NetdevError::Invalid(_))));
+        assert!(matches!(c.assign_program(1, "a/b.artrec", false).await, Err(NetdevError::Invalid(_))));
+        assert!(matches!(c.unassign_program(0).await, Err(NetdevError::Invalid(_))));
+    }
+
+    #[tokio::test]
+    async fn assign_programs_validates_before_sending() {
+        let server = MockServer::start().await;
+        let c = client_for(&server, None);
+        for bad in [
+            vec![],
+            vec![assign(1, "a.artrec"), assign(1, "b.artrec")],
+            vec![assign(1, "a.artrec"), assign(2, "a.artrec")],
+            vec![assign(300, "a.artrec")],
+            vec![assign(1, "x.txt")],
+        ] {
+            assert!(matches!(c.assign_programs(&bad).await, Err(NetdevError::Invalid(_))));
+        }
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn assign_programs_applies_in_order() {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/programs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "programs": [{ "no": 1, "file": "a.artrec", "size": 1 }, { "no": 2, "file": "b.artrec", "size": 1 }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .mount(&server)
+            .await;
+        let c = client_for(&server, None);
+        c.assign_programs(&[assign(2, "a.artrec"), assign(1, "b.artrec")]).await.unwrap();
+        let puts: Vec<_> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() == "PUT")
+            .map(|r| (r.url.path().to_string(), String::from_utf8(r.body).unwrap()))
+            .collect();
+        assert_eq!(puts.len(), 2);
+        assert_eq!(puts[0].0, "/api/programs/2");
+        assert!(puts[0].1.contains("a.artrec") && puts[0].1.contains("true"));
+        assert_eq!(puts[1].0, "/api/programs/1");
+    }
+
+    #[tokio::test]
+    async fn assign_programs_rolls_back_on_failure() {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/programs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "programs": [{ "no": 1, "file": "a.artrec", "size": 1 }, { "no": 2, "file": "b.artrec", "size": 1 }]
+            })))
+            .mount(&server)
+            .await;
+        // 第一次 PUT /2 成功（a→2），随后 PUT /1 失败（b→1）
+        Mock::given(method("PUT"))
+            .and(path("/api/programs/1"))
+            .and(body_json(json!({ "file": "b.artrec", "force": true })))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({ "error": "io" })))
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .mount(&server)
+            .await;
+        let c = client_for(&server, None);
+        let r = c.assign_programs(&[assign(2, "a.artrec"), assign(1, "b.artrec")]).await;
+        assert!(r.is_err());
+        let puts: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() == "PUT")
+            .map(|r| format!("{} {}", r.url.path(), String::from_utf8(r.body).unwrap()))
+            .collect();
+        // 2 次正常尝试 + 2 次回滚（恢复 1→a、2→b）
+        assert_eq!(puts.len(), 4, "{puts:?}");
+        assert!(puts[2].contains("/api/programs/1") && puts[2].contains("a.artrec"));
+        assert!(puts[3].contains("/api/programs/2") && puts[3].contains("b.artrec"));
     }
 
     #[tokio::test]

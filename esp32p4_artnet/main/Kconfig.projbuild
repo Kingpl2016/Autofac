@@ -184,13 +184,14 @@ menu "ArtNet Core 板级配置"
 
     menu "安全"
         config ART_REQUIRE_AUTH
-            bool "强制鉴权（未配置 token 时拒绝高危端点）"
-            default y
+            bool "启用 HTTP token 鉴权"
+            default n
             help
-                开启时（默认）：未配置 HTTP token 的情况下，所有变更类 / 高危端点
+                关闭时（默认，开发 / 生产均如此）：完全不做 token 鉴权，所有端点一律放行；
+                即使 NVS 里已存有 token 也会被忽略。
+                开启时：未配置 HTTP token 的情况下，所有变更类 / 高危端点
                 （POST/PUT/DELETE、OTA、出厂、改配、删文件、重命名等）一律返回 401，
                 仅放行只读端点；配置了 token 后所有端点都要求 Bearer。
-                关闭时退回旧行为（未配置 token 即完全放行），仅供开发调试，生产请保持开启。
 
         config ART_MAX_UPLOAD_BYTES
             int "单文件上传绝对上限 (字节，0=不限)"

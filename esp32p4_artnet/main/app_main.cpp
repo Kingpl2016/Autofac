@@ -56,13 +56,16 @@ extern "C" void app_main(void) {
     if (auto r = g.settings.load(); !r) {
         ESP_LOGE(kTag, "配置加载失败，使用默认值");
     }
+#if CONFIG_ART_REQUIRE_AUTH
     // 出厂默认 token：NVS 未设置且配置了默认值时预置，避免「无 token + 强制鉴权」
     // 导致新设备连 PUT /api/config 都被拒、无法远程设置 token 的自锁。
+    // 鉴权关闭（开发 / 生产当前均如此）时不预置。
     if (std::strlen(CONFIG_ART_DEFAULT_HTTP_TOKEN) > 0 && !g.settings.has_token()) {
         if (auto r = g.settings.set_token(CONFIG_ART_DEFAULT_HTTP_TOKEN); !r) {
             ESP_LOGE(kTag, "预置默认 token 失败");
         }
     }
+#endif
 
     // 3. SD 卡 + 目录 + 节目映射。
     bool sd_ok = false;

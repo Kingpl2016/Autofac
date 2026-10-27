@@ -71,6 +71,12 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=512
 
 #
+# HTTP token 鉴权：开发 / 生产均关闭（sdkconfig.prod.defaults 叠加在本文件之上，同样生效）。
+# 需要重新启用时改为 CONFIG_ART_REQUIRE_AUTH=y 并视情况设置 CONFIG_ART_DEFAULT_HTTP_TOKEN。
+#
+CONFIG_ART_REQUIRE_AUTH=n
+
+#
 # OTA 分段下载（本工程用推送式，不依赖拉取，但保留以备后续）
 #
 CONFIG_ESP_HTTPS_OTA_ENABLE_PARTIAL_DOWNLOAD=n

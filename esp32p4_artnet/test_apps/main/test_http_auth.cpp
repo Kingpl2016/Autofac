@@ -20,7 +20,11 @@ TEST_CASE("未配置 token + 强制鉴权：高危拒绝、只读放行", "[auth
     REQUIRE(auth_policy(false, false, false, true) == AuthResult::Allow); // 只读（如 GET 状态）
 }
 
-TEST_CASE("未配置 token + 关闭强制鉴权：全部放行（开发用）", "[auth]") {
+TEST_CASE("关闭鉴权总开关：无论是否配置 token 全部放行", "[auth]") {
+    // 未配置 token
     REQUIRE(auth_policy(false, false, true, false) == AuthResult::Allow);
     REQUIRE(auth_policy(false, false, false, false) == AuthResult::Allow);
+    // 已配置 token 但未带 / 带错 Bearer 也放行（token 被忽略）
+    REQUIRE(auth_policy(true, false, true, false) == AuthResult::Allow);
+    REQUIRE(auth_policy(true, false, false, false) == AuthResult::Allow);
 }

@@ -247,6 +247,7 @@ pub fn run() {
             netdev_commands::netdev_logs,
             netdev_commands::netdev_list_files,
             netdev_commands::netdev_list_programs,
+            netdev_commands::netdev_assign_programs,
             netdev_commands::netdev_delete_file,
             netdev_commands::netdev_rename_file,
             netdev_commands::netdev_upload_file,

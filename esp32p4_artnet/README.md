@@ -57,6 +57,7 @@ idf.py -p <PORT> flash monitor
 ```bash
 # 构建 / 烧录 / OTA（deploy.py）
 python scripts/deploy.py build  --prod --ccache           # 生产构建
+python scripts/deploy.py build  --bump patch              # 构建前自增版本（patch/minor/major，写入 version.txt）
 python scripts/deploy.py flash  --port COM5 --monitor      # 串口烧录并监视
 python scripts/deploy.py ota    --host artnet-core.local --token <TOKEN>   # OTA 推送
 
@@ -177,7 +178,7 @@ idf.py -C test_apps -p <PORT> flash monitor
 
 ## 安全
 
-默认（`CONFIG_ART_REQUIRE_AUTH=y`）：
+**当前开发与生产均关闭 token 鉴权**（`sdkconfig.defaults` 中 `CONFIG_ART_REQUIRE_AUTH=n`，`sdkconfig.prod.defaults` 叠加其上同样生效）：所有 HTTP 端点一律放行，即使 NVS 里已存有 token 也被忽略，也不会预置出厂默认 token。需要重新启用时把该项改为 `y`，行为如下（`CONFIG_ART_REQUIRE_AUTH=y`）：
 
 - **HTTP 鉴权**：未配 token 时，变更类 / 高危端点（POST/PUT/DELETE、OTA、出厂、改配、删文件）返回 401，仅放行只读；配 token 后全端点要求 `Authorization: Bearer`。token 经 `PUT /api/config` 的 `httpToken` 设置。
 - **token 存储**：NVS 只存 `盐 + SHA-256(salt‖token)`，常量时间比较，永不回显（仅 `tokenSet` 布尔）。

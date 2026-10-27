@@ -71,9 +71,9 @@ bool verify_bearer(httpd_req_t* req, const Settings& settings) {
 
 /// 鉴权：按 [`auth_policy`] 的默认安全策略放行 / 拒绝。
 ///
-/// - 配置了 token：所有端点都要求有效 Bearer。
-/// - 未配置 token 且 `CONFIG_ART_REQUIRE_AUTH`（默认）：高危（非 GET）端点拒绝、只读放行。
-/// - 未配置 token 且关闭强制鉴权：全部放行（开发用）。
+/// - `CONFIG_ART_REQUIRE_AUTH=n`（开发 / 生产当前均如此）：忽略 token，全部放行。
+/// - 开启且配置了 token：所有端点都要求有效 Bearer。
+/// - 开启且未配置 token：高危（非 GET）端点拒绝、只读放行。
 bool check_auth(httpd_req_t* req, ApiDeps& d) {
     const bool token_configured = d.settings->has_token();
     const bool sensitive = (req->method != HTTP_GET);

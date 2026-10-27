@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use netdev::model::{
     ConfigPatch, ConfigResult, DeviceConfig, DeviceStatus, Diag, FileEntry, OtaReceipt, OtaStatus,
-    PlayerStatus, ProgramEntry, UploadReceipt,
+    PlayerStatus, ProgramAssign, ProgramEntry, UploadReceipt,
 };
 use netdev::{
     DeviceClient, DeviceInput, DeviceRegistry, DeviceView, ErrorPayload, FirmwareInfo, NetdevError,
@@ -265,6 +265,26 @@ pub async fn netdev_list_programs(
     id: String,
 ) -> CmdResult<Vec<ProgramEntry>> {
     Ok(state.client(&id)?.list_programs().await?)
+}
+
+/// 应用一组节目号分配（改号 / 交换 / 拖动排序），中途失败时设备端尽力回滚。
+///
+/// # Arguments
+///
+/// * `state` - 网络设备状态。
+/// * `id` - 设备 id。
+/// * `assignments` - 要应用的分配；节目号与文件名都不得重复。
+///
+/// # Errors
+///
+/// 参数不合法、设备不存在、文件不存在、网络或设备错误时返回错误载荷。
+#[tauri::command]
+pub async fn netdev_assign_programs(
+    state: State<'_, NetdevState>,
+    id: String,
+    assignments: Vec<ProgramAssign>,
+) -> CmdResult<()> {
+    Ok(state.client(&id)?.assign_programs(&assignments).await?)
 }
 
 /// 删除设备上的文件。

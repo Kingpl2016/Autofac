@@ -15,4 +15,6 @@ cmake_minimum_required(VERSION 3.22)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(artnet_core VERSION 0.1.0)
+# 固件版本不写在 project() 里，而由工程根目录的 version.txt 提供
+# （IDF 读取其内容作为 app_desc.version；用 scripts/deploy.py --bump 自增）。
+project(artnet_core)

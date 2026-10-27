@@ -6,7 +6,7 @@
 
 - 上位机控制 / 文件 / 升级全部通过 **HTTP**（默认端口 80）。原《核心板控制软件要求》里的 TCP 1227 指令通道已移除；寄存器语义保留，改由下面的 REST 接口承载。
 - 另有一条**可选的总线 MCU 串口通道**（默认关）：按《总线 MCU 与核心板通信协议》经 UART 承载寄存器指令，供 Etronet MCU 直接控制核心板，详见第 11 节。它与 HTTP 并存，复用同一套寄存器语义与动作逻辑。
-- 鉴权：配置了 `httpToken` 时，所有 `/api/*` 与 `/files` 接口需带 `Authorization: Bearer <token>`，否则 401（token 以加盐 SHA-256 存 NVS，常量时间比较，不回显）。**未配置 token 时**，默认（`CONFIG_ART_REQUIRE_AUTH=y`）仍拒绝一切**变更类 / 高危端点**（POST/PUT/DELETE、OTA、出厂、改配、删文件、重命名）返回 401，仅放行只读 GET；关闭该 Kconfig 才退回「未配置即全开」的旧行为（仅限开发）。
+- 鉴权：**当前开发与生产均关闭**（`CONFIG_ART_REQUIRE_AUTH=n`），所有端点无需 token、忽略 `Authorization` 头；以下为 `CONFIG_ART_REQUIRE_AUTH=y` 时的行为。配置了 `httpToken` 时，所有 `/api/*` 与 `/files` 接口需带 `Authorization: Bearer <token>`，否则 401（token 以加盐 SHA-256 存 NVS，常量时间比较，不回显）。**未配置 token 时**，默认（`CONFIG_ART_REQUIRE_AUTH=y`）仍拒绝一切**变更类 / 高危端点**（POST/PUT/DELETE、OTA、出厂、改配、删文件、重命名）返回 401，仅放行只读 GET；关闭该 Kconfig 才退回「未配置即全开」的旧行为（仅限开发）。
 - 设备发现：
   - **mDNS**：主机名 `artnet-core.local`，广播 `_http._tcp`。
   - **Art-Net ArtPoll**：固件应答 ArtPollReply（OpCode 0x2100），上报 IP 与当前节目的输出 Universe，可被上位机“设备发现”页自动发现。

@@ -118,7 +118,76 @@ fn spawn_status_loop(app: &AppHandle) {
     });
 }
 
+/// 检测器窗口的默认内部宽度（逻辑像素）。
+const WINDOW_WIDTH: f64 = 900.0;
+/// 检测器窗口的默认内部高度（逻辑像素）。
+const WINDOW_HEIGHT: f64 = 700.0;
+
+/// 一个矩形区域（逻辑像素）：左上角坐标与宽高。
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Rect {
+    /// 左上角 x。
+    x: f64,
+    /// 左上角 y。
+    y: f64,
+    /// 宽度。
+    w: f64,
+    /// 高度。
+    h: f64,
+}
+
+/// 计算让检测器窗口在主窗口正中的左上角坐标；若会超出所在显示器则收回到显示器内。
+///
+/// # Arguments
+///
+/// * `main` - 主窗口的外框（逻辑像素）。
+/// * `win_w` - 检测器窗口宽度（逻辑像素）。
+/// * `win_h` - 检测器窗口高度（逻辑像素）。
+/// * `screen` - 主窗口所在显示器的区域；未知传 `None`（不做收回）。
+///
+/// # Returns
+///
+/// 检测器窗口左上角的 `(x, y)`（逻辑像素）。显示器比窗口还小时贴齐显示器左上角。
+fn centered_over(main: Rect, win_w: f64, win_h: f64, screen: Option<Rect>) -> (f64, f64) {
+    let mut x = main.x + (main.w - win_w) / 2.0;
+    let mut y = main.y + (main.h - win_h) / 2.0;
+    if let Some(s) = screen {
+        x = x.min(s.x + s.w - win_w).max(s.x);
+        y = y.min(s.y + s.h - win_h).max(s.y);
+    }
+    (x, y)
+}
+
+/// 读取主窗口的当前位置，换算出让检测器窗口居中其上的坐标。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+///
+/// # Returns
+///
+/// 检测器窗口左上角的 `(x, y)`（逻辑像素）。主窗口不存在、已最小化或读不到位置时返回 `None`。
+fn position_over_main_window(app: &AppHandle) -> Option<(f64, f64)> {
+    let main = app.get_webview_window("main")?;
+    if main.is_minimized().unwrap_or(false) {
+        return None;
+    }
+    let scale = main.scale_factor().ok()?;
+    let pos = main.outer_position().ok()?.to_logical::<f64>(scale);
+    let size = main.outer_size().ok()?.to_logical::<f64>(scale);
+    let screen = main.current_monitor().ok().flatten().map(|m| {
+        let s = m.scale_factor();
+        let p = m.position().to_logical::<f64>(s);
+        let z = m.size().to_logical::<f64>(s);
+        Rect { x: p.x, y: p.y, w: z.width, h: z.height }
+    });
+    let main_rect = Rect { x: pos.x, y: pos.y, w: size.width, h: size.height };
+    Some(centered_over(main_rect, WINDOW_WIDTH, WINDOW_HEIGHT, screen))
+}
+
 /// 打开信号检测器窗口；已打开则还原并聚焦（单例）。
+///
+/// 新建的窗口出现在主窗口正中（超出显示器时收回到显示器内）。
 ///
 /// 定义为 `async` 命令：在 Windows 上同步命令里创建窗口可能死锁。
 ///
@@ -138,11 +207,16 @@ pub async fn signal_checker_open(app: AppHandle) -> Result<(), String> {
         let _ = window.show();
         return window.set_focus().map_err(|e| e.to_string());
     }
-    WebviewWindowBuilder::new(&app, WINDOW_LABEL, WebviewUrl::App(WINDOW_PAGE.into()))
+    let builder = WebviewWindowBuilder::new(&app, WINDOW_LABEL, WebviewUrl::App(WINDOW_PAGE.into()))
         .title("Signal Checker")
-        .inner_size(900.0, 700.0)
-        .min_inner_size(800.0, 600.0)
-        .center()
+        .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .min_inner_size(800.0, 600.0);
+    // 跟随主窗口：出现在主窗口正中；取不到主窗口位置（已最小化等）时退回屏幕居中
+    let builder = match position_over_main_window(&app) {
+        Some((x, y)) => builder.position(x, y),
+        None => builder.center(),
+    };
+    builder
         // 与深色主题的页面底色一致，避免加载期间闪一下白屏
         .background_color(Color(9, 9, 11, 255))
         .build()
@@ -584,6 +658,34 @@ pub fn signal_checker_context(app: AppHandle) -> CheckerContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+        Rect { x, y, w, h }
+    }
+
+    #[test]
+    fn centered_over_main_window() {
+        let main = rect(100.0, 50.0, 1400.0, 900.0);
+        let screen = Some(rect(0.0, 0.0, 1920.0, 1080.0));
+        assert_eq!(centered_over(main, 900.0, 700.0, screen), (350.0, 150.0));
+    }
+
+    #[test]
+    fn clamped_into_the_monitor() {
+        let screen = Some(rect(0.0, 0.0, 1920.0, 1080.0));
+        // 主窗口贴在右下角：检测器窗口收回到显示器内
+        let main = rect(1700.0, 900.0, 1000.0, 800.0);
+        assert_eq!(centered_over(main, 900.0, 700.0, screen), (1020.0, 380.0));
+        // 主窗口在左上角之外：贴齐显示器左上角
+        let main = rect(-500.0, -300.0, 600.0, 400.0);
+        assert_eq!(centered_over(main, 900.0, 700.0, screen), (0.0, 0.0));
+    }
+
+    #[test]
+    fn unknown_monitor_skips_clamping() {
+        let main = rect(0.0, 0.0, 500.0, 500.0);
+        assert_eq!(centered_over(main, 900.0, 700.0, None), (-200.0, -100.0));
+    }
 
     fn nic(name: &str, ip: &str, is_loopback: bool) -> NetworkInterfaceDto {
         NetworkInterfaceDto {
