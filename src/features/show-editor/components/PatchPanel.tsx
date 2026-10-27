@@ -1,16 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Group, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { footprint } from "@/features/fixtures";
 import { announce } from "@/shared/stores/announcerStore";
 import { createGroup, removeFixtures, renameFixture, setFixtureAddress } from "../lib/ops";
 import { analyzePatch } from "../lib/patch";
+import { addMirror, removeMirror, setFixtureMode, setMirror } from "../lib/universeOps";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { EmptyHint } from "./EmptyHint";
 import { FixtureRow } from "./FixtureRow";
+import { DmxChannelView } from "./DmxChannelView";
 import { GroupList } from "./GroupList";
+import { RepatchForm } from "./RepatchForm";
 import { UniverseMap } from "./UniverseMap";
 
 /**
@@ -30,6 +34,21 @@ export function PatchPanel() {
   const { fixtures, fixtureModels } = project;
   const status = useMemo(() => analyzePatch({ fixtures, fixtureModels }), [fixtures, fixtureModels]);
   const models = useMemo(() => new Map(fixtureModels.map((m) => [m.id, m.name])), [fixtureModels]);
+  // 每个模型的可选模式（名称 + 通道数）：默认模式 + 附加模式
+  const modeOptions = useMemo(
+    () =>
+      new Map(
+        fixtureModels.map((m) => [
+          m.id,
+          {
+            defaultMode: { name: m.defaultModeName ?? "", channels: footprint(m.properties) },
+            modes: (m.modes ?? []).map((x) => ({ id: x.id, name: x.name, channels: footprint(x.properties) })),
+          },
+        ]),
+      ),
+    [fixtureModels],
+  );
+  const [dmxUniverse, setDmxUniverse] = useState<number | null>(null);
   // 选中的灯具可能已被删除（含撤销 / 重做之后），按当前工程过滤
   const selected = useMemo(
     () => selectedRaw.filter((id) => fixtures.some((f) => f.id === id)),
@@ -67,7 +86,11 @@ export function PatchPanel() {
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {t("editor.patch.universes")}
         </h3>
-        <UniverseMap project={{ fixtures, fixtureModels }} selectedIds={selected} />
+        <UniverseMap
+          project={{ fixtures, fixtureModels, output: project.output }}
+          selectedIds={selected}
+          onPickUniverse={setDmxUniverse}
+        />
         {conflictCount > 0 && (
           <p role="status" className="text-xs font-medium text-destructive">
             {t("editor.patch.conflictSummary", { count: conflictCount })}
@@ -107,17 +130,29 @@ export function PatchPanel() {
             {t("editor.patch.deleteSelected", { count: selected.length })}
           </Button>
         </div>
+        {selected.length > 0 && (
+          <RepatchForm
+            key={selected.join(",")}
+            fixtureIds={fixtures.filter((f) => selected.includes(f.id)).map((f) => f.id)}
+          />
+        )}
         <ul className="flex flex-col gap-1.5">
           {fixtures.map((f) => (
             <FixtureRow
               key={f.id}
               fixture={f}
               modelName={models.get(f.modelId) ?? ""}
+              modes={modeOptions.get(f.modelId)?.modes}
+              defaultMode={modeOptions.get(f.modelId)?.defaultMode}
               status={status.get(f.id)}
               selected={selected.includes(f.id)}
               onSelectedChange={(on) => setFixtureSelected(f.id, on)}
               onRename={(name) => update((d) => renameFixture(d, f.id, name))}
               onAddress={(universe, address) => update((d) => setFixtureAddress(d, f.id, universe, address))}
+              onMode={(modeId) => update((d) => setFixtureMode(d, f.id, modeId))}
+              onAddMirror={() => update((d) => void addMirror(d, f.id))}
+              onMirror={(i, universe, address) => update((d) => setMirror(d, f.id, i, { universe, address }))}
+              onRemoveMirror={(i) => update((d) => removeMirror(d, f.id, i))}
               onDelete={() => {
                 update((d) => removeFixtures(d, [f.id]));
                 setFixtureSelected(f.id, false);
@@ -125,6 +160,13 @@ export function PatchPanel() {
             />
           ))}
         </ul>
+      </section>
+
+      <section aria-label={t("editor.dmx.title")} className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          {t("editor.dmx.title")}
+        </h3>
+        <DmxChannelView universe={dmxUniverse} onUniverseChange={setDmxUniverse} />
       </section>
 
       <section aria-label={t("editor.patch.groups")} className="flex flex-col gap-2">

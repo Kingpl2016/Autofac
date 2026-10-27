@@ -288,7 +288,9 @@ mod tests {
                 default_value: 0,
                 value_desc: String::new(),
                 description: String::new(),
+                ..FixtureProperty::default()
             }],
+            ..FixtureModel::default()
         }
     }
 

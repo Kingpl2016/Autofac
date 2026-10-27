@@ -58,6 +58,27 @@ describe("演示预览播放引擎", () => {
     expect(() => cmd("show_load", { project: {} })).toThrow("invalid_project");
   });
 
+  it("按 Universe 表路由：目的地数为启用端口数；端口不合法时拒绝且保留原状态", () => {
+    const { cmd } = setup();
+    const port = (over: Record<string, unknown> = {}) => ({
+      protocol: "artNet",
+      mode: "unicast",
+      ip: "10.0.0.5",
+      remoteUniverse: 1,
+      enabled: true,
+      ...over,
+    });
+    const routed = (ports: Record<string, unknown>[]) =>
+      project({ output: { loop: false, target: { kind: "routed" }, universes: [{ universe: 0, ports }] } });
+    expect(cmd("show_load", { project: routed([port(), port({ protocol: "sacn", mode: "multicast", ip: "" }), port({ enabled: false, ip: "x" })]) })).toMatchObject({
+      destinations: 2,
+    });
+    expect(() => cmd("show_load", { project: routed([port({ ip: "x" })]) })).toThrow("bad_target");
+    expect(() => cmd("show_load", { project: routed([port({ mode: "multicast" })]) })).toThrow("bad_target");
+    expect(() => cmd("show_load", { project: routed([port({ protocol: "sacn", remoteUniverse: 0 })]) })).toThrow("bad_target");
+    expect(cmd("show_status")).toMatchObject({ destinations: 2 });
+  });
+
   it("时长为 0 不能播放", () => {
     const { cmd } = setup();
     cmd("show_load", { project: project({ durationMs: 0 }) });

@@ -211,6 +211,7 @@ pub struct PlaybackStatus {
 pub fn normalize_target(target: DispatchTarget) -> Result<DispatchTarget, String> {
     match target {
         DispatchTarget::Forwarding => Ok(target),
+        DispatchTarget::Routed { .. } => target.normalized().map_err(|_| ERR_BAD_TARGET.to_string()),
         DispatchTarget::Direct { ip, protocol, port } => {
             if ip.trim().parse::<std::net::IpAddr>().is_err() {
                 return Err(ERR_BAD_TARGET.to_string());

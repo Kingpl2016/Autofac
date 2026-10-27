@@ -1,11 +1,24 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Layers } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Segmented } from "@/shared/components/Segmented";
-import { setCueTimes, updateCues, updateEffectCues, type CuePatch, type EffectPatch } from "../lib/cueOps";
-import { trackName } from "../lib/ops";
-import type { Cue, Easing, EffectCue } from "../lib/project";
+import { announce } from "@/shared/stores/announcerStore";
+import { CONVERTIBLE_EFFECTS, lookFromLegacyEffect } from "../lib/attrEffects";
+import {
+  convertToLook,
+  replaceWithLook,
+  setCueTimes,
+  updateCues,
+  updateEffectCues,
+  type CuePatch,
+  type EffectPatch,
+} from "../lib/cueOps";
+import { trackFixtureIds, trackName } from "../lib/ops";
+import type { Cue, Easing, EffectCue, LookClip } from "../lib/project";
 import { formatTimecode, parseTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -13,6 +26,8 @@ import { CommitInput } from "./CommitInput";
 import { ColorSection } from "./ColorSection";
 import { EffectInspector } from "./EffectInspector";
 import { EmptyHint } from "./EmptyHint";
+import { LookInspector } from "./LookInspector";
+import { SceneInspector } from "./SceneInspector";
 import { SliderField } from "./SliderField";
 
 const EASINGS: readonly Easing[] = ["linear", "easeInOut", "sCurve"];
@@ -54,6 +69,7 @@ export function CueInspector() {
   const single = selected.length === 1 ? selected[0] : null;
   const statics = selected.filter((c) => c.kind === "static");
   const effects = selected.filter((c): c is EffectCue => c.kind === "effect");
+  const looks = selected.filter((c): c is LookClip => c.kind === "look");
   const effectIds = effects.map((c) => c.id);
   const locked = selected.every((c) => project.tracks.find((tr) => tr.id === c.trackId)?.lock);
   const brightness = common(selected, (c) => c.brightness);
@@ -75,6 +91,30 @@ export function CueInspector() {
         {locked && <p className="mt-1 text-xs text-warning">{t("editor.cue.locked")}</p>}
       </header>
 
+      {looks.length > 0 && <LookInspector cues={looks} />}
+
+      {single?.kind === "scene" && <SceneInspector cue={single} />}
+
+      {statics.length > 0 && !locked && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 justify-start"
+          title={t("editor.look.convertHint")}
+          onClick={() => {
+            let n = 0;
+            update((d) => {
+              n = convertToLook(d, statics.map((c) => c.id));
+            });
+            announce(t("editor.look.converted", { count: n }));
+          }}
+        >
+          <Layers aria-hidden />
+          {t("editor.look.convert", { count: statics.length })}
+        </Button>
+      )}
+
       {statics.length > 0 && (
         <ColorSection
           key={ids.join(",")}
@@ -82,6 +122,31 @@ export function CueInspector() {
           mixed={common(statics, (c) => (c.kind === "static" ? c.rgb : null)).mixed}
           onCommit={(rgb) => patch({ rgb })}
         />
+      )}
+
+      {effects.some((c) => CONVERTIBLE_EFFECTS.has(c.effect)) && !locked && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 justify-start"
+          title={t("editor.attrEffects.convertHint")}
+          onClick={() => {
+            let n = 0;
+            update((d) => {
+              for (const c of effects) {
+                const track = d.tracks.find((tr) => tr.id === c.trackId);
+                const members = track ? trackFixtureIds(d, track).length : 1;
+                const converted = lookFromLegacyEffect(c, members, d.tempo);
+                if (converted && replaceWithLook(d, c.id, converted.look, converted.spread)) n += 1;
+              }
+            });
+            announce(t("editor.attrEffects.converted", { count: n }));
+          }}
+        >
+          <Layers aria-hidden />
+          {t("editor.attrEffects.convert")}
+        </Button>
       )}
 
       {effects.length > 0 && (

@@ -76,6 +76,26 @@ export async function pickXlsxFile(name: string): Promise<string | null> {
 }
 
 /**
+ * 让用户选择一个 JSON 文件（例如 Open Fixture Library 的灯具定义）。
+ *
+ * # Arguments
+ *
+ * * `name` - 文件对话框里显示的类型名称。
+ *
+ * # Returns
+ *
+ * 所选文件的本地路径；用户取消时返回 `null`。
+ */
+export async function pickJsonFile(name: string): Promise<string | null> {
+  const picked = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name, extensions: ["json"] }],
+  });
+  return typeof picked === "string" ? picked : null;
+}
+
+/**
  * 让用户选择一个节目编辑器工程文件（`.artshow`）。
  *
  * # Arguments
@@ -136,4 +156,24 @@ export async function pickMediaFiles(name: string, extensions: readonly string[]
   });
   if (picked === null) return [];
   return Array.isArray(picked) ? picked : [picked];
+}
+/**
+ * 让用户选择一张图片（节目编辑器的舞台背景图）。
+ *
+ * # Arguments
+ *
+ * * `name` - 文件对话框里显示的类型名称。
+ * * `extensions` - 允许的扩展名（不含点）。
+ *
+ * # Returns
+ *
+ * 所选文件的本地路径；用户取消时返回 `null`。
+ */
+export async function pickImageFile(name: string, extensions: readonly string[]): Promise<string | null> {
+  const picked = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name, extensions: [...extensions] }],
+  });
+  return typeof picked === "string" ? picked : null;
 }

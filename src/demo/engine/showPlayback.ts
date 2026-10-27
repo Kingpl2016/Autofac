@@ -3,8 +3,43 @@ import { fail, num, type DemoModule, type World } from "./world";
 /** 演示用的工程最小形态：只读取播放引擎关心的字段。 */
 interface DemoProject {
   durationMs?: number;
-  fixtures?: { id: string; universe: number }[];
-  output?: { loop?: boolean; target?: { kind?: string } };
+  fixtures?: { id: string; universe: number; mirrors?: { universe: number }[] }[];
+  output?: { loop?: boolean; target?: { kind?: string }; universes?: DemoUniverse[] };
+  loopRange?: { startMs: number; endMs: number } | null;
+}
+
+/** 路由表的一项（只取校验需要的字段）。 */
+interface DemoUniverse {
+  universe: number;
+  ports?: { protocol?: string; mode?: string; ip?: string; remoteUniverse?: number; enabled?: boolean }[];
+}
+
+const IPV4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
+/**
+ * 校验路由表并统计启用的端口（规则同后端 `DispatchTarget::normalized`）。
+ *
+ * # Arguments
+ *
+ * * `universes` - 工程的 Universe 路由表。
+ *
+ * # Returns
+ *
+ * 启用的端口数；任一启用端口不合法时抛出 `bad_target`。
+ */
+function routedPortCount(universes: DemoUniverse[] | undefined): number {
+  let n = 0;
+  for (const u of universes ?? []) {
+    for (const p of u.ports ?? []) {
+      if (!p.enabled) continue;
+      const remote = p.remoteUniverse ?? -1;
+      const okRemote = p.protocol === "sacn" ? remote >= 1 && remote <= 63_999 : remote >= 0 && remote <= 0x7fff;
+      const okMode = p.mode === "multicast" ? p.protocol === "sacn" : IPV4.test((p.ip ?? "").trim());
+      if (!okRemote || !okMode) fail("bad_target");
+      n += 1;
+    }
+  }
+  return n;
 }
 
 type Transport = "stopped" | "playing" | "paused";
@@ -30,7 +65,13 @@ export function createShowPlaybackModule(world: World): DemoModule {
   let loaded = false;
   let durationMs = 0;
   let looping = false;
+  /** A-B 循环区间（与后端一致：从终点之前开始播放时，到终点回到起点） */
+  let loopRange: { startMs: number; endMs: number } | null = null;
+  /** 本轮播放开始时的位置（判断是否从区间终点之前开始） */
+  let playFrom = 0;
   let forwarding = true;
+  /** 按 Universe 表路由时启用的端口数；其它目标为 `null` */
+  let routedPorts: number | null = null;
   let universes: number[] = [];
   let fixtureIds = new Set<string>();
   let transport: Transport = "stopped";
@@ -49,7 +90,7 @@ export function createShowPlaybackModule(world: World): DemoModule {
     universes,
     warnings: [] as unknown[],
     outputting: outputting(),
-    destinations: forwarding ? 1 : null,
+    destinations: routedPorts ?? (forwarding ? 1 : null),
     dropped: 0,
   });
 
@@ -69,12 +110,22 @@ export function createShowPlaybackModule(world: World): DemoModule {
       show_load: (args) => {
         const p = args.project as DemoProject | undefined;
         if (!p || typeof p.durationMs !== "number") return fail("invalid_project");
+        const kind = p.output?.target?.kind ?? "forwarding";
+        // 与后端一致：按 Universe 表路由时先校验启用的端口（失败时不改动已加载的节目），目的地数为启用端口总数
+        const ports = kind === "routed" ? routedPortCount(p.output?.universes) : null;
         loaded = true;
         durationMs = Math.max(0, p.durationMs);
         looping = p.output?.loop ?? false;
-        forwarding = (p.output?.target?.kind ?? "forwarding") === "forwarding";
+        const r = p.loopRange;
+        const a = r ? Math.min(Math.max(0, r.startMs), durationMs) : 0;
+        const b = r ? Math.min(Math.max(0, r.endMs), durationMs) : 0;
+        loopRange = r && b > a ? { startMs: a, endMs: b } : null;
+        routedPorts = ports;
+        forwarding = kind === "forwarding";
         fixtureIds = new Set((p.fixtures ?? []).map((f) => f.id));
-        universes = [...new Set((p.fixtures ?? []).map((f) => f.universe))].sort((a, b) => a - b);
+        universes = [
+          ...new Set((p.fixtures ?? []).flatMap((f) => [f.universe, ...(f.mirrors ?? []).map((m) => m.universe)])),
+        ].sort((a, b) => a - b);
         positionMs = Math.min(positionMs, durationMs);
         if (locate !== null && !fixtureIds.has(locate)) locate = null;
         publish();
@@ -86,6 +137,7 @@ export function createShowPlaybackModule(world: World): DemoModule {
         if (durationMs <= 0) return fail("empty_show");
         guard();
         if (positionMs >= durationMs) positionMs = 0;
+        playFrom = positionMs;
         transport = "playing";
         publish();
         return state();
@@ -106,6 +158,7 @@ export function createShowPlaybackModule(world: World): DemoModule {
 
       show_seek: (args) => {
         positionMs = Math.min(durationMs, Math.max(0, num(args, "positionMs")));
+        playFrom = positionMs;
         publish();
         return state();
       },
@@ -130,7 +183,11 @@ export function createShowPlaybackModule(world: World): DemoModule {
     tick: ({ dtMs }) => {
       if (transport !== "playing") return;
       positionMs += dtMs;
-      if (positionMs >= durationMs) {
+      if (loopRange && playFrom < loopRange.endMs && positionMs >= loopRange.endMs) {
+        const span = loopRange.endMs - loopRange.startMs;
+        positionMs = loopRange.startMs + ((positionMs - loopRange.endMs) % span);
+        playFrom = positionMs;
+      } else if (positionMs >= durationMs) {
         if (looping && durationMs > 0) {
           positionMs %= durationMs;
         } else {

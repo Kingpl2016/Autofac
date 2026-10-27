@@ -32,6 +32,9 @@ pub const BITMAP_MAX_UNIVERSE: u16 = 0x7FFF;
 /// 位图的 `u64` 字数（32768 位）。
 const BITMAP_WORDS: usize = (BITMAP_MAX_UNIVERSE as usize + 1) / 64;
 
+/// sACN 默认优先级。
+pub const DEFAULT_SACN_PRIORITY: u8 = 100;
+
 /// 预解析的发送端点（编译转发表或直发目标时生成，多个发送任务经 `Arc` 共享）。
 #[derive(Debug)]
 pub struct Endpoint {
@@ -47,6 +50,8 @@ pub struct Endpoint {
     pub addr: Option<SocketAddr>,
     /// 该目的地的统计计数器；`None` 表示只计入全局统计（直发目标）。
     pub counters: Option<Arc<DestCounters>>,
+    /// sACN 优先级（0~200）；Art-Net 忽略。
+    pub priority: u8,
 }
 
 impl Endpoint {
@@ -81,7 +86,23 @@ impl Endpoint {
                 .ok()
                 .map(|ip| SocketAddr::new(ip, port)),
             counters,
+            priority: DEFAULT_SACN_PRIORITY,
         }
+    }
+
+    /// 设置 sACN 优先级（构造器风格）。
+    ///
+    /// # Arguments
+    ///
+    /// * `priority` - 优先级，超过 200 时被夹取。
+    ///
+    /// # Returns
+    ///
+    /// 修改后的端点。
+    #[must_use]
+    pub fn with_priority(mut self, priority: u8) -> Self {
+        self.priority = priority.min(200);
+        self
     }
 
     /// 是否就是给定的直发目标（直发端点缓存命中判断）。
@@ -102,6 +123,7 @@ impl PartialEq for Endpoint {
             && self.port == other.port
             && self.addr == other.addr
             && self.counters.is_some() == other.counters.is_some()
+            && self.priority == other.priority
     }
 }
 

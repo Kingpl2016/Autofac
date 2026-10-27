@@ -1,4 +1,5 @@
-import { START_LEFT, ROW_HEIGHT } from "./timelineData";
+import { START_LEFT } from "./timelineData";
+import { rowAt, type RowLayout } from "./timelineLayout";
 
 /** 时间线编辑区当前的视口信息。 */
 export interface TimelineViewport {
@@ -10,8 +11,8 @@ export interface TimelineViewport {
   scrollTop: number;
   /** 每秒像素数 */
   pxPerSec: number;
-  /** 轨道数 */
-  rowCount: number;
+  /** 轨道的纵向排布（各轨道高度可以不同） */
+  rows: RowLayout;
 }
 
 /**
@@ -29,12 +30,12 @@ export function pointToTimeRow(
   clientX: number,
   clientY: number,
 ): { timeMs: number; rowIndex: number } | null {
-  const { rect, scrollLeft, scrollTop, pxPerSec, rowCount } = viewport;
+  const { rect, scrollLeft, scrollTop, pxPerSec, rows } = viewport;
   const x = clientX - rect.left;
   const y = clientY - rect.top;
   if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
-  const rowIndex = Math.floor((y + scrollTop) / ROW_HEIGHT);
-  if (rowIndex < 0 || rowIndex >= rowCount) return null;
+  const rowIndex = rowAt(rows, y + scrollTop);
+  if (rowIndex < 0) return null;
   const timeMs = Math.max(0, Math.round(((x + scrollLeft - START_LEFT) / pxPerSec) * 1000));
   return { timeMs, rowIndex };
 }

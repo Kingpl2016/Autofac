@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::fixture::FixtureModel;
+pub use crate::look::{ColorParam, ColorValue, Look, NumParam, Spread};
 
 /// 输出帧率（固定 30 FPS）。
 pub const OUTPUT_FPS: u32 = 30;
@@ -20,7 +21,7 @@ pub const FRAME_MS: i64 = 1000 / OUTPUT_FPS as i64;
 pub const MAX_UNIVERSE: u16 = 2047;
 
 /// 灯具实例：模型在节目里的一次实例化，同时记录 DMX 地址。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FixtureInstance {
     /// 实例编号。
@@ -34,6 +35,35 @@ pub struct FixtureInstance {
     pub universe: u16,
     /// 起始地址，1~512。
     pub address: u16,
+    /// 所用通道模式编号（对应 [`FixtureModel::modes`]）；`None` 为默认模式。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode_id: Option<String>,
+    /// 舞台位置（按位置展开的分布用）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<StagePlacement>,
+    /// 多重配接：同样的输出再写到这些地址。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<PatchAddress>,
+}
+
+/// 一个 DMX 地址。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchAddress {
+    /// Universe，0 起。
+    pub universe: u16,
+    /// 起始地址，1~512。
+    pub address: u16,
+}
+
+/// 灯具在舞台上的位置（米）。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StagePlacement {
+    /// 横向，向右为正。
+    pub x: f64,
+    /// 纵深，向后为正。
+    pub y: f64,
 }
 
 /// 灯具分组：成员顺序决定特效沿灯具推进时的先后。
@@ -63,6 +93,8 @@ pub enum TrackTarget {
         /// 分组编号。
         id: String,
     },
+    /// 场景轨道：片段自带灯具列表（见 [`SceneClip`]）。
+    Scene,
 }
 
 /// 时间线轨道。
@@ -79,6 +111,9 @@ pub struct Track {
     /// 独奏：存在任何独奏轨道时只输出独奏轨道。
     #[serde(default)]
     pub solo: bool,
+    /// 置顶层：本轨道的颜色 / 属性在所有其它轨道之后应用（LTP 永远胜出），编辑器的编程器预览用。
+    #[serde(default)]
+    pub on_top: bool,
 }
 
 /// 淡入淡出的缓动曲线。
@@ -187,7 +222,42 @@ pub struct EffectCue {
     pub seed: u32,
 }
 
-/// 时间线上的 Cue。
+/// 属性分层片段：在轨道（灯具 / 分组）上显示一个外观，可带多灯分布。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LookClip {
+    /// 公共字段。
+    #[serde(flatten)]
+    pub base: CueBase,
+    /// 外观。
+    pub look: Look,
+    /// 多灯分布。
+    #[serde(default)]
+    pub spread: Option<Spread>,
+}
+
+/// 场景片段里一台灯具的外观。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneEntry {
+    /// 灯具实例编号。
+    pub fixture_id: String,
+    /// 外观（只写参与的层）。
+    pub look: Look,
+}
+
+/// 场景片段：同一时刻给多台灯具分别设定外观，放在场景轨道上。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneClip {
+    /// 公共字段。
+    #[serde(flatten)]
+    pub base: CueBase,
+    /// 各灯具的外观。
+    pub entries: Vec<SceneEntry>,
+}
+
+/// 时间线上的片段（Cue）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Cue {
@@ -195,6 +265,10 @@ pub enum Cue {
     Static(StaticCue),
     /// 程序化特效。
     Effect(EffectCue),
+    /// 属性分层片段。
+    Look(LookClip),
+    /// 场景片段。
+    Scene(SceneClip),
 }
 
 impl Cue {
@@ -208,8 +282,35 @@ impl Cue {
         match self {
             Self::Static(c) => &c.base,
             Self::Effect(c) => &c.base,
+            Self::Look(c) => &c.base,
+            Self::Scene(c) => &c.base,
         }
     }
+}
+
+/// 预设：可被片段引用的外观。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Preset {
+    /// 预设编号。
+    pub id: String,
+    /// 显示名。
+    #[serde(default)]
+    pub name: String,
+    /// 外观。
+    pub look: Look,
+}
+
+/// 通道锁定（Park）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParkEntry {
+    /// Universe。
+    pub universe: u16,
+    /// 通道 1~512。
+    pub channel: u16,
+    /// 输出值 0~255。
+    pub value: u8,
 }
 
 /// 节拍设置。
@@ -249,6 +350,15 @@ pub struct OutputSettings {
     /// Gamma，1.0 为线性。
     #[serde(default = "default_gamma")]
     pub gamma: f64,
+    /// Universe 路由表（原样转交 Tauri 外壳解析）。
+    #[serde(default)]
+    pub universes: serde_json::Value,
+    /// 多 Universe 帧同步设置（原样转交 Tauri 外壳解析）。
+    #[serde(default)]
+    pub sync: serde_json::Value,
+    /// 通道锁定。
+    #[serde(default)]
+    pub park: Vec<ParkEntry>,
 }
 
 fn default_gamma() -> f64 {
@@ -262,6 +372,9 @@ impl Default for OutputSettings {
             looping: false,
             latency_comp_ms: 0,
             gamma: default_gamma(),
+            universes: serde_json::Value::Null,
+            sync: serde_json::Value::Null,
+            park: Vec::new(),
         }
     }
 }
@@ -296,6 +409,37 @@ pub struct ShowProject {
     /// 输出设置。
     #[serde(default)]
     pub output: OutputSettings,
+    /// 预设库。
+    #[serde(default)]
+    pub presets: Vec<Preset>,
+    /// A-B 循环区间。
+    #[serde(default)]
+    pub loop_range: Option<LoopRange>,
+}
+
+/// A-B 循环区间（毫秒）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopRange {
+    /// 起点。
+    pub start_ms: i64,
+    /// 终点。
+    pub end_ms: i64,
+}
+
+impl ShowProject {
+    /// 合法的 A-B 循环区间：终点大于起点，并夹在节目时长内。
+    ///
+    /// # Returns
+    ///
+    /// `(起点, 终点)`；没有设置或不合法时为 `None`。
+    #[must_use]
+    pub fn valid_loop_range(&self) -> Option<(i64, i64)> {
+        let r = self.loop_range?;
+        let start = r.start_ms.clamp(0, self.duration_ms.max(0));
+        let end = r.end_ms.clamp(0, self.duration_ms.max(0));
+        (end > start).then_some((start, end))
+    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 
@@ -9,6 +9,7 @@ import i18n from "@/shared/i18n";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { resetRecoveryCheck } from "../../hooks/useShowFile";
+import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { ShowEditorView } from "../ShowEditorView";
 
 /** 编辑器依赖路由（?open= 参数）和查询客户端（节目库刷新）。 */
@@ -40,6 +41,7 @@ beforeEach(async () => {
   invoke.mockReset();
   invoke.mockResolvedValue(null);
   resetRecoveryCheck();
+  useEditorUiStore.setState({ libraryTab: "media", paletteOpen: false });
 });
 
 afterEach(() => cleanup());
@@ -58,11 +60,32 @@ describe("ShowEditorView 外壳", () => {
     expect(screen.getByRole("heading", { level: 1, name: "未命名节目" })).toBeTruthy();
   });
 
-  it("素材库有音视频 / 灯具 / Cue 模板 / 特效四个标签", () => {
+  it("左侧图标栏有七个素材分区，点击或方向键切换素材库内容", () => {
     renderView();
+    const rail = screen.getByRole("tablist", { name: "素材库" });
+    const tabs = within(rail).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["音视频", "灯具", "Cue 模板", "特效", "预设", "分组", "历史"]);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     const library = screen.getByRole("region", { name: "素材库" });
-    const tabs = within(library).getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["音视频", "灯具", "Cue 模板", "特效"]);
+    expect(within(library).getByRole("heading", { name: "音视频" })).toBeTruthy();
+
+    fireEvent.click(tabs[4]);
+    expect(within(library).getByRole("heading", { name: "预设" })).toBeTruthy();
+    expect(within(library).getByRole("tabpanel", { name: "预设" })).toBeTruthy();
+
+    fireEvent.keyDown(tabs[4], { key: "ArrowDown" });
+    expect(within(library).getByRole("heading", { name: "分组" })).toBeTruthy();
+    expect(document.activeElement).toBe(within(rail).getByRole("tab", { name: "分组" }));
+    fireEvent.keyDown(document.activeElement as Element, { key: "End" });
+    expect(within(library).getByRole("list", { name: "撤销历史" })).toBeTruthy();
+    fireEvent.keyDown(document.activeElement as Element, { key: "Home" });
+    expect(within(library).getByRole("heading", { name: "音视频" })).toBeTruthy();
+  });
+
+  it("工具条按钮打开命令面板", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: "打开命令面板" }));
+    expect(screen.getByRole("combobox", { name: "搜索命令…" })).toBeTruthy();
   });
 
   it("时间线提供放大 / 缩小按钮", () => {

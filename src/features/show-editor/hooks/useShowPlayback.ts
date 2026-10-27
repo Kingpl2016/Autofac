@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 
 import { onShowState, showLoad, showSeek, showStop } from "../lib/playbackApi";
+import { blackoutProject, withProgrammer } from "../lib/programmer";
 import { createSyncer, throttle } from "../lib/syncer";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
+import { useProgrammerStore } from "../stores/useProgrammerStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { setActiveSyncer } from "./playbackSync";
 import { reportPlaybackError } from "./transportActions";
@@ -29,13 +31,27 @@ export function useShowPlayback(): void {
 
     const syncer = createSyncer(showLoad, reportPlaybackError, SYNC_DELAY_MS);
     setActiveSyncer(syncer);
+    // 编程器“实时输出”打开时，推给后端的是叠了编程器的工程（灯立刻按编程器亮）
+    const outgoing = () => {
+      const project = useProjectStore.getState().project;
+      // 黑场：全部轨道静音（Park 仍然生效），编程器也不输出
+      if (useEditorUiStore.getState().blackout) return blackoutProject(project);
+      const { live, values } = useProgrammerStore.getState();
+      return live ? withProgrammer(project, values) : project;
+    };
     const unsubscribeProject = useProjectStore.subscribe((s, prev) => {
-      if (s.project !== prev.project) syncer.push(s.project);
+      if (s.project !== prev.project) syncer.push(outgoing());
+    });
+    const unsubscribeProgrammer = useProgrammerStore.subscribe((s, prev) => {
+      if (s.live !== prev.live || (s.live && s.values !== prev.values)) syncer.push(outgoing());
     });
 
     const seek = throttle((ms: number) => {
       void showSeek(ms).catch(reportPlaybackError);
     }, SEEK_INTERVAL_MS);
+    const unsubscribeBlackout = useEditorUiStore.subscribe((s, prev) => {
+      if (s.blackout !== prev.blackout) syncer.push(outgoing());
+    });
     const unsubscribePlayhead = useEditorUiStore.subscribe((s, prev) => {
       if (s.playheadMs !== prev.playheadMs && s.playheadMs !== fromBackend) seek(s.playheadMs);
     });
@@ -56,7 +72,7 @@ export function useShowPlayback(): void {
       .catch(() => undefined);
 
     // 首次：先把工程交给后端，再把后端位置对齐到当前播放头
-    syncer.push(useProjectStore.getState().project);
+    syncer.push(outgoing());
     void syncer
       .flush()
       .then(() => {
@@ -70,6 +86,8 @@ export function useShowPlayback(): void {
       syncer.dispose();
       seek.cancel();
       unsubscribeProject();
+      unsubscribeProgrammer();
+      unsubscribeBlackout();
       unsubscribePlayhead();
       unlisten?.();
       usePlaybackStore.getState().reset();

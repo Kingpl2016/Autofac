@@ -20,6 +20,16 @@ describe("footprintOf", () => {
     expect(footprintOf(HEAD16)).toBe(16);
     expect(footprintOf(undefined)).toBe(1);
   });
+
+  it("按灯具选用的通道模式计算，模式不存在时按 1", () => {
+    const twoModes = {
+      ...RGBW,
+      modes: [{ id: "8ch", name: "8ch", properties: [{ ...RGBW.properties[0], channel: 8 }] }],
+    };
+    expect(footprintOf(twoModes)).toBe(4);
+    expect(footprintOf(twoModes, "8ch")).toBe(8);
+    expect(footprintOf(twoModes, "ghost")).toBe(1);
+  });
 });
 
 describe("analyzePatch", () => {

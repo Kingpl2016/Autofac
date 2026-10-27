@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Circle, Loader2, Square, TriangleAlert } from "lucide-react";
+import { ChevronDown, Circle, ListFilter, Loader2, Square, TriangleAlert } from "lucide-react";
+import { Link, useInRouterContext } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,9 @@ import { cn } from "@/lib/utils";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
 import { formatBytes, formatDurationUs } from "../lib/filter";
-import { startQuickRecording, stopRecordingWithToast } from "../lib/recordControl";
+import { startRecording, stopRecordingWithToast } from "../lib/recordControl";
+import { describePreset, isPresetFiltered, renderNameTemplate } from "../lib/recordingPreset";
+import { useRecordingPreset, useRecordingPresetStore } from "../stores/useRecordingPresetStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import { useRecordingClock } from "../hooks/useRecordingClock";
 import { PulseRing } from "./console/PulseRing";
@@ -24,8 +27,10 @@ const HOVER_CLOSE_MS = 150;
 /**
  * 顶栏录制按钮：在任何页面都能开始 / 停止录制。
  *
- * - 空闲：轮廓按钮“● 录制”，点击以“快速录制”（全量采集）开始，与全局快捷键共用同一实现；
- * - 录制中：红色“■ 时间码”停止按钮 + 脉冲指示，旁边的“录制详情”展开时长 / 帧数 / 丢帧 / 大小 / 空间；
+ * - 空闲：轮廓按钮“● 录制”，点击按“当前录制预设”开始（与录制页、全局快捷键共用同一实现）；
+ *   预设带过滤时按钮上有“已过滤”标记，提示里列出预设摘要与下一个节目名称，避免误以为在全量录制；
+ * - 录制中：红色“■ 时间码”停止按钮 + 脉冲指示，旁边的“录制详情”展开时长 / 帧数 / 丢帧 / 大小 / 空间、
+ *   本次使用的预设摘要与“打开录制页”链接；
  * - 播放器模式：**不隐藏**，用 `aria-disabled` 保持可聚焦，悬停 / 聚焦时说明原因。
  *
  * 详情用 Popover 而不是 Tooltip：内容要能被键盘到达，也不能只靠悬停。
@@ -42,9 +47,14 @@ export function HeaderRecordButton() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const closeTimer = useRef<number | null>(null);
   const clock = useRecordingClock();
+  const preset = useRecordingPreset();
+  const sacnEnabled = useRecordingPresetStore((s) => s.sacnEnabled);
 
   const recording = status.recording;
   const blocked = appMode === "player";
+  const filtered = isPresetFiltered(preset, sacnEnabled);
+  const presetText = describePreset(preset, sacnEnabled, t).join(" · ");
+  const nextName = renderNameTemplate(preset.nameTemplate, preset.nextIndex);
 
   const cancelClose = () => {
     if (closeTimer.current !== null) {
@@ -66,7 +76,7 @@ export function HeaderRecordButton() {
   const start = async () => {
     setBusy("start");
     try {
-      await startQuickRecording(t);
+      await startRecording(t);
     } finally {
       setBusy(null);
     }
@@ -151,7 +161,7 @@ export function HeaderRecordButton() {
             onPointerLeave={hoverClose}
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            <RecordStats sessionUs={clock.sessionUs} partUs={clock.partUs} />
+            <RecordStats sessionUs={clock.sessionUs} partUs={clock.partUs} presetText={presetText} />
           </PopoverContent>
         </Popover>
       </div>
@@ -159,6 +169,7 @@ export function HeaderRecordButton() {
   }
 
   const label = t("header.recStart");
+  const fullLabel = filtered ? `${label}（${t("header.recFiltered")}）` : label;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -170,7 +181,7 @@ export function HeaderRecordButton() {
           aria-disabled={blocked || undefined}
           disabled={busy !== null || transitioning}
           aria-busy={busy === "start"}
-          aria-label={blocked ? `${label}：${t("mode.guardRecord")}` : label}
+          aria-label={blocked ? `${fullLabel}：${t("mode.guardRecord")}` : fullLabel}
           onClick={() => {
             if (blocked) return;
             void start();
@@ -182,10 +193,24 @@ export function HeaderRecordButton() {
             <Circle className="fill-recording text-recording" aria-hidden />
           )}
           <span className="max-xl:sr-only">{label}</span>
+          {/* 预设带过滤时的标记：避免以为在全量录制，实际却被过滤 */}
+          {filtered && (
+            <ListFilter className="text-primary" data-testid="header-rec-filtered" aria-hidden />
+          )}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>
-        {blocked ? t("mode.guardRecord") : t("header.recStartHint", { key: startKey })}
+      <TooltipContent className="max-w-80">
+        {blocked ? (
+          t("mode.guardRecord")
+        ) : (
+          <div className="grid gap-1">
+            <p className="font-medium">{t("header.recStartHint", { key: startKey })}</p>
+            <p className="opacity-80">{presetText}</p>
+            <p className="opacity-80">
+              {t("recording.nextName")} {nextName || t("recording.nameTimestampOnly")}
+            </p>
+          </div>
+        )}
       </TooltipContent>
     </Tooltip>
   );
@@ -196,14 +221,17 @@ interface RecordStatsProps {
   sessionUs: number;
   /** 当前分段时长（微秒） */
   partUs: number;
+  /** 本次使用的录制预设摘要（录制中预设不可修改，即开始时的预设） */
+  presetText: string;
 }
 
 /**
  * 录制详情：迷你录制时间线 + 两列定义列表，丢帧 > 0 时用图标 + 文字标出（不只靠颜色）。
  * 分段录制时同时列出“本段时长”与“会话总时长”。
  */
-function RecordStats({ sessionUs, partUs }: RecordStatsProps) {
+function RecordStats({ sessionUs, partUs, presetText }: RecordStatsProps) {
   const { t } = useTranslation();
+  const inRouter = useInRouterContext();
   const s = useRecordingStore((st) => st.status);
 
   const durationRows: Array<{ label: string; value: string; warn?: boolean }> =
@@ -248,6 +276,17 @@ function RecordStats({ sessionUs, partUs }: RecordStatsProps) {
           </div>
         ))}
       </dl>
+      <div className="grid gap-2 border-t border-border pt-3 text-xs">
+        <p className="text-muted-foreground">
+          <span className="font-medium text-foreground">{t("recording.presetLabel")}</span>{" "}
+          {presetText}
+        </p>
+        {inRouter && (
+          <Link to="/recording" className="text-primary underline-offset-2 hover:underline">
+            {t("header.recOpenPage")}
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

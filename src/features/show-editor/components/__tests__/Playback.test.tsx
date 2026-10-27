@@ -21,6 +21,7 @@ vi.mock("@/shared/tauri/events", () => ({
   },
 }));
 
+import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { useEditorHotkeys } from "../../hooks/useEditorHotkeys";
 import { useShowPlayback } from "../../hooks/useShowPlayback";
 import { addStaticCue } from "../../lib/cueOps";
@@ -43,6 +44,8 @@ beforeAll(() => {
       disconnect() {}
     },
   );
+  // 预览色由 WASM 引擎求值
+  loadTestEngine();
 });
 
 /** 后端状态的样板。 */
@@ -114,7 +117,7 @@ beforeEach(async () => {
   bus.fail = false;
   bus.unlisten.mockReset();
   useProjectStore.getState().load(createEmptyProject("t"));
-  useEditorUiStore.setState({ playheadMs: 0, selectedCueIds: [] });
+  useEditorUiStore.setState({ playheadMs: 0, selectedCueIds: [], centerView: "swatches" });
   usePlaybackStore.getState().reset();
 });
 
@@ -271,7 +274,7 @@ describe("预览色块", () => {
   it("按播放头显示灯具颜色：Cue 区间内是红色，区间外是黑色", () => {
     withCue();
     render(<PreviewPanel />);
-    const swatches = () => within(screen.getByRole("list")).getAllByRole("img");
+    const swatches = () => within(screen.getByRole("list")).getAllByRole("button");
     expect(swatches()[0].getAttribute("aria-label")).toContain("红 0");
     act(() => useEditorUiStore.getState().setPlayhead(2000));
     expect(swatches()[0].getAttribute("aria-label")).toContain("红 255");

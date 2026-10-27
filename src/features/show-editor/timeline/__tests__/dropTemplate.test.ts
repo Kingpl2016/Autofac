@@ -5,18 +5,19 @@ import { dropTemplate, templateStyle } from "../dropTemplate";
 import type { Track } from "../../lib/project";
 import type { TimelineViewport } from "../geometry";
 import { ROW_HEIGHT } from "../timelineData";
+import { rowLayout } from "../timelineLayout";
 
+const tracks: Track[] = [
+  { id: "t1", target: { kind: "fixture", id: "f1" }, mute: false, solo: false, lock: false },
+  { id: "t2", target: { kind: "fixture", id: "f2" }, mute: false, solo: false, lock: false },
+];
 const viewport: TimelineViewport = {
   rect: { left: 0, top: 0, width: 1000, height: 200 },
   scrollLeft: 0,
   scrollTop: 0,
   pxPerSec: 100,
-  rowCount: 2,
+  rows: rowLayout(tracks),
 };
-const tracks: Track[] = [
-  { id: "t1", target: { kind: "fixture", id: "f1" }, mute: false, solo: false, lock: false },
-  { id: "t2", target: { kind: "fixture", id: "f2" }, mute: false, solo: false, lock: false },
-];
 const red = CUE_TEMPLATES.find((t) => t.id === "red")!;
 
 describe("templateStyle", () => {

@@ -9,6 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
+use serde::{de::DeserializeOwned, Serialize};
+use show_engine::beats::BeatAnalysis;
 use show_engine::media::{self, MediaError, MediaInfo, Peaks, MAX_PEAKS_PER_SECOND, MIN_PEAKS_PER_SECOND};
 use tauri::{AppHandle, Manager};
 
@@ -39,13 +41,51 @@ const CACHE_VERSION: u32 = 1;
 ///
 /// 文件不存在（`not_found`）或扩展名不支持（`unsupported_extension`）。
 pub fn checked_media_path(path: &str) -> Result<PathBuf, String> {
+    checked_path(path, SUPPORTED_EXTENSIONS)
+}
+
+/// 舞台背景图允许的扩展名（小写）。
+pub const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"];
+
+/// 校验舞台背景图路径：存在、是文件、扩展名是图片。
+///
+/// # Arguments
+///
+/// * `path` - 前端传来的图片路径。
+///
+/// # Returns
+///
+/// 通过校验的路径。
+///
+/// # Errors
+///
+/// 文件不存在（`not_found`）或扩展名不是图片（`unsupported_extension`）。
+pub fn checked_image_path(path: &str) -> Result<PathBuf, String> {
+    checked_path(path, IMAGE_EXTENSIONS)
+}
+
+/// 按扩展名白名单与存在性校验路径。
+///
+/// # Arguments
+///
+/// * `path` - 文件路径。
+/// * `allowed` - 允许的扩展名（小写，不含点）。
+///
+/// # Returns
+///
+/// 通过校验的路径。
+///
+/// # Errors
+///
+/// 扩展名不在白名单（`unsupported_extension`）或不是存在的文件（`not_found`）。
+fn checked_path(path: &str, allowed: &[&str]) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
-    if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+    if !allowed.contains(&ext.as_str()) {
         return Err(ERR_UNSUPPORTED_EXTENSION.to_owned());
     }
     if !path.is_file() {
@@ -99,6 +139,24 @@ pub fn media_authorize(app: AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 放行 asset 协议对一张舞台背景图的访问（只放行这一个文件），供舞台监视器绘制。
+///
+/// # Arguments
+///
+/// * `app` - 应用句柄。
+/// * `path` - 图片文件路径。
+///
+/// # Errors
+///
+/// 路径不合格（`not_found` / `unsupported_extension`），或放行失败。
+#[tauri::command]
+pub fn stage_image_authorize(app: AppHandle, path: String) -> Result<(), String> {
+    let path = checked_image_path(&path)?;
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|e| e.to_string())
+}
+
 /// 计算素材的波形峰值（带磁盘缓存）。
 ///
 /// # Arguments
@@ -130,6 +188,42 @@ pub async fn media_peaks(app: AppHandle, path: String, per_second: u32) -> Resul
             write_cache(file, &peaks);
         }
         Ok(peaks)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 节拍分析算法的版本号；算法变化时递增，旧缓存自然失效。
+const BEATS_VERSION: u32 = 1;
+
+/// 分析素材的节拍（速度、强拍偏移、逐拍时刻与能量段落，带磁盘缓存）。
+///
+/// # Arguments
+///
+/// * `app` - 应用句柄（取缓存目录）。
+/// * `path` - 素材文件路径。
+///
+/// # Returns
+///
+/// 节拍分析结果。
+///
+/// # Errors
+///
+/// 路径不合格，或解码失败（`unsupported` / `decode` / `io`），或没有稳定的节拍（`no_beat`）。
+#[tauri::command]
+pub async fn media_analyze_beats(app: AppHandle, path: String) -> Result<BeatAnalysis, String> {
+    let cache_dir = Some(app.state::<crate::data_dir::DataRoot>().cache_dir().join("media-beats"));
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = checked_media_path(&path)?;
+        let cache_file = cache_dir.as_deref().and_then(|d| cache_path(d, &path, BEATS_VERSION));
+        if let Some(hit) = cache_file.as_deref().and_then(read_cache::<BeatAnalysis>) {
+            return Ok(hit);
+        }
+        let result = media::analyze_beats(&path, &AtomicBool::new(false)).map_err(|e| media_err(&e))?;
+        if let Some(file) = cache_file.as_deref() {
+            write_cache(file, &result);
+        }
+        Ok(result)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -172,23 +266,23 @@ fn cache_path(dir: &Path, media: &Path, per_second: u32) -> Option<PathBuf> {
 }
 
 /// 读取缓存；缺失或损坏时返回 `None`。
-fn read_cache(file: &Path) -> Option<Peaks> {
+fn read_cache<T: DeserializeOwned>(file: &Path) -> Option<T> {
     serde_json::from_slice(&std::fs::read(file).ok()?).ok()
 }
 
 /// 写入缓存（先写临时文件再重命名）；失败只记日志，不影响结果。
-fn write_cache(file: &Path, peaks: &Peaks) {
+fn write_cache<T: Serialize>(file: &Path, value: &T) {
     let write = || -> std::io::Result<()> {
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir)?;
         }
         let tmp = file.with_extension("tmp");
-        let bytes = serde_json::to_vec(peaks).map_err(std::io::Error::other)?;
+        let bytes = serde_json::to_vec(value).map_err(std::io::Error::other)?;
         std::fs::write(&tmp, bytes)?;
         std::fs::rename(&tmp, file)
     };
     if let Err(e) = write() {
-        tracing::warn!(error = %e, "写入波形缓存失败");
+        tracing::warn!(error = %e, "写入素材分析缓存失败");
     }
 }
 
@@ -233,6 +327,22 @@ mod tests {
     }
 
     #[test]
+    fn 背景图路径校验_只放行图片() {
+        let tmp = Tmp::new("image");
+        let png = tmp.0.join("stage.PNG");
+        std::fs::write(&png, b"x").unwrap();
+        assert_eq!(checked_image_path(&png.to_string_lossy()).unwrap(), png);
+        let mp3 = tmp.0.join("a.mp3");
+        std::fs::write(&mp3, b"x").unwrap();
+        assert_eq!(checked_image_path(&mp3.to_string_lossy()).unwrap_err(), ERR_UNSUPPORTED_EXTENSION);
+        assert_eq!(checked_media_path(&png.to_string_lossy()).unwrap_err(), ERR_UNSUPPORTED_EXTENSION);
+        assert_eq!(
+            checked_image_path(&tmp.0.join("ghost.jpg").to_string_lossy()).unwrap_err(),
+            ERR_NOT_FOUND
+        );
+    }
+
+    #[test]
     fn 缓存文件名随素材变化而变化() {
         let tmp = Tmp::new("cache-key");
         let media = tmp.0.join("a.wav");
@@ -255,8 +365,8 @@ mod tests {
         assert_eq!(read_cache(&file), Some(peaks));
         assert!(!file.with_extension("tmp").exists());
         std::fs::write(&file, b"{broken").unwrap();
-        assert_eq!(read_cache(&file), None);
-        assert_eq!(read_cache(&tmp.0.join("none.json")), None);
+        assert_eq!(read_cache::<Peaks>(&file), None);
+        assert_eq!(read_cache::<Peaks>(&tmp.0.join("none.json")), None);
     }
 
     #[test]

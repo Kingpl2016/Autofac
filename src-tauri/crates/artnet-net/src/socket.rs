@@ -440,6 +440,82 @@ impl DmxSender {
         self.send_datagram(&buf[..n], addr).await
     }
 
+    /// 发送一帧 sACN，带同步地址或 Stream_Terminated 标志（节目输出用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - 目标地址；`None` 时发往该 Universe 的组播地址。
+    /// * `universe` - Universe 编号（1~63999）。
+    /// * `sequence` - 序列号。
+    /// * `priority` - 优先级（0~200）。
+    /// * `sync_universe` - 同步 Universe；0 为不同步。
+    /// * `terminated` - 置 Stream_Terminated 标志（停止输出时发送，接收端立即释放本源）。
+    /// * `data` - 通道数据。
+    ///
+    /// # Errors
+    ///
+    /// 发送失败时返回 [`std::io::Error`]。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_sacn_ext(
+        &self,
+        target: Option<SocketAddr>,
+        universe: u16,
+        sequence: u8,
+        priority: u8,
+        sync_universe: u16,
+        terminated: bool,
+        data: &[u8],
+    ) -> std::io::Result<()> {
+        let mut buf = [0u8; sacn::SACN_MAX_LEN];
+        let n = if terminated {
+            sacn::build_terminated_into(universe, data, &self.cid, SACN_SOURCE_NAME, priority, sequence, &mut buf)
+        } else {
+            sacn::build_into(universe, data, &self.cid, SACN_SOURCE_NAME, priority, sequence, &mut buf)
+        };
+        sacn::set_sync_address(&mut buf, sync_universe);
+        let addr = target.unwrap_or_else(|| {
+            SocketAddr::new(IpAddr::V4(sacn::multicast_addr(universe)), SACN_PORT)
+        });
+        self.send_datagram(&buf[..n], addr).await
+    }
+
+    /// 发送一个 E1.31 同步包。
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - 目标地址；`None` 时发往同步 Universe 的组播地址。
+    /// * `sync_universe` - 同步 Universe（1~63999）。
+    /// * `sequence` - 同步包序列号。
+    ///
+    /// # Errors
+    ///
+    /// 发送失败时返回 [`std::io::Error`]。
+    pub async fn send_sacn_sync(
+        &self,
+        target: Option<SocketAddr>,
+        sync_universe: u16,
+        sequence: u8,
+    ) -> std::io::Result<()> {
+        let buf = sacn::build_sync(&self.cid, sequence, sync_universe);
+        let addr = target.unwrap_or_else(|| {
+            SocketAddr::new(IpAddr::V4(sacn::multicast_addr(sync_universe)), SACN_PORT)
+        });
+        self.send_datagram(&buf, addr).await
+    }
+
+    /// 发送一个 ArtSync。
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - 目标地址（节点的单播地址或广播地址，含端口）。
+    ///
+    /// # Errors
+    ///
+    /// 发送失败时返回 [`std::io::Error`]。
+    pub async fn send_artsync(&self, target: SocketAddr) -> std::io::Result<()> {
+        self.send_datagram(&artnet::build_sync(), target).await
+    }
+
     /// 发送一个 UDP 数据报：先非阻塞 `try_send_to`，套接字暂不可写
     /// （[`std::io::ErrorKind::WouldBlock`]）时回退为异步 `send_to` 等待可写。
     ///
@@ -495,6 +571,32 @@ mod tests {
             .expect("2 秒内应收到数据报")
             .unwrap();
         buf[..n].to_vec()
+    }
+
+    #[tokio::test]
+    async fn artsync_与_sacn_同步包_以及带同步地址的数据包() {
+        let (rx, addr) = loopback_rx().await;
+        let sender = DmxSender::new([7u8; 16]).await.unwrap();
+        sender.send_artsync(addr).await.unwrap();
+        let sync = recv_one(&rx).await;
+        assert_eq!(sync.len(), 14);
+        assert_eq!(&sync[..8], b"Art-Net\0");
+        assert_eq!(&sync[8..10], &[0x00, 0x52]);
+
+        sender.send_sacn_sync(Some(addr), 4000, 9).await.unwrap();
+        let s = recv_one(&rx).await;
+        assert_eq!(s.len(), 49);
+        assert_eq!(&s[18..22], &[0, 0, 0, 8]);
+        assert_eq!(&s[40..44], &[0, 0, 0, 1]);
+        assert_eq!(s[44], 9);
+        assert_eq!(&s[45..47], &4000u16.to_be_bytes());
+
+        sender.send_sacn_ext(Some(addr), 3, 5, 150, 4000, true, &[1, 2, 3]).await.unwrap();
+        let d = recv_one(&rx).await;
+        let parsed = sacn::parse(&d).expect("应是合法 sACN 数据包");
+        assert_eq!((parsed.universe, parsed.sequence, parsed.priority), (3, 5, 150));
+        assert_eq!(&d[109..111], &4000u16.to_be_bytes());
+        assert_eq!(d[112] & 0x40, 0x40, "Stream_Terminated 标志");
     }
 
     #[tokio::test]

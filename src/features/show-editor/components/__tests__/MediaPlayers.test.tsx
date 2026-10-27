@@ -8,7 +8,7 @@ import type { ShowState } from "../../lib/playbackApi";
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
 
-import { createEmptyProject, type MediaRef } from "../../lib/project";
+import { createEmptyProject, type MediaClip, type MediaRef } from "../../lib/project";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useMediaStore } from "../../stores/useMediaStore";
 import { usePlaybackStore } from "../../stores/usePlaybackStore";
@@ -59,7 +59,10 @@ beforeAll(() => {
   });
 });
 
-const media = (over: Partial<MediaRef> = {}): MediaRef => ({
+/** 测试用素材：`offsetMs` 为它在自己轨道上那个片段的起点（整段素材）。 */
+type Item = MediaRef & { offsetMs: number };
+
+const media = (over: Partial<Item> = {}): Item => ({
   id: "a",
   kind: "audio",
   path: "a.mp3",
@@ -68,6 +71,27 @@ const media = (over: Partial<MediaRef> = {}): MediaRef => ({
   offsetMs: 0,
   ...over,
 });
+
+/** 每个素材一条轨道、一个整段片段（片段 id = `c-<素材 id>`）。 */
+function projectOf(items: Item[], clips?: MediaClip[]) {
+  const p = createEmptyProject("t");
+  p.media = items.map(({ offsetMs: _o, ...m }) => m);
+  p.mediaTracks = items.map((m) => ({ id: `t-${m.id}`, kind: m.kind, name: m.name, mute: false, solo: false, lock: false, volume: 1 }));
+  p.mediaClips =
+    clips ??
+    items.map((m) => ({
+      id: `c-${m.id}`,
+      trackId: `t-${m.id}`,
+      mediaId: m.id,
+      startMs: m.offsetMs,
+      inMs: 0,
+      durationMs: m.durationMs,
+      volume: 1,
+      fadeInMs: 0,
+      fadeOutMs: 0,
+    }));
+  return p;
+}
 
 function playback(over: Partial<ShowState> = {}): ShowState {
   return {
@@ -86,8 +110,12 @@ function playback(over: Partial<ShowState> = {}): ShowState {
   };
 }
 
-function setup(items: MediaRef[], runtime: Record<string, Partial<{ unplayable: boolean; status: "ready" | "missing" }>> = {}) {
-  useProjectStore.getState().load({ ...createEmptyProject("t"), media: items });
+function setup(
+  items: Item[],
+  runtime: Record<string, Partial<{ unplayable: boolean; status: "ready" | "missing" }>> = {},
+  clips?: MediaClip[],
+) {
+  useProjectStore.getState().load(projectOf(items, clips));
   for (const m of items) {
     useMediaStore.getState().set(m.id, {
       path: m.path,
@@ -125,16 +153,62 @@ describe("MediaPlayers", () => {
     expect(element(container, "audio").getAttribute("src")).toBe("asset://localhost/a.mp3");
   });
 
-  it("第一个视频可见，其余视频隐藏", () => {
+  it("播放头处只显示最上面那条有片段的视频轨道；上面的轨道没有片段时露出下面的", () => {
     const { container } = setup([
-      media({ id: "v1", kind: "video", path: "1.mp4", name: "1.mp4" }),
+      media({ id: "v1", kind: "video", path: "1.mp4", name: "1.mp4", durationMs: 10_000, offsetMs: 5000 }),
       media({ id: "v2", kind: "video", path: "2.mp4", name: "2.mp4" }),
     ]);
-    const videos = container.querySelectorAll("video");
-    expect(videos).toHaveLength(2);
-    expect(videos[0].className).not.toContain("hidden");
-    expect(videos[1].className).toContain("hidden");
-    expect(screen.getByLabelText("1.mp4 的视频画面")).toBeTruthy();
+    const videos = () => [...container.querySelectorAll("video")];
+    expect(videos()).toHaveLength(2);
+    expect(videos()[0].className).toContain("hidden");
+    expect(videos()[1].className).not.toContain("hidden");
+    expect(screen.getByLabelText("2.mp4 的视频画面")).toBeTruthy();
+    act(() => useEditorUiStore.getState().setPlayhead(6000));
+    expect(videos()[0].className).not.toContain("hidden");
+    expect(videos()[1].className).toContain("hidden");
+    act(() => useEditorUiStore.getState().setPlayhead(30_000));
+    expect(screen.getByLabelText("2.mp4 的视频画面")).toBeTruthy();
+  });
+
+  it("同一素材放两次 → 两个元素各自同步；入点裁剪后从入点开始放", () => {
+    const clips: MediaClip[] = [
+      { id: "x", trackId: "t-a", mediaId: "a", startMs: 0, inMs: 0, durationMs: 4000, volume: 1, fadeInMs: 0, fadeOutMs: 0 },
+      { id: "y", trackId: "t-a", mediaId: "a", startMs: 10_000, inMs: 30_000, durationMs: 5000, volume: 1, fadeInMs: 0, fadeOutMs: 0 },
+    ];
+    const { container } = setup([media()], {}, clips);
+    expect(container.querySelectorAll("audio")).toHaveLength(2);
+    act(() => useEditorUiStore.getState().setPlayhead(12_000));
+    const byClip = (id: string) => container.querySelector<HTMLMediaElement>(`[data-clip-id="${id}"]`)!;
+    expect(byClip("y").currentTime).toBe(32); // 入点 30 s + 进入片段 2 s
+    expect(byClip("x").currentTime).toBe(4); // 片段已结束，停在出点
+    act(() => usePlaybackStore.getState().setState(playback({ transport: "playing", positionMs: 9_000 })));
+    expect(playMock).not.toHaveBeenCalled();
+    act(() => usePlaybackStore.getState().setState(playback({ transport: "playing", positionMs: 10_500 })));
+    expect(playMock).toHaveBeenCalledTimes(1);
+    expect(byClip("y").currentTime).toBe(30.5);
+  });
+
+  it("音量 = 片段音量 × 轨道音量 × 淡入淡出；轨道静音、独奏别的轨道时为 0", () => {
+    const clips: MediaClip[] = [
+      { id: "c-a", trackId: "t-a", mediaId: "a", startMs: 0, inMs: 0, durationMs: 10_000, volume: 0.5, fadeInMs: 2000, fadeOutMs: 0 },
+      { id: "c-b", trackId: "t-b", mediaId: "b", startMs: 0, inMs: 0, durationMs: 10_000, volume: 1, fadeInMs: 0, fadeOutMs: 0 },
+    ];
+    const { container } = setup([media(), media({ id: "b", path: "b.mp3", name: "b.mp3" })], {}, clips);
+    const el = (id: string) => container.querySelector<HTMLMediaElement>(`[data-clip-id="${id}"]`)!;
+    act(() => useEditorUiStore.getState().setPlayhead(1000));
+    expect(el("c-a").volume).toBeCloseTo(0.25); // 0.5 × 淡入一半
+    act(() => useEditorUiStore.getState().setPlayhead(5000));
+    expect(el("c-a").volume).toBeCloseTo(0.5);
+    act(() => useProjectStore.getState().update((d) => void (d.mediaTracks[0].volume = 0.5)));
+    act(() => useEditorUiStore.getState().setPlayhead(5100));
+    expect(el("c-a").volume).toBeCloseTo(0.25);
+    act(() => useProjectStore.getState().update((d) => void (d.mediaTracks[1].solo = true)));
+    act(() => useEditorUiStore.getState().setPlayhead(5200));
+    expect(el("c-a").volume).toBe(0);
+    expect(el("c-b").volume).toBe(1);
+    act(() => useProjectStore.getState().update((d) => void (d.mediaTracks[1].mute = true)));
+    act(() => useEditorUiStore.getState().setPlayhead(5300));
+    expect(el("c-b").volume).toBe(0);
   });
 
   it("后端开始播放：元素定位到目标位置并播放", () => {
@@ -176,7 +250,7 @@ describe("MediaPlayers", () => {
   });
 
   it("未播放时拖动播放头，元素跟着定位（视频显示对应画面）", () => {
-    const { container } = setup([media({ kind: "video", path: "v.mp4", name: "v.mp4" })]);
+    const { container } = setup([media({ id: "v", kind: "video", path: "v.mp4", name: "v.mp4" })]);
     act(() => useEditorUiStore.getState().setPlayhead(12_000));
     expect(element(container, "video").currentTime).toBe(12);
     act(() => useEditorUiStore.getState().setPlayhead(90_000));

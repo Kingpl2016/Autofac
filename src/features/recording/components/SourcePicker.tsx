@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { Check } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { Device } from "@/shared/domain/device";
 import { useProtocolFlags } from "@/features/settings";
@@ -76,26 +76,17 @@ export function SourcePicker({
           <li key={s.ip}>
             <label
               className={cn(
-                "flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-border px-3.5 py-2.5 text-sm transition-colors",
+                "flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-border px-3.5 py-2.5 text-sm transition-colors duration-150 motion-reduce:transition-none",
                 "hover:bg-surface-3",
-                "has-checked:border-primary/60 has-checked:bg-primary/10",
-                "has-focus-visible:ring-2 has-focus-visible:ring-ring",
+                "has-data-[state=checked]:border-primary/60 has-data-[state=checked]:bg-primary/10",
                 disabled && "cursor-not-allowed opacity-60",
               )}
             >
-              <input
-                type="checkbox"
-                className="peer sr-only"
+              <Checkbox
                 checked={checked}
                 disabled={disabled}
-                onChange={() => onToggle(s.ip)}
+                onCheckedChange={() => onToggle(s.ip)}
               />
-              <span
-                className="flex size-5 shrink-0 items-center justify-center rounded border border-input text-primary-foreground peer-checked:border-primary peer-checked:bg-primary"
-                aria-hidden
-              >
-                {checked && <Check className="size-3.5" />}
-              </span>
               <span
                 className={cn(
                   "size-2 shrink-0 rounded-full",

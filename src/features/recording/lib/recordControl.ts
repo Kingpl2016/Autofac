@@ -1,8 +1,10 @@
 import type { TFunction } from "i18next";
 import { toast } from "sonner";
 
+import { getRecordingPreset, useRecordingPresetStore } from "../stores/useRecordingPresetStore";
+import { useRecordingStore } from "../stores/useRecordingStore";
 import { recordingStart, recordingStop } from "./api";
-import { EMPTY_FILTER, buildFileStem } from "./filter";
+import { buildStartArgs, hasIndexPlaceholder } from "./recordingPreset";
 import {
   PLAYER_ERR_PLAYBACK_ACTIVE,
   PLAYER_ERR_SHOW_ACTIVE,
@@ -10,40 +12,44 @@ import {
   REC_ERR_DISK_LOW,
   REC_ERR_NOT_RECORDING,
   REC_ERR_NO_UNIVERSES,
-  type RecordingStartArgs,
 } from "./types";
 
-/**
- * 构造“快速录制”参数：不限制任何来源 / Universe / 协议，文件名用当前时间戳。
- *
- * 供全局热键等无界面上下文触发录制时使用（界面上的精细过滤仍走录制面板本地状态）。
- *
- * # Returns
- *
- * 一份全量采集的 [`RecordingStartArgs`]。
- */
-export function quickRecordArgs(): RecordingStartArgs {
-  return {
-    name: "",
-    notes: "",
-    fileStem: buildFileStem(new Date(), ""),
-    filter: { ...EMPTY_FILTER },
-    universes: [],
-  };
+interface StartOptions {
+  /** 仅本次有效的备注（顶栏 / 快捷键开始时为空） */
+  notes?: string;
+  /** 是否启用 sACN；缺省取录制运行时从设置同步到预设 store 的值 */
+  sacnEnabled?: boolean;
 }
 
 /**
- * 以“快速录制”（全量采集）开始录制，并用 toast 反馈结果。
+ * 按“当前录制预设”开始录制，并用 toast 反馈结果。
  *
- * 顶栏录制按钮与全局快捷键共用这一份实现，保证两条路径的行为与文案完全一致。
+ * 录制页按钮、顶栏录制按钮与全局快捷键共用这一份实现，三条路径录到的内容完全一致。
+ * 成功后：模板含序号时序号加一；失败时序号不变。开始前清掉上一次的结果。
  *
  * @param t i18next 翻译函数。
+ * @param opts 备注与协议开关。
  * @returns 成功开始返回 `true`；失败（已弹出错误提示）返回 `false`。
  */
-export async function startQuickRecording(t: TFunction): Promise<boolean> {
+export async function startRecording(t: TFunction, opts: StartOptions = {}): Promise<boolean> {
+  const { preset, sacnEnabled } = getRecordingPreset();
+  const args = buildStartArgs(preset, {
+    now: new Date(),
+    notes: opts.notes,
+    sacnEnabled: opts.sacnEnabled ?? sacnEnabled,
+  });
+  useRecordingStore.getState().setLast(null);
   try {
-    const res = await recordingStart(quickRecordArgs());
-    toast.success(t("recording.started", { n: res.plan.accepted.length }));
+    const res = await recordingStart(args);
+    if (hasIndexPlaceholder(preset.nameTemplate)) {
+      useRecordingPresetStore.getState().advanceIndex();
+    }
+    const n = res.plan.accepted.length;
+    toast.success(
+      args.name
+        ? t("recording.startedNamed", { name: args.name, n })
+        : t("recording.started", { n }),
+    );
     return true;
   } catch (e: unknown) {
     toast.error(describeRecordingError(e, t, "recording.startFailed"));

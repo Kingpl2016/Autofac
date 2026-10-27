@@ -1,9 +1,8 @@
 import { useEffect, useRef } from "react";
 
-import { useEditorUiStore } from "../stores/useEditorUiStore";
-import { useProjectStore } from "../stores/useProjectStore";
-import { addMarkerAtPlayhead, tapTempoNow } from "./editorActions";
-import { togglePlay } from "./transportActions";
+import { matchCommand, type Command } from "../lib/commands";
+import { currentOverrides } from "../stores/useKeymapStore";
+import { useEditorCommands } from "./useEditorCommands";
 
 /**
  * 当前焦点是否在文本输入控件里（此时 Ctrl+Z 等应交给输入框自己的撤销）。
@@ -17,56 +16,64 @@ export function isTextEntry(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
+/** 按住不放时不重复触发的命令（切换类、一次性动作）。 */
+const NO_REPEAT = new Set([
+  "transport.toggle",
+  "transport.stop",
+  "timeline.split",
+  "timeline.snap",
+  "timeline.marker",
+  "timeline.tap",
+  "view.palette",
+  "edit.duplicate",
+  "edit.paste",
+  "file.save",
+]);
+
 /**
- * 编辑器的全局快捷键（`onSave` 是保存动作，由文件操作提供）：
+ * 编辑器的全局快捷键：按命令表（见 `useEditorCommands`，默认方案与剪映一致）分发键盘事件，
+ * 用户可在快捷键设置里改键。
  *
- * - `Ctrl/⌘+Z` 撤销，`Ctrl/⌘+Shift+Z` 或 `Ctrl+Y` 重做；
- * - `Space` 播放 / 暂停，`M` 在播放头处打标记点，`T` 敲击节拍（Tap Tempo），`S` 开关吸附；
- * - `Ctrl/⌘+S` 保存（在输入框里也生效，保存前输入框会因失焦而提交）。
+ * - 焦点在文本输入框里时只响应全局命令（保存、命令面板）；保存前输入框失焦以提交草稿；
+ * - 有对话框打开时只响应全局命令；
+ * - 焦点在按钮 / 滑杆等控件上时，空格留给它们自己的激活行为；
+ * - 已被其它处理器处理（`defaultPrevented`）的事件不再处理。
  *
- * 焦点在文本输入框里时不拦截，交给输入框自己的撤销。组件卸载时自动解除。
+ * @param onSave 保存动作（来自文件操作）。
+ * @returns 命令列表（供命令面板使用）。
  */
-export function useEditorHotkeys(onSave?: () => void): void {
-  const saveRef = useRef(onSave);
+export function useEditorHotkeys(onSave?: () => void): Command[] {
+  const commands = useEditorCommands(onSave);
+  const ref = useRef(commands);
   useEffect(() => {
-    saveRef.current = onSave;
-  }, [onSave]);
+    ref.current = commands;
+  }, [commands]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey) return;
-      const key = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && key === "s") {
-        e.preventDefault();
-        if (e.target instanceof HTMLElement && isTextEntry(e.target)) e.target.blur();
-        saveRef.current?.();
-        return;
-      }
-      if (isTextEntry(e.target)) return;
-      if (!(e.ctrlKey || e.metaKey)) {
-        // 对话框打开时，单字母快捷键不抢键
-        if (e.shiftKey || e.repeat || document.querySelector("[role=dialog]")) return;
-        if (key === " ") {
-          // 焦点在按钮 / 链接 / 滑杆上时，空格留给它们自己的激活行为
-          if (e.target instanceof HTMLElement && e.target.closest("button, a, [role=button], [role=slider], [role=menuitem]")) return;
-          void togglePlay();
-        } else if (key === "m") addMarkerAtPlayhead();
-        else if (key === "t") tapTempoNow(performance.now());
-        else if (key === "s") useEditorUiStore.getState().toggleSnap();
-        else return;
+      if (e.defaultPrevented) return;
+      const inText = isTextEntry(e.target);
+      const dialogOpen = document.querySelector("[role=dialog]") !== null;
+      const command = matchCommand(ref.current, currentOverrides(), e, inText || dialogOpen);
+      if (!command) return;
+      if (e.repeat && NO_REPEAT.has(command.id)) {
         e.preventDefault();
         return;
       }
-      const temporal = useProjectStore.temporal.getState();
-      if (key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        temporal.undo();
-      } else if ((key === "z" && e.shiftKey) || key === "y") {
-        e.preventDefault();
-        temporal.redo();
+      if (
+        command.id === "transport.toggle" &&
+        e.target instanceof HTMLElement &&
+        e.target.closest("button, a, [role=button], [role=slider], [role=menuitem], [role=option]")
+      ) {
+        return;
       }
+      e.preventDefault();
+      if (command.id === "file.save" && e.target instanceof HTMLElement && inText) e.target.blur();
+      command.run();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  return commands;
 }

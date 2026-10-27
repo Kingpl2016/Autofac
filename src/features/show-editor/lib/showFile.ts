@@ -113,6 +113,7 @@ export function showErrorText(t: TFunction, error: unknown): string {
     case "bad_path":
     case "project_too_large":
     case "invalid_project":
+    case "project_too_new":
       return t(`editor.file.errors.${raw}`);
     default:
       return raw.startsWith("trash_failed") || raw === "" ? t("common.unknownError") : raw;

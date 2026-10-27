@@ -24,6 +24,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAppModeStore } from "@/features/app-mode";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { EMPTY_STATUS, type RecordingStatus } from "../../lib/types";
+import { EMPTY_PRESET } from "../../lib/recordingPreset";
+import { useRecordingPresetStore } from "../../stores/useRecordingPresetStore";
 import { useRecordingStore } from "../../stores/useRecordingStore";
 import { HeaderRecordButton } from "../HeaderRecordButton";
 
@@ -47,6 +49,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
   useRecordingStore.setState({ status: EMPTY_STATUS, last: null, sources: [] });
+  useRecordingPresetStore.setState({ ...EMPTY_PRESET, sacnEnabled: false });
   useEngineStatusStore.setState({ appMode: "live", recording: false });
   useAppModeStore.setState({ transitioning: false });
   api.recordingStart.mockResolvedValue({ plan: { accepted: [1, 2] } });
@@ -56,14 +59,44 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("HeaderRecordButton", () => {
-  it("空闲：点击以快速录制开始，并提示结果", async () => {
+  it("空闲：默认预设下点击即全量录制，并提示结果；没有“已过滤”标记", async () => {
     renderButton();
+    expect(screen.queryByTestId("header-rec-filtered")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "录制" }));
     await waitFor(() => expect(api.recordingStart).toHaveBeenCalledTimes(1));
     const args = api.recordingStart.mock.calls[0][0];
     expect(args.filter).toEqual({ sources: [], excludeSources: false, universes: [], protocols: [] });
     expect(args.fileStem).toMatch(/^\d{8}-\d{6}$/);
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it("按录制页设置的预设录制：过滤条件与名称一致，按钮带“已过滤”标记，成功后序号加一", async () => {
+    useRecordingPresetStore.setState({
+      sources: ["10.0.0.1"],
+      universeTokens: ["0-3"],
+      nameTemplate: "舞台A-{nn}",
+      nextIndex: 4,
+    });
+    renderButton();
+    const btn = screen.getByRole("button", { name: "录制（按预设过滤）" });
+    expect(screen.getByTestId("header-rec-filtered")).toBeTruthy();
+    fireEvent.click(btn);
+    await waitFor(() => expect(api.recordingStart).toHaveBeenCalledTimes(1));
+    const args = api.recordingStart.mock.calls[0][0];
+    expect(args.filter.sources).toEqual(["10.0.0.1"]);
+    expect(args.filter.universes).toEqual([{ start: 0, end: 3 }]);
+    expect(args.name).toBe("舞台A-04");
+    expect(args.notes).toBe("");
+    await waitFor(() => expect(useRecordingPresetStore.getState().nextIndex).toBe(5));
+  });
+
+  it("提示里列出预设摘要与下一个名称", async () => {
+    useRecordingPresetStore.setState({ sources: ["10.0.0.1"], nameTemplate: "彩排" });
+    renderButton();
+    fireEvent.focus(screen.getByRole("button", { name: /^录制/ }));
+    const tip = await screen.findByRole("tooltip");
+    expect(tip.textContent).toContain("仅 1 个来源 · 全部 Universe");
+    expect(tip.textContent).toContain("下一个名称 彩排");
   });
 
   it("开始失败时给出可读错误", async () => {
@@ -106,6 +139,8 @@ describe("HeaderRecordButton", () => {
     expect(dl.textContent).toContain("2.0 KiB");
     expect(dl.textContent).toContain("1:23.4");
     expect(dl.textContent).toContain("3");
+    // 本次使用的预设摘要
+    expect(screen.getByText(/全部来源 · 全部 Universe/)).toBeTruthy();
   });
 
   it("有丢帧或空间偏低时，在详情里用图标 + 文字标出，而不只是变色", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { extensionOf, fileNameOf, isMediaPath, kindOfPath, mediaEndMs, primaryMedia } from "../media";
-import { addMedia, ensureDuration, MAX_DURATION_MS, relinkMedia, removeMedia, setMediaOffset } from "../ops";
+import { extensionOf, fileNameOf, isMediaPath, kindOfPath, primaryMedia } from "../media";
+import { addMedia, ensureDuration, MAX_DURATION_MS, relinkMedia, removeMedia } from "../ops";
 import { createEmptyProject, type MediaRef } from "../project";
 import { peakColumns } from "../waveform";
 
@@ -11,7 +11,6 @@ const ref = (over: Partial<MediaRef> = {}): MediaRef => ({
   path: "D:\\music\\歌.mp3",
   name: "歌.mp3",
   durationMs: 60_000,
-  offsetMs: 0,
   ...over,
 });
 
@@ -33,47 +32,54 @@ describe("路径工具", () => {
     expect(kindOfPath("a.flac")).toBe("audio");
   });
 
-  it("主素材优先取第一个音频，其次第一个视频", () => {
+  it("主素材优先取时间线上最早的音频片段，其次第一个音频，再次第一个视频", () => {
     const video = ref({ id: "v", kind: "video", path: "v.mp4" });
     const audio = ref({ id: "a", kind: "audio", path: "a.mp3" });
-    expect(primaryMedia({ media: [] })).toBeUndefined();
-    expect(primaryMedia({ media: [video] })?.id).toBe("v");
-    expect(primaryMedia({ media: [video, audio] })?.id).toBe("a");
-    expect(mediaEndMs(ref({ offsetMs: -500, durationMs: 2000 }))).toBe(1500);
+    const late = ref({ id: "b", kind: "audio", path: "b.mp3" });
+    const clip = (id: string, mediaId: string, startMs: number) => ({
+      id, trackId: "t", mediaId, startMs, inMs: 0, durationMs: 1000, volume: 1, fadeInMs: 0, fadeOutMs: 0,
+    });
+    expect(primaryMedia({ media: [], mediaClips: [] })).toBeUndefined();
+    expect(primaryMedia({ media: [video], mediaClips: [] })?.id).toBe("v");
+    expect(primaryMedia({ media: [video, audio], mediaClips: [] })?.id).toBe("a");
+    expect(primaryMedia({ media: [video, audio, late], mediaClips: [clip("1", "a", 5000), clip("2", "b", 0)] })?.id).toBe("b");
   });
 });
 
 describe("素材编辑操作", () => {
-  it("加入素材；同一路径不重复加入；新素材偏移为 0", () => {
+  it("加入素材库；同一路径不重复加入；多余字段不写入", () => {
     const p = createEmptyProject("t");
-    expect(addMedia(p, ref({ offsetMs: 99 }))).toBe("m1");
-    expect(p.media[0].offsetMs).toBe(0);
+    expect(addMedia(p, { ...ref(), extra: 1 } as MediaRef)).toBe("m1");
+    expect(p.media[0]).toEqual(ref());
     expect(addMedia(p, ref({ id: "m2" }))).toBeNull();
     expect(p.media).toHaveLength(1);
   });
 
-  it("移除素材；设置偏移会取整并夹在 ±1 小时", () => {
+  it("移除素材同时移除用到它的片段", () => {
     const p = createEmptyProject("t");
     addMedia(p, ref());
-    setMediaOffset(p, "m1", 12.6);
-    expect(p.media[0].offsetMs).toBe(13);
-    setMediaOffset(p, "m1", 9e9);
-    expect(p.media[0].offsetMs).toBe(3_600_000);
-    setMediaOffset(p, "m1", -9e9);
-    expect(p.media[0].offsetMs).toBe(-3_600_000);
-    setMediaOffset(p, "ghost", 1);
+    p.mediaTracks.push({ id: "t", kind: "audio", name: "音频 1", mute: false, solo: false, lock: false, volume: 1 });
+    p.mediaClips.push({ id: "c", trackId: "t", mediaId: "m1", startMs: 0, inMs: 0, durationMs: 1000, volume: 1, fadeInMs: 0, fadeOutMs: 0 });
     removeMedia(p, "m1");
     expect(p.media).toHaveLength(0);
+    expect(p.mediaClips).toHaveLength(0);
+    expect(p.mediaTracks).toHaveLength(1);
   });
 
-  it("重新链接保留偏移；新路径已被占用或素材不存在时失败", () => {
+  it("重新链接：片段保留位置，新文件更短时裁短（太短的删除）；新路径已被占用或素材不存在时失败", () => {
     const p = createEmptyProject("t");
     addMedia(p, ref());
     addMedia(p, ref({ id: "m2", path: "other.mp3", name: "other.mp3" }));
-    setMediaOffset(p, "m1", 250);
-    const next = { path: "E:\\新位置\\歌.wav", name: "歌.wav", kind: "audio" as const, durationMs: 61_000 };
+    p.mediaTracks.push({ id: "t", kind: "audio", name: "音频 1", mute: false, solo: false, lock: false, volume: 1 });
+    p.mediaClips.push(
+      { id: "a", trackId: "t", mediaId: "m1", startMs: 250, inMs: 0, durationMs: 60_000, volume: 1, fadeInMs: 0, fadeOutMs: 5000 },
+      { id: "b", trackId: "t", mediaId: "m1", startMs: 70_000, inMs: 39_950, durationMs: 5000, volume: 1, fadeInMs: 0, fadeOutMs: 0 },
+    );
+    const next = { path: "E:\\新位置\\歌.wav", name: "歌.wav", kind: "audio" as const, durationMs: 40_000 };
     expect(relinkMedia(p, "m1", next)).toBe(true);
-    expect(p.media[0]).toMatchObject({ ...next, offsetMs: 250, id: "m1" });
+    expect(p.media[0]).toMatchObject({ ...next, id: "m1" });
+    expect(p.mediaClips.map((c) => c.id)).toEqual(["a"]);
+    expect(p.mediaClips[0]).toMatchObject({ startMs: 250, durationMs: 40_000, fadeOutMs: 5000 });
     expect(relinkMedia(p, "m1", { ...next, path: "other.mp3" })).toBe(false);
     expect(relinkMedia(p, "ghost", next)).toBe(false);
   });

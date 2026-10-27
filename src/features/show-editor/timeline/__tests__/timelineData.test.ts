@@ -1,90 +1,29 @@
-import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 
-import { addStaticCue } from "../../lib/cueOps";
-import { addFixtures } from "../../lib/ops";
-import { createEmptyProject, type ShowProject } from "../../lib/project";
-import { RGBW } from "../../lib/__tests__/testkit";
+import type { Track } from "../../lib/project";
 import { anchoredScrollLeft, pointToTimeRow, timeToX, type TimelineViewport } from "../geometry";
+import { contentWidth, msToSec, ROW_HEIGHT, rulerLabel, secToMs, START_LEFT } from "../timelineData";
 import {
-  buildRows,
-  diffRows,
-  msToSec,
-  ROW_HEIGHT,
-  rulerLabel,
-  scaleCountFor,
-  secToMs,
-  START_LEFT,
-} from "../timelineData";
+  COLLAPSED_HEIGHT,
+  rowAt,
+  rowLayout,
+  rulerTicks,
+  tickLabel,
+  TRACK_HEIGHTS,
+  visibleRows,
+  visibleTimeRange,
+} from "../timelineLayout";
 
-function sample(): { project: ShowProject; a: string; b: string } {
-  const project = produce(createEmptyProject("t"), (d) => {
-    addFixtures(d, RGBW, 2);
-    d.durationMs = 30_000;
-    addStaticCue(d, d.tracks[0].id, 1000, { lengthMs: 2000 });
-    addStaticCue(d, d.tracks[0].id, 5000, { lengthMs: 1000 });
-    addStaticCue(d, d.tracks[1].id, 0, { lengthMs: 4000 });
-  });
-  return { project, a: project.tracks[0].id, b: project.tracks[1].id };
-}
-
-describe("buildRows", () => {
-  it("每条轨道一行，Cue 按起点排序，时间换算为秒", () => {
-    const { project, a } = sample();
-    const rows = buildRows(project, new Set());
-    expect(rows.map((r) => r.id)).toEqual(project.tracks.map((t) => t.id));
-    expect(rows[0].id).toBe(a);
-    expect(rows[0].actions.map((x) => [x.start, x.end])).toEqual([
-      [1, 3],
-      [5, 6],
-    ]);
-    expect(rows[0].rowHeight).toBe(ROW_HEIGHT);
-  });
-
-  it("用左右邻居限定每个 Cue 的活动范围，保证拖动时不会重叠", () => {
-    const { project } = sample();
-    const [first, second] = buildRows(project, new Set())[0].actions;
-    expect([first.minStart, first.maxEnd]).toEqual([0, 5]);
-    expect([second.minStart, second.maxEnd]).toEqual([3, 30]);
-  });
-
-  it("选中状态与锁定轨道", () => {
-    const { project } = sample();
-    const id = project.cues[0].id;
-    const locked = produce(project, (d) => {
-      d.tracks[1].lock = true;
-    });
-    const rows = buildRows(locked, new Set([id]));
-    expect(rows[0].actions[0].selected).toBe(true);
-    expect(rows[0].actions[1].selected).toBe(false);
-    expect(rows[0].actions[0].movable).toBe(true);
-    expect(rows[1].actions[0]).toMatchObject({ movable: false, flexible: false });
-  });
+const track = (id: string, over: Partial<Track> = {}): Track => ({
+  id,
+  target: { kind: "fixture", id },
+  mute: false,
+  solo: false,
+  lock: false,
+  ...over,
 });
 
-describe("diffRows", () => {
-  it("没变化时为空；有移动 / 拉伸时给出新的毫秒值", () => {
-    const { project } = sample();
-    const rows = buildRows(project, new Set());
-    expect(diffRows(project, rows)).toEqual([]);
-    rows[0].actions[0].start = 1.5;
-    rows[0].actions[0].end = 4.0004;
-    rows[1].actions[0].end = 3.999;
-    expect(diffRows(project, rows)).toEqual([
-      { id: project.cues.find((c) => c.startMs === 1000)!.id, startMs: 1500, endMs: 4000 },
-      { id: project.cues.find((c) => c.startMs === 0)!.id, startMs: 0, endMs: 3999 },
-    ]);
-  });
-
-  it("忽略工程里不存在的 Cue", () => {
-    const { project } = sample();
-    const rows = buildRows(project, new Set());
-    rows[0].actions.push({ id: "ghost", start: 0, end: 1, effectId: "cue" });
-    expect(diffRows(project, rows)).toEqual([]);
-  });
-});
-
-describe("时间换算与刻度", () => {
+describe("时间换算与刻度文字", () => {
   it("秒毫秒互换并取整", () => {
     expect(msToSec(1500)).toBe(1.5);
     expect(secToMs(1.2345)).toBe(1235);
@@ -97,10 +36,69 @@ describe("时间换算与刻度", () => {
     expect(rulerLabel(3725)).toBe("1:02:05");
   });
 
-  it("刻度数向上取整且至少为 1", () => {
-    expect(scaleCountFor(180_000)).toBe(180);
-    expect(scaleCountFor(180_001)).toBe(181);
-    expect(scaleCountFor(0)).toBe(1);
+  it("刻度文字：整秒为 m:ss，秒内为帧号", () => {
+    expect(tickLabel(0)).toBe("0:00");
+    expect(tickLabel(65_000)).toBe("1:05");
+    expect(tickLabel(3_725_000)).toBe("1:02:05");
+    expect(tickLabel(1000 + 10 * (1000 / 30))).toBe("10f");
+  });
+
+  it("内容宽度含左右留白", () => {
+    expect(contentWidth(10_000, 100)).toBe(START_LEFT * 2 + 1000);
+  });
+});
+
+describe("轨道排布与虚拟化", () => {
+  const tracks = [track("a"), track("b", { height: "tall" }), track("c", { collapsed: true }), track("d", { height: "compact" })];
+  const layout = rowLayout(tracks);
+
+  it("按档位计算行高与顶边", () => {
+    expect(layout.heights).toEqual([ROW_HEIGHT, TRACK_HEIGHTS.tall, COLLAPSED_HEIGHT, TRACK_HEIGHTS.compact]);
+    expect(layout.tops).toEqual([0, 44, 116, 136]);
+    expect(layout.total).toBe(164);
+  });
+
+  it("纵坐标落在哪一行", () => {
+    expect(rowAt(layout, 0)).toBe(0);
+    expect(rowAt(layout, 43.9)).toBe(0);
+    expect(rowAt(layout, 44)).toBe(1);
+    expect(rowAt(layout, 120)).toBe(2);
+    expect(rowAt(layout, 163)).toBe(3);
+    expect(rowAt(layout, 164)).toBe(-1);
+    expect(rowAt(layout, -1)).toBe(-1);
+  });
+
+  it("只渲染可见行（含前后余量）", () => {
+    const many = rowLayout(Array.from({ length: 1000 }, (_, i) => track(`t${i}`)));
+    const [from, to] = visibleRows(many, ROW_HEIGHT * 500, ROW_HEIGHT * 10, 2);
+    expect(from).toBe(498);
+    expect(to).toBe(512);
+    expect(visibleRows(rowLayout([]), 0, 100)).toEqual([0, 0]);
+  });
+
+  it("可见时间范围（含两侧余量，不小于 0）", () => {
+    expect(visibleTimeRange(0, 1000, 100, 0)).toEqual([0, ((1000 - START_LEFT) / 100) * 1000]);
+    const [from, to] = visibleTimeRange(2020, 1000, 100, 100);
+    expect(from).toBe(19_000);
+    expect(to).toBe(31_000);
+  });
+});
+
+describe("自适应刻度", () => {
+  it("主刻度间隔随缩放变化，且不少于最小间距", () => {
+    expect(rulerTicks(100, 0, 10_000).stepMs).toBe(1000);
+    expect(rulerTicks(20, 0, 60_000).stepMs).toBe(5000);
+    // 放大到帧级：5 帧一个主刻度
+    expect(rulerTicks(1000, 0, 2000).stepMs).toBeCloseTo((1000 / 30) * 5, 3);
+    const ticks = rulerTicks(100, 0, 3000);
+    expect(ticks.major.map((t) => t.label)).toEqual(["0:00", "0:01", "0:02", "0:03"]);
+    expect(ticks.minor.length).toBeGreaterThan(0);
+    expect(ticks.minor.every((m) => m % 1000 !== 0)).toBe(true);
+  });
+
+  it("从可见范围起点之后的刻度开始", () => {
+    const ticks = rulerTicks(100, 4500, 7000);
+    expect(ticks.major.map((t) => t.ms)).toEqual([5000, 6000, 7000]);
   });
 });
 
@@ -110,7 +108,7 @@ describe("pointToTimeRow", () => {
     scrollLeft: 0,
     scrollTop: 0,
     pxPerSec: 100,
-    rowCount: 3,
+    rows: rowLayout([track("a"), track("b"), track("c")]),
   };
 
   it("把屏幕坐标换算为时间和轨道", () => {
@@ -128,7 +126,6 @@ describe("pointToTimeRow", () => {
     expect(pointToTimeRow(viewport, 50, 405)).toBeNull();
     expect(pointToTimeRow(viewport, 200, 380)).toBeNull();
     expect(pointToTimeRow(viewport, 1000, 405)).toBeNull();
-    // 只有 3 条轨道，第 4 行没有对应轨道
     expect(pointToTimeRow(viewport, 200, 400 + ROW_HEIGHT * 3 + 1)).toBeNull();
   });
 });

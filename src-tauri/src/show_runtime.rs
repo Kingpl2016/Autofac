@@ -122,6 +122,8 @@ struct Control {
     /// 当前输出会话的代号。
     session: Option<u64>,
     next_session: u64,
+    /// A-B 循环区间 `(起点, 终点)`（毫秒，终点大于起点且在节目内）。
+    loop_range: Option<(i64, i64)>,
 }
 
 impl Control {
@@ -138,6 +140,7 @@ impl Control {
             dirty: false,
             session: None,
             next_session: 1,
+            loop_range: None,
         }
     }
 
@@ -213,6 +216,16 @@ impl Control {
             Some(origin) => self.base_ms + now.saturating_duration_since(origin).as_millis() as i64,
             None => self.base_ms,
         };
+        // A-B 循环：从区间终点之前开始播放时，到终点后回到起点（从终点之后开始则照常播完）
+        if let Some((a, b)) = self.loop_range {
+            if self.base_ms < b && raw >= b {
+                let wrapped = a + (raw - b) % (b - a);
+                self.base_ms = wrapped;
+                self.origin = Some(now);
+                self.dirty = true;
+                return wrapped;
+            }
+        }
         if raw < duration {
             return raw.max(0);
         }
@@ -315,9 +328,13 @@ fn lock(ctl: &Mutex<Control>) -> MutexGuard<'_, Control> {
     ctl.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// 目标为转发表时返回启用的目的地个数。
+/// 目标为转发表时返回启用的目的地个数；为路由表时返回启用的端口总数。
 fn destinations_of(target: &DispatchTarget, handle: &OutputHandle) -> Option<usize> {
-    matches!(target, DispatchTarget::Forwarding).then(|| handle.enabled_destinations())
+    match target {
+        DispatchTarget::Forwarding => Some(handle.enabled_destinations()),
+        DispatchTarget::Routed { .. } => target.routed_ports(),
+        DispatchTarget::Direct { .. } => None,
+    }
 }
 
 /// 状态推送回调：生产环境发 `show:state` 事件，测试里收集到内存。
@@ -504,12 +521,49 @@ fn send_blackout(out: &ShowOutput, target: &Arc<DispatchTarget>, show: &Compiled
 /// # Errors
 ///
 /// 结构不合法或 IP 无法解析时返回 [`ERR_BAD_TARGET`]。
+#[cfg(test)]
 fn parse_target(value: &serde_json::Value) -> Result<DispatchTarget, String> {
-    if value.is_null() {
+    parse_output_target(value, &serde_json::Value::Null, &serde_json::Value::Null)
+}
+
+/// 由工程的输出设置解析输出目标；`routed` 目标的路由表与同步设置分别取自
+/// `output.universes` 与 `output.sync`。
+///
+/// # Arguments
+///
+/// * `target` - `output.target` 的 JSON；缺省 / `null` 时使用转发表。
+/// * `universes` - `output.universes` 的 JSON（路由表）。
+/// * `sync` - `output.sync` 的 JSON（帧同步设置）。
+///
+/// # Returns
+///
+/// 规整后的输出目标。
+///
+/// # Errors
+///
+/// 结构不合法、IP 无法解析或远端 Universe 越界时返回 [`ERR_BAD_TARGET`]。
+fn parse_output_target(
+    target: &serde_json::Value,
+    universes: &serde_json::Value,
+    sync: &serde_json::Value,
+) -> Result<DispatchTarget, String> {
+    if target.is_null() {
         return Ok(DispatchTarget::default());
     }
+    let mut value = target.clone();
+    if value.get("kind").and_then(serde_json::Value::as_str) == Some("routed") {
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert(
+                "universes".into(),
+                if universes.is_null() { serde_json::json!([]) } else { universes.clone() },
+            );
+            if !sync.is_null() {
+                obj.insert("sync".into(), sync.clone());
+            }
+        }
+    }
     let target: DispatchTarget =
-        serde_json::from_value(value.clone()).map_err(|_| ERR_BAD_TARGET.to_string())?;
+        serde_json::from_value(value).map_err(|_| ERR_BAD_TARGET.to_string())?;
     normalize_target(target)
 }
 
@@ -539,7 +593,11 @@ pub fn show_load(
 ) -> Result<ShowState, String> {
     let parsed: ShowProject =
         serde_json::from_value(project).map_err(|_| ERR_INVALID_PROJECT.to_string())?;
-    let target = Arc::new(parse_target(&parsed.output.target)?);
+    let target = Arc::new(parse_output_target(
+        &parsed.output.target,
+        &parsed.output.universes,
+        &parsed.output.sync,
+    )?);
     let compiled = Arc::new(compile(&parsed));
     let handle = app.artnet_core().show_output_handle();
     let snapshot = {
@@ -547,6 +605,7 @@ pub fn show_load(
         ctl.show = Some(compiled);
         ctl.looping = parsed.output.looping;
         ctl.latency_comp_ms = parsed.output.latency_comp_ms;
+        ctl.loop_range = parsed.valid_loop_range();
         ctl.target = target.clone();
         let now = Instant::now();
         ctl.base_ms = ctl.base_ms.clamp(0, ctl.duration());
@@ -772,6 +831,35 @@ mod tests {
     }
 
     #[test]
+    fn ab_循环_从终点之前开始播放时回到起点() {
+        let t0 = Instant::now();
+        let mut c = control(10_000);
+        c.loop_range = Some((2000, 3000));
+        c.seek(t0, 2500);
+        c.play(t0);
+        assert_eq!(c.advance(at(t0, 400)), 2900);
+        assert_eq!(c.advance(at(t0, 700)), 2200);
+        assert_eq!(c.transport, Transport::Playing);
+        // 从终点之后开始：照常播放
+        c.seek(at(t0, 700), 5000);
+        assert_eq!(c.advance(at(t0, 1700)), 6000);
+    }
+
+    #[test]
+    fn 工程里的循环区间被夹取到节目内() {
+        let p: ShowProject = serde_json::from_value(serde_json::json!({
+            "durationMs": 5000, "loopRange": { "startMs": 4000, "endMs": 9000 }
+        }))
+        .unwrap();
+        assert_eq!(p.valid_loop_range(), Some((4000, 5000)));
+        let bad: ShowProject = serde_json::from_value(serde_json::json!({
+            "durationMs": 5000, "loopRange": { "startMs": 3000, "endMs": 3000 }
+        }))
+        .unwrap();
+        assert_eq!(bad.valid_loop_range(), None);
+    }
+
+    #[test]
     fn 停止回到零位且空闲_定位期间不空闲() {
         let t0 = Instant::now();
         let mut c = control(1000);
@@ -781,6 +869,35 @@ mod tests {
         assert!(c.is_idle());
         c.locate = Some("f1".into());
         assert!(!c.is_idle(), "定位期间会话必须保持");
+    }
+
+    #[test]
+    fn 路由目标取自工程的_universe_表_并校验() {
+        let universes = serde_json::json!([
+            { "universe": 1, "label": "舞台左", "ports": [
+                { "id": "a", "protocol": "artNet", "mode": "unicast", "ip": "10.0.0.5", "port": 6454, "remoteUniverse": 17, "enabled": true },
+                { "id": "b", "protocol": "sacn", "mode": "multicast", "ip": "", "port": 5568, "remoteUniverse": 2, "priority": 250, "enabled": true },
+                { "id": "c", "protocol": "artNet", "mode": "unicast", "ip": "坏地址", "port": 6454, "remoteUniverse": 0, "enabled": false }
+            ]},
+            { "universe": 0, "label": "", "ports": [] }
+        ]);
+        let sync = serde_json::json!({ "artSync": true, "sacnSyncUniverse": 7 });
+        let t = parse_output_target(&serde_json::json!({ "kind": "routed" }), &universes, &sync).unwrap();
+        let DispatchTarget::Routed { universes, sync } = &t else { panic!("应为路由目标") };
+        assert_eq!(universes.len(), 1, "空端口的 Universe 不进路由表");
+        assert_eq!(universes[0].ports.len(), 2, "停用的端口被丢弃（不校验）");
+        assert_eq!(universes[0].ports[1].priority, Some(200), "优先级夹到 200");
+        assert!(sync.art_sync);
+        assert_eq!(t.routed_ports(), Some(2));
+
+        let bad = serde_json::json!([{ "universe": 0, "ports": [
+            { "protocol": "sacn", "mode": "unicast", "ip": "10.0.0.1", "port": 5568, "remoteUniverse": 0, "enabled": true }
+        ]}]);
+        assert_eq!(
+            parse_output_target(&serde_json::json!({ "kind": "routed" }), &bad, &serde_json::Value::Null),
+            Err(ERR_BAD_TARGET.to_string()),
+            "sACN 远端 Universe 0 非法"
+        );
     }
 
     #[test]

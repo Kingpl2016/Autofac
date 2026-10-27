@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import {
   fixtureDelete,
+  fixtureImportOfl,
   fixtureImportXlsx,
   fixtureList,
   fixtureSave,
@@ -21,6 +22,8 @@ interface FixtureState {
   load: () => Promise<void>;
   /** 导入 Excel，成功后刷新列表。 */
   importXlsx: (path: string) => Promise<ImportOutcome>;
+  /** 导入 OFL 灯具 JSON，成功后刷新列表。 */
+  importOfl: (path: string) => Promise<ImportOutcome>;
   /** 新增 / 更新自定义模型，成功后刷新列表，返回保存后的模型。 */
   save: (model: FixtureModel) => Promise<FixtureModel>;
   /** 删除自定义模型，成功后刷新列表。 */
@@ -46,6 +49,12 @@ export const useFixtureStore = create<FixtureState>((set, get) => ({
 
   importXlsx: async (path) => {
     const outcome = await fixtureImportXlsx(path);
+    set({ models: await fixtureList() });
+    return outcome;
+  },
+
+  importOfl: async (path) => {
+    const outcome = await fixtureImportOfl(path);
     set({ models: await fixtureList() });
     return outcome;
   },

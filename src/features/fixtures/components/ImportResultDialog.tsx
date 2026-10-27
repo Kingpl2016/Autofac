@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { warningParams } from "../lib/format";
-import type { ImportOutcome } from "../lib/types";
+import type { ImportOutcome, ImportWarning } from "../lib/types";
 
 interface ImportResultDialogProps {
   /** 导入结果；为 `null` 时对话框不显示。 */
@@ -19,7 +19,13 @@ interface ImportResultDialogProps {
   onClose: () => void;
 }
 
-/** Excel 导入结果对话框：新增 / 覆盖 / 忽略统计，以及逐条警告。 */
+/** 警告文案键：OFL 导入的警告没有行号，用不带行号的文案。 */
+function warningKey(w: ImportWarning): string {
+  if (w.row === null && (w.kind === "unknownFunction" || w.kind === "invalidModel")) return `${w.kind}Ofl`;
+  return w.kind;
+}
+
+/** 导入结果对话框（Excel / OFL）：新增 / 覆盖 / 忽略统计，以及逐条警告。 */
 export function ImportResultDialog({ outcome, onClose }: ImportResultDialogProps) {
   const { t } = useTranslation();
   if (!outcome) return null;
@@ -53,7 +59,7 @@ export function ImportResultDialog({ outcome, onClose }: ImportResultDialogProps
             <ul className="grid gap-1.5 text-sm">
               {warnings.map((w, i) => (
                 <li key={i} className="rounded-md bg-warning/10 px-3 py-1.5">
-                  {t(`fixtures.import.warning.${w.kind}`, warningParams(w))}
+                  {t(`fixtures.import.warning.${warningKey(w)}`, warningParams(w))}
                 </li>
               ))}
             </ul>

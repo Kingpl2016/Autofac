@@ -1,8 +1,9 @@
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Crosshair, Trash2 } from "lucide-react";
+import { AlertTriangle, Copy, Crosshair, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toggleLocate } from "../hooks/transportActions";
 import type { PatchStatus } from "../lib/patch";
@@ -10,27 +11,86 @@ import type { FixtureInstance } from "../lib/project";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { CommitInput } from "./CommitInput";
 
+/** 默认模式在下拉框里的取值（Radix Select 不接受空串）。 */
+const DEFAULT_MODE = "__default__";
+
 interface FixtureRowProps {
   fixture: FixtureInstance;
   /** 模型名称（模型缺失时为空串） */
   modelName: string;
+  /** 模型的附加模式（没有时不显示模式选择） */
+  modes?: readonly { id: string; name: string; channels: number }[];
+  /** 默认模式的名称与通道数 */
+  defaultMode?: { name: string; channels: number };
   status: PatchStatus | undefined;
   selected: boolean;
   onSelectedChange: (on: boolean) => void;
   onRename: (name: string) => void;
   onAddress: (universe: number, address: number) => void;
+  onMode?: (modeId: string | undefined) => void;
+  onAddMirror?: () => void;
+  onMirror?: (index: number, universe: number, address: number) => void;
+  onRemoveMirror?: (index: number) => void;
   onDelete: () => void;
 }
 
-/** Patch 列表里的一个灯具：勾选框、名称、模型、Universe 与地址，以及冲突状态。 */
+/** 一组 “U … @ …” 地址输入。 */
+function AddressInputs({
+  universe,
+  address,
+  universeLabel,
+  addressLabel,
+  onChange,
+}: {
+  universe: number;
+  address: number;
+  universeLabel: string;
+  addressLabel: string;
+  onChange: (universe: number, address: number) => void;
+}) {
+  return (
+    <>
+      <label className="flex items-center gap-1">
+        U
+        <CommitInput
+          className="num h-7 w-14 px-1.5 text-xs"
+          inputMode="numeric"
+          label={universeLabel}
+          value={universe}
+          onCommit={(text) => onChange(Number(text), address)}
+        />
+      </label>
+      <label className="flex items-center gap-1">
+        @
+        <CommitInput
+          className="num h-7 w-14 px-1.5 text-xs"
+          inputMode="numeric"
+          label={addressLabel}
+          value={address}
+          onCommit={(text) => onChange(universe, Number(text))}
+        />
+      </label>
+    </>
+  );
+}
+
+/**
+ * Patch 列表里的一个灯具：勾选框、名称、模型与通道模式、Universe 与地址、多重配接（镜像地址），以及冲突状态。
+ */
 export function FixtureRow({
   fixture,
   modelName,
+  modes = [],
+  defaultMode,
   status,
   selected,
   onSelectedChange,
   onRename,
   onAddress,
+  onMode,
+  onAddMirror,
+  onMirror,
+  onRemoveMirror,
   onDelete,
 }: FixtureRowProps) {
   const { t } = useTranslation();
@@ -89,30 +149,53 @@ export function FixtureRow({
         <span className="max-w-32 truncate" title={modelName}>
           {modelName || fixture.modelId}
         </span>
-        <label className="flex items-center gap-1">
-          U
-          <CommitInput
-            className="num h-7 w-14 px-1.5 text-xs"
-            inputMode="numeric"
-            label={t("editor.patch.universeOf", { name: fixture.name })}
-            value={fixture.universe}
-            onCommit={(text) => onAddress(Number(text), fixture.address)}
-          />
-        </label>
-        <label className="flex items-center gap-1">
-          @
-          <CommitInput
-            className="num h-7 w-14 px-1.5 text-xs"
-            inputMode="numeric"
-            label={t("editor.patch.addressOf", { name: fixture.name })}
-            value={fixture.address}
-            onCommit={(text) => onAddress(fixture.universe, Number(text))}
-          />
-        </label>
+        {modes.length > 0 && onMode && (
+          <Select
+            value={fixture.modeId ?? DEFAULT_MODE}
+            onValueChange={(v) => onMode(v === DEFAULT_MODE ? undefined : v)}
+          >
+            <SelectTrigger className="h-7 w-auto min-w-24 gap-1 px-2 text-xs" aria-label={t("editor.patch.modeOf", { name: fixture.name })}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={DEFAULT_MODE}>
+                {t("editor.patch.modeOption", {
+                  name: defaultMode?.name || t("editor.patch.defaultMode"),
+                  count: defaultMode?.channels ?? 0,
+                })}
+              </SelectItem>
+              {modes.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {t("editor.patch.modeOption", { name: m.name, count: m.channels })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <AddressInputs
+          universe={fixture.universe}
+          address={fixture.address}
+          universeLabel={t("editor.patch.universeOf", { name: fixture.name })}
+          addressLabel={t("editor.patch.addressOf", { name: fixture.name })}
+          onChange={onAddress}
+        />
         {range && (
           <span className="num">
             {range.start}–{range.end}
           </span>
+        )}
+        {onAddMirror && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={t("editor.patch.addMirror", { name: fixture.name })}
+            title={t("editor.patch.addMirror", { name: fixture.name })}
+            onClick={onAddMirror}
+          >
+            <Copy aria-hidden />
+          </Button>
         )}
         {conflicts > 0 && (
           <Badge variant="destructive">
@@ -133,6 +216,41 @@ export function FixtureRow({
           </Badge>
         )}
       </div>
+      {(fixture.mirrors?.length ?? 0) > 0 && (
+        <ol aria-label={t("editor.patch.mirrors", { name: fixture.name })} className="mt-1 flex flex-col gap-1 pl-6">
+          {fixture.mirrors?.map((m, i) => {
+            const r = status?.mirrors[i];
+            return (
+              <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="w-12 shrink-0">{t("editor.patch.mirrorN", { n: i + 1 })}</span>
+                <AddressInputs
+                  universe={m.universe}
+                  address={m.address}
+                  universeLabel={t("editor.patch.mirrorUniverseOf", { name: fixture.name, n: i + 1 })}
+                  addressLabel={t("editor.patch.mirrorAddressOf", { name: fixture.name, n: i + 1 })}
+                  onChange={(u, a) => onMirror?.(i, u, a)}
+                />
+                {r && (
+                  <span className="num">
+                    {r.start}–{r.end}
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label={t("editor.patch.removeMirror", { name: fixture.name, n: i + 1 })}
+                  title={t("editor.patch.removeMirror", { name: fixture.name, n: i + 1 })}
+                  onClick={() => onRemoveMirror?.(i)}
+                >
+                  <X aria-hidden />
+                </Button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </li>
   );
 }

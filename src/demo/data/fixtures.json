@@ -491,5 +491,54 @@
         "detail": null
       }
     ]
+  },
+  "oflSample": {
+    "id": "ofl:demo/pixel-bar-4",
+    "name": "演示 4 像素 RGBW 灯条",
+    "system": "OFL",
+    "productType": "Pixel Bar",
+    "builtin": false,
+    "manufacturer": "demo",
+    "defaultModeName": "17ch",
+    "matrix": { "cols": 4, "rows": 1 },
+    "physical": { "beamMinDeg": 25 },
+    "properties": [
+      { "name": "Master", "code": "Master", "function": "dimmer", "channel": 1, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "" },
+      { "name": "Red 1", "code": "Red 1", "function": "red", "channel": 2, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 1 },
+      { "name": "Green 1", "code": "Green 1", "function": "green", "channel": 3, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 1 },
+      { "name": "Blue 1", "code": "Blue 1", "function": "blue", "channel": 4, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 1 },
+      { "name": "White 1", "code": "White 1", "function": "white", "channel": 5, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 1 },
+      { "name": "Red 2", "code": "Red 2", "function": "red", "channel": 6, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 2 },
+      { "name": "Green 2", "code": "Green 2", "function": "green", "channel": 7, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 2 },
+      { "name": "Blue 2", "code": "Blue 2", "function": "blue", "channel": 8, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 2 },
+      { "name": "White 2", "code": "White 2", "function": "white", "channel": 9, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 2 },
+      { "name": "Red 3", "code": "Red 3", "function": "red", "channel": 10, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 3 },
+      { "name": "Green 3", "code": "Green 3", "function": "green", "channel": 11, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 3 },
+      { "name": "Blue 3", "code": "Blue 3", "function": "blue", "channel": 12, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 3 },
+      { "name": "White 3", "code": "White 3", "function": "white", "channel": 13, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 3 },
+      { "name": "Red 4", "code": "Red 4", "function": "red", "channel": 14, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 4 },
+      { "name": "Green 4", "code": "Green 4", "function": "green", "channel": 15, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 4 },
+      { "name": "Blue 4", "code": "Blue 4", "function": "blue", "channel": 16, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 4 },
+      { "name": "White 4", "code": "White 4", "function": "white", "channel": 17, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "", "head": 4 }
+    ],
+    "modes": [
+      {
+        "id": "5ch",
+        "name": "5ch（整条同色）",
+        "properties": [
+          { "name": "Master", "code": "Master", "function": "dimmer", "channel": 1, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "" },
+          { "name": "Red", "code": "Red", "function": "red", "channel": 2, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "" },
+          { "name": "Green", "code": "Green", "function": "green", "channel": 3, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "" },
+          { "name": "Blue", "code": "Blue", "function": "blue", "channel": 4, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "" },
+          {
+            "name": "Strobe", "code": "Strobe", "function": "shutter", "channel": 5, "width": 1, "bigEndian": true, "defaultValue": 0, "valueDesc": "", "description": "",
+            "capabilities": [
+              { "range": [0, 9], "label": "Open" },
+              { "range": [10, 255], "label": "Strobe slow→fast", "proportional": true, "physical": [1, 20], "unit": "Hz" }
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

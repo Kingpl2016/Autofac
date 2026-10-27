@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { SurfacePanel } from "../../../shared/components/SurfacePanel";
+import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { ProgramActionsMenu } from "./ProgramActionsMenu";
 import { ProgramDeleteDialog } from "./ProgramDeleteDialog";
 import { ProgramPlayButton } from "./ProgramPlayButton";
@@ -104,6 +104,18 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
       .get(playingPath)
       ?.scrollIntoView?.({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [playingPath]);
+  // 一次录制结束、列表刷新出新节目后，把第一个“刚录制”的节目滚进可视区（每次结果只滚一次）
+  const scrolledFor = useRef<typeof lastResult>(null);
+  useEffect(() => {
+    if (!lastResult || scrolledFor.current === lastResult) return;
+    const fresh = entries.find((e) => freshPaths.has(e.path.replaceAll("\\", "/")));
+    const el = fresh ? itemRefs.current.get(fresh.path) : undefined;
+    if (!el) return;
+    scrolledFor.current = lastResult;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    el.scrollIntoView?.({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [lastResult, entries, freshPaths]);
+
   const needle = query.trim().toLowerCase();
   const shown = useMemo(
     () => entries.filter((e) => matchesQuery(e, needle)),
@@ -186,7 +198,9 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                       ? "border-success/45 bg-success/5"
                       : isLoaded
                         ? "border-primary/40 bg-primary/5"
-                        : "border-transparent hover:bg-surface-3/50",
+                        : isFresh
+                          ? "border-recording/35 bg-recording/5"
+                          : "border-transparent hover:bg-surface-3/50",
                   )}
                   style={{ animationDelay: `${Math.min(i, STAGGER_MAX_STEPS) * STAGGER_STEP_MS}ms` }}
                 >

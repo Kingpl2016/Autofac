@@ -231,6 +231,53 @@ pub fn build_into(
     DATA_OFFSET + channels
 }
 
+/// 给已组好的数据包写入 Framing 层的同步地址（Synchronization Address）。
+///
+/// 接收端收到带同步地址的数据包后，会缓存数据直到收到该 Universe 的同步包再一起输出。
+///
+/// # Arguments
+///
+/// * `out` - 由 [`build_into`] 写好的数据包缓冲。
+/// * `sync_universe` - 同步 Universe（1~63999）；0 表示不同步。
+pub fn set_sync_address(out: &mut [u8; SACN_MAX_LEN], sync_universe: u16) {
+    out[109..111].copy_from_slice(&sync_universe.to_be_bytes());
+}
+
+/// Root 层向量：E1.31 扩展包（同步 / 发现）。
+pub const VECTOR_ROOT_EXTENDED: u32 = 0x0000_0008;
+/// 扩展 Framing 层向量：同步包。
+pub const VECTOR_EXTENDED_SYNC: u32 = 0x0000_0001;
+/// E1.31 同步包的字节数（Root 层 38 + 同步 Framing 层 11）。
+pub const SACN_SYNC_LEN: usize = 49;
+
+/// 构造 E1.31 同步包（Synchronization Packet，E1.31 §6.3）。
+///
+/// # Arguments
+///
+/// * `cid` - 发送者 CID（与数据包一致）。
+/// * `sequence` - 同步包自己的序列号。
+/// * `sync_universe` - 同步 Universe（1~63999）。
+///
+/// # Returns
+///
+/// 49 字节同步包。
+#[must_use]
+pub fn build_sync(cid: &[u8; 16], sequence: u8, sync_universe: u16) -> [u8; SACN_SYNC_LEN] {
+    let mut out = [0u8; SACN_SYNC_LEN];
+    out[0..2].copy_from_slice(&[0x00, 0x10]);
+    out[2..4].copy_from_slice(&[0x00, 0x00]);
+    out[4..16].copy_from_slice(ACN_PID);
+    out[16..18].copy_from_slice(&flags_len((SACN_SYNC_LEN - 16) as u16));
+    out[18..22].copy_from_slice(&VECTOR_ROOT_EXTENDED.to_be_bytes());
+    out[22..38].copy_from_slice(cid);
+    out[38..40].copy_from_slice(&flags_len(11));
+    out[40..44].copy_from_slice(&VECTOR_EXTENDED_SYNC.to_be_bytes());
+    out[44] = sequence;
+    out[45..47].copy_from_slice(&sync_universe.to_be_bytes());
+    // 46..49：Reserved，保持 0
+    out
+}
+
 /// 把带 Stream_Terminated 标志的 sACN 数据包写入调用方提供的定长缓冲（零堆分配）。
 ///
 /// 与 [`build_into`] 相同，仅 Options 字节为 [`OPT_STREAM_TERMINATED`]。

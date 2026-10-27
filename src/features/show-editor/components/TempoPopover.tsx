@@ -8,6 +8,7 @@ import { alignBeatToPlayhead, tapTempoNow } from "../hooks/editorActions";
 import { setTempo } from "../lib/ops";
 import type { Tempo } from "../lib/project";
 import { useProjectStore } from "../stores/useProjectStore";
+import { BeatAnalysisPanel } from "./BeatAnalysisPanel";
 import { CommitInput } from "./CommitInput";
 
 /** 没有节拍设置时，编辑字段使用的初始值。 */
@@ -104,6 +105,7 @@ export function TempoPopover() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">{t("editor.tempo.hint")}</p>
+        <BeatAnalysisPanel />
       </PopoverContent>
     </Popover>
   );

@@ -13,6 +13,7 @@
 //! - 发送器放在 [`SenderSlot`]（`ArcSwapOption`）里，发送不加锁；
 //! - 延迟任务交给常驻的延迟队列 worker，不再每包 `spawn`。
 
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -20,7 +21,7 @@ use arc_swap::{ArcSwap, ArcSwapOption};
 use artnet_net::socket::DmxSender;
 use artnet_net::Bytes;
 use forwarding::{ForwardProtocol, ForwardingTable};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -62,6 +63,192 @@ pub enum DispatchTarget {
         /// 目标端口。
         port: u16,
     },
+    /// 按 Universe 表逐个路由（节目编辑器的工程级路由）：每个 Universe 可发往多个端口，
+    /// 远端编号可重映射，sACN 可单播 / 组播并指定优先级。
+    #[serde(rename_all = "camelCase")]
+    Routed {
+        /// 按 `universe` 升序、不重复的路由表（见 [`DispatchTarget::normalized`]）。
+        universes: Vec<RoutedUniverse>,
+        /// 多 Universe 帧同步。
+        #[serde(default)]
+        sync: OutputSync,
+    },
+}
+
+/// 端口的寻址方式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PortMode {
+    /// 单播到 `ip`。
+    Unicast,
+    /// 广播到 `ip`（例如 `255.255.255.255` 或子网定向广播）。
+    Broadcast,
+    /// sACN 组播：地址由远端 Universe 决定（`239.255.hi.lo`），忽略 `ip`。
+    Multicast,
+}
+
+/// Universe 的一个输出端口。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutedPort {
+    /// 协议。
+    pub protocol: ForwardProtocol,
+    /// 寻址方式。
+    pub mode: PortMode,
+    /// 目标 IP（组播时忽略）。
+    #[serde(default)]
+    pub ip: String,
+    /// 目标端口。
+    pub port: u16,
+    /// 远端 Universe：Art-Net 为 15 位 Port-Address（0~32767），sACN 为 1~63999。
+    pub remote_universe: u16,
+    /// sACN 优先级（0~200），省略为 100。
+    #[serde(default)]
+    pub priority: Option<u8>,
+    /// 是否启用。
+    pub enabled: bool,
+}
+
+impl RoutedPort {
+    /// 实际发送的目标 IP：组播时由远端 Universe 计算。
+    ///
+    /// # Returns
+    ///
+    /// IP 文本。
+    #[must_use]
+    pub fn target_ip(&self) -> String {
+        match self.mode {
+            PortMode::Multicast => artnet_net::sacn::multicast_addr(self.remote_universe).to_string(),
+            _ => self.ip.trim().to_owned(),
+        }
+    }
+}
+
+/// 一个 Universe 的路由。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutedUniverse {
+    /// 工程内的 Universe 编号。
+    pub universe: u16,
+    /// 输出端口。
+    #[serde(default)]
+    pub ports: Vec<RoutedPort>,
+}
+
+/// 多 Universe 帧同步设置。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputSync {
+    /// 每帧所有 ArtDmx 发完后向用到的 Art-Net 端点各发一个 ArtSync。
+    #[serde(default)]
+    pub art_sync: bool,
+    /// sACN 同步 Universe（1~63999）；数据包带上该同步地址，每帧末尾发送同步包。
+    #[serde(default)]
+    pub sacn_sync_universe: Option<u16>,
+}
+
+/// 路由表校验失败的原因。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouteError {
+    /// 远端 Universe 超出协议允许的范围（Art-Net 0~32767，sACN 1~63999）。
+    RemoteUniverse {
+        /// 工程内的 Universe。
+        universe: u16,
+    },
+    /// 单播 / 广播端口的 IP 不是合法的 IPv4 地址。
+    BadIp {
+        /// 工程内的 Universe。
+        universe: u16,
+    },
+    /// 组播只适用于 sACN。
+    MulticastArtNet {
+        /// 工程内的 Universe。
+        universe: u16,
+    },
+    /// sACN 同步 Universe 超出 1~63999。
+    SyncUniverse,
+}
+
+impl DispatchTarget {
+    /// 规整并校验路由目标：路由表按 Universe 升序去重（同一 Universe 的端口合并），
+    /// 优先级夹到 0~200，并检查远端编号、IP 与寻址方式。其它目标原样返回。
+    ///
+    /// # Returns
+    ///
+    /// 规整后的目标。
+    ///
+    /// # Errors
+    ///
+    /// 路由表里任一启用端口不合法、或同步 Universe 越界时返回 [`RouteError`]。
+    pub fn normalized(self) -> Result<Self, RouteError> {
+        let Self::Routed { universes, sync } = self else {
+            return Ok(self);
+        };
+        if sync.sacn_sync_universe.is_some_and(|u| !(1..=63_999).contains(&u)) {
+            return Err(RouteError::SyncUniverse);
+        }
+        let mut merged: std::collections::BTreeMap<u16, Vec<RoutedPort>> = std::collections::BTreeMap::new();
+        for u in universes {
+            for mut p in u.ports {
+                if !p.enabled {
+                    continue;
+                }
+                let ok_remote = match p.protocol {
+                    ForwardProtocol::ArtNet => p.remote_universe <= 0x7FFF,
+                    ForwardProtocol::Sacn => (1..=63_999).contains(&p.remote_universe),
+                };
+                if !ok_remote {
+                    return Err(RouteError::RemoteUniverse { universe: u.universe });
+                }
+                match p.mode {
+                    PortMode::Multicast if p.protocol == ForwardProtocol::ArtNet => {
+                        return Err(RouteError::MulticastArtNet { universe: u.universe });
+                    }
+                    PortMode::Multicast => {}
+                    PortMode::Unicast | PortMode::Broadcast => {
+                        if p.ip.trim().parse::<std::net::Ipv4Addr>().is_err() {
+                            return Err(RouteError::BadIp { universe: u.universe });
+                        }
+                    }
+                }
+                p.priority = p.priority.map(|v| v.min(200));
+                merged.entry(u.universe).or_default().push(p);
+            }
+        }
+        Ok(Self::Routed {
+            universes: merged
+                .into_iter()
+                .map(|(universe, ports)| RoutedUniverse { universe, ports })
+                .collect(),
+            sync,
+        })
+    }
+
+    /// 帧同步设置（只有路由目标有）。
+    ///
+    /// # Returns
+    ///
+    /// 路由目标的同步设置；其它目标为 `None`。
+    #[must_use]
+    pub fn sync(&self) -> Option<OutputSync> {
+        match self {
+            Self::Routed { sync, .. } => Some(*sync),
+            _ => None,
+        }
+    }
+
+    /// 路由目标里启用的端口总数。
+    ///
+    /// # Returns
+    ///
+    /// 路由目标的端口数；其它目标为 `None`。
+    #[must_use]
+    pub fn routed_ports(&self) -> Option<usize> {
+        match self {
+            Self::Routed { universes, .. } => Some(universes.iter().map(|u| u.ports.len()).sum()),
+            _ => None,
+        }
+    }
 }
 
 /// 发送所需的共享上下文（分发器与延迟队列 worker 共用）。
@@ -89,7 +276,15 @@ struct Shared {
     delay: DelayQueue,
     /// 最近一次使用的直发端点（回放直发时每帧复用，免去重复分配与 IP 解析）。
     direct: ArcSwapOption<Endpoint>,
+    /// 路由端点缓存。
+    routed: Mutex<FxHashMap<RoutedKey, Arc<Endpoint>>>,
 }
+
+/// 路由端点缓存键：`(是否 sACN, IP, 端口, 优先级)`。
+type RoutedKey = (bool, String, u16, u8);
+
+/// 路由目标端点 id 的前缀。
+pub const ROUTED_PREFIX: &str = "routed:";
 
 /// 输出分发器（可克隆，内部共享转发表 / 编译路由 / 限速状态 / 发送器 / 延迟队列）。
 #[derive(Clone)]
@@ -124,6 +319,7 @@ impl Dispatcher {
                 },
                 delay: DelayQueue::default(),
                 direct: ArcSwapOption::empty(),
+                routed: Mutex::new(FxHashMap::default()),
             }),
         }
     }
@@ -301,7 +497,7 @@ impl Dispatcher {
                     self.plan_forwarding(&routes, universe, make, now_ms, rate_limited, &mut out);
                 }
             }
-            DispatchTarget::Direct { .. } => {
+            DispatchTarget::Direct { .. } | DispatchTarget::Routed { .. } => {
                 self.plan_with(universe, make, now_ms, target, rate_limited, &mut out);
             }
         }
@@ -392,6 +588,118 @@ impl Dispatcher {
                 } else {
                     self.inner.ctx.stats.record_dropped_with(None);
                 }
+            }
+            DispatchTarget::Routed { universes, .. } => {
+                let Ok(i) = universes.binary_search_by_key(&universe, |u| u.universe) else {
+                    return;
+                };
+                let sacn_on = self.inner.sacn_enabled.load(Ordering::Relaxed);
+                for port in &universes[i].ports {
+                    if !port.enabled || (port.protocol == ForwardProtocol::Sacn && !sacn_on) {
+                        continue;
+                    }
+                    out.push(ForwardJob {
+                        endpoint: self.routed_endpoint(port),
+                        target_universe: port.remote_universe,
+                        delay_ms: 0,
+                        data: data(),
+                    });
+                }
+            }
+        }
+    }
+
+    /// 路由端口的端点：按 `(协议, IP, 端口, 优先级)` 缓存，逐帧复用。
+    fn routed_endpoint(&self, port: &RoutedPort) -> Arc<Endpoint> {
+        let ip = port.target_ip();
+        let priority = port.priority.unwrap_or(crate::routes::DEFAULT_SACN_PRIORITY);
+        let key = (port.protocol == ForwardProtocol::Sacn, ip, port.port, priority);
+        let mut cache = lock(&self.inner.routed);
+        if let Some(e) = cache.get(&key) {
+            return e.clone();
+        }
+        let id = format!("{ROUTED_PREFIX}{}:{}", key.1, key.2);
+        let e = Arc::new(Endpoint::new(&id, port.protocol, &key.1, key.2, None).with_priority(priority));
+        // 路由表很小；超出上限说明配置被反复修改，清空重建即可
+        if cache.len() >= 1024 {
+            cache.clear();
+        }
+        cache.insert(key, e.clone());
+        e
+    }
+
+    /// 发送一帧（编辑器输出）：每个 `(端点, 远端 Universe)` 独立递增序列号；按同步设置给 sACN 数据包
+    /// 带上同步地址，并在本帧所有数据包之后发送 ArtSync / sACN 同步包。
+    ///
+    /// 只处理立即发送的任务（编辑器输出不经转发表延迟）；带延迟的任务交给普通的延迟队列。
+    ///
+    /// # Arguments
+    ///
+    /// * `jobs` - 本帧的发送任务；返回时为空。
+    /// * `seqs` - 序列号表（每个输出会话一份）。
+    /// * `sync` - 帧同步设置；`None` 为不同步。
+    pub async fn send_frame(&self, jobs: &mut Vec<ForwardJob>, seqs: &mut SequenceTable, sync: Option<OutputSync>) {
+        if jobs.is_empty() {
+            return;
+        }
+        let ctx = &self.inner.ctx;
+        let sender = ctx.sender.load_full();
+        let sync = sync.unwrap_or_default();
+        let sacn_sync = sync.sacn_sync_universe.unwrap_or(0);
+        let mut artnet_addrs: Vec<SocketAddr> = Vec::new();
+        let mut sacn_unicast: Vec<SocketAddr> = Vec::new();
+        let mut delay_tx: Option<UnboundedSender<Delayed>> = None;
+        for job in jobs.drain(..) {
+            if job.delay_ms > 0 {
+                self.inner.delay.submit(ctx, &mut delay_tx, job);
+                continue;
+            }
+            let seq = seqs.next(&job.endpoint.id, job.endpoint.protocol, job.target_universe);
+            let sent = send_one_with(sender.as_deref(), ctx, &job, seq, sacn_sync, false).await;
+            if let (true, Some(addr)) = (sent, job.endpoint.addr) {
+                let list = match job.endpoint.protocol {
+                    ForwardProtocol::ArtNet => &mut artnet_addrs,
+                    ForwardProtocol::Sacn => &mut sacn_unicast,
+                };
+                if !list.contains(&addr) {
+                    list.push(addr);
+                }
+            }
+        }
+        let Some(s) = sender.as_deref() else { return };
+        if sync.art_sync {
+            for addr in artnet_addrs {
+                if s.send_artsync(addr).await.is_err() {
+                    ctx.health.report_error();
+                }
+            }
+        }
+        if sacn_sync > 0 {
+            let seq = seqs.next_sync(sacn_sync);
+            // 组播组 + 单播接收端（只接单播的节点收不到组播同步包）
+            let _ = s.send_sacn_sync(None, sacn_sync, seq).await;
+            for addr in sacn_unicast.into_iter().filter(|a| !a.ip().is_multicast()) {
+                let _ = s.send_sacn_sync(Some(addr), sacn_sync, seq).await;
+            }
+        }
+    }
+
+    /// 停止输出时给本会话用过的 sACN 流各发 3 次 Stream_Terminated（接收端立即释放本源，
+    /// 不必等 2.5 秒超时）。
+    ///
+    /// # Arguments
+    ///
+    /// * `streams` - 用过的 `(端点, 远端 Universe)`。
+    /// * `seqs` - 序列号表。
+    pub async fn terminate_sacn(&self, streams: &[(Arc<Endpoint>, u16)], seqs: &mut SequenceTable) {
+        let ctx = &self.inner.ctx;
+        let sender = ctx.sender.load_full();
+        let blank = Bytes::from_static(&[0u8; 512]);
+        for _ in 0..3 {
+            for (endpoint, universe) in streams {
+                let job = ForwardJob { endpoint: endpoint.clone(), target_universe: *universe, delay_ms: 0, data: blank.clone() };
+                let seq = seqs.next(&endpoint.id, endpoint.protocol, *universe);
+                send_one_with(sender.as_deref(), ctx, &job, seq, 0, true).await;
             }
         }
     }
@@ -509,30 +817,111 @@ impl Dispatcher {
 /// 目标 IP 非法属于配置错误：计入输出统计的错误数，但不影响发送器健康度。
 /// 发送器尚未就绪（`sender` 为 `None`）时静默忽略（发送器缺失由监督任务负责创建，不算发送失败）。
 pub(crate) async fn send_one(sender: Option<&DmxSender>, ctx: &SendCtx, job: &ForwardJob) {
+    send_one_with(sender, ctx, job, 0, 0, false).await;
+}
+
+/// 执行一次发送，可指定序列号、sACN 同步地址与 Stream_Terminated 标志。
+///
+/// # Arguments
+///
+/// * `sender` - 发送器；尚未就绪时静默忽略。
+/// * `ctx` - 健康度与统计。
+/// * `job` - 发送任务（端点带 sACN 优先级）。
+/// * `sequence` - 序列号（Art-Net 的 0 表示禁用序列）。
+/// * `sync_universe` - sACN 同步地址；0 为不同步。
+/// * `terminated` - sACN Stream_Terminated 标志。
+///
+/// # Returns
+///
+/// 数据报成功交给套接字时为 `true`。
+pub(crate) async fn send_one_with(
+    sender: Option<&DmxSender>,
+    ctx: &SendCtx,
+    job: &ForwardJob,
+    sequence: u8,
+    sync_universe: u16,
+    terminated: bool,
+) -> bool {
     let ep = &*job.endpoint;
     let counters = ep.counters.as_deref();
     let Some(addr) = ep.addr else {
         ctx.stats
             .record_error_with(counters, &format!("目标 IP 无效: {}", ep.target_ip));
-        return;
+        return false;
     };
-    let Some(s) = sender else { return };
+    let Some(s) = sender else { return false };
     let result = match ep.protocol {
-        ForwardProtocol::ArtNet => s.send_artnet(addr, job.target_universe, 0, &job.data).await,
+        ForwardProtocol::ArtNet => s.send_artnet(addr, job.target_universe, sequence, &job.data).await,
         ForwardProtocol::Sacn => {
-            s.send_sacn(Some(addr), job.target_universe, 0, 100, &job.data)
-                .await
+            s.send_sacn_ext(
+                Some(addr),
+                job.target_universe,
+                sequence,
+                ep.priority,
+                sync_universe,
+                terminated,
+                &job.data,
+            )
+            .await
         }
     };
     match result {
         Ok(()) => {
             ctx.health.report_ok();
             ctx.stats.record_sent_with(counters);
+            true
         }
         Err(e) => {
             ctx.health.report_error();
             ctx.stats.record_error_with(counters, &e.to_string());
+            false
         }
+    }
+}
+
+/// 输出会话的序列号表：每个 `(端点, 远端 Universe)` 独立递增。
+///
+/// Art-Net 的序列号 0 表示“不启用序列”，因此在 1~255 之间循环；sACN 在 0~255 之间循环。
+#[derive(Debug, Default)]
+pub struct SequenceTable {
+    data: rustc_hash::FxHashMap<(Arc<str>, u16), u8>,
+    sync: rustc_hash::FxHashMap<u16, u8>,
+}
+
+impl SequenceTable {
+    /// 下一个数据包序列号。
+    ///
+    /// # Arguments
+    ///
+    /// * `endpoint` - 端点 id。
+    /// * `protocol` - 协议（决定循环范围）。
+    /// * `universe` - 远端 Universe。
+    ///
+    /// # Returns
+    ///
+    /// 序列号。
+    pub fn next(&mut self, endpoint: &Arc<str>, protocol: ForwardProtocol, universe: u16) -> u8 {
+        let entry = self.data.entry((endpoint.clone(), universe)).or_insert(0);
+        *entry = match (protocol, entry.wrapping_add(1)) {
+            (ForwardProtocol::ArtNet, 0) => 1,
+            (_, v) => v,
+        };
+        *entry
+    }
+
+    /// 下一个 sACN 同步包序列号。
+    ///
+    /// # Arguments
+    ///
+    /// * `sync_universe` - 同步 Universe。
+    ///
+    /// # Returns
+    ///
+    /// 序列号。
+    pub fn next_sync(&mut self, sync_universe: u16) -> u8 {
+        let entry = self.sync.entry(sync_universe).or_insert(0);
+        *entry = entry.wrapping_add(1);
+        *entry
     }
 }
 
@@ -1052,6 +1441,120 @@ mod tests {
             }
             other => panic!("期望 ArtDmx，实际 {other:?}"),
         }
+    }
+
+    /// 路由目标：远端编号重映射、一个 Universe 扇出到两个端口、序列号逐帧递增、帧末 ArtSync。
+    #[tokio::test]
+    async fn routed_target_remaps_fans_out_and_syncs() {
+        use super::{OutputSync, PortMode, RoutedPort, RoutedUniverse, SequenceTable};
+        let rx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let port = rx.local_addr().unwrap().port();
+        let artnet = |remote| RoutedPort {
+            protocol: ForwardProtocol::ArtNet,
+            mode: PortMode::Unicast,
+            ip: "127.0.0.1".into(),
+            port,
+            remote_universe: remote,
+            priority: None,
+            enabled: true,
+        };
+        let target = DispatchTarget::Routed {
+            universes: vec![RoutedUniverse { universe: 3, ports: vec![artnet(0x0105), artnet(9)] }],
+            sync: OutputSync { art_sync: true, sacn_sync_universe: None },
+        }
+        .normalized()
+        .unwrap();
+        let d = Dispatcher::with_table(ForwardingTable::default(), live_sender().await);
+        assert!(d.plan(4, &[1], 0, &target, false).is_empty(), "未配置的 Universe 不输出");
+        let mut seqs = SequenceTable::default();
+        let mut buf = [0u8; 2048];
+        for frame in 1..=2u8 {
+            let mut jobs = d.plan(3, &[frame; 4], 0, &target, false);
+            assert_eq!(jobs.len(), 2);
+            d.send_frame(&mut jobs, &mut seqs, target.sync()).await;
+            let mut got = Vec::new();
+            for _ in 0..3 {
+                let (n, _) = tokio::time::timeout(Duration::from_secs(2), rx.recv_from(&mut buf))
+                    .await
+                    .expect("应收到 2 个 ArtDmx 与 1 个 ArtSync")
+                    .unwrap();
+                got.push(buf[..n].to_vec());
+            }
+            match artnet::parse(&got[0]) {
+                Some(ArtNetPacket::Dmx { port_address, sequence, data }) => {
+                    assert_eq!((port_address, sequence), (0x0105, frame));
+                    assert_eq!(data[0], frame);
+                }
+                other => panic!("第一个包应是 ArtDmx：{other:?}"),
+            }
+            assert!(matches!(artnet::parse(&got[1]), Some(ArtNetPacket::Dmx { port_address: 9, .. })));
+            assert_eq!(&got[2][8..10], &[0x00, 0x52], "帧末是 ArtSync");
+        }
+    }
+
+    /// 路由表校验：Art-Net 组播、sACN 远端 0、非法 IP、同步 Universe 越界都被拒绝；同一 Universe 的端口合并。
+    #[test]
+    fn routed_target_validation() {
+        use super::{OutputSync, PortMode, RouteError, RoutedPort, RoutedUniverse};
+        let port = |protocol, mode, ip: &str, remote| RoutedPort {
+            protocol,
+            mode,
+            ip: ip.into(),
+            port: 6454,
+            remote_universe: remote,
+            priority: Some(255),
+            enabled: true,
+        };
+        let routed = |ports: Vec<RoutedPort>| DispatchTarget::Routed {
+            universes: vec![RoutedUniverse { universe: 1, ports }],
+            sync: OutputSync::default(),
+        };
+        assert_eq!(
+            routed(vec![port(ForwardProtocol::ArtNet, PortMode::Multicast, "", 1)]).normalized(),
+            Err(RouteError::MulticastArtNet { universe: 1 })
+        );
+        assert_eq!(
+            routed(vec![port(ForwardProtocol::Sacn, PortMode::Multicast, "", 0)]).normalized(),
+            Err(RouteError::RemoteUniverse { universe: 1 })
+        );
+        assert_eq!(
+            routed(vec![port(ForwardProtocol::ArtNet, PortMode::Unicast, "1.2.3", 1)]).normalized(),
+            Err(RouteError::BadIp { universe: 1 })
+        );
+        let ok = DispatchTarget::Routed {
+            universes: vec![
+                RoutedUniverse { universe: 5, ports: vec![port(ForwardProtocol::Sacn, PortMode::Multicast, "", 7)] },
+                RoutedUniverse { universe: 5, ports: vec![port(ForwardProtocol::ArtNet, PortMode::Broadcast, "255.255.255.255", 5)] },
+                RoutedUniverse { universe: 2, ports: vec![port(ForwardProtocol::ArtNet, PortMode::Unicast, "10.0.0.1", 2)] },
+            ],
+            sync: OutputSync { art_sync: false, sacn_sync_universe: Some(64_000) },
+        };
+        assert_eq!(ok.clone().normalized(), Err(RouteError::SyncUniverse));
+        let DispatchTarget::Routed { universes, .. } = (DispatchTarget::Routed {
+            universes: match ok { DispatchTarget::Routed { universes, .. } => universes, _ => unreachable!() },
+            sync: OutputSync::default(),
+        })
+        .normalized()
+        .unwrap() else { unreachable!() };
+        assert_eq!(universes.iter().map(|u| (u.universe, u.ports.len())).collect::<Vec<_>>(), vec![(2, 1), (5, 2)]);
+        assert_eq!(universes[1].ports[0].priority, Some(200));
+        assert_eq!(universes[1].ports[0].target_ip(), "239.255.0.7");
+    }
+
+    /// 序列号：Art-Net 跳过 0（0 表示禁用序列），sACN 0~255 循环；不同 Universe 独立。
+    #[test]
+    fn sequence_table_wraps_per_stream() {
+        let mut s = super::SequenceTable::default();
+        let id: Arc<str> = Arc::from("x");
+        for _ in 0..255 {
+            s.next(&id, ForwardProtocol::ArtNet, 1);
+        }
+        assert_eq!(s.next(&id, ForwardProtocol::ArtNet, 1), 1);
+        assert_eq!(s.next(&id, ForwardProtocol::ArtNet, 2), 1);
+        for _ in 0..255 {
+            s.next(&id, ForwardProtocol::Sacn, 9);
+        }
+        assert_eq!(s.next(&id, ForwardProtocol::Sacn, 9), 0);
     }
 
     /// 延迟 > 0 的任务会在延迟之后才到达。

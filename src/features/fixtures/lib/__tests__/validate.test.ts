@@ -43,9 +43,36 @@ describe("validateModel", () => {
     expect(validateModel(model([prop()], { id: "x".repeat(65) }))?.code).toBe("idTooLong");
     expect(validateModel(model([prop()], { name: "" }))?.code).toBe("emptyName");
     expect(validateModel(model([]))?.code).toBe("noProperties");
-    expect(validateModel(model(Array.from({ length: 65 }, (_, i) => prop({ channel: i + 1, function: "other", code: `C${i}` }))))?.code).toBe(
+    expect(validateModel(model(Array.from({ length: 257 }, (_, i) => prop({ channel: i + 1, function: "other", code: `C${i}` }))))?.code).toBe(
       "tooManyProperties",
     );
+  });
+
+  it("能力区间必须升序、在位宽内且互不重叠", () => {
+    const cap = (lo: number, hi: number) => ({ range: [lo, hi] as [number, number], label: "" });
+    expect(validateModel(model([prop({ capabilities: [cap(0, 20), cap(21, 255)] })]))).toBeNull();
+    expect(validateModel(model([prop({ capabilities: [cap(0, 20), cap(20, 255)] })]))?.code).toBe("badCapability");
+    expect(validateModel(model([prop({ capabilities: [cap(30, 10)] })]))?.code).toBe("badCapability");
+    expect(validateModel(model([prop({ capabilities: [cap(0, 256)] })]))?.code).toBe("badCapability");
+  });
+
+  it("像素头：同一功能可出现在不同像素，像素须在排布之内", () => {
+    const props = [
+      prop({ function: "dimmer" }),
+      prop({ function: "red", code: "R1", channel: 2, head: 1 }),
+      prop({ function: "red", code: "R2", channel: 3, head: 2 }),
+    ];
+    expect(validateModel(model(props))?.code).toBe("headOutOfRange");
+    expect(validateModel(model(props, { matrix: { cols: 2, rows: 1 } }))).toBeNull();
+    expect(validateModel(model(props, { matrix: { cols: 0, rows: 1 } }))?.code).toBe("badMatrix");
+  });
+
+  it("附加模式：编号非空且唯一，布局各自校验", () => {
+    const mode = { id: "5ch", name: "5ch", properties: [prop()] };
+    expect(validateModel(model([prop()], { modes: [mode] }))).toBeNull();
+    expect(validateModel(model([prop()], { modes: [mode, mode] }))?.code).toBe("badMode");
+    expect(validateModel(model([prop()], { modes: [{ ...mode, id: " " }] }))?.code).toBe("badMode");
+    expect(validateModel(model([prop()], { modes: [{ ...mode, properties: [] }] }))?.code).toBe("noProperties");
   });
 
   it("通道越界与默认值超范围", () => {

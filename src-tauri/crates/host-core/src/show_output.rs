@@ -18,7 +18,10 @@ use std::time::Instant;
 use bytes::Bytes;
 use tokio::sync::mpsc::{self, error::TrySendError};
 
-use crate::dispatch::{DispatchTarget, Dispatcher};
+use forwarding::ForwardProtocol;
+
+use crate::dispatch::{DispatchTarget, Dispatcher, SequenceTable};
+use crate::routes::Endpoint;
 use crate::mode::RuntimeMode;
 use crate::playback::{ERR_RECORDING_ACTIVE, ERR_SHOW_ACTIVE};
 
@@ -163,16 +166,33 @@ impl Drop for ShowOutput {
 }
 
 /// 发送任务：逐条取出消息，解析路由并发送；发送端丢弃后取空即结束。
+///
+/// 每个 `(端点, 远端 Universe)` 的序列号独立递增；路由目标开启同步时，每帧末尾发送 ArtSync /
+/// sACN 同步包。会话结束时给用过的 sACN 流发送 Stream_Terminated。
 async fn run_output(dispatcher: Dispatcher, started_at: Instant, mut rx: mpsc::Receiver<Msg>) {
     let mut jobs = Vec::new();
+    let mut seqs = SequenceTable::default();
+    let mut sacn_streams: Vec<(Arc<Endpoint>, u16)> = Vec::new();
     while let Some(msg) = rx.recv().await {
         let now_ms = started_at.elapsed().as_millis() as u64;
         for (universe, data) in msg.frames {
             dispatcher.plan_into(universe, data, now_ms, &msg.target, false, &mut jobs);
         }
-        dispatcher.send_batch(&mut jobs).await;
+        for job in &jobs {
+            if job.endpoint.protocol == ForwardProtocol::Sacn
+                && sacn_streams.len() < MAX_TRACKED_STREAMS
+                && !sacn_streams.iter().any(|(e, u)| Arc::ptr_eq(e, &job.endpoint) && *u == job.target_universe)
+            {
+                sacn_streams.push((job.endpoint.clone(), job.target_universe));
+            }
+        }
+        dispatcher.send_frame(&mut jobs, &mut seqs, msg.target.sync()).await;
     }
+    dispatcher.terminate_sacn(&sacn_streams, &mut seqs).await;
 }
+
+/// 会话结束时最多为多少个 sACN 流发送 Stream_Terminated。
+const MAX_TRACKED_STREAMS: usize = 4096;
 
 #[cfg(test)]
 mod tests {

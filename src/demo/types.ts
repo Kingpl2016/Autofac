@@ -204,6 +204,8 @@ export interface FixturesSeed {
   models: FixtureModel[];
   /** “导入物模型表”命令返回的固定结果 */
   importOutcome: ImportOutcome;
+  /** “导入 OFL 灯具”命令导入的示例模型（多头像素灯 + 附加模式 + 能力区间） */
+  oflSample: FixtureModel;
 }
 /** 全部演示数据。 */
 export interface DemoData {

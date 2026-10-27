@@ -9,7 +9,8 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use show_engine::fixture::{
-    import_xlsx, FixtureLibrary, FixtureModel, ImportError, ImportWarning, MergeOutcome,
+    import_ofl, import_xlsx, FixtureLibrary, FixtureModel, ImportError, ImportWarning,
+    MergeOutcome,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -160,6 +161,82 @@ pub async fn fixture_import_xlsx(
     })
 }
 
+/// 允许导入的 OFL JSON 文件大小上限（字节）。
+const MAX_OFL_BYTES: u64 = 5 * 1024 * 1024;
+
+/// 检查 OFL 导入路径，并给出生成模型编号用的标识（`上级目录/文件名`）。
+///
+/// # Arguments
+///
+/// * `path` - 用户选择的文件路径。
+///
+/// # Returns
+///
+/// 通过检查的路径与标识，例如 `cameo/auro-spot-200`。
+///
+/// # Errors
+///
+/// - 扩展名不是 `.json` 或不是文件时返回 [`ERR_BAD_PATH`]。
+/// - 文件超过 5 MiB 时返回 [`ERR_FILE_TOO_LARGE`]。
+fn check_ofl_path(path: &str) -> Result<(PathBuf, String), String> {
+    let path = Path::new(path.trim());
+    let is_json = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    let meta = std::fs::metadata(path).map_err(|_| ERR_BAD_PATH.to_owned())?;
+    if !is_json || !meta.is_file() {
+        return Err(ERR_BAD_PATH.to_owned());
+    }
+    if meta.len() > MAX_OFL_BYTES {
+        return Err(ERR_FILE_TOO_LARGE.to_owned());
+    }
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("fixture");
+    let parent = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|s| s.to_str())
+        .unwrap_or("ofl");
+    Ok((path.to_path_buf(), format!("{parent}/{stem}")))
+}
+
+/// 导入一个 Open Fixture Library 灯具 JSON，并合并进用户库。
+///
+/// # Arguments
+///
+/// * `state` - 灯具库状态。
+/// * `path` - 用户选择的 `.json` 文件路径。
+///
+/// # Returns
+///
+/// 合并统计与解析警告。
+///
+/// # Errors
+///
+/// 路径或大小不符合要求（`bad_path` / `file_too_large`）、不是合法 OFL JSON
+/// （`import_failed:open`）、没有可用模式（`import_failed:no_models`）、写库失败（`io`）。
+#[tauri::command]
+pub async fn fixture_import_ofl(
+    state: State<'_, FixtureState>,
+    path: String,
+) -> Result<ImportOutcome, String> {
+    let (path, key) = check_ofl_path(&path)?;
+    let text = tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|_| "import_failed:open".to_owned())?;
+    let report = import_ofl(&text, &key).map_err(|e| match e {
+        ImportError::Open(_) => "import_failed:open".to_owned(),
+        ImportError::NoModels => "import_failed:no_models".to_owned(),
+    })?;
+    let merge = state
+        .with(|lib| lib.merge_import(report.models))
+        .map_err(|e| e.code())?;
+    Ok(ImportOutcome {
+        merge,
+        warnings: report.warnings,
+    })
+}
+
 /// 新增或更新一个自定义灯具模型。
 ///
 /// # Arguments
@@ -211,6 +288,20 @@ mod tests {
         std::fs::write(&txt, b"x").expect("写临时文件");
         assert_eq!(check_xlsx_path(&txt.to_string_lossy()), Err(ERR_BAD_PATH.to_owned()));
         let _ = std::fs::remove_file(&txt);
+    }
+
+    #[test]
+    fn ofl路径必须是json文件_标识取上级目录与文件名() {
+        let dir = std::env::temp_dir().join(format!("ofl-cmd-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("cameo")).expect("建临时目录");
+        let json = dir.join("cameo").join("auro-spot.json");
+        std::fs::write(&json, b"{}").expect("写临时文件");
+        let (_, key) = check_ofl_path(&json.to_string_lossy()).expect("应通过");
+        assert_eq!(key, "cameo/auro-spot");
+        let txt = dir.join("cameo").join("a.txt");
+        std::fs::write(&txt, b"x").expect("写临时文件");
+        assert_eq!(check_ofl_path(&txt.to_string_lossy()).map(|_| ()), Err(ERR_BAD_PATH.to_owned()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

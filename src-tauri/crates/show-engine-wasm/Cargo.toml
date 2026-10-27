@@ -1,0 +1,22 @@
+[package]
+name = "show-engine-wasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "show-engine 的 WebAssembly 外壳：前端预览与后端输出共用同一份编译 / 求值 / 混色实现"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints.clippy]
+pedantic = "warn"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+module_name_repetitions = "allow"
+
+[dependencies]
+show-engine = { path = "../show-engine", default-features = false }
+serde_json = { workspace = true }

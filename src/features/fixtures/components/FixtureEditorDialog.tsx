@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,23 +13,23 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { blankProperty, defaultValueFor } from "../lib/draft";
+  DEFAULT_MODE_KEY,
+  addMode,
+  blankProperty,
+  layoutForKey,
+  removeMode,
+  withLayout,
+} from "../lib/draft";
 import { fixtureErrorText } from "../lib/errors";
-import {
-  CHANNEL_FUNCTIONS,
-  type ChannelFunction,
-  type FixtureModel,
-  type FixtureProperty,
-} from "../lib/types";
-import { validateModel } from "../lib/validate";
+import { headCount } from "../lib/functions";
+import type { FixtureModel, FixtureProperty } from "../lib/types";
+import { footprint, validateModel } from "../lib/validate";
+import { ChannelStrip } from "./ChannelStrip";
+import { EmitterSection, PhysicalSection } from "./editor/ModelExtras";
+import { PropertyRow } from "./editor/PropertyRow";
 
 interface FixtureEditorDialogProps {
   open: boolean;
@@ -57,6 +57,7 @@ export function FixtureEditorDialog(props: FixtureEditorDialogProps) {
 function FixtureEditor({ onOpenChange, initial, lockId, takenIds, onSave }: FixtureEditorDialogProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<FixtureModel>(initial);
+  const [modeKey, setModeKey] = useState<string>(DEFAULT_MODE_KEY);
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -69,12 +70,16 @@ function FixtureEditor({ onOpenChange, initial, lockId, takenIds, onSave }: Fixt
       ? t(`fixtures.validation.${issue.code}`, issue.params)
       : null;
 
+  const layout = layoutForKey(draft, modeKey);
+  const heads = headCount(draft);
+  const modes = draft.modes ?? [];
+  const activeMode = modes.find((m) => m.id === modeKey);
+
   const patch = (changes: Partial<FixtureModel>) => setDraft((d) => ({ ...d, ...changes }));
+  const setLayout = (fn: (props: FixtureProperty[]) => FixtureProperty[]) =>
+    setDraft((d) => withLayout(d, modeKey, fn(layoutForKey(d, modeKey))));
   const patchRow = (index: number, changes: Partial<FixtureProperty>) =>
-    setDraft((d) => ({
-      ...d,
-      properties: d.properties.map((p, i) => (i === index ? { ...p, ...changes } : p)),
-    }));
+    setLayout((props) => props.map((p, i) => (i === index ? { ...p, ...changes } : p)));
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -92,178 +97,152 @@ function FixtureEditor({ onOpenChange, initial, lockId, takenIds, onSave }: Fixt
     }
   };
 
+  const textField = (id: string, label: string, value: string, set: (v: string) => void, extra?: { disabled?: boolean; mono?: boolean; hint?: string }) => (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        className={extra?.mono ? "num" : undefined}
+        value={value}
+        disabled={extra?.disabled}
+        onChange={(e) => set(e.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {extra?.hint && <p className="text-xs text-muted-foreground">{extra.hint}</p>}
+    </div>
+  );
+
   return (
     <Dialog open onOpenChange={(o) => !saving && onOpenChange(o)}>
-      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{lockId ? t("fixtures.editor.editTitle") : t("fixtures.editor.createTitle")}</DialogTitle>
           <DialogDescription>{t("fixtures.editor.description")}</DialogDescription>
         </DialogHeader>
 
         <form id="fixture-form" className="grid gap-5" onSubmit={(e) => void submit(e)} noValidate>
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="fx-id">{t("fixtures.detail.id")}</Label>
-              <Input
-                id="fx-id"
-                className="num"
-                value={draft.id}
-                disabled={lockId}
-                onChange={(e) => patch({ id: e.target.value })}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <p className="text-xs text-muted-foreground">{t("fixtures.editor.idHint")}</p>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="fx-name">{t("fixtures.editor.name")}</Label>
-              <Input id="fx-name" value={draft.name} onChange={(e) => patch({ name: e.target.value })} autoComplete="off" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="fx-system">{t("fixtures.detail.system")}</Label>
-              <Input id="fx-system" value={draft.system} onChange={(e) => patch({ system: e.target.value })} autoComplete="off" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="fx-type">{t("fixtures.detail.productType")}</Label>
-              <Input id="fx-type" value={draft.productType} onChange={(e) => patch({ productType: e.target.value })} autoComplete="off" />
-            </div>
+          <div className="grid gap-4 sm:grid-cols-5">
+            {textField("fx-id", t("fixtures.detail.id"), draft.id, (id) => patch({ id }), {
+              disabled: lockId,
+              mono: true,
+              hint: t("fixtures.editor.idHint"),
+            })}
+            {textField("fx-name", t("fixtures.editor.name"), draft.name, (name) => patch({ name }))}
+            {textField("fx-maker", t("fixtures.editor.manufacturer"), draft.manufacturer ?? "", (v) =>
+              patch({ manufacturer: v || undefined }),
+            )}
+            {textField("fx-system", t("fixtures.detail.system"), draft.system, (system) => patch({ system }))}
+            {textField("fx-type", t("fixtures.detail.productType"), draft.productType, (productType) => patch({ productType }))}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[56rem] text-sm">
-              <caption className="sr-only">{t("fixtures.editor.propertiesCaption")}</caption>
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground">
-                  <th scope="col" className="w-20 pb-2 pr-2 font-medium">{t("fixtures.table.channel")}</th>
-                  <th scope="col" className="w-24 pb-2 pr-2 font-medium">{t("fixtures.table.width")}</th>
-                  <th scope="col" className="pb-2 pr-2 font-medium">{t("fixtures.editor.propName")}</th>
-                  <th scope="col" className="pb-2 pr-2 font-medium">{t("fixtures.editor.propCode")}</th>
-                  <th scope="col" className="w-44 pb-2 pr-2 font-medium">{t("fixtures.table.function")}</th>
-                  <th scope="col" className="w-24 pb-2 pr-2 font-medium">{t("fixtures.editor.bigEndian")}</th>
-                  <th scope="col" className="w-24 pb-2 pr-2 font-medium">{t("fixtures.table.default")}</th>
-                  <th scope="col" className="w-10 pb-2"><span className="sr-only">{t("common.delete")}</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {draft.properties.map((p, i) => (
-                  <tr key={i} className="align-middle">
-                    <td className="pb-2 pr-2">
-                      <Input
-                        className="num h-9 px-2"
-                        inputMode="numeric"
-                        aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.table.channel") })}
-                        value={p.channel}
-                        onChange={(e) => patchRow(i, { channel: Number(e.target.value) || 0 })}
-                      />
-                    </td>
-                    <td className="pb-2 pr-2">
-                      <Select
-                        value={String(p.width)}
-                        onValueChange={(v) => {
-                          const width = v === "2" ? 2 : 1;
-                          patchRow(i, {
-                            width,
-                            defaultValue: Math.min(p.defaultValue, width === 2 ? 65535 : 255),
-                          });
-                        }}
-                      >
-                        <SelectTrigger
-                          className="h-9 px-2"
-                          aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.table.width") })}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">{t("fixtures.table.bits8")}</SelectItem>
-                          <SelectItem value="2">{t("fixtures.editor.bits16")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="pb-2 pr-2">
-                      <Input
-                        className="h-9 px-2"
-                        aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.editor.propName") })}
-                        value={p.name}
-                        onChange={(e) => patchRow(i, { name: e.target.value })}
-                      />
-                    </td>
-                    <td className="pb-2 pr-2">
-                      <Input
-                        className="num h-9 px-2"
-                        aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.editor.propCode") })}
-                        value={p.code}
-                        onChange={(e) => patchRow(i, { code: e.target.value })}
-                        spellCheck={false}
-                      />
-                    </td>
-                    <td className="pb-2 pr-2">
-                      <Select
-                        value={p.function}
-                        onValueChange={(v) => {
-                          const fn = v as ChannelFunction;
-                          patchRow(i, { function: fn, defaultValue: defaultValueFor(fn, p.width) });
-                        }}
-                      >
-                        <SelectTrigger
-                          className="h-9 px-2"
-                          aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.table.function") })}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CHANNEL_FUNCTIONS.map((fn) => (
-                            <SelectItem key={fn} value={fn}>
-                              {t(`fixtures.functions.${fn}`)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="pb-2 pr-2">
-                      <Switch
-                        checked={p.bigEndian}
-                        disabled={p.width !== 2}
-                        onCheckedChange={(v) => patchRow(i, { bigEndian: v })}
-                        aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.editor.bigEndian") })}
-                      />
-                    </td>
-                    <td className="pb-2 pr-2">
-                      <Input
-                        className="num h-9 px-2"
-                        inputMode="numeric"
-                        aria-label={t("fixtures.editor.rowLabel", { n: i + 1, field: t("fixtures.table.default") })}
-                        value={p.defaultValue}
-                        onChange={(e) => patchRow(i, { defaultValue: Number(e.target.value) || 0 })}
-                      />
-                    </td>
-                    <td className="pb-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-9"
-                        aria-label={t("fixtures.editor.removeRow", { n: i + 1 })}
-                        onClick={() =>
-                          setDraft((d) => ({ ...d, properties: d.properties.filter((_, j) => j !== i) }))
-                        }
-                      >
-                        <Trash2 aria-hidden />
-                      </Button>
-                    </td>
-                  </tr>
+          <Tabs defaultValue="layout">
+            <TabsList>
+              <TabsTrigger value="layout">{t("fixtures.editor.tabLayout")}</TabsTrigger>
+              <TabsTrigger value="physical">{t("fixtures.editor.tabPhysical")}</TabsTrigger>
+              <TabsTrigger value="emitters">{t("fixtures.editor.tabEmitters")}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="layout" className="grid gap-4">
+              {/* 通道模式：默认模式 + 附加模式，切换后下面编辑的就是该模式的布局 */}
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("fixtures.editor.modes")}>
+                {[{ id: DEFAULT_MODE_KEY, name: draft.defaultModeName || t("fixtures.editor.defaultMode"), props: draft.properties }, ...modes.map((m) => ({ id: m.id, name: m.name || m.id, props: m.properties }))].map((m) => (
+                  <Button
+                    key={m.id || "__default"}
+                    type="button"
+                    size="sm"
+                    variant={m.id === modeKey ? "default" : "outline"}
+                    aria-pressed={m.id === modeKey}
+                    onClick={() => setModeKey(m.id)}
+                  >
+                    {m.name}
+                    <span className={cn("num text-xs", m.id === modeKey ? "opacity-80" : "text-muted-foreground")}>
+                      {t("fixtures.editor.modeChannels", { count: footprint(m.props) })}
+                    </span>
+                  </Button>
                 ))}
-              </tbody>
-            </table>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDraft((d) => ({ ...d, properties: [...d.properties, blankProperty(d)] }))}
-            >
-              <Plus aria-hidden />
-              {t("fixtures.editor.addProperty")}
-            </Button>
-          </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const next = addMode(draft, modeKey, t("fixtures.editor.newModeName", { n: modes.length + 2 }));
+                    setDraft(next.model);
+                    setModeKey(next.key);
+                  }}
+                >
+                  <Copy aria-hidden />
+                  {t("fixtures.editor.addMode")}
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="fx-mode-name">{t("fixtures.editor.modeName")}</Label>
+                  <Input
+                    id="fx-mode-name"
+                    className="w-56"
+                    value={activeMode ? activeMode.name : (draft.defaultModeName ?? "")}
+                    placeholder={t("fixtures.editor.defaultMode")}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      if (activeMode) {
+                        patch({ modes: modes.map((m) => (m.id === modeKey ? { ...m, name } : m)) });
+                      } else {
+                        patch({ defaultModeName: name || undefined });
+                      }
+                    }}
+                  />
+                </div>
+                {activeMode && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDraft((d) => removeMode(d, modeKey));
+                      setModeKey(DEFAULT_MODE_KEY);
+                    }}
+                  >
+                    <Trash2 aria-hidden />
+                    {t("fixtures.editor.removeMode")}
+                  </Button>
+                )}
+              </div>
+
+              <ChannelStrip model={{ properties: layout }} />
+
+              <ul className="grid gap-2" aria-label={t("fixtures.editor.propertiesCaption")}>
+                {layout.map((p, i) => (
+                  <PropertyRow
+                    key={i}
+                    property={p}
+                    row={i + 1}
+                    heads={heads}
+                    onChange={(changes) => patchRow(i, changes)}
+                    onRemove={() => setLayout((props) => props.filter((_, j) => j !== i))}
+                  />
+                ))}
+              </ul>
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLayout((props) => [...props, blankProperty({ properties: props })])}
+                >
+                  <Plus aria-hidden />
+                  {t("fixtures.editor.addProperty")}
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="physical">
+              <PhysicalSection draft={draft} onChange={patch} />
+            </TabsContent>
+            <TabsContent value="emitters">
+              <EmitterSection draft={draft} onChange={patch} />
+            </TabsContent>
+          </Tabs>
 
           {submitted && issueText && (
             <p role="alert" className="text-sm font-medium text-destructive">

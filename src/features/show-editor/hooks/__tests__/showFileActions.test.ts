@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
 vi.mock("../../lib/showFile", async (orig) => ({ ...(await orig<typeof import("../../lib/showFile")>()), ...api }));
 
 import { addFixtures } from "../../lib/ops";
-import { createEmptyProject, type ShowProject } from "../../lib/project";
+import { createEmptyProject, PROJECT_VERSION, type ShowProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
 import { useDocumentStore } from "../../stores/useDocumentStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
@@ -131,7 +131,7 @@ describe("保存到库外文件", () => {
     api.showExternalSave.mockResolvedValue(undefined);
     await saveToFile("D:/桌面/副本.artshow");
     expect(origin()).toEqual({ kind: "external", path: "D:/桌面/副本.artshow" });
-    expect(JSON.parse(api.showExternalSave.mock.calls[0][1] as string).version).toBe(1);
+    expect(JSON.parse(api.showExternalSave.mock.calls[0][1] as string).version).toBe(PROJECT_VERSION);
   });
 
   it("失败时抛出错误码", async () => {

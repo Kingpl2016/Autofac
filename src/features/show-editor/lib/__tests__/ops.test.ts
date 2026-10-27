@@ -13,6 +13,8 @@ import {
   renameFixture,
   renameGroup,
   setFixtureAddress,
+  setLoopEdge,
+  setLoopRange,
   trackName,
 } from "../ops";
 import { createEmptyProject, type Cue, type ShowProject } from "../project";
@@ -232,5 +234,30 @@ describe("撤销友好：编辑不改动旧快照", () => {
       removeFixtures(d, ids);
     });
     expect(project).toEqual(before);
+  });
+});
+
+describe("setLoopRange / setLoopEdge", () => {
+  const longShow = () => produce(createEmptyProject("t"), (d) => void (d.durationMs = 10_000));
+
+  it("区间被夹到节目内，空区间视为清除", () => {
+    const p = produce(longShow(), (d) => setLoopRange(d, { startMs: -500, endMs: 20_000 }));
+    expect(p.loopRange).toEqual({ startMs: 0, endMs: 10_000 });
+    const cleared = produce(p, (d) => setLoopRange(d, { startMs: 3000, endMs: 3000 }));
+    expect(cleared.loopRange).toBeNull();
+    expect(produce(p, (d) => setLoopRange(d, null)).loopRange).toBeNull();
+  });
+
+  it("只设入点时出点取节目终点，只设出点时入点取 0", () => {
+    expect(produce(longShow(), (d) => setLoopEdge(d, "in", 2000)).loopRange).toEqual({ startMs: 2000, endMs: 10_000 });
+    expect(produce(longShow(), (d) => setLoopEdge(d, "out", 4000)).loopRange).toEqual({ startMs: 0, endMs: 4000 });
+  });
+
+  it("入点晚于出点时交换", () => {
+    const p = produce(longShow(), (d) => {
+      setLoopRange(d, { startMs: 1000, endMs: 3000 });
+      setLoopEdge(d, "in", 5000);
+    });
+    expect(p.loopRange).toEqual({ startMs: 3000, endMs: 5000 });
   });
 });

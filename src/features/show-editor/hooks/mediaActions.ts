@@ -5,7 +5,8 @@ import type { TFunction } from "i18next";
 import i18n from "@/shared/i18n";
 import { announce } from "@/shared/stores/announcerStore";
 import { newId } from "../lib/ids";
-import { extensionOf, fileNameOf, isMediaPath, mediaEndMs } from "../lib/media";
+import { extensionOf, fileNameOf, isMediaPath } from "../lib/media";
+import { mediaContentEndMs, placeMediaClip, type MediaPlaceResult } from "../lib/mediaClips";
 import { canPlayExtension } from "../lib/mediaSync";
 import {
   MEDIA_ERR,
@@ -130,18 +131,54 @@ export async function describeMedia(path: string): Promise<MediaRef> {
     path,
     name: fileNameOf(path),
     durationMs,
-    offsetMs: 0,
   };
 }
 
 /**
- * 导入一批文件：不支持的扩展名与已引用的路径被跳过，其余探测后加入工程；
- * 比节目更长的素材会自动延长节目时长。每个失败的文件单独报告，不影响其他文件。
+ * 新建媒体轨道时的默认名字，例如“音频 2”。
+ *
+ * @param kind 轨道类型。
+ * @returns 名字（按同类轨道数量编号）。
+ */
+export function nextMediaTrackName(kind: MediaRef["kind"]): string {
+  const n = useProjectStore.getState().project.mediaTracks.filter((tr) => tr.kind === kind).length + 1;
+  return i18n.t(`editor.mediaTracks.default.${kind}`, { n });
+}
+
+/**
+ * 把素材库里的素材放到时间线上（整段），必要时新建轨道并延长节目。
+ *
+ * @param mediaId 素材 id。
+ * @param atMs 时间线起点。
+ * @param preferTrackId 首选的媒体轨道（例如拖放时指针下的那条）。
+ * @returns 新片段 id；素材不存在时为 `null`。
+ */
+export function placeMediaOnTimeline(mediaId: string, atMs: number, preferTrackId?: string): string | null {
+  const t = i18n.t.bind(i18n) as TFunction;
+  const media = useProjectStore.getState().project.media.find((m) => m.id === mediaId);
+  if (!media) return null;
+  let placed: MediaPlaceResult | null = null;
+  let extended = false;
+  useProjectStore.getState().update((d) => {
+    placed = placeMediaClip(d, mediaId, atMs, nextMediaTrackName(media.kind), preferTrackId);
+    if (placed) extended = ensureDuration(d, mediaContentEndMs(d));
+  });
+  const result = placed as MediaPlaceResult | null;
+  if (!result) return null;
+  announce(t(extended ? "editor.media.extended" : "editor.mediaTracks.placed", { name: media.name }));
+  return result.clipId;
+}
+
+/**
+ * 导入一批文件：不支持的扩展名与已引用的路径被跳过，其余探测后加入素材库，并整段放到时间线 `atMs` 处
+ * （放进有空位的同类轨道，没有就新建）；比节目更长的素材会自动延长节目时长。
+ * 每个失败的文件单独报告，不影响其他文件。
  *
  * @param paths 本地文件路径（文件对话框或系统拖放）。
+ * @param atMs 放到时间线上的位置；`null` 为只加入素材库。
  * @returns 实际加入的素材数量。
  */
-export async function importMediaPaths(paths: readonly string[]): Promise<number> {
+export async function importMediaPaths(paths: readonly string[], atMs: number | null = 0): Promise<number> {
   const t = i18n.t.bind(i18n) as TFunction;
   const usable = paths.filter(isMediaPath);
   const skipped = paths.length - usable.length;
@@ -153,9 +190,13 @@ export async function importMediaPaths(paths: readonly string[]): Promise<number
       const media = await describeMedia(path);
       let id: string | null = null;
       let extended = false;
+      const trackName = nextMediaTrackName(media.kind);
       useProjectStore.getState().update((d) => {
         id = addMedia(d, media);
-        if (id) extended = ensureDuration(d, mediaEndMs(media));
+        if (id && atMs !== null) {
+          placeMediaClip(d, id, atMs, trackName);
+          extended = ensureDuration(d, mediaContentEndMs(d));
+        }
       });
       if (id) {
         added += 1;
@@ -170,7 +211,7 @@ export async function importMediaPaths(paths: readonly string[]): Promise<number
 }
 
 /**
- * 重新链接一个素材到新文件（保留偏移）。
+ * 重新链接一个素材到新文件（时间线上的片段保留位置，新文件更短时裁短）。
  *
  * @param id 素材 id。
  * @param path 新文件路径。

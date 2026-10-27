@@ -95,6 +95,11 @@ lto = "fat"
 opt-level = 3
 strip = true
 
+# 前端预览用的 WebAssembly 引擎（scripts/build-wasm.mjs）：体积优先，在浏览器里下载与编译更快。
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+
 # 采样分析（samply / WPA）用：与 release 相同的优化，保留符号与调试信息。
 # 用法：`cargo build --profile profiling`
 [profile.profiling]

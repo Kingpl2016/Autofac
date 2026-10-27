@@ -8,8 +8,17 @@ import type { FixtureModel } from "@/features/fixtures";
  * - 工程文件格式带 `version`，不兼容的改动必须递增版本并提供迁移。
  */
 
-/** 工程文件格式版本。 */
-export const PROJECT_VERSION = 1;
+/**
+ * 工程文件格式版本。
+ *
+ * - v1：静态 / 特效 Cue。
+ * - v2：属性分层片段（`look`）、场景片段（`scene`）、参数关键帧与数值曲线、多灯分布、预设库、
+ *   段落、循环区间、灯具舞台坐标与多重配接、Universe 路由表、通道锁定（Park）。
+ *   v1 文件经 `migrateProject` 无损升级（旧 Cue 在 v2 里仍然合法）。
+ * - v3：多媒体轨道：素材库（`media`）与时间线上的媒体片段（`mediaTracks` / `mediaClips`）分开，
+ *   同一素材可以放多次，片段可裁剪入出点、调音量与淡入淡出。v2 的“素材偏移”迁移成每个素材一条轨道一个片段。
+ */
+export const PROJECT_VERSION = 3;
 
 /** 输出帧率（固定）。 */
 export const OUTPUT_FPS = 30;
@@ -31,6 +40,32 @@ export interface FixtureInstance {
   universe: number;
   /** 起始地址，1~512 */
   address: number;
+  /** 所用通道模式（对应模型的 `modes`）；省略为默认模式 */
+  modeId?: string;
+  /** 舞台位置（舞台监视器与按位置展开的分布用）；省略时按序自动排布 */
+  stage?: StagePlacement;
+  /** 多重配接：同样的输出再写到这些地址（例如左右对称的两组灯共用一个实例） */
+  mirrors?: PatchAddress[];
+}
+
+/** 一个 DMX 地址。 */
+export interface PatchAddress {
+  /** Universe，0 起 */
+  universe: number;
+  /** 起始地址，1~512 */
+  address: number;
+}
+
+/** 灯具在舞台上的位置。坐标单位为米，原点在舞台中央前沿，x 向右、y 向后（纵深）、z 向上。 */
+export interface StagePlacement {
+  x: number;
+  y: number;
+  /** 安装高度，省略为 0 */
+  z?: number;
+  /** 水平朝向（度，0 为朝向观众） */
+  rotation?: number;
+  /** 倒装（吊挂）：Pan / Tilt 方向反转 */
+  hanging?: boolean;
 }
 
 /** 灯具分组：成员顺序决定特效沿灯具推进时的先后。 */
@@ -40,16 +75,175 @@ export interface FixtureGroup {
   fixtureIds: string[];
 }
 
-/** 轨道绑定的对象：一个灯具或一个分组。 */
-export type TrackTarget = { kind: "fixture"; id: string } | { kind: "group"; id: string };
+/**
+ * 轨道绑定的对象：一个灯具、一个分组，或“场景”（片段自带灯具列表，见 {@link SceneClip}）。
+ */
+export type TrackTarget =
+  | { kind: "fixture"; id: string }
+  | { kind: "group"; id: string }
+  | { kind: "scene" };
 
-/** 时间线轨道。轨道名取自它绑定的灯具 / 分组，不单独保存。 */
+/** 时间线轨道。灯具 / 分组轨道的名字取自绑定对象；场景轨道用 `name`。 */
 export interface Track {
   id: string;
   target: TrackTarget;
   mute: boolean;
   solo: boolean;
   lock: boolean;
+  /** 场景轨道的名字（灯具 / 分组轨道忽略） */
+  name?: string;
+  /** 时间线上折叠（分组轨道折叠成员子轨，场景轨道折叠灯具子车道） */
+  collapsed?: boolean;
+  /** 轨道高度档位，省略为标准 */
+  height?: "compact" | "normal" | "tall";
+  /** 置顶层：颜色 / 属性在所有其它轨道之后应用（编辑器的编程器预览用，与后端 `Track::on_top` 一致） */
+  onTop?: boolean;
+}
+
+/** 参数在相邻关键帧之间的插值方式。 */
+export type Curve = "linear" | "hold" | "easeIn" | "easeOut" | "easeInOut" | "sCurve";
+
+/** 一个关键帧：时间相对片段起点。 */
+export interface Keyframe<T> {
+  tMs: number;
+  value: T;
+  /** 从本帧到下一帧的插值方式 */
+  curve: Curve;
+}
+
+/** 数值曲线的形状。 */
+export type WaveShape = "sine" | "triangle" | "saw" | "square" | "ramp" | "random";
+
+/** 数值曲线：在片段时长内按形状在 `from` 与 `to` 之间变化，可重复多次。 */
+export interface ValueCurve {
+  shape: WaveShape;
+  from: number;
+  to: number;
+  /** 片段内的循环次数，至少 1（`ramp` 只用第一段） */
+  cycles: number;
+  /** 起始相位 0~1 */
+  phase: number;
+  /** 方波的占空比 0~1 */
+  duty?: number;
+}
+
+/**
+ * 一个可随时间变化的参数：固定值、关键帧序列，或（仅数值）数值曲线。
+ * 关键帧按 `tMs` 升序；第一帧之前取第一帧的值，最后一帧之后取最后一帧的值。
+ */
+export type Param<T> =
+  | { kind: "value"; value: T }
+  | { kind: "keys"; keys: Keyframe<T>[] }
+  | (T extends number ? { kind: "curve"; curve: ValueCurve } : never);
+
+/** RGB 意图下白光类发光体的用法（与后端 `WhiteStrategy` 一致）。 */
+export type WhiteStrategy = "off" | "preserve" | "boost";
+
+/** 发光体键（与 `ChannelFunction` 里的发光体同名）。 */
+export type EmitterKey = "red" | "green" | "blue" | "white" | "coolWhite" | "warmWhite" | "amber" | "uv" | "lime";
+
+/**
+ * 颜色值：存“意图色”，由每台灯的混色器换算成通道值；也可以按发光体直接给定（手动覆盖）。
+ */
+export type ColorValue =
+  | { kind: "rgb"; rgb: Rgb; white?: WhiteStrategy }
+  | { kind: "kelvin"; kelvin: number }
+  | { kind: "manual"; values: Partial<Record<EmitterKey, number>> };
+
+/**
+ * 非颜色属性键：取值统一为 0~1 的 DMX 分数（界面按物模型换算成角度、能力区间等）。
+ * 与 `ChannelFunction` 同名，不含发光体、调光与开关（它们由强度与颜色层驱动）。
+ */
+export type AttrKey =
+  | "pan"
+  | "tilt"
+  | "speed"
+  | "shutter"
+  | "colorWheel"
+  | "cyan"
+  | "magenta"
+  | "yellow"
+  | "colorTemp"
+  | "gobo"
+  | "goboRotate"
+  | "goboShake"
+  | "prism"
+  | "prismRotate"
+  | "frost"
+  | "focus"
+  | "zoom"
+  | "iris"
+  | "macro"
+  | "reset";
+
+/** 属性分层的“外观”：只写出现的层，没出现的层不参与（不覆盖其它片段 / 默认值）。 */
+export interface Look {
+  /** 强度 0~100（%） */
+  intensity?: Param<number>;
+  color?: Param<ColorValue>;
+  /** 其它属性，0~1 DMX 分数 */
+  attrs?: Partial<Record<AttrKey, Param<number>>>;
+  /** 引用的预设：预设的各层作为底，本外观里显式写出的层覆盖它 */
+  presetId?: string;
+}
+
+/** 分布里可以展开的量：强度、色相偏移（度）、数值曲线的相位偏移（周期的分数）或某个属性。 */
+export type SpreadKey = "intensity" | "hue" | "phase" | AttrKey;
+
+/**
+ * 多灯分布（Fan / MAtricks）：把一个片段在轨道成员之间展开。
+ *
+ * - `values`：成员按顺序从 `from` 线性过渡到 `to`（强度为 %、色相为度的偏移、属性为 DMX 分数），
+ *   覆盖外观里同名层的值；
+ * - `delay`：时间级联，成员按顺序从 `fromMs` 到 `toMs` 推迟进入（形成波浪）；
+ * - `wings`：分翼，2 为左右对称（中间向两边展开），更多为重复分段；
+ * - `order`：成员顺序的来源。
+ */
+export interface Spread {
+  order?: "members" | "reverse" | "stageX" | "stageY";
+  wings?: number;
+  values?: Partial<Record<SpreadKey, { from: number; to: number }>>;
+  delay?: { fromMs: number; toMs: number };
+}
+
+/** 属性分层片段：在轨道（灯具 / 分组）上显示一个外观，可带分布。 */
+export interface LookClip extends CueBase {
+  kind: "look";
+  look: Look;
+  spread?: Spread;
+  /** 片段在时间线上的显示颜色（用户自选，省略时按外观取色） */
+  label?: string;
+}
+
+/** 场景片段里一台灯具的外观。 */
+export interface SceneEntry {
+  fixtureId: string;
+  look: Look;
+}
+
+/** 场景片段：同一时刻给多台灯具分别设定外观（只写“参与”的属性），放在场景轨道上。 */
+export interface SceneClip extends CueBase {
+  kind: "scene";
+  entries: SceneEntry[];
+  label?: string;
+}
+
+/** 预设：可被片段引用的外观，修改后所有引用它的片段一起变化。 */
+export interface Preset {
+  id: string;
+  name: string;
+  /** 分类（素材库筛选用） */
+  group: "intensity" | "color" | "position" | "beam" | "all";
+  look: Look;
+}
+
+/** 歌曲段落（前奏 / 主歌 / 副歌…），用于批量编排与复用。 */
+export interface Section {
+  id: string;
+  name: string;
+  startMs: number;
+  endMs: number;
+  color: Rgb;
 }
 
 /** 淡入淡出的缓动曲线。 */
@@ -105,18 +299,49 @@ export interface EffectCue extends CueBase {
   seed: number;
 }
 
-/** 时间线上的 Cue。 */
-export type Cue = StaticCue | EffectCue;
+/** 时间线上的片段（Cue）。 */
+export type Cue = StaticCue | EffectCue | LookClip | SceneClip;
 
-/** 音视频素材引用（只记录路径，不复制进工程）。 */
+/** 音视频素材引用（素材库里的一项，只记录路径，不复制进工程）。 */
 export interface MediaRef {
   id: string;
   kind: "audio" | "video";
   path: string;
   name: string;
   durationMs: number;
-  /** 素材起点相对时间线 0 点的偏移（毫秒，可为负） */
-  offsetMs: number;
+}
+
+/** 媒体轨道（音频或视频）：放媒体片段，同一轨道上的片段不重叠。 */
+export interface MediaTrack {
+  id: string;
+  kind: MediaRef["kind"];
+  name: string;
+  mute: boolean;
+  solo: boolean;
+  lock: boolean;
+  /** 轨道音量 0~1 */
+  volume: number;
+  /** 轨道高度档位，省略为标准 */
+  height?: "compact" | "normal" | "tall";
+}
+
+/** 时间线上的一个媒体片段：素材 `[inMs, inMs + durationMs)` 这一段放在时间线 `startMs` 处。 */
+export interface MediaClip {
+  id: string;
+  trackId: string;
+  mediaId: string;
+  /** 时间线上的起点（毫秒） */
+  startMs: number;
+  /** 素材内的入点（毫秒） */
+  inMs: number;
+  /** 在时间线上的长度（毫秒） */
+  durationMs: number;
+  /** 片段音量 0~1 */
+  volume: number;
+  fadeInMs: number;
+  fadeOutMs: number;
+  /** 单独静音这个片段 */
+  muted?: boolean;
 }
 
 /** 时间线标记点。 */
@@ -134,10 +359,59 @@ export interface Tempo {
   beatsPerBar: number;
 }
 
-/** 输出目标（与后端 `DispatchTarget` 的序列化形态一致）。 */
+/**
+ * 输出目标（与后端 `DispatchTarget` 的序列化形态一致）。
+ *
+ * - `forwarding`：走全局转发表；
+ * - `direct`：所有 Universe 发往同一地址，编号不变；
+ * - `routed`：按工程自己的 Universe 表（`OutputSettings.universes`）逐个路由。
+ */
 export type OutputTarget =
   | { kind: "forwarding" }
-  | { kind: "direct"; ip: string; protocol: "artNet" | "sacn"; port: number };
+  | { kind: "direct"; ip: string; protocol: "artNet" | "sacn"; port: number }
+  | { kind: "routed" };
+
+/** Universe 的一个输出端口。 */
+export interface UniversePort {
+  id: string;
+  protocol: "artNet" | "sacn";
+  /** 单播 / 广播（Art-Net）/ 组播（sACN，地址由远端 Universe 决定） */
+  mode: "unicast" | "broadcast" | "multicast";
+  /** 单播 / 广播目标 IP（组播时忽略） */
+  ip: string;
+  port: number;
+  /** 远端 Universe：Art-Net 为 15 位 Port-Address（0~32767），sACN 为 1~63999 */
+  remoteUniverse: number;
+  /** sACN 优先级 0~200，省略为 100 */
+  priority?: number;
+  enabled: boolean;
+}
+
+/** 工程 Universe 表里的一项。 */
+export interface UniverseConfig {
+  /** 工程内的 Universe 编号（灯具配接用的编号），0 起 */
+  universe: number;
+  label: string;
+  color?: Rgb;
+  ports: UniversePort[];
+}
+
+/** 多 Universe 帧同步。 */
+export interface SyncSettings {
+  /** 每帧所有 ArtDmx 发完后发一个 ArtSync */
+  artSync: boolean;
+  /** sACN 同步 Universe（1~63999）；`null` 为不同步 */
+  sacnSyncUniverse: number | null;
+}
+
+/** 通道锁定（Park）：无论节目如何，该通道始终输出固定值。 */
+export interface ParkEntry {
+  universe: number;
+  /** 通道 1~512 */
+  channel: number;
+  /** 0~255 */
+  value: number;
+}
 
 /** 输出设置。 */
 export interface OutputSettings {
@@ -148,6 +422,35 @@ export interface OutputSettings {
   latencyCompMs: number;
   /** Gamma，1.0 为线性 */
   gamma: number;
+  /** Universe 路由表（目标为 `routed` 时使用；也用于显示 Universe 的名字和颜色） */
+  universes: UniverseConfig[];
+  sync: SyncSettings;
+  park: ParkEntry[];
+}
+
+/** 舞台上的一个布景物件（桁架、形状、文字）。 */
+export interface StageObject {
+  id: string;
+  kind: "truss" | "rect" | "circle" | "label";
+  x: number;
+  y: number;
+  /** 宽 / 直径（米） */
+  w: number;
+  /** 高（米），圆形忽略 */
+  h: number;
+  rotation: number;
+  label: string;
+}
+
+/** 舞台布置。 */
+export interface StageLayout {
+  /** 舞台宽度（米） */
+  width: number;
+  /** 舞台纵深（米） */
+  depth: number;
+  objects: StageObject[];
+  /** 背景图（本地路径，只引用不复制） */
+  backgroundPath: string | null;
 }
 
 /** 节目工程。 */
@@ -161,13 +464,28 @@ export interface ShowProject {
   fixtureModels: FixtureModel[];
   fixtures: FixtureInstance[];
   groups: FixtureGroup[];
+  /** 素材库 */
   media: MediaRef[];
+  /** 媒体轨道（时间线上方，从上到下；上面的视频盖住下面的） */
+  mediaTracks: MediaTrack[];
+  mediaClips: MediaClip[];
   tracks: Track[];
   cues: Cue[];
   markers: Marker[];
   tempo: Tempo | null;
   output: OutputSettings;
+  presets: Preset[];
+  sections: Section[];
+  /** A-B 循环区间（编辑时反复播放一段）；`null` 为不循环 */
+  loopRange: { startMs: number; endMs: number } | null;
+  stage: StageLayout;
 }
+
+/** 新建工程的默认输出同步设置。 */
+export const DEFAULT_SYNC: SyncSettings = { artSync: false, sacnSyncUniverse: null };
+
+/** 新建工程的默认舞台：12 m × 8 m，没有物件。 */
+export const DEFAULT_STAGE: StageLayout = { width: 12, depth: 8, objects: [], backgroundPath: null };
 
 /** 新建工程的默认时长：3 分钟。 */
 export const DEFAULT_DURATION_MS = 180_000;
@@ -196,6 +514,8 @@ export function createEmptyProject(name: string): ShowProject {
     fixtures: [],
     groups: [],
     media: [],
+    mediaTracks: [],
+    mediaClips: [],
     tracks: [],
     cues: [],
     markers: [],
@@ -205,6 +525,13 @@ export function createEmptyProject(name: string): ShowProject {
       loop: false,
       latencyCompMs: 0,
       gamma: 2.2,
+      universes: [],
+      sync: { ...DEFAULT_SYNC },
+      park: [],
     },
+    presets: [],
+    sections: [],
+    loopRange: null,
+    stage: structuredClone(DEFAULT_STAGE),
   };
 }

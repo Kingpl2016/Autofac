@@ -36,12 +36,54 @@ export const MIN_GROUP_SIZE = 2;
  * @returns 灯具 / 分组名；对象已不存在时为空串。
  */
 export function trackName(project: Pick<ShowProject, "fixtures" | "groups">, track: Track): string {
-  if (track.target.kind === "fixture") {
-    const id = track.target.id;
-    return project.fixtures.find((f) => f.id === id)?.name ?? "";
+  const target = track.target;
+  switch (target.kind) {
+    case "fixture":
+      return project.fixtures.find((f) => f.id === target.id)?.name ?? "";
+    case "group":
+      return project.groups.find((g) => g.id === target.id)?.name ?? "";
+    case "scene":
+      return track.name ?? "";
   }
-  const id = track.target.id;
-  return project.groups.find((g) => g.id === id)?.name ?? "";
+}
+
+/**
+ * 轨道驱动的灯具（分组按成员顺序；场景轨道为其片段涉及的灯具并集，按首次出现排序）。
+ *
+ * @param project 工程（只读）。
+ * @param track 轨道。
+ * @returns 灯具实例 id 列表（只含工程里存在的灯具）。
+ */
+export function trackFixtureIds(
+  project: Pick<ShowProject, "fixtures" | "groups" | "cues">,
+  track: Track,
+): string[] {
+  const known = new Set(project.fixtures.map((f) => f.id));
+  const target = track.target;
+  let ids: string[];
+  switch (target.kind) {
+    case "fixture":
+      ids = [target.id];
+      break;
+    case "group":
+      ids = project.groups.find((g) => g.id === target.id)?.fixtureIds ?? [];
+      break;
+    case "scene": {
+      const seen = new Set<string>();
+      ids = [];
+      for (const c of project.cues) {
+        if (c.trackId !== track.id || c.kind !== "scene") continue;
+        for (const e of c.entries) {
+          if (!seen.has(e.fixtureId)) {
+            seen.add(e.fixtureId);
+            ids.push(e.fixtureId);
+          }
+        }
+      }
+      break;
+    }
+  }
+  return ids.filter((id) => known.has(id));
 }
 
 /**
@@ -290,11 +332,8 @@ export function setTempo(draft: ShowProject, tempo: Tempo | null): void {
 /** 节目总时长的上限（毫秒）：24 小时，与工程文件校验一致。 */
 export const MAX_DURATION_MS = 24 * 3600 * 1000;
 
-/** 素材偏移的取值范围（毫秒，正负各一小时）。 */
-export const MAX_MEDIA_OFFSET_MS = 3_600_000;
-
 /**
- * 把音视频素材引用加入工程。已引用同一路径的素材不会重复加入。
+ * 把音视频素材引用加入素材库。已引用同一路径的素材不会重复加入。
  *
  * @param draft 工程草稿。
  * @param media 素材引用（`id` 由调用方生成）。
@@ -302,34 +341,26 @@ export const MAX_MEDIA_OFFSET_MS = 3_600_000;
  */
 export function addMedia(draft: ShowProject, media: MediaRef): string | null {
   if (draft.media.some((m) => m.path === media.path)) return null;
-  draft.media.push({ ...media, offsetMs: 0 });
+  const { id, kind, path, name, durationMs } = media;
+  draft.media.push({ id, kind, path, name, durationMs });
   return media.id;
 }
 
 /**
- * 从工程里移除素材引用（不会删除磁盘上的文件）。
+ * 从素材库移除素材引用，连同时间线上用到它的片段（不会删除磁盘上的文件）。
  *
  * @param draft 工程草稿。
  * @param id 素材 id。
  */
 export function removeMedia(draft: ShowProject, id: string): void {
   draft.media = draft.media.filter((m) => m.id !== id);
+  draft.mediaClips = draft.mediaClips.filter((c) => c.mediaId !== id);
 }
 
 /**
- * 设置素材起点相对时间线 0 点的偏移（用来对齐音乐与灯光，可为负）。
- *
- * @param draft 工程草稿。
- * @param id 素材 id。
- * @param offsetMs 偏移（毫秒），取整并夹在 ±1 小时内。
- */
-export function setMediaOffset(draft: ShowProject, id: string, offsetMs: number): void {
-  const media = draft.media.find((m) => m.id === id);
-  if (media) media.offsetMs = clamp(Math.round(offsetMs), -MAX_MEDIA_OFFSET_MS, MAX_MEDIA_OFFSET_MS);
-}
-
-/**
- * 重新链接素材（原文件被移动或删除后指向新文件）。保留偏移，更新路径、名称、类型与时长。
+ * 重新链接素材（原文件被移动或删除后指向新文件）。更新路径、名称、类型与时长；
+ * 新文件更短时裁短用到它的片段（裁完不足 100 ms 的片段删除）。类型变了（音频 ↔ 视频）时，
+ * 片段移到同类的新轨道上由调用方处理，这里只删除类型不符的片段。
  *
  * @param draft 工程草稿。
  * @param id 素材 id。
@@ -345,6 +376,15 @@ export function relinkMedia(
   if (!media) return false;
   if (draft.media.some((m) => m.id !== id && m.path === next.path)) return false;
   Object.assign(media, next);
+  const trackKind = new Map(draft.mediaTracks.map((t) => [t.id, t.kind]));
+  draft.mediaClips = draft.mediaClips.filter((c) => {
+    if (c.mediaId !== id) return true;
+    if (trackKind.get(c.trackId) !== next.kind) return false;
+    c.durationMs = Math.min(c.durationMs, next.durationMs - c.inMs);
+    c.fadeInMs = Math.min(c.fadeInMs, Math.max(0, c.durationMs));
+    c.fadeOutMs = Math.min(c.fadeOutMs, Math.max(0, c.durationMs - c.fadeInMs));
+    return c.durationMs >= 100;
+  });
   return true;
 }
 
@@ -377,12 +417,68 @@ export const MAX_LATENCY_COMP_MS = 1000;
 export function setOutput(draft: ShowProject, patch: Partial<OutputSettings>): void {
   const next = { ...draft.output, ...patch };
   draft.output = {
-    target: next.target,
-    loop: next.loop,
+    ...next,
     gamma: clamp(Math.round(next.gamma * 10) / 10, MIN_GAMMA, MAX_GAMMA),
     latencyCompMs: clamp(Math.round(next.latencyCompMs), -MAX_LATENCY_COMP_MS, MAX_LATENCY_COMP_MS),
   };
 }
+/**
+ * 设置 A-B 循环区间（入点 / 出点）。区间被夹到节目内；终点不大于起点时视为清除。
+ *
+ * @param draft 工程草稿。
+ * @param range 新区间；`null` 清除。
+ */
+export function setLoopRange(draft: ShowProject, range: { startMs: number; endMs: number } | null): void {
+  if (!range) {
+    draft.loopRange = null;
+    return;
+  }
+  const startMs = clamp(Math.round(range.startMs), 0, draft.durationMs);
+  const endMs = clamp(Math.round(range.endMs), 0, draft.durationMs);
+  draft.loopRange = endMs > startMs ? { startMs, endMs } : null;
+}
+
+/**
+ * 设置入点或出点：另一端缺省时取节目起点 / 终点；入点晚于出点时交换。
+ *
+ * @param draft 工程草稿。
+ * @param edge `in` 入点或 `out` 出点。
+ * @param atMs 时刻（毫秒）。
+ */
+export function setLoopEdge(draft: ShowProject, edge: "in" | "out", atMs: number): void {
+  const current = draft.loopRange ?? { startMs: 0, endMs: draft.durationMs };
+  const next = edge === "in" ? { startMs: atMs, endMs: current.endMs } : { startMs: current.startMs, endMs: atMs };
+  if (next.startMs > next.endMs) [next.startMs, next.endMs] = [next.endMs, next.startMs];
+  setLoopRange(draft, next);
+}
+
+/** 轨道高度档位的循环顺序。 */
+export const TRACK_HEIGHT_ORDER = ["compact", "normal", "tall"] as const;
+
+/**
+ * 设置轨道的显示方式（折叠 / 高度档位）。默认值（不折叠、普通高度）不写入工程，保持文件精简。
+ *
+ * @param draft 工程草稿。
+ * @param trackId 轨道 id。
+ * @param view 要改的字段。
+ */
+export function setTrackView(
+  draft: ShowProject,
+  trackId: string,
+  view: { collapsed?: boolean; height?: (typeof TRACK_HEIGHT_ORDER)[number] },
+): void {
+  const track = draft.tracks.find((t) => t.id === trackId);
+  if (!track) return;
+  if (view.collapsed !== undefined) {
+    if (view.collapsed) track.collapsed = true;
+    else delete track.collapsed;
+  }
+  if (view.height !== undefined) {
+    if (view.height === "normal") delete track.height;
+    else track.height = view.height;
+  }
+}
+
 /**
  * 设置轨道的静音 / 独奏 / 锁定开关。
  *

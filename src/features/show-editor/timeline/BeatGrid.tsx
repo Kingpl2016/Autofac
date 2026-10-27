@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { beatsBetween } from "../lib/tempo";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
-import { RULER_HEIGHT, START_LEFT } from "./timelineData";
+import { START_LEFT } from "./timelineData";
 import { useTimelineScrollStore } from "./timelineScrollStore";
 
 /** 相邻两条线至少隔这么多像素才画（太密只会糊成一片）。 */
@@ -49,12 +49,7 @@ export function BeatGrid() {
   }, [tempo, durationMs, pxPerSec, scrollLeft, width]);
 
   return (
-    <div
-      ref={ref}
-      aria-hidden
-      className="pointer-events-none absolute inset-x-0 bottom-0 overflow-hidden"
-      style={{ top: RULER_HEIGHT }}
-    >
+    <div ref={ref} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       <svg className="h-full w-full">
         {lines.map((l) => (
           <line

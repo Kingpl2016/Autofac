@@ -9,7 +9,7 @@ import {
   registerShortcut,
   unregisterShortcut,
 } from "@/shared/tauri/globalShortcut";
-import { startQuickRecording, stopRecordingWithToast } from "../lib/recordControl";
+import { startRecording, stopRecordingWithToast } from "../lib/recordControl";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 
@@ -25,7 +25,7 @@ interface HotkeyState {
  * 注册“开始 / 停止录制”的全局快捷键（加速键来自 {@link usePrefsStore} 的
  * `recordHotkeys`，可在设置页修改）。
  *
- * - 开始：未录制、未打开节目且不在播放器模式时，以“快速录制”（全量采集）启动；否则给出提示。
+ * - 开始：未录制、未打开节目且不在播放器模式时，按“当前录制预设”启动（与录制页一致）；否则给出提示。
  * - 停止：仅在录制中有效。
  *
  * 加速键变更时自动重注册。在应用根挂载一次。
@@ -56,7 +56,7 @@ export function useRecordingHotkeys(): void {
         toast.warning(s.t("recording.playbackBlocks"));
         return;
       }
-      void startQuickRecording(s.t);
+      void startRecording(s.t);
     };
 
     const onStop = () => {

@@ -46,6 +46,7 @@ fn property(function: ChannelFunction, channel: u16) -> FixtureProperty {
         default_value: 0,
         value_desc: value_desc.to_owned(),
         description: description.to_owned(),
+        ..FixtureProperty::default()
     }
 }
 
@@ -69,6 +70,7 @@ fn model(id: &str, name: &str, product_type: &str, functions: &[ChannelFunction]
             .zip(1u16..)
             .map(|(f, ch)| property(*f, ch))
             .collect(),
+        ..FixtureModel::default()
     }
 }
 

@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   addStaticCue,
   copyCues,
+  cuesAfter,
+  cuesAt,
   cuesOfTrack,
   DEFAULT_CUE_MS,
   gapAround,
@@ -11,11 +13,13 @@ import {
   nudgeCues,
   pasteCues,
   removeCues,
+  rippleDeleteCues,
   setCueTimes,
+  splitCues,
   updateCues,
 } from "../cueOps";
-import { addFixtures, removeFixtures } from "../ops";
-import { createEmptyProject, type Cue, type ShowProject } from "../project";
+import { addFixtures, removeFixtures, setTrackFlag } from "../ops";
+import { createEmptyProject, type Cue, type LookClip, type ShowProject } from "../project";
 import { projectIntegrityIssues } from "../schema";
 import { RGBW } from "./testkit";
 
@@ -409,5 +413,126 @@ describe("nudgeCues", () => {
       expect(nudgeCues(d, ids, 333)).toBe(true);
     });
     expect(next.cues.map((c) => c.startMs)).toEqual([333, 1333]);
+  });
+});
+
+describe("splitCues", () => {
+  it("在播放头处一分为二：左段去掉淡出，右段去掉淡入", () => {
+    const { project, a } = base();
+    const { project: p, ids } = withCues(project, a, [[1000, 5000]]);
+    const withFades = edit(p, (d) => {
+      d.cues[0].fadeInMs = 500;
+      d.cues[0].fadeOutMs = 500;
+    });
+    let created: string[] = [];
+    const next = edit(withFades, (d) => {
+      created = splitCues(d, ids, 3010);
+    });
+    expect(created).toHaveLength(1);
+    const left = next.cues.find((c) => c.id === ids[0]);
+    const right = next.cues.find((c) => c.id === created[0]);
+    expect(left).toMatchObject({ startMs: 1000, endMs: 3000, fadeInMs: 500, fadeOutMs: 0 });
+    expect(right).toMatchObject({ startMs: 3000, endMs: 5000, fadeInMs: 0, fadeOutMs: 500, trackId: a });
+    expect(projectIntegrityIssues(next)).toEqual([]);
+  });
+
+  it("太靠近端点或不包含该时刻的片段不分割", () => {
+    const { project, a } = base();
+    const { project: p, ids } = withCues(project, a, [[1000, 5000]]);
+    let created: string[] = ["x"];
+    const next = edit(p, (d) => {
+      created = [...splitCues(d, ids, 1010), ...splitCues(d, ids, 8000)];
+    });
+    expect(created).toEqual([]);
+    expect(next.cues).toHaveLength(1);
+  });
+
+  it("锁定轨道上的片段不分割", () => {
+    const { project, a } = base();
+    const { project: p, ids } = withCues(project, a, [[1000, 5000]]);
+    const locked = edit(p, (d) => setTrackFlag(d, a, "lock", true));
+    const next = edit(locked, (d) => void splitCues(d, ids, 3000));
+    expect(next.cues).toHaveLength(1);
+  });
+
+  it("外观片段右半段的关键帧按新起点重新计时", () => {
+    const { project, a } = base();
+    const look: LookClip = {
+      id: "look1",
+      kind: "look",
+      trackId: a,
+      startMs: 0,
+      endMs: 4000,
+      brightness: 100,
+      fadeInMs: 0,
+      fadeOutMs: 0,
+      easing: "linear",
+      look: {
+        intensity: {
+          kind: "keys",
+          keys: [
+            { tMs: 0, value: 0, curve: "linear" },
+            { tMs: 4000, value: 100, curve: "linear" },
+          ],
+        },
+      },
+    };
+    const p = edit(project, (d) => void d.cues.push(look));
+    let created: string[] = [];
+    const next = edit(p, (d) => {
+      created = splitCues(d, ["look1"], 1000);
+    });
+    const right = next.cues.find((c) => c.id === created[0]);
+    expect(right?.kind === "look" && right.look.intensity?.kind === "keys" && right.look.intensity.keys.map((k) => k.tMs)).toEqual([
+      0, 3000,
+    ]);
+  });
+});
+
+describe("rippleDeleteCues", () => {
+  it("删除后同轨道后面的片段前移补位，其它轨道不动", () => {
+    const { project, a, b } = base();
+    const first = withCues(project, a, [
+      [0, 2000],
+      [2000, 4000],
+      [5000, 6000],
+    ]);
+    const second = withCues(first.project, b, [[3000, 4000]]);
+    let removed = 0;
+    const next = edit(second.project, (d) => {
+      removed = rippleDeleteCues(d, [first.ids[0]]);
+    });
+    expect(removed).toBe(1);
+    expect(cuesOfTrack(next, a).map((c) => [c.startMs, c.endMs])).toEqual([
+      [0, 2000],
+      [3000, 4000],
+    ]);
+    expect(cuesOfTrack(next, b).map((c) => [c.startMs, c.endMs])).toEqual([[3000, 4000]]);
+  });
+
+  it("同一轨道删多段时按各自长度累计前移", () => {
+    const { project, a } = base();
+    const { project: p, ids } = withCues(project, a, [
+      [0, 1000],
+      [1000, 3000],
+      [3000, 4000],
+    ]);
+    const next = edit(p, (d) => void rippleDeleteCues(d, [ids[0], ids[1]]));
+    expect(cuesOfTrack(next, a).map((c) => [c.startMs, c.endMs])).toEqual([[0, 1000]]);
+  });
+});
+
+describe("cuesAt / cuesAfter", () => {
+  it("按播放头和轨道筛选", () => {
+    const { project, a, b } = base();
+    const first = withCues(project, a, [
+      [0, 2000],
+      [3000, 4000],
+    ]);
+    const second = withCues(first.project, b, [[1000, 5000]]);
+    expect(cuesAt(second.project, 1500, null).sort()).toEqual([first.ids[0], second.ids[0]].sort());
+    expect(cuesAt(second.project, 1500, a)).toEqual([first.ids[0]]);
+    expect(cuesAfter(second.project, 1000, null).sort()).toEqual([first.ids[1], second.ids[0]].sort());
+    expect(cuesAfter(second.project, 1000, a)).toEqual([first.ids[1]]);
   });
 });

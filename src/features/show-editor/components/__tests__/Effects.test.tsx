@@ -58,12 +58,15 @@ describe("EffectsTab", () => {
       </DndContext>,
     );
 
-  it("列出 8 种特效", () => {
+  const classic = () => screen.getByRole("region", { name: "经典 RGB 特效" });
+
+  it("列出 8 种经典特效与 8 种属性特效", () => {
     renderTab();
-    expect(screen.getAllByRole("button")).toHaveLength(EFFECT_PRESETS.length);
+    expect(within(classic()).getAllByRole("button")).toHaveLength(EFFECT_PRESETS.length);
     for (const name of ["呼吸", "彩虹", "追逐", "擦除", "渐变", "脉冲", "闪烁", "频闪"]) {
-      expect(screen.getByRole("button", { name })).toBeTruthy();
+      expect(within(classic()).getByRole("button", { name })).toBeTruthy();
     }
+    expect(within(screen.getByRole("region", { name: "属性特效" })).getAllByRole("button")).toHaveLength(8);
   });
 
   it("点击：加到所选轨道的播放头处，使用预设参数、选中并切到 Cue 属性页", () => {
@@ -73,7 +76,7 @@ describe("EffectsTab", () => {
       ui().selectTrack(trackId);
       ui().setPlayhead(3000);
     });
-    fireEvent.click(screen.getByRole("button", { name: "彩虹" }));
+    fireEvent.click(within(classic()).getByRole("button", { name: "彩虹" }));
     const [cue] = project().cues;
     expect(cue).toMatchObject({ kind: "effect", effect: "rainbow", trackId, startMs: 3000 });
     expect(cue.endMs - cue.startMs).toBe(presetOf("rainbow").lengthMs);
@@ -87,6 +90,21 @@ describe("EffectsTab", () => {
     renderTab();
     fireEvent.click(screen.getByRole("button", { name: "呼吸" }));
     expect(useAnnouncerStore.getState().message).toContain("轨道");
+  });
+
+  it("属性特效：在所选轨道新建外观片段（曲线），选中并切到属性页", () => {
+    renderTab();
+    const trackId = project().tracks[0].id;
+    act(() => {
+      ui().selectTrack(trackId);
+      ui().setPlayhead(1000);
+    });
+    fireEvent.click(within(screen.getByRole("region", { name: "属性特效" })).getByRole("button", { name: "强度波浪" }));
+    const [cue] = project().cues;
+    expect(cue).toMatchObject({ kind: "look", trackId, startMs: 1000 });
+    expect(cue.kind === "look" && cue.look.intensity?.kind).toBe("curve");
+    expect(ui().selectedCueIds).toEqual([cue.id]);
+    expect(useAnnouncerStore.getState().message).toBe("已添加强度波浪");
   });
 });
 

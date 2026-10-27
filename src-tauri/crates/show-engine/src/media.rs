@@ -86,6 +86,9 @@ pub enum MediaError {
     /// 被取消。
     #[error("已取消")]
     Cancelled,
+    /// 音频太短或没有稳定的节拍（节拍分析）。
+    #[error("没有检测到稳定的节拍")]
+    NoBeat,
 }
 
 impl MediaError {
@@ -93,7 +96,7 @@ impl MediaError {
     ///
     /// # Returns
     ///
-    /// `io` / `unsupported` / `decode` / `cancelled`。
+    /// `io` / `unsupported` / `decode` / `cancelled` / `no_beat`。
     #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
@@ -101,6 +104,7 @@ impl MediaError {
             Self::Unsupported => "unsupported",
             Self::Decode(_) => "decode",
             Self::Cancelled => "cancelled",
+            Self::NoBeat => "no_beat",
         }
     }
 }
@@ -141,6 +145,91 @@ fn open_format(
         .format(&hint, stream, &FormatOptions::default(), &MetadataOptions::default())
         .map(|probed| probed.format)
         .map_err(|_| MediaError::Unsupported)
+}
+
+/// 把素材的第一条音轨逐采样解码成单声道（多声道取平均），供波形与节拍分析共用。
+pub(crate) struct MonoDecoder {
+    format: Box<dyn symphonia::core::formats::FormatReader>,
+    codec: Box<dyn symphonia::core::codecs::Decoder>,
+    track_id: u32,
+    /// 音轨采样率（Hz）。
+    pub(crate) sample_rate: u32,
+}
+
+impl MonoDecoder {
+    /// 打开素材并创建解码器。
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - 素材文件路径。
+    ///
+    /// # Returns
+    ///
+    /// 定位在开头的解码器。
+    ///
+    /// # Errors
+    ///
+    /// 文件无法打开（[`MediaError::Io`]），或没有可解码的音轨（[`MediaError::Unsupported`]）。
+    pub(crate) fn open(path: &Path) -> Result<Self, MediaError> {
+        let format = open_format(path)?;
+        let (track_id, params) = format
+            .tracks()
+            .iter()
+            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL && t.codec_params.sample_rate.is_some())
+            .map(|t| (t.id, t.codec_params.clone()))
+            .ok_or(MediaError::Unsupported)?;
+        let sample_rate = params.sample_rate.ok_or(MediaError::Unsupported)?;
+        let codec = symphonia::default::get_codecs()
+            .make(&params, &DecoderOptions::default())
+            .map_err(|_| MediaError::Unsupported)?;
+        Ok(Self { format, codec, track_id, sample_rate })
+    }
+
+    /// 解码到文件末尾，每个单声道采样回调一次。个别损坏的数据包会被跳过（留下一小段空白）。
+    ///
+    /// # Arguments
+    ///
+    /// * `cancel` - 取消标志，每个数据包检查一次。
+    /// * `on_sample` - 采样回调（-1.0 ~ 1.0）。
+    ///
+    /// # Errors
+    ///
+    /// 出现无法恢复的解码错误（[`MediaError::Decode`]），或被取消（[`MediaError::Cancelled`]）。
+    pub(crate) fn run(&mut self, cancel: &AtomicBool, mut on_sample: impl FnMut(f32)) -> Result<(), MediaError> {
+        let mut scratch: Option<SampleBuffer<f32>> = None;
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(MediaError::Cancelled);
+            }
+            let packet = match self.format.next_packet() {
+                Ok(p) => p,
+                // 正常读到文件末尾：symphonia 以 UnexpectedEof 表示
+                Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(SymphoniaError::ResetRequired) => break,
+                Err(e) => return Err(MediaError::Decode(e.to_string())),
+            };
+            if packet.track_id() != self.track_id {
+                continue;
+            }
+            let decoded = match self.codec.decode(&packet) {
+                Ok(d) => d,
+                // 单个包损坏：跳过
+                Err(SymphoniaError::DecodeError(_) | SymphoniaError::IoError(_)) => continue,
+                Err(e) => return Err(MediaError::Decode(e.to_string())),
+            };
+            let spec = *decoded.spec();
+            let channels = spec.channels.count().max(1);
+            let buf = scratch.get_or_insert_with(|| SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
+            if buf.capacity() < decoded.capacity() * channels {
+                *buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+            }
+            buf.copy_interleaved_ref(decoded);
+            for frame in buf.samples().chunks_exact(channels) {
+                on_sample(frame.iter().sum::<f32>() / channels as f32);
+            }
+        }
+        Ok(())
+    }
 }
 
 /// 读取素材的基本信息（不解码）。
@@ -196,6 +285,30 @@ pub fn probe(path: &Path) -> Result<MediaInfo, MediaError> {
     })
 }
 
+/// 解码音轨并做节拍分析（见 [`crate::beats`]）：先降采样到 [`crate::beats::ANALYSIS_RATE`]，最多分析 30 分钟。
+///
+/// # Arguments
+///
+/// * `path` - 素材文件路径。
+/// * `cancel` - 取消标志，每个数据包检查一次。
+///
+/// # Returns
+///
+/// 速度、强拍偏移、逐拍时刻与段落。
+///
+/// # Errors
+///
+/// - [`MediaError::Io`] / [`MediaError::Unsupported`] / [`MediaError::Decode`] / [`MediaError::Cancelled`]：同 [`compute_peaks`]；
+/// - [`MediaError::NoBeat`]：音频太短、近乎静音或没有可跟踪的节拍。
+pub fn analyze_beats(path: &Path, cancel: &AtomicBool) -> Result<crate::beats::BeatAnalysis, MediaError> {
+    let mut decoder = MonoDecoder::open(path)?;
+    let mut down = crate::beats::Downsampler::new(f64::from(decoder.sample_rate));
+    decoder.run(cancel, |s| down.push(s))?;
+    let rate = down.rate;
+    let samples = down.finish();
+    crate::beats::analyze_samples(&samples, rate).ok_or(MediaError::NoBeat)
+}
+
 /// 解码音轨并统计波形峰值。
 ///
 /// 多声道先混成单声道（取平均）。每个桶记录其中最小 / 最大的采样值，量化到 `-127..=127`。
@@ -218,66 +331,25 @@ pub fn probe(path: &Path) -> Result<MediaInfo, MediaError> {
 /// - [`MediaError::Cancelled`]：`cancel` 被置位。
 pub fn compute_peaks(path: &Path, per_second: u32, cancel: &AtomicBool) -> Result<Peaks, MediaError> {
     let per_second = per_second.clamp(MIN_PEAKS_PER_SECOND, MAX_PEAKS_PER_SECOND);
-    let mut format = open_format(path)?;
-    let (track_id, params) = format
-        .tracks()
-        .iter()
-        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL && t.codec_params.sample_rate.is_some())
-        .map(|t| (t.id, t.codec_params.clone()))
-        .ok_or(MediaError::Unsupported)?;
-    let sample_rate = u64::from(params.sample_rate.ok_or(MediaError::Unsupported)?);
-    let mut codec = symphonia::default::get_codecs()
-        .make(&params, &DecoderOptions::default())
-        .map_err(|_| MediaError::Unsupported)?;
+    let mut decoder = MonoDecoder::open(path)?;
+    let sample_rate = u64::from(decoder.sample_rate);
 
     let mut mins: Vec<f32> = Vec::new();
     let mut maxs: Vec<f32> = Vec::new();
     let mut frame_index: u64 = 0;
-    let mut scratch: Option<SampleBuffer<f32>> = None;
-
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(MediaError::Cancelled);
+    decoder.run(cancel, |mono| {
+        let bucket = (frame_index * u64::from(per_second) / sample_rate) as usize;
+        frame_index += 1;
+        if bucket >= MAX_PEAK_BUCKETS {
+            return;
         }
-        let packet = match format.next_packet() {
-            Ok(p) => p,
-            // 正常读到文件末尾：symphonia 以 UnexpectedEof 表示
-            Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(SymphoniaError::ResetRequired) => break,
-            Err(e) => return Err(MediaError::Decode(e.to_string())),
-        };
-        if packet.track_id() != track_id {
-            continue;
+        if bucket >= mins.len() {
+            mins.resize(bucket + 1, 0.0);
+            maxs.resize(bucket + 1, 0.0);
         }
-        let decoded = match codec.decode(&packet) {
-            Ok(d) => d,
-            // 单个包损坏：跳过，波形里留一小段空白
-            Err(SymphoniaError::DecodeError(_) | SymphoniaError::IoError(_)) => continue,
-            Err(e) => return Err(MediaError::Decode(e.to_string())),
-        };
-        let spec = *decoded.spec();
-        let channels = spec.channels.count().max(1);
-        let buf = scratch.get_or_insert_with(|| SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
-        if buf.capacity() < decoded.capacity() * channels {
-            *buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-        }
-        buf.copy_interleaved_ref(decoded);
-        for frame in buf.samples().chunks_exact(channels) {
-            let mono = frame.iter().sum::<f32>() / channels as f32;
-            let bucket = (frame_index * u64::from(per_second) / sample_rate) as usize;
-            if bucket >= MAX_PEAK_BUCKETS {
-                frame_index += 1;
-                continue;
-            }
-            if bucket >= mins.len() {
-                mins.resize(bucket + 1, 0.0);
-                maxs.resize(bucket + 1, 0.0);
-            }
-            mins[bucket] = mins[bucket].min(mono);
-            maxs[bucket] = maxs[bucket].max(mono);
-            frame_index += 1;
-        }
-    }
+        mins[bucket] = mins[bucket].min(mono);
+        maxs[bucket] = maxs[bucket].max(mono);
+    })?;
 
     let quantize = |v: f32| (v.clamp(-1.0, 1.0) * 127.0).round() as i8;
     let mut peaks = Vec::with_capacity(mins.len() * 2);
@@ -429,6 +501,34 @@ mod tests {
             compute_peaks(&path, 50, &AtomicBool::new(true)),
             Err(MediaError::Cancelled)
         ));
+    }
+
+    #[test]
+    fn 节拍分析_从文件解码并降采样() {
+        let dir = TempDir::new("beats");
+        // 22050 Hz、120 BPM 的单声道“嗒”声，12 秒
+        let rate = 22_050u32;
+        let frames = rate * 12;
+        let mut data = Vec::with_capacity(frames as usize * 2);
+        for i in 0..frames {
+            let t = f64::from(i) / f64::from(rate);
+            let local = t % 0.5;
+            let v = if local < 0.03 { (2.0 * std::f64::consts::PI * 2500.0 * local).sin() * (-local * 80.0).exp() * 0.6 } else { 0.0 };
+            data.extend_from_slice(&((v * f64::from(i16::MAX)) as i16).to_le_bytes());
+        }
+        let mut bytes = wav(rate, 1, 0, 0.0, 0.0);
+        let header = bytes.len();
+        bytes.extend_from_slice(&data);
+        bytes[4..8].copy_from_slice(&((header - 8 + data.len()) as u32).to_le_bytes());
+        bytes[header - 4..header].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        let path = write(&dir, "click.wav", &bytes);
+        let a = analyze_beats(&path, &AtomicBool::new(false)).unwrap();
+        assert_eq!(a.bpm, 120.0);
+        assert_eq!(a.duration_ms, 12_000);
+        // 太短的文件
+        let short = write(&dir, "short.wav", &wav(8000, 1, 1, 0.5, 0.5));
+        assert!(matches!(analyze_beats(&short, &AtomicBool::new(false)), Err(MediaError::NoBeat)));
+        assert_eq!(MediaError::NoBeat.code(), "no_beat");
     }
 
     #[test]

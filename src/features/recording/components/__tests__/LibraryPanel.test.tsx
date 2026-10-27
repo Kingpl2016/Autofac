@@ -314,6 +314,33 @@ describe("LibraryPanel 搜索与高亮", () => {
     useRecordingStore.setState({ last: null });
   });
 
+  it("录制结束后把第一个“刚录制”的节目滚进可视区，且每次结果只滚一次", async () => {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      api.recordingsList.mockResolvedValue([
+        entry({ path: "D:/rec/old.artrec", name: "旧的" }),
+        entry({ path: "D:/rec/new.artrec", name: "新录的" }),
+      ]);
+      useRecordingStore.setState({
+        last: {
+          files: [{ path: "D:/rec/new.artrec", durationUs: 1, frames: 1, bytes: 1, sources: [] }],
+          error: null,
+          dropped: 0,
+          stoppedBy: null,
+        },
+      });
+      renderPanel();
+      await screen.findByText("新录的");
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+      expect(scroll.mock.contexts[0]).toBe(screen.getByText("新录的").closest("li"));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+      useRecordingStore.setState({ last: null });
+    }
+  });
+
   it.each([
     ["playing", "回放中"],
     ["paused", "已暂停"],

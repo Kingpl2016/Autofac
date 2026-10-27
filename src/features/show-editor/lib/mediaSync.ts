@@ -29,10 +29,12 @@ export interface SyncInput {
   transport: Transport;
   /** 后端播放位置（时间线时间） */
   positionMs: number;
-  /** 素材起点相对时间线 0 点的偏移 */
+  /** 素材 0 点在时间线上的位置（片段起点 − 入点） */
   offsetMs: number;
-  /** 素材时长 */
+  /** 可播放范围的终点（素材内时刻：入点 + 片段长度；整段素材时为素材时长） */
   mediaDurationMs: number;
+  /** 可播放范围的起点（素材内时刻：片段入点），省略为 0 */
+  rangeStartMs?: number;
   /** 元素当前播放时间 */
   currentTimeMs: number;
   /** 元素当前是否暂停 */
@@ -61,8 +63,9 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
  */
 export function planSync(input: SyncInput): SyncPlan {
   const target = input.positionMs - input.offsetMs;
-  const last = Math.max(0, input.mediaDurationMs);
-  const clamped = clamp(target, 0, last);
+  const first = Math.max(0, input.rangeStartMs ?? 0);
+  const last = Math.max(first, input.mediaDurationMs);
+  const clamped = clamp(target, first, last);
 
   if (input.transport !== "playing") {
     // 暂停 / 停止：停住并对齐到目标位置（拖动播放头时视频随之显示对应画面）
@@ -71,7 +74,7 @@ export function planSync(input: SyncInput): SyncPlan {
   }
 
   // 播放中，但素材还没开始或已经结束：停在端点，等时间线走到素材范围内
-  if (target < 0 || target >= last) {
+  if (target < first || target >= last) {
     const atEdge = Math.abs(input.currentTimeMs - clamped) <= SCRUB_TOLERANCE_MS;
     return { play: false, pause: !input.elementPaused, seekToMs: atEdge ? null : clamped, rate: 1 };
   }

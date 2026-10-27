@@ -393,6 +393,54 @@
     0 0 22px color-mix(in oklab, var(--primary) 30%, transparent);
 }
 
+/*
+ * 节目编辑器令牌（剪映式时间线）：片段按类型着色、播放头 / 吸附线 / 关键帧 / 段落 / 循环区间。
+ * 片段底色用低饱和、高区分度的色相，文字始终用前景色；状态色（录制 / 告警）不复用于片段。
+ */
+:root {
+  --clip-light: oklch(0.62 0.13 var(--accent-h));
+  --clip-scene: oklch(0.6 0.13 300);
+  --clip-effect: oklch(0.64 0.14 25);
+  --clip-audio: oklch(0.62 0.12 165);
+  --clip-video: oklch(0.6 0.12 235);
+  --playhead: oklch(0.6 0.2 15);
+  --snap-line: oklch(0.78 0.16 90);
+  --keyframe: oklch(0.72 0.15 80);
+  --section: oklch(0.6 0.09 260);
+  --loop-range: color-mix(in oklab, var(--primary) 18%, transparent);
+  /* 舞台监视器：永远是暗场（灯光在暗处才看得清），与明暗主题无关 */
+  --stage-bg: oklch(0.11 0.004 260);
+  --stage-grid: oklch(0.2 0.006 260);
+}
+
+.dark {
+  --clip-light: oklch(0.55 0.12 var(--accent-h));
+  --clip-scene: oklch(0.52 0.12 300);
+  --clip-effect: oklch(0.56 0.13 25);
+  --clip-audio: oklch(0.54 0.11 165);
+  --clip-video: oklch(0.52 0.11 235);
+  --playhead: oklch(0.68 0.2 15);
+  --snap-line: oklch(0.85 0.16 90);
+  --keyframe: oklch(0.8 0.15 80);
+  --section: oklch(0.5 0.08 260);
+  --loop-range: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+@theme inline {
+  --color-clip-light: var(--clip-light);
+  --color-clip-scene: var(--clip-scene);
+  --color-clip-effect: var(--clip-effect);
+  --color-clip-audio: var(--clip-audio);
+  --color-clip-video: var(--clip-video);
+  --color-playhead: var(--playhead);
+  --color-snap-line: var(--snap-line);
+  --color-keyframe: var(--keyframe);
+  --color-section: var(--section);
+  --color-loop-range: var(--loop-range);
+  --color-stage-bg: var(--stage-bg);
+  --color-stage-grid: var(--stage-grid);
+}
+
 @theme inline {
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);

@@ -22,7 +22,10 @@ pub mod show_output;
 pub mod stream;
 mod util;
 
-pub use dispatch::{DispatchTarget, Dispatcher, ForwardJob};
+pub use dispatch::{
+    DispatchTarget, Dispatcher, ForwardJob, OutputSync, PortMode, RouteError, RoutedPort,
+    RoutedUniverse, SequenceTable,
+};
 pub use ingest::IngestPipeline;
 pub use routes::{CompiledRoutes, Endpoint};
 pub use runtime::{Runtime, ScanSummary};

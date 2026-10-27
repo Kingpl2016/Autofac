@@ -4473,6 +4473,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "show-engine-wasm"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "show-engine",
+]
+
+[[package]]
 name = "signal-engine"
 version = "0.1.0"
 dependencies = [

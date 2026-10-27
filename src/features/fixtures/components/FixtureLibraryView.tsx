@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FileSpreadsheet, Loader2, Plus } from "lucide-react";
+import { FileJson, FileSpreadsheet, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { PageHeader } from "@/shared/components/PageHeader";
-import { pickXlsxFile } from "@/shared/tauri/pickers";
+import { pickJsonFile, pickXlsxFile } from "@/shared/tauri/pickers";
 import { blankModel, cloneAsCustom, nextCustomId } from "../lib/draft";
 import { fixtureErrorText } from "../lib/errors";
 import type { FixtureModel, ImportOutcome } from "../lib/types";
@@ -33,6 +33,7 @@ export function FixtureLibraryView() {
   const error = useFixtureStore((s) => s.error);
   const load = useFixtureStore((s) => s.load);
   const importXlsx = useFixtureStore((s) => s.importXlsx);
+  const importOfl = useFixtureStore((s) => s.importOfl);
   const save = useFixtureStore((s) => s.save);
   const remove = useFixtureStore((s) => s.remove);
 
@@ -50,12 +51,15 @@ export function FixtureLibraryView() {
   // 选中项被删除或尚未选择时，回落到第一项
   const selected = models.find((m) => m.id === selectedId) ?? models[0] ?? null;
 
-  const onImport = async () => {
-    const path = await pickXlsxFile(t("fixtures.import.fileType"));
+  const onImport = async (kind: "xlsx" | "ofl") => {
+    const path =
+      kind === "xlsx"
+        ? await pickXlsxFile(t("fixtures.import.fileType"))
+        : await pickJsonFile(t("fixtures.import.oflFileType"));
     if (!path) return;
     setImporting(true);
     try {
-      const result = await importXlsx(path);
+      const result = kind === "xlsx" ? await importXlsx(path) : await importOfl(path);
       setOutcome(result);
       const first = result.added[0] ?? result.updated[0];
       if (first) setSelectedId(first);
@@ -90,9 +94,13 @@ export function FixtureLibraryView() {
         subtitle={t("fixtures.subtitle")}
         actions={
           <>
-            <Button type="button" variant="outline" onClick={() => void onImport()} disabled={importing}>
+            <Button type="button" variant="outline" onClick={() => void onImport("xlsx")} disabled={importing}>
               {importing ? <Loader2 className="animate-spin" aria-hidden /> : <FileSpreadsheet aria-hidden />}
               {t("fixtures.import.button")}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void onImport("ofl")} disabled={importing}>
+              <FileJson aria-hidden />
+              {t("fixtures.import.oflButton")}
             </Button>
             <Button
               type="button"

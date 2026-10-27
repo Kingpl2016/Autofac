@@ -17,9 +17,10 @@ import { useAnnouncerStore } from "@/shared/stores/announcerStore";
 import { importMediaPaths } from "../../hooks/mediaActions";
 import { useMediaRuntime } from "../../hooks/useMediaRuntime";
 import { createEmptyProject } from "../../lib/project";
+import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useMediaStore } from "../../stores/useMediaStore";
 import { useProjectStore } from "../../stores/useProjectStore";
-import { WaveformStrip } from "../../timeline/WaveformStrip";
+import { MediaLanes } from "../../timeline/MediaLanes";
 import { MediaTab } from "../MediaTab";
 
 beforeAll(() => {
@@ -64,7 +65,7 @@ function Harness() {
   return (
     <>
       <MediaTab />
-      <WaveformStrip />
+      <MediaLanes />
     </>
   );
 }
@@ -82,7 +83,7 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("导入音视频", () => {
-  it("选择文件后探测并加入工程；比节目长的素材会延长节目", async () => {
+  it("选择文件后探测并加入素材库，同时放到 0 点的新音频轨道上；比节目长的素材会延长节目", async () => {
     installBackend({ "D:\\music\\歌.mp3": { durationMs: 300_000 } });
     pickers.pickMediaFiles.mockResolvedValue(["D:\\music\\歌.mp3"]);
     render(<Harness />);
@@ -93,8 +94,11 @@ describe("导入音视频", () => {
       path: "D:\\music\\歌.mp3",
       name: "歌.mp3",
       durationMs: 300_000,
-      offsetMs: 0,
     });
+    expect(project().mediaTracks).toMatchObject([{ kind: "audio", name: "音频 1" }]);
+    expect(project().mediaClips).toMatchObject([
+      { mediaId: project().media[0].id, trackId: project().mediaTracks[0].id, startMs: 0, inMs: 0, durationMs: 300_000 },
+    ]);
     expect(project().durationMs).toBe(300_000);
     expect(useAnnouncerStore.getState().message).toBe("已导入 1 个素材");
     // 取消选择不做任何事
@@ -104,11 +108,12 @@ describe("导入音视频", () => {
     expect(project().media).toHaveLength(1);
   });
 
-  it("导入后自动放行并计算波形，显示波形图", async () => {
+  it("导入后自动放行并计算波形，媒体轨道上的片段画出波形", async () => {
     installBackend({ "a.mp3": {} });
     render(<Harness />);
     await act(async () => void (await importMediaPaths(["a.mp3"])));
-    await waitFor(() => expect(screen.getByRole("img", { name: "a.mp3 的波形" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("media-clip-wave")).toBeTruthy());
+    expect(screen.getByRole("button", { name: /^a\.mp3：/ })).toBeTruthy();
     expect(calls("media_authorize")).toHaveLength(1);
     expect(calls("media_peaks")[0][1]).toEqual({ path: "a.mp3", perSecond: 50 });
     const id = project().media[0].id;
@@ -156,7 +161,7 @@ describe("导入音视频", () => {
     const id = project().media[0].id;
     await waitFor(() => expect(useMediaStore.getState().items[id]?.status).toBe("ready"));
     expect(useMediaStore.getState().items[id].peaks).toBeUndefined();
-    expect(screen.queryByRole("img", { name: /波形/ })).toBeNull();
+    expect(screen.queryByTestId("media-clip-wave")).toBeNull();
     expect(screen.getByText("没有音轨，无波形")).toBeTruthy();
   });
 });
@@ -168,14 +173,24 @@ describe("素材行", () => {
     await act(async () => void (await importMediaPaths(paths)));
   }
 
-  it("改偏移、移除", async () => {
-    await withMedia({ "a.mp3": {} }, ["a.mp3"]);
-    const offset = screen.getByLabelText("a.mp3 的偏移（毫秒）") as HTMLInputElement;
-    fireEvent.change(offset, { target: { value: "-250" } });
-    fireEvent.blur(offset);
-    expect(project().media[0].offsetMs).toBe(-250);
+  it("放到播放头（同一素材放多次，另起一条轨道或放进空位）、显示使用次数、移除", async () => {
+    await withMedia({ "a.mp3": { durationMs: 10_000 } }, ["a.mp3"]);
+    expect(screen.getByText("时间线上 1 处")).toBeTruthy();
+    // 播放头在 5 秒：与 0 点的片段重叠 → 新建一条轨道
+    act(() => useEditorUiStore.getState().setPlayhead(5000));
+    fireEvent.click(screen.getByRole("button", { name: "把 a.mp3 放到播放头处" }));
+    expect(project().mediaTracks).toHaveLength(2);
+    expect(project().mediaClips[1]).toMatchObject({ trackId: project().mediaTracks[1].id, startMs: 5000 });
+    expect(useEditorUiStore.getState().selectedMediaClipIds).toEqual([project().mediaClips[1].id]);
+    // 播放头在 20 秒：第一条轨道有空位
+    act(() => useEditorUiStore.getState().setPlayhead(20_000));
+    fireEvent.click(screen.getByRole("button", { name: "把 a.mp3 放到播放头处" }));
+    expect(project().mediaClips[2]).toMatchObject({ trackId: project().mediaTracks[0].id, startMs: 20_000 });
+    expect(screen.getByText("时间线上 3 处")).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "移除 a.mp3（不会删除文件）" }));
     expect(project().media).toHaveLength(0);
+    expect(project().mediaClips).toHaveLength(0);
     await waitFor(() => expect(Object.keys(useMediaStore.getState().items)).toHaveLength(0));
   });
 
@@ -184,7 +199,9 @@ describe("素材行", () => {
     installBackend({ "new.wav": { durationMs: 30_000 } });
     act(() => {
       useProjectStore.getState().update((d) => {
-        d.media.push({ id: "m1", kind: "audio", path: "old.mp3", name: "old.mp3", durationMs: 60_000, offsetMs: 500 });
+        d.media.push({ id: "m1", kind: "audio", path: "old.mp3", name: "old.mp3", durationMs: 60_000 });
+        d.mediaTracks.push({ id: "t", kind: "audio", name: "音频 1", mute: false, solo: false, lock: false, volume: 1 });
+        d.mediaClips.push({ id: "c", trackId: "t", mediaId: "m1", startMs: 500, inMs: 0, durationMs: 60_000, volume: 1, fadeInMs: 0, fadeOutMs: 0 });
       });
     });
     render(<Harness />);
@@ -192,7 +209,9 @@ describe("素材行", () => {
     pickers.pickMediaFiles.mockResolvedValue(["new.wav"]);
     fireEvent.click(screen.getByRole("button", { name: "重新链接…" }));
     await waitFor(() => expect(project().media[0].path).toBe("new.wav"));
-    expect(project().media[0]).toMatchObject({ id: "m1", name: "new.wav", durationMs: 30_000, offsetMs: 500 });
+    expect(project().media[0]).toMatchObject({ id: "m1", name: "new.wav", durationMs: 30_000 });
+    // 片段保留位置，按新文件长度裁短
+    expect(project().mediaClips[0]).toMatchObject({ startMs: 500, durationMs: 30_000 });
     await waitFor(() => expect(useMediaStore.getState().items.m1?.status).toBe("ready"));
     expect(screen.queryByText("文件找不到了")).toBeNull();
   });

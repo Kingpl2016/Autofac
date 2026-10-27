@@ -8,7 +8,7 @@ export type Transport = "stopped" | "playing" | "paused";
 
 /** 被后端跳过（不会输出）的灯具及原因。 */
 export interface CompileWarning {
-  kind: "unknownModel" | "invalidModel" | "outOfRange";
+  kind: "unknownModel" | "invalidModel" | "outOfRange" | "unknownMode";
   fixtureId: string;
 }
 

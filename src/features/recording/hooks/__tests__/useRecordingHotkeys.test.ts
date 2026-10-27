@@ -33,6 +33,8 @@ import { usePrefsStore, DEFAULT_RECORD_HOTKEYS } from "@/shared/stores/prefsStor
 import { useRecordingStore } from "../../stores/useRecordingStore";
 import { usePlayerStore } from "../../stores/usePlayerStore";
 import { EMPTY_STATUS, EMPTY_PLAYBACK } from "../../lib/types";
+import { EMPTY_PRESET } from "../../lib/recordingPreset";
+import { useRecordingPresetStore } from "../../stores/useRecordingPresetStore";
 import { useRecordingHotkeys } from "../useRecordingHotkeys";
 
 /** 从 mock 中取出按加速键注册的处理器。 */
@@ -67,10 +69,12 @@ describe("useRecordingHotkeys", () => {
     );
   });
 
-  it("未录制时开始热键以快速录制启动", async () => {
+  it("未录制时开始热键按当前录制预设启动（与录制页一致）", async () => {
+    useRecordingPresetStore.setState({ ...EMPTY_PRESET, universeTokens: ["5"], sacnEnabled: false });
     renderHook(() => useRecordingHotkeys());
     handlerFor(DEFAULT_RECORD_HOTKEYS.start)();
     await vi.waitFor(() => expect(api.recordingStart).toHaveBeenCalledTimes(1));
+    expect(api.recordingStart.mock.calls[0][0].filter.universes).toEqual([{ start: 5, end: 5 }]);
     expect(api.recordingStop).not.toHaveBeenCalled();
   });
 

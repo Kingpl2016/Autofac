@@ -17,6 +17,15 @@ export function fixtureImportXlsx(path: string): Promise<ImportOutcome> {
 }
 
 /**
+ * 导入一个 Open Fixture Library 灯具 JSON（`.json`），合并进自定义模型库。
+ *
+ * @param path 用户在文件对话框里选择的文件路径。
+ */
+export function fixtureImportOfl(path: string): Promise<ImportOutcome> {
+  return invoke<ImportOutcome>("fixture_import_ofl", { path });
+}
+
+/**
  * 新增或更新一个自定义模型，返回实际保存的模型。
  *
  * @param model 要保存的模型。

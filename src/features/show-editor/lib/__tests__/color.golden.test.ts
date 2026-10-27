@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { createPreviewEvaluator } from "../color";
+import { loadTestEngine } from "../../engine/__tests__/testEngine";
+import type { ChannelFunction, FixtureModel } from "@/features/fixtures";
 import { createEmptyProject, type Cue, type EffectId, type Easing, type Rgb, type ShowProject } from "../project";
 import golden from "./golden/show-eval.json";
 
 /**
  * 黄金向量：与 Rust `show-engine/tests/golden.rs` 读取同一份 JSON。
- * TS 预览只模拟 RGB 灯的颜色，所以只校验 `tsPreview !== false` 的用例。
+ *
+ * 前端经 WASM 调用同一份 Rust 求值器，所以这里校验的是**完整的 DMX 输出**（全部用例，
+ * 包括 RGBW / 色温 / 调光 / 默认值）。它同时守护 WASM 产物没有过期：改了 show-engine
+ * 却忘了 `npm run build:wasm` 时，这里会和 Rust 测试给出不同结果。
  */
 
 interface GoldenCue {
@@ -31,8 +35,9 @@ interface GoldenCue {
 
 interface GoldenCase {
   name: string;
-  tsPreview?: boolean;
   gamma: number;
+  /** 模型简写：通道功能按顺序排布，可写 `name:默认值` */
+  models: Record<string, string[]>;
   fixtures: { model: string; universe: number; address: number }[];
   tempo?: { bpm: number };
   /** `fixtures` 是分组轨道的成员（按数组顺序），`fixture` 是单灯轨道 */
@@ -41,9 +46,35 @@ interface GoldenCase {
   samples: { t: number; universe: number; expect: Record<string, number> }[];
 }
 
+function buildModels(models: GoldenCase["models"]): FixtureModel[] {
+  return Object.entries(models).map(([id, specs]) => ({
+    id,
+    name: id,
+    system: "",
+    productType: "",
+    builtin: false,
+    properties: specs.map((spec, i) => {
+      const [name, def] = spec.split(":");
+      return {
+        name,
+        code: `${name}${i + 1}`,
+        function: name as ChannelFunction,
+        channel: i + 1,
+        width: 1 as const,
+        bigEndian: true,
+        defaultValue: Number(def ?? 0),
+        valueDesc: "",
+        description: "",
+      };
+    }),
+  }));
+}
+
 function buildProject(c: GoldenCase): ShowProject {
   const p = createEmptyProject(c.name);
+  p.durationMs = 10_000;
   p.output.gamma = c.gamma;
+  p.fixtureModels = buildModels(c.models);
   p.fixtures = c.fixtures.map((f, i) => ({
     id: `f${i}`,
     name: `F${i}`,
@@ -75,7 +106,7 @@ function buildProject(c: GoldenCase): ShowProject {
       brightness: q.brightness ?? 100,
       fadeInMs: q.fadeInMs ?? 0,
       fadeOutMs: q.fadeOutMs ?? 0,
-      easing: q.easing ?? "linear" as Easing,
+      easing: q.easing ?? ("linear" as Easing),
     };
     if (q.effect) {
       return {
@@ -95,27 +126,26 @@ function buildProject(c: GoldenCase): ShowProject {
   return p;
 }
 
-const cases = (golden.cases as unknown as GoldenCase[]).filter((c) => c.tsPreview !== false);
+const cases = golden.cases as unknown as GoldenCase[];
 
-describe("预览颜色与 Rust 黄金向量一致", () => {
-  it("至少包含若干 RGB 用例", () => {
-    expect(cases.length).toBeGreaterThanOrEqual(20);
+describe("WASM 求值与 Rust 黄金向量一致", () => {
+  it("用例数量", () => {
+    expect(cases.length).toBeGreaterThanOrEqual(30);
   });
 
   it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-    const project = buildProject(c);
-    const evaluate = createPreviewEvaluator(project);
+    const compiled = loadTestEngine().compile(buildProject(c));
+    expect(compiled, "工程应能编译").not.toBeNull();
+    if (!compiled) return;
+    expect(compiled.warnings).toEqual([]);
     for (const s of c.samples) {
-      const colors = evaluate(s.t);
-      for (const [chText, want] of Object.entries(s.expect)) {
-        const ch = Number(chText);
-        const idx = project.fixtures.findIndex(
-          (f) => f.universe === s.universe && ch >= f.address && ch < f.address + 3,
-        );
-        expect(idx, `通道 ${ch} 应属于某台 RGB 灯`).toBeGreaterThanOrEqual(0);
-        const rgb = colors.get(`f${idx}`);
-        expect(rgb?.[ch - project.fixtures[idx].address], `t=${s.t} 通道 ${ch}`).toBe(want);
+      compiled.previewAt(s.t);
+      const frame = compiled.frame(compiled.universes.indexOf(s.universe));
+      expect(frame, `缺少 Universe ${s.universe}`).not.toBeNull();
+      for (const [ch, want] of Object.entries(s.expect)) {
+        expect(frame?.[Number(ch) - 1], `t=${s.t} universe=${s.universe} 通道 ${ch}`).toBe(want);
       }
     }
+    compiled.dispose();
   });
 });

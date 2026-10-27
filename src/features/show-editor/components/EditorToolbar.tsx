@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { Clapperboard, Flag, Redo2, Undo2 } from "lucide-react";
+import { Clapperboard, Command, Flag, Redo2, Undo2, WandSparkles } from "lucide-react";
 import { useStore } from "zustand";
 
 import { Button } from "@/components/ui/button";
 import { addMarkerAtPlayhead } from "../hooks/editorActions";
+import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { selectDirty, useProjectStore } from "../stores/useProjectStore";
 import type { ShowFileController } from "../hooks/useShowFile";
 import { BakeStatus } from "./BakeStatus";
@@ -59,6 +60,29 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
           <Flag aria-hidden />
         </Button>
         <TempoPopover />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={t("editor.draft.title")}
+          title={t("editor.draft.title")}
+          onClick={() => useEditorUiStore.getState().setDraftOpen(true)}
+        >
+          <WandSparkles aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={t("editor.commands.palette")}
+          aria-keyshortcuts="Control+K"
+          title={`${t("editor.commands.palette")} (Ctrl+K)`}
+          onClick={() => useEditorUiStore.getState().setPaletteOpen(true)}
+        >
+          <Command aria-hidden />
+        </Button>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden />
         <Button
           type="button"

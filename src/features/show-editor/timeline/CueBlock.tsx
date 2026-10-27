@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { updateCues } from "../lib/cueOps";
 import { cssColor, effectBackground } from "../lib/cueTemplates";
+import { clipColor } from "../lib/looks";
 import type { Cue } from "../lib/project";
 import { clamp } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -46,7 +47,8 @@ export function CueBlock({ cue, dimmed, selected, locked }: CueBlockProps) {
   const top = 100 - cue.brightness;
   const rampIn = (fadeIn / length) * 100;
   const rampOutStart = 100 - (fadeOut / length) * 100;
-  const color = cue.kind === "static" ? cssColor(cue.rgb) : effectBackground(cue);
+  const presets = useProjectStore((s) => s.project.presets);
+  const color = cue.kind === "effect" ? effectBackground(cue) : cssColor(clipColor(cue, presets));
   const shape = `polygon(0% 100%, ${rampIn}% ${top}%, ${rampOutStart}% ${top}%, 100% 100%)`;
 
   const begin = (side: "in" | "out") => (e: PointerEvent<HTMLElement>) => {

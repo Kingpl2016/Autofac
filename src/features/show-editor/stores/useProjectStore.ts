@@ -3,6 +3,7 @@ import { immer } from "zustand/middleware/immer";
 import { temporal } from "zundo";
 
 import { createEmptyProject, type ShowProject } from "../lib/project";
+import { useProgrammerStore } from "./useProgrammerStore";
 
 /** 撤销历史的最大步数。 */
 export const HISTORY_LIMIT = 200;
@@ -63,6 +64,8 @@ export const useProjectStore = create<ProjectState>()(
           state.baseline = project;
         });
         useProjectStore.temporal.getState().clear();
+        // 编程器里的值属于上一个工程的灯具，换工程时清空
+        useProgrammerStore.getState().clear();
       },
       restore: (project) => {
         set((state) => {
@@ -71,6 +74,7 @@ export const useProjectStore = create<ProjectState>()(
           state.baseline = createEmptyProject("");
         });
         useProjectStore.temporal.getState().clear();
+        useProgrammerStore.getState().clear();
       },
       markSaved: (saved) =>
         set((state) => {

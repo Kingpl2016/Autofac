@@ -194,3 +194,67 @@ describe("灯具与 Patch 面板", () => {
     expect(invoke).toHaveBeenCalledWith("fixture_list");
   });
 });
+
+describe("多 Universe 配接", () => {
+  /** 直接载入 3 台 RGBW（U0 @1/5/9）。 */
+  function seed() {
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        d.fixtureModels = [RGBW];
+        d.fixtures = [1, 2, 3].map((n) => ({
+          id: `f${n}`,
+          name: `灯${n}`,
+          modelId: RGBW.id,
+          universe: 0,
+          address: 1 + (n - 1) * 4,
+        }));
+        d.tracks = d.fixtures.map((f) => ({ id: `t-${f.id}`, target: { kind: "fixture", id: f.id }, mute: false, solo: false, lock: false }));
+      }),
+    );
+  }
+
+  it("加镜像地址后列出镜像行，可修改、删除，并计入占用图", () => {
+    seed();
+    render(<InspectorPanel />);
+    fireEvent.click(within(rowOf("灯1")).getByRole("button", { name: "给 灯1 加一个镜像地址（多重配接）" }));
+    expect(useProjectStore.getState().project.fixtures[0].mirrors).toEqual([{ universe: 1, address: 1 }]);
+    expect(screen.getByRole("img", { name: /Universe 1：占用 4 \/ 512/ })).toBeTruthy();
+
+    const addr = within(rowOf("灯1")).getByRole("textbox", { name: "灯1 镜像 1 的起始地址" });
+    fireEvent.change(addr, { target: { value: "101" } });
+    fireEvent.blur(addr);
+    expect(useProjectStore.getState().project.fixtures[0].mirrors).toEqual([{ universe: 1, address: 101 }]);
+
+    fireEvent.click(within(rowOf("灯1")).getByRole("button", { name: "删除 灯1 的镜像 1" }));
+    expect(useProjectStore.getState().project.fixtures[0].mirrors).toBeUndefined();
+  });
+
+  it("勾选灯具后顺序配接：放不下时进到下一个 Universe", () => {
+    seed();
+    act(() => useEditorUiStore.getState().setSelectedFixtures(["f1", "f2", "f3"]));
+    render(<InspectorPanel />);
+    const form = screen.getByRole("group", { name: "顺序配接所选灯具" });
+    const [u, a] = within(form).getAllByRole("textbox");
+    fireEvent.change(u, { target: { value: "3" } });
+    fireEvent.change(a, { target: { value: "507" } });
+    fireEvent.click(within(form).getByRole("button", { name: "配接 3 个" }));
+    const addrs = useProjectStore.getState().project.fixtures.map((f) => [f.universe, f.address]);
+    expect(addrs).toEqual([
+      [3, 507],
+      [4, 1],
+      [4, 5],
+    ]);
+  });
+
+  it("DMX 通道视图：输入通道号说明归属", () => {
+    seed();
+    render(<InspectorPanel />);
+    const input = screen.getByRole("textbox", { name: "要查看的通道号" });
+    fireEvent.change(input, { target: { value: "6" } });
+    fireEvent.blur(input);
+    expect(screen.getByText(/通道 6 = 0 · 灯2 · Green/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "要查看的通道号" }), { target: { value: "200" } });
+    fireEvent.blur(screen.getByRole("textbox", { name: "要查看的通道号" }));
+    expect(screen.getByText("通道 200 = 0，没有灯具占用")).toBeTruthy();
+  });
+});

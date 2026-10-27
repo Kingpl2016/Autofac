@@ -61,20 +61,20 @@ export function kindOfPath(path: string): MediaRef["kind"] {
 }
 
 /**
- * 素材在时间线上的结束时刻。
- *
- * @param media 素材引用。
- */
-export function mediaEndMs(media: Pick<MediaRef, "offsetMs" | "durationMs">): number {
-  return media.offsetMs + media.durationMs;
-}
-
-/**
- * 主素材：驱动播放同步与波形显示的那个。优先第一个音频，其次第一个视频。
+ * 主素材：节拍分析等“以音乐为准”的功能用的那个。优先时间线上最早的音频片段所用的素材，
+ * 其次素材库里第一个音频，再次第一个素材。
  *
  * @param project 工程（只读）。
  * @returns 主素材；没有素材时为 `undefined`。
  */
-export function primaryMedia(project: Pick<ShowProject, "media">): MediaRef | undefined {
-  return project.media.find((m) => m.kind === "audio") ?? project.media[0];
+export function primaryMedia(project: Pick<ShowProject, "media" | "mediaClips">): MediaRef | undefined {
+  const byId = new Map(project.media.map((m) => [m.id, m]));
+  const firstAudioClip = [...project.mediaClips]
+    .sort((a, b) => a.startMs - b.startMs)
+    .find((c) => byId.get(c.mediaId)?.kind === "audio");
+  return (
+    (firstAudioClip ? byId.get(firstAudioClip.mediaId) : undefined) ??
+    project.media.find((m) => m.kind === "audio") ??
+    project.media[0]
+  );
 }

@@ -223,6 +223,28 @@ pub fn build_dmx_into(
     ARTDMX_HEADER_LEN + padded_len
 }
 
+/// ArtSync 的 OpCode（报文中按小端存放）。
+const OP_SYNC: u16 = 0x5200;
+
+/// ArtSync 报文长度（14 字节）。
+pub const ARTSYNC_LEN: usize = 14;
+
+/// 构造一个 ArtSync 报文：`ID`(8)、`OpCode`(2，小端 0x5200)、`ProtVer`(2)、`Aux1`、`Aux2`。
+///
+/// 节点收到 ArtSync 后才把此前缓存的 ArtDmx 一起输出，用来让多个 Universe 同帧切换。
+///
+/// # Returns
+///
+/// 14 字节报文。
+#[must_use]
+pub fn build_sync() -> [u8; ARTSYNC_LEN] {
+    let mut out = [0u8; ARTSYNC_LEN];
+    out[..8].copy_from_slice(ARTNET_HEADER);
+    out[8..10].copy_from_slice(&OP_SYNC.to_le_bytes());
+    out[10..12].copy_from_slice(&ARTNET_PROTOCOL_VERSION);
+    out
+}
+
 /// 构造一个 ArtDmx（Output）数据包。
 ///
 /// 等价于 [`build_dmx_into`] 后把有效部分拷贝为 `Vec`（一次堆分配）；热路径请直接

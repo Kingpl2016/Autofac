@@ -26,6 +26,13 @@ vi.mock("@/features/network", () => ({
   errorText: () => "",
   useTransferStore: { getState: () => ({ run: vi.fn() }) },
 }));
+vi.mock("@/shared/tauri/tauriStorage", () => ({
+  createTauriPersistStorage: () => ({
+    getItem: async () => null,
+    setItem: async () => undefined,
+    removeItem: async () => undefined,
+  }),
+}));
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   ...api,
@@ -102,16 +109,16 @@ describe("RecordingView", () => {
     expect(aside.contains(screen.getByText("开场秀"))).toBe(true);
   });
 
-  it("播放器模式下录制区域换成说明面板，但表单保持挂载、输入不丢失，节目库仍可用", async () => {
+  it("播放器模式下录制区域换成说明面板，但工作区保持挂载、仅本次的备注不丢失，节目库仍可用", async () => {
     renderView();
-    fireEvent.change(screen.getByLabelText("节目名称"), { target: { value: "彩排" } });
+    fireEvent.change(screen.getByLabelText("备注（仅本次）"), { target: { value: "彩排" } });
 
     act(() => useEngineStatusStore.setState({ appMode: "player" }));
     expect(screen.getByText("播放器模式下实时接收已停止")).toBeTruthy();
     expect(screen.getByText("播放器模式下无法录制。退出播放器模式后即可录制。")).toBeTruthy();
     expect(screen.getByRole("button", { name: "退出播放器模式" })).toBeTruthy();
-    // 表单只是隐藏，并未卸载
-    const input = screen.getByLabelText("节目名称", { selector: "input" }) as HTMLInputElement;
+    // 工作区只是隐藏，并未卸载
+    const input = screen.getByLabelText("备注（仅本次）", { selector: "input" }) as HTMLInputElement;
     expect(input.closest("[hidden]")).toBeTruthy();
     expect(input.value).toBe("彩排");
     // 节目库仍在，可管理节目
@@ -119,16 +126,44 @@ describe("RecordingView", () => {
 
     act(() => useEngineStatusStore.setState({ appMode: "live" }));
     expect(screen.queryByText("播放器模式下实时接收已停止")).toBeNull();
-    expect((screen.getByLabelText("节目名称") as HTMLInputElement).value).toBe("彩排");
+    expect((screen.getByLabelText("备注（仅本次）") as HTMLInputElement).value).toBe("彩排");
   });
 
-  it("录制中在页头显示状态胶囊与时间", () => {
+  it("录制状态只由走带条表达，页头不再重复状态胶囊；时间码取会话总时长", () => {
     useRecordingStore.setState({
-      status: { ...EMPTY_STATUS, recording: true, elapsedUs: 12_300_000, universes: [1] },
+      status: {
+        ...EMPTY_STATUS,
+        recording: true,
+        part: 2,
+        elapsedUs: 2_300_000,
+        sessionElapsedUs: 62_300_000,
+        partStartsUs: [0, 60_000_000],
+        universes: [1],
+      },
     });
     renderView();
-    expect(screen.getAllByText("录制中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("0:12.3").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("录制中")).toHaveLength(1);
+    expect(screen.getByText("1:02.3")).toBeTruthy();
+    expect(screen.queryByText("0:02.3")).toBeNull();
+  });
+
+  it("窄屏：有尚未查看的新录制时节目库按钮带提示点，打开抽屉后消失", async () => {
+    stubMatchMedia(false);
+    useRecordingStore.setState({
+      last: {
+        files: [{ path: "D:/rec/show.artrec", durationUs: 1, frames: 1, bytes: 1, sources: [] }],
+        error: null,
+        dropped: 0,
+        stoppedBy: null,
+      },
+    });
+    renderView();
+    expect(screen.getByTestId("library-new-dot")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /节目库.*有新录制的节目/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /节目库/ }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByTestId("library-new-dot")).toBeNull();
   });
 
   it("窄屏：没有常驻侧栏，页头按钮打开节目库抽屉", async () => {

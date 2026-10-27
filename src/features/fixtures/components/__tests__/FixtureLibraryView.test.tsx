@@ -227,6 +227,32 @@ describe("FixtureLibraryView", () => {
     ).toBeTruthy();
   });
 
+  it("编辑器：复制为新模式、均分能力区间，保存时带上模式与区间", async () => {
+    installBackend([rgb, head]);
+    render(<FixtureLibraryView />);
+    fireEvent.click(await screen.findByRole("button", { name: /通用16CH摇头灯/ }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "复制为新模式" }));
+    expect(within(dialog).getByRole("button", { name: /模式 2/, pressed: true })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "添加属性" }));
+    fireEvent.change(within(dialog).getByLabelText("第 2 行 英文代码"), { target: { value: "Gobo" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "第 2 行的更多设置" }));
+    fireEvent.change(within(dialog).getByLabelText("第 2 行均分段数"), { target: { value: "4" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "均分" }));
+    expect((within(dialog).getByLabelText("第 2 行第 4 个区间的名称") as HTMLInputElement).value).toBe("第 4 段");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const saved = invoke.mock.calls.find((c) => c[0] === "fixture_save")?.[1]?.model as FixtureModel;
+    expect(saved.properties).toHaveLength(1);
+    expect(saved.modes).toHaveLength(1);
+    expect(saved.modes?.[0].properties[1].capabilities).toHaveLength(4);
+    expect(saved.modes?.[0].properties[1].capabilities?.[3].range).toEqual([192, 255]);
+  });
+
   it("导入失败时用 toast 说明原因", async () => {
     installBackend([rgb]);
     pickers.pickXlsxFile.mockResolvedValue("D:\\bad.xlsx");

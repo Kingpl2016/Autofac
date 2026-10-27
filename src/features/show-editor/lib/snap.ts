@@ -26,15 +26,15 @@ export function snapValue(timeMs: number, targets: readonly number[], thresholdM
 }
 
 /**
- * 收集吸附目标：工程起止、播放头、标记点、其他 Cue 的边缘和节拍点。
+ * 收集吸附目标：工程起止、播放头、标记点、其他 Cue 与媒体片段的边缘和节拍点。
  *
  * @param project 工程（只读）。
  * @param playheadMs 播放头位置。
- * @param excludeCueIds 不参与的 Cue（正在被拖动的那些）。
+ * @param excludeCueIds 不参与的 Cue / 媒体片段（正在被拖动的那些）。
  * @returns 去重后的时间点。
  */
 export function collectSnapTargets(
-  project: Pick<ShowProject, "cues" | "markers" | "tempo" | "durationMs">,
+  project: Pick<ShowProject, "cues" | "markers" | "tempo" | "durationMs"> & Partial<Pick<ShowProject, "mediaClips">>,
   playheadMs: number,
   excludeCueIds: ReadonlySet<string> = new Set(),
 ): number[] {
@@ -44,6 +44,12 @@ export function collectSnapTargets(
     if (excludeCueIds.has(c.id)) continue;
     targets.add(c.startMs);
     targets.add(c.endMs);
+  }
+  // 媒体片段的边缘（音乐的起止、剪开的位置）
+  for (const c of project.mediaClips ?? []) {
+    if (excludeCueIds.has(c.id)) continue;
+    targets.add(c.startMs);
+    targets.add(c.startMs + c.durationMs);
   }
   if (project.tempo) {
     for (const b of beatsBetween(project.tempo, 0, project.durationMs, 20_000)) targets.add(b.timeMs);

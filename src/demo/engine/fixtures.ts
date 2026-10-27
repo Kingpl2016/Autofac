@@ -28,6 +28,22 @@ export function createFixturesModule(world: World): DemoModule {
         return world.data.fixtures.importOutcome;
       },
 
+      fixture_import_ofl: (args) => {
+        const path = str(args, "path").trim().toLowerCase();
+        if (!path.endsWith(".json")) return fail("bad_path");
+        const sample = structuredClone(world.data.fixtures.oflSample);
+        const index = models.findIndex((m) => m.id === sample.id);
+        if (index >= 0) models[index] = sample;
+        else models.push(sample);
+        world.log("info", "演示模式：已模拟导入 OFL 灯具");
+        return {
+          added: index >= 0 ? [] : [sample.id],
+          updated: index >= 0 ? [sample.id] : [],
+          skipped: [],
+          warnings: [],
+        };
+      },
+
       fixture_save: (args) => {
         const model = structuredClone(args.model as FixtureModel);
         model.id = model.id.trim();

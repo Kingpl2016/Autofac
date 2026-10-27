@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { createPreviewEvaluator } from "../color";
 import { collectSnapTargets } from "../snap";
 import { createEmptyProject, type ShowProject } from "../project";
@@ -48,8 +49,29 @@ describe("大工程性能（回归保护）", () => {
   it("预览求值：编译一次，之后每帧远小于 33 ms 的帧预算", () => {
     const p = bigProject();
     expect(p.cues).toHaveLength(2000);
+    const engine = loadTestEngine();
+    p.fixtureModels = [
+      {
+        id: "m",
+        name: "m",
+        system: "",
+        productType: "",
+        builtin: false,
+        properties: (["red", "green", "blue"] as const).map((fn, i) => ({
+          name: fn,
+          code: fn,
+          function: fn,
+          channel: i + 1,
+          width: 1 as const,
+          bigEndian: true,
+          defaultValue: 0,
+          valueDesc: "",
+          description: "",
+        })),
+      },
+    ];
     const started = performance.now();
-    const evaluate = createPreviewEvaluator(p);
+    const evaluate = createPreviewEvaluator(p, engine);
     const compiled = performance.now();
     for (let frame = 0; frame < 300; frame += 1) evaluate(frame * 33);
     const perFrame = (performance.now() - compiled) / 300;

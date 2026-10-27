@@ -124,7 +124,7 @@ function install(project: ShowProject, origin: DocumentOrigin): void {
  */
 function parseOrThrow(text: string): ShowProject {
   const result = parseProjectText(text);
-  if (!result.ok) throw "invalid_project";
+  if (!result.ok) throw result.reason === "tooNew" ? "project_too_new" : "invalid_project";
   return result.project;
 }
 
