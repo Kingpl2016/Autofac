@@ -9,6 +9,8 @@ interface SurfacePanelProps {
   actions?: ReactNode;
   /** 状态着色边框：录制红 / 播放绿 / 播放器模式强调色 */
   tone?: "default" | "recording" | "playing" | "player";
+  /** 元素 id（例如作为页内锚点） */
+  id?: string;
   className?: string;
   children: ReactNode;
 }
@@ -20,11 +22,13 @@ export function SurfacePanel({
   title,
   actions,
   tone = "default",
+  id,
   className,
   children,
 }: SurfacePanelProps) {
   return (
     <section
+      id={id}
       // 个性化的卡片样式作用于带 data-surface 的面板；带状态着色的面板保持自己的语义边框
       data-surface={tone === "default" ? "" : undefined}
       className={cn(

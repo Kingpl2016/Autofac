@@ -12,12 +12,14 @@ import { netdevBoardOp } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { runCommand } from "../../lib/run";
 import type { NetDevice } from "../../lib/types";
-import { ConfigForm } from "./ConfigForm";
+import { ConfigForm, GROUP_ANCHOR } from "./ConfigForm";
 import { TokenCard } from "./TokenCard";
 
 interface ConfigPanelProps {
   device: NetDevice;
   access: DeviceAccess;
+  /** 是否有未保存的更改（变化时上报，用于 Tab 上的提示点） */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -26,7 +28,7 @@ interface ConfigPanelProps {
  * - 只提交改动过的字段；校验规则与固件一致。
  * - 网络字段（DHCP / 地址 / 主机名）改动后需重启生效：保存后显示横幅和"立即重启"。
  */
-export function ConfigPanel({ device, access }: ConfigPanelProps) {
+export function ConfigPanel({ device, access, onDirtyChange }: ConfigPanelProps) {
   const { t } = useTranslation();
   const { config, isLoading, error, save, refetch } = useDeviceConfig(device.id, access.canRead);
   const [rebootNeeded, setRebootNeeded] = useState(false);
@@ -79,9 +81,13 @@ export function ConfigPanel({ device, access }: ConfigPanelProps) {
         config={config}
         save={save}
         onSaved={(needsReboot) => needsReboot && setRebootNeeded(true)}
+        onDirtyChange={onDirtyChange}
+        after={
+          <div id={`${GROUP_ANCHOR}security`} className="scroll-mt-16">
+            <TokenCard device={device} access={access} tokenSet={config.tokenSet} />
+          </div>
+        }
       />
-
-      <TokenCard device={device} access={access} tokenSet={config.tokenSet} />
 
       <ConfirmDialog
         open={confirmReboot}

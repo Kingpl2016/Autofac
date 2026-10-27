@@ -1,12 +1,17 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { RotateCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { StatusDot } from "@/shared/components/StatusDot";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import {
   diffConfig,
+  NET_FIELDS,
   patchNeedsReboot,
   toDraft,
   validateConfig,
@@ -23,10 +28,48 @@ interface ConfigFormProps {
   save: (patch: ConfigPatch) => Promise<ConfigResult>;
   /** 保存成功；参数表示改动是否需要重启才生效 */
   onSaved: (needsReboot: boolean) => void;
+  /** 是否有未保存的更改（变化时上报） */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** 表单之后、同一列里的额外分组（例如访问 Token 卡片；不在 `<form>` 内） */
+  after?: ReactNode;
 }
 
 const TARGET_MODES = [0, 1] as const;
 const STOP_BEHAVIORS = [0, 1] as const;
+
+/** 分组锚点 id 前缀（侧边目录跳转用）。 */
+export const GROUP_ANCHOR = "cfg-group-";
+
+/** 表单里的三组字段（与界面分组一致）。 */
+const GROUPS = [
+  { id: "network", title: "network.config.groupNetwork", fields: NET_FIELDS },
+  {
+    id: "output",
+    title: "network.config.groupOutput",
+    fields: [
+      "netOutputEnabled",
+      "artnetEnabled",
+      "sacnEnabled",
+      "uartOutputEnabled",
+      "sacnMulticast",
+      "targetMode",
+      "stopBehavior",
+      "sacnPriority",
+      "keepaliveMs",
+      "sourceName",
+    ],
+  },
+  { id: "forward", title: "network.config.groupForward", fields: ["forwardUniStart", "forwardUniCount", "forwardSacn"] },
+] as const satisfies ReadonlyArray<{ id: string; title: string; fields: ReadonlyArray<keyof ConfigDraft> }>;
+
+/** 跳到某个分组（减少动态效果时不做平滑滚动）。 */
+function jumpTo(id: string) {
+  const el = document.getElementById(`${GROUP_ANCHOR}${id}`);
+  if (!el) return;
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  el.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+  el.querySelector<HTMLElement>("input, button, [role=switch], [role=combobox]")?.focus({ preventScroll: true });
+}
 
 /**
  * 设备配置表单：网络 / 输出 / 转发三组字段。
@@ -34,7 +77,7 @@ const STOP_BEHAVIORS = [0, 1] as const;
  * 草稿由设备配置初始化，父组件在配置刷新后用 `key` 重建本组件，所以不需要 effect 同步。
  * 提交时先本地校验（规则同固件），失败显示可聚焦的错误摘要；通过后只发送改动过的字段。
  */
-export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
+export function ConfigForm({ access, config, save, onSaved, onDirtyChange, after }: ConfigFormProps) {
   const { t } = useTranslation();
   const original = toDraft(config);
   const [draft, setDraft] = useState<ConfigDraft>(original);
@@ -48,6 +91,12 @@ export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
   const patch = diffConfig(original, draft);
   const changed = Object.keys(patch).length;
   const disabled = !access.canWrite || saving;
+  const dirty = changed > 0;
+  const netChanged = NET_FIELDS.some((k) => k in patch);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const set = <K extends keyof ConfigDraft>(key: K, value: ConfigDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -86,7 +135,49 @@ export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
 
   const focusField = (key: string) => document.getElementById(`${FIELD_PREFIX}${key}`)?.focus();
 
-  return (
+  const groupState = (fields: ReadonlyArray<keyof ConfigDraft>) => ({
+    changed: fields.some((k) => k in patch),
+    error: fields.some((k) => err(k) !== null),
+  });
+
+  // 宽屏侧边目录：标出哪组有更改（圆点）、哪组有错误（三角）
+  const toc = (
+    <nav aria-label={t("network.config.sections")} className="sticky top-16 hidden xl:block">
+      <ul className="grid gap-0.5 border-l border-border">
+        {GROUPS.map((g) => {
+          const s = groupState(g.fields);
+          return (
+            <li key={g.id}>
+              <TocButton
+                label={t(g.title)}
+                onClick={() => jumpTo(g.id)}
+                mark={
+                  s.error ? (
+                    <>
+                      <StatusDot tone="destructive" shape="triangle" />
+                      <span className="sr-only">（{t("network.config.tocError")}）</span>
+                    </>
+                  ) : s.changed ? (
+                    <>
+                      <StatusDot tone="primary" shape="circle" />
+                      <span className="sr-only">（{t("network.config.tocChanged")}）</span>
+                    </>
+                  ) : null
+                }
+              />
+            </li>
+          );
+        })}
+        {after && (
+          <li>
+            <TocButton label={t("network.config.groupSecurity")} onClick={() => jumpTo("security")} />
+          </li>
+        )}
+      </ul>
+    </nav>
+  );
+
+  const form = (
     <form className="grid gap-(--density-gutter)" onSubmit={(e) => void submit(e)} noValidate>
       {submitted && errorEntries.length > 0 && (
         <div
@@ -110,8 +201,22 @@ export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
         </div>
       )}
 
-      <div className="grid items-start gap-(--density-gutter) xl:grid-cols-2">
-        <SurfacePanel title={t("network.config.groupNetwork")}>
+      <div className="grid items-start gap-(--density-gutter) 2xl:grid-cols-2">
+        <SurfacePanel
+          id={`${GROUP_ANCHOR}network`}
+          className="scroll-mt-16"
+          title={
+            <span className="flex items-center gap-2">
+              {t("network.config.groupNetwork")}
+              {netChanged && (
+                <Badge variant="warning">
+                  <RotateCw className="size-3" aria-hidden />
+                  {t("network.config.needsReboot")}
+                </Badge>
+              )}
+            </span>
+          }
+        >
           <div className="grid gap-4">
             <SwitchField
               name="dhcp"
@@ -140,7 +245,7 @@ export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
           </div>
         </SurfacePanel>
 
-        <SurfacePanel title={t("network.config.groupOutput")}>
+        <SurfacePanel id={`${GROUP_ANCHOR}output`} className="scroll-mt-16" title={t("network.config.groupOutput")}>
           <div className="grid gap-4">
             <SwitchField name="netOutputEnabled" label={t("network.config.fields.netOutputEnabled")} hint={t("network.config.hints.netOutputEnabled")} checked={draft.netOutputEnabled} disabled={disabled} onChange={(v) => set("netOutputEnabled", v)} />
             <SwitchField name="artnetEnabled" label={t("network.config.fields.artnetEnabled")} checked={draft.artnetEnabled} disabled={disabled} onChange={(v) => set("artnetEnabled", v)} />
@@ -158,7 +263,7 @@ export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
         </SurfacePanel>
       </div>
 
-      <SurfacePanel title={t("network.config.groupForward")}>
+      <SurfacePanel id={`${GROUP_ANCHOR}forward`} className="scroll-mt-16" title={t("network.config.groupForward")}>
         <div className="grid items-start gap-4 sm:grid-cols-3">
           <NumberField name="forwardUniStart" label={t("network.config.fields.forwardUniStart")} hint={t("network.config.hints.forwardUniStart")} value={draft.forwardUniStart} disabled={disabled} error={err("forwardUniStart")} onChange={(v) => set("forwardUniStart", v)} onBlur={() => blur("forwardUniStart")} />
           <NumberField name="forwardUniCount" label={t("network.config.fields.forwardUniCount")} hint={t("network.config.hints.forwardUniCount")} value={draft.forwardUniCount} disabled={disabled} error={err("forwardUniCount")} onChange={(v) => set("forwardUniCount", v)} onBlur={() => blur("forwardUniCount")} />
@@ -180,5 +285,31 @@ export function ConfigForm({ access, config, save, onSaved }: ConfigFormProps) {
         </Button>
       </div>
     </form>
+  );
+
+  return (
+    <div className="grid items-start gap-(--density-gutter) xl:grid-cols-[11rem_minmax(0,1fr)]">
+      {toc}
+      <div className="grid min-w-0 gap-(--density-gutter)">
+        {form}
+        {after}
+      </div>
+    </div>
+  );
+}
+
+function TocButton({ label, mark, onClick }: { label: string; mark?: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "-ml-px flex w-full cursor-pointer items-center justify-between gap-2 border-l-2 border-transparent py-1.5 pl-3 pr-2 text-left text-sm text-muted-foreground transition-colors",
+        "hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <span className="truncate">{label}</span>
+      {mark && <span className="flex shrink-0 items-center">{mark}</span>}
+    </button>
   );
 }

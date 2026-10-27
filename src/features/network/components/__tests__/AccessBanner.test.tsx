@@ -38,13 +38,14 @@ describe("AccessBanner", () => {
     expect(onEdit).toHaveBeenCalled();
   });
 
-  it("离线：显示具体错误并可重试", () => {
+  it("离线：显示具体错误并可重试；用礼貌的 status 播报，不用 alert 打断", () => {
     const refetch = vi.fn();
     const access = make("offline", {
       status: { status: null, online: false, error: { code: "timeout", message: "x" }, isLoading: false, refetch },
     });
     render(<AccessBanner access={access} onEditDevice={vi.fn()} />);
-    expect(screen.getByRole("alert").textContent).toContain("请求超时");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("请求超时");
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(refetch).toHaveBeenCalled();
   });

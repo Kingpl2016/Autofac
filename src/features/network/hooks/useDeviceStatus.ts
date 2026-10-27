@@ -14,6 +14,8 @@ export interface DeviceStatusResult {
   error: NetError | null;
   isLoading: boolean;
   refetch: () => void;
+  /** 最近一次成功取到状态的时间（毫秒时间戳）；从未成功为 `null` */
+  updatedAt?: number | null;
 }
 
 /**
@@ -43,6 +45,7 @@ export function useDeviceStatus(id: string | null, fast = false): DeviceStatusRe
     error: query.isError ? toNetError(query.error) : null,
     isLoading: query.isLoading,
     refetch: () => void query.refetch(),
+    updatedAt: query.data ? query.dataUpdatedAt : null,
   };
 }
 

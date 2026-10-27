@@ -39,6 +39,90 @@ export function toLinkState(state: AccessState): LinkState {
   }
 }
 
+/** 推导单台设备连接状态的输入。 */
+export interface LinkInput {
+  /** 是否在重启跟踪中 */
+  rebooting: boolean;
+  /** 最近一次状态请求是否成功 */
+  online: boolean;
+  /** 最近一次失败的错误码 */
+  errorCode: string | null;
+  /** 是否仍在首次探测 */
+  loading: boolean;
+}
+
+/**
+ * 推导设备栏 / 机群汇总里用的连接状态。
+ *
+ * 优先级：重启中 → 在线 → 需要 Token → 检测中 → 离线。
+ *
+ * # Arguments
+ *
+ * * `i` - 推导输入。
+ *
+ * # Returns
+ *
+ * 连接状态。
+ */
+export function deriveLinkState(i: LinkInput): LinkState {
+  if (i.rebooting) return "rebooting";
+  if (i.online) return "online";
+  if (i.errorCode === "unauthorized") return "needToken";
+  if (i.loading) return "checking";
+  return "offline";
+}
+
+/** 机群汇总计数。 */
+export interface FleetCounts {
+  total: number;
+  online: number;
+  needToken: number;
+  offline: number;
+  /** 检测中 + 重启中 */
+  pending: number;
+}
+
+/**
+ * 统计多台设备的连接状态。
+ *
+ * # Arguments
+ *
+ * * `states` - 各设备的连接状态。
+ *
+ * # Returns
+ *
+ * 各类计数。
+ */
+export function countFleet(states: readonly LinkState[]): FleetCounts {
+  const counts: FleetCounts = { total: states.length, online: 0, needToken: 0, offline: 0, pending: 0 };
+  for (const s of states) {
+    if (s === "online") counts.online += 1;
+    else if (s === "needToken") counts.needToken += 1;
+    else if (s === "offline") counts.offline += 1;
+    else counts.pending += 1;
+  }
+  return counts;
+}
+
+/** 严重度从高到低：合并显示时取最需要关注的那个。 */
+const SEVERITY: readonly LinkState[] = ["needToken", "offline", "rebooting", "checking", "online"];
+
+/**
+ * 多台设备合并成一个状态时，取最需要关注的那个（需要 Token > 离线 > 重启中 > 检测中 > 在线）。
+ *
+ * # Arguments
+ *
+ * * `states` - 各设备的连接状态。
+ *
+ * # Returns
+ *
+ * 最严重的状态；没有设备时为 `null`。
+ */
+export function worstLink(states: readonly LinkState[]): LinkState | null {
+  for (const s of SEVERITY) if (states.includes(s)) return s;
+  return null;
+}
+
 /** 可用性判定结果。 */
 export interface Access {
   state: AccessState;

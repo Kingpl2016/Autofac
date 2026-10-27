@@ -130,7 +130,8 @@ export function LogPanel({ device, access, active }: LogPanelProps) {
           role="log"
           aria-label={t("network.logs.title")}
           tabIndex={0}
-          className="h-[28rem] overflow-auto bg-surface-1 px-4 py-3 font-mono text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          /* 高度随窗口伸缩：矮窗口至少 16rem，高窗口最多 40rem */
+          className="h-[clamp(16rem,50dvh,40rem)] overflow-auto bg-surface-1 px-4 py-3 font-mono text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {query.isLoading ? (
             <p className="text-muted-foreground">{t("common.loading")}</p>
@@ -144,9 +145,11 @@ export function LogPanel({ device, access, active }: LogPanelProps) {
               return (
                 // 日志行没有稳定 id，且只追加 / 整体替换，用序号作 key 是安全的
                 <div key={i} className={cn("whitespace-pre-wrap break-all", LEVEL_CLASS[level])}>
-                  <span className="mr-2 inline-block w-3 select-none font-semibold opacity-80" aria-label={t(`network.logs.level.${level}`)}>
+                  {/* 级别：视觉上是单字母，读屏读完整的级别名（span 上的 aria-label 不一定被朗读） */}
+                  <span className="mr-2 inline-block w-3 select-none font-semibold opacity-80" aria-hidden>
                     {LEVEL_TAG[level]}
                   </span>
+                  <span className="sr-only">{t(`network.logs.level.${level}`)}：</span>
                   {line}
                 </div>
               );

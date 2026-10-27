@@ -1,10 +1,12 @@
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
-import { FileCog, FolderOpen, Rocket } from "lucide-react";
+import { ArrowDown, ArrowUp, Equal, FileCog, FolderOpen, HelpCircle, Rocket } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { pickFirmwareFile } from "@/shared/tauri/pickers";
@@ -15,7 +17,7 @@ import { errorText, toNetError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
 import { netKeys, STATUS_POLL_MS } from "../../lib/queryKeys";
 import type { DeviceStatus, NetDevice } from "../../lib/types";
-import { compareVersion } from "../../lib/upgrade";
+import { compareVersion, type VersionRelation } from "../../lib/upgrade";
 import { useUpgradeStore } from "../../stores/useUpgradeStore";
 import { OtaStatusCard } from "./OtaStatusCard";
 import { Stepper } from "./Stepper";
@@ -29,8 +31,18 @@ interface FirmwareTabProps {
   access: DeviceAccess;
 }
 
+type Relation = VersionRelation;
+
+/** 版本关系徽章：图标 + 文字，降级用告警色，相同用中性色。 */
+const RELATION_BADGE: Record<Relation, { variant: "success" | "secondary" | "warning"; icon: typeof ArrowUp }> = {
+  newer: { variant: "success", icon: ArrowUp },
+  same: { variant: "secondary", icon: Equal },
+  older: { variant: "warning", icon: ArrowDown },
+  unknown: { variant: "secondary", icon: HelpCircle },
+};
+
 /**
- * 固件升级：选择固件并预检 → 选择目标设备（可多选）→ 确认 → 顺序升级并显示每台进度。
+ * 固件：当前固件状态 + 一张升级卡片（标题下是步骤条：选择固件 → 选择设备 → 确认并升级 → 完成）。
  *
  * 升级流程由全局 store 驱动，切换 Tab / 页面不会中断，回来时进度还在。
  */
@@ -50,10 +62,15 @@ export function FirmwareTab({ device, devices, access }: FirmwareTabProps) {
       refetchInterval: STATUS_POLL_MS,
     })),
   });
-  const statusById = new Map<string, { status: DeviceStatus | null; code: string | null }>(
+  // 失败后 react-query 仍保留上次的数据：只有最近一次请求成功的设备才可升级
+  const statusById = new Map<string, { status: DeviceStatus | null; ok: boolean; code: string | null }>(
     devices.map((d, i) => [
       d.id,
-      { status: results[i]?.data ?? null, code: results[i]?.isError ? toNetError(results[i].error).code : null },
+      {
+        status: results[i]?.data ?? null,
+        ok: results[i]?.isSuccess === true,
+        code: results[i]?.isError ? toNetError(results[i].error).code : null,
+      },
     ]),
   );
 
@@ -72,10 +89,16 @@ export function FirmwareTab({ device, devices, access }: FirmwareTabProps) {
     }
   };
 
-  const eligible = (id: string) => statusById.get(id)?.status != null;
+  const eligible = (id: string) => {
+    const info = statusById.get(id);
+    return info?.ok === true && info.status != null;
+  };
   const chosen = selection.filter(eligible);
   const running = stage === "running";
   const step = !firmware ? 0 : stage === "idle" ? (chosen.length > 0 ? 2 : 1) : stage === "running" ? 2 : 4;
+  const upgradable = firmware
+    ? devices.filter((d) => eligible(d.id) && compareVersion(firmware.version, statusById.get(d.id)?.status?.version ?? "") === "newer")
+    : [];
 
   const toggle = (id: string, on: boolean) =>
     setSelection((s) => (on ? [...s.filter((x) => x !== id), id] : s.filter((x) => x !== id)));
@@ -93,31 +116,29 @@ export function FirmwareTab({ device, devices, access }: FirmwareTabProps) {
     <div className="grid gap-(--density-gutter)">
       <OtaStatusCard device={device} access={access} />
 
-      <SurfacePanel title={t("network.fw.upgradeTitle")}>
-        <Stepper
-          label={t("network.fw.steps")}
-          current={step}
-          steps={[t("network.fw.step1"), t("network.fw.step2"), t("network.fw.step3"), t("network.fw.step4")]}
-        />
-      </SurfacePanel>
-
       {stage === "idle" || !firmware ? (
-        <>
-          <SurfacePanel
-            title={t("network.fw.pickTitle")}
-            actions={
-              <Button size="sm" variant="outline" onClick={() => void choose()} disabled={inspecting}>
+        <SurfacePanel title={t("network.fw.upgradeTitle")}>
+          <Stepper
+            label={t("network.fw.steps")}
+            current={step}
+            steps={[t("network.fw.step1"), t("network.fw.step2"), t("network.fw.step3"), t("network.fw.step4")]}
+          />
+
+          {/* 第 1 步：固件文件 */}
+          <section aria-label={t("network.fw.pickTitle")} className="mt-5 border-t border-border pt-4">
+            <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-medium">{t("network.fw.pickTitle")}</h3>
+              <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => void choose()} disabled={inspecting} loading={inspecting}>
                 <FolderOpen />
                 {firmware ? t("network.fw.pickAgain") : t("network.fw.pick")}
               </Button>
-            }
-          >
+            </header>
             {inspectError ? (
               <p role="alert" className="text-sm text-destructive">
                 {inspectError}
               </p>
             ) : firmware ? (
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-6">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 2xl:grid-cols-6">
                 <Meta label={t("network.fw.file")} value={firmware.fileName} />
                 <Meta label={t("network.fw.version")} value={firmware.version} />
                 <Meta label={t("network.fw.project")} value={firmware.projectName} />
@@ -131,13 +152,26 @@ export function FirmwareTab({ device, devices, access }: FirmwareTabProps) {
                 {inspecting ? t("network.fw.inspecting") : t("network.fw.pickHint")}
               </div>
             )}
-          </SurfacePanel>
+          </section>
 
+          {/* 第 2 步：目标设备 */}
           {firmware && (
-            <SurfacePanel
-              title={t("network.fw.targetsTitle")}
-              actions={<span className="text-xs text-muted-foreground">{t("network.fw.selected", { count: chosen.length })}</span>}
-            >
+            <section aria-label={t("network.fw.targetsTitle")} className="mt-5 border-t border-border pt-4">
+              <header className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-sm font-medium">{t("network.fw.targetsTitle")}</h3>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground">{t("network.fw.selected", { count: chosen.length })}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-3"
+                    disabled={upgradable.length === 0}
+                    onClick={() => setSelection(upgradable.map((d) => d.id))}
+                  >
+                    {t("network.fw.selectUpgradable", { count: upgradable.length })}
+                  </Button>
+                </div>
+              </header>
               {devices.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t("network.noDevice")}</p>
               ) : (
@@ -145,16 +179,16 @@ export function FirmwareTab({ device, devices, access }: FirmwareTabProps) {
                   {devices.map((d) => {
                     const info = statusById.get(d.id);
                     const ok = eligible(d.id);
-                    const relation = info?.status ? compareVersion(firmware.version, info.status.version) : "unknown";
+                    const relation: Relation = info?.status ? compareVersion(firmware.version, info.status.version) : "unknown";
+                    const badge = RELATION_BADGE[relation];
+                    const BadgeIcon = badge.icon;
                     return (
                       <li key={d.id} className={cn("flex items-center gap-3 py-2.5", !ok && "opacity-60")}>
-                        <input
+                        <Checkbox
                           id={`fw-target-${d.id}`}
-                          type="checkbox"
-                          className="size-4 accent-primary"
                           checked={selection.includes(d.id) && ok}
                           disabled={!ok}
-                          onChange={(e) => toggle(d.id, e.target.checked)}
+                          onCheckedChange={(v) => toggle(d.id, v === true)}
                         />
                         <label htmlFor={`fw-target-${d.id}`} className="min-w-0 flex-1 cursor-pointer">
                           <span className="block truncate text-sm font-medium">{d.name}</span>
@@ -163,50 +197,43 @@ export function FirmwareTab({ device, devices, access }: FirmwareTabProps) {
                             {info?.status ? ` · v${info.status.version}` : ""}
                           </span>
                         </label>
-                        <span
-                          className={cn(
-                            "text-xs font-medium",
-                            !ok && "text-muted-foreground",
-                            ok && relation === "newer" && "text-success",
-                            ok && relation === "same" && "text-warning",
-                            ok && relation === "older" && "text-warning",
-                          )}
-                        >
-                          {!ok
-                            ? info?.code === "unauthorized"
-                              ? t("network.rail.needToken")
-                              : t("network.rail.offline")
-                            : t(`network.fw.relation.${relation}`)}
-                        </span>
+                        {ok ? (
+                          <Badge variant={badge.variant}>
+                            <BadgeIcon className="size-3" aria-hidden />
+                            {t(`network.fw.relation.${relation}`)}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {info?.code === "unauthorized" ? t("network.rail.needToken") : t("network.rail.offline")}
+                          </span>
+                        )}
                       </li>
                     );
                   })}
                 </ul>
               )}
-            </SurfacePanel>
-          )}
 
-          {firmware && (
-            <div className="flex items-center justify-end gap-3">
-              <p className="mr-auto text-xs text-muted-foreground">{t("network.fw.warn")}</p>
-              <Button disabled={chosen.length === 0 || running} onClick={() => setConfirming(true)}>
-                <Rocket />
-                {t("network.fw.start", { count: chosen.length })}
-              </Button>
-            </div>
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+                <p className="mr-auto text-xs text-muted-foreground">{t("network.fw.warn")}</p>
+                <Button disabled={chosen.length === 0 || running} onClick={() => setConfirming(true)}>
+                  <Rocket />
+                  {t("network.fw.start", { count: chosen.length })}
+                </Button>
+              </div>
+            </section>
           )}
-        </>
+        </SurfacePanel>
       ) : (
         <UpgradeProgress stage={stage} targets={targets} stopRequested={stopRequested} onStop={requestStop} onReset={reset} />
       )}
 
+      {/* 升级不是破坏性操作（失败会回滚），确认按钮用主色；红色留给删除 / 恢复出厂 */}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
         title={t("network.fw.confirmTitle", { count: chosen.length })}
         description={t("network.fw.confirmDesc", { names: chosenNames.join("、"), version: firmware?.version ?? "" })}
         confirmLabel={t("network.fw.confirmStart")}
-        destructive
         onConfirm={begin}
       />
     </div>

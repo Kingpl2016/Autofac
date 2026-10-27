@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { RotateCw, ShieldAlert, Stethoscope } from "lucide-react";
+import { ChevronDown, RotateCw, ShieldAlert, Stethoscope } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -64,18 +65,29 @@ export function BoardOpsPanel({ device, access }: BoardOpsPanelProps) {
         </div>
         <p className="text-xs text-muted-foreground">{t("network.board.hint")}</p>
 
-        <div className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-destructive">{t("network.board.factory")}</p>
-              <p className="text-xs text-muted-foreground">{t("network.board.factoryHint")}</p>
+        {/* 危险区默认折叠：不可逆的操作不和日常操作摆在一起 */}
+        <Collapsible className="mt-1 rounded-lg border border-destructive/40 bg-destructive/5">
+          <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <ShieldAlert className="size-4 shrink-0" aria-hidden />
+            <span className="flex-1">{t("network.board.dangerZone")}</span>
+            <ChevronDown
+              className="size-4 transition-transform group-data-[state=closed]:-rotate-90 motion-reduce:transition-none"
+              aria-hidden
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-destructive/30 px-3 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{t("network.board.factory")}</p>
+                <p className="text-xs text-muted-foreground">{t("network.board.factoryHint")}</p>
+              </div>
+              <Button size="sm" variant="destructive" disabled={!access.canWrite} onClick={() => setConfirmFactory(true)}>
+                <ShieldAlert />
+                {t("network.board.factory")}
+              </Button>
             </div>
-            <Button size="sm" variant="destructive" disabled={!access.canWrite} onClick={() => setConfirmFactory(true)}>
-              <ShieldAlert />
-              {t("network.board.factory")}
-            </Button>
-          </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
 
       <ConfirmDialog

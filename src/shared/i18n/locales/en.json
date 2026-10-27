@@ -1783,8 +1783,12 @@
     "subtitle": "Manage ESP32-P4 boards over HTTP: files, commands and firmware upgrade",
     "tabs": {
       "files": "Files",
-      "commands": "Commands",
-      "firmware": "Firmware"
+      "firmware": "Firmware",
+      "control": "Playback",
+      "config": "Config",
+      "diag": "Diagnostics & logs",
+      "configDirty": "unsaved changes",
+      "diagAttention": "needs attention"
     },
     "modes": {
       "0": "Auto",
@@ -1817,7 +1821,19 @@
       "removeDesc": "Only removes the device and its saved token from this app. The device itself is untouched.",
       "removeConfirm": "Remove",
       "selected": "Current device",
-      "rebooting": "Rebooting"
+      "rebooting": "Rebooting",
+      "switch": "Switch device",
+      "sheetHint": "Choose the device to manage",
+      "collapse": "Collapse device list",
+      "expand": "Expand device list",
+      "search": "Search name or IP",
+      "noMatch": "No matching devices",
+      "moreActions": "More actions",
+      "copyIp": "Copy IP",
+      "ipCopied": "Copied {{ip}}",
+      "keyboardHint": "↑↓ switch · F2 edit · Del remove",
+      "showMore": "Show {{n}} more",
+      "showLess": "Show less"
     },
     "form": {
       "addTitle": "Add device",
@@ -1849,7 +1865,6 @@
       "tokenCleared": "Cleared the token saved on this computer"
     },
     "summary": {
-      "link": "Link",
       "linkUp": "Connected",
       "linkDown": "Disconnected",
       "sd": "SD card",
@@ -1860,7 +1875,6 @@
       "ip": "IP address",
       "dhcp": "DHCP",
       "staticIp": "Static",
-      "stale": "stale — the device is offline",
       "sdLow": "low space"
     },
     "errors": {
@@ -1894,13 +1908,6 @@
       "rebootingTitle": "Device is rebooting",
       "rebootingBody": "This page refreshes automatically once the device is back. Actions are unavailable meanwhile."
     },
-    "commands": {
-      "sections": "Command groups",
-      "control": "Control",
-      "config": "Config",
-      "diag": "Diagnostics",
-      "logs": "Logs"
-    },
     "modeDesc": {
       "0": "Auto: simplified, same as Program (playback only, no forwarding).",
       "1": "Art-Net Forward: stops playback, receives network Art-Net / sACN live and merges the output.",
@@ -1912,7 +1919,8 @@
     "control": {
       "modeTitle": "Work mode",
       "modeApplied": "Switched to “{{mode}}”",
-      "modeUnknown": "The device work mode is not known yet"
+      "modeUnknown": "The device work mode is not known yet",
+      "modeApplying": "Switching…"
     },
     "player": {
       "title": "Player",
@@ -1935,18 +1943,12 @@
         "1": "Stopped",
         "2": "Playing",
         "3": "Paused"
+      },
+      "repeat": {
+        "0": "Once",
+        "1": "Loop",
+        "2": "Playlist"
       }
-    },
-    "program": {
-      "title": "Program control",
-      "no": "Program number",
-      "noHint": "An integer from 1 to 255, the program number on the device",
-      "noInvalid": "The program number must be an integer from 1 to 255",
-      "modeBlocked": "The device is in “{{mode}}” mode and rejects playback actions. Switch to Auto or Program first. Delete is not affected.",
-      "deleteFile": "Delete program file",
-      "deleteTitle": "Delete program #{{no}}?",
-      "deleteDesc": "Deletes the program’s file from the device SD card. This cannot be undone. Playback stops first if it is playing.",
-      "deleted": "Deleted program #{{no}}"
     },
     "board": {
       "title": "Device actions",
@@ -1962,7 +1964,8 @@
       "factoryTitle": "Factory reset “{{name}}”?",
       "factoryDesc": "Network, output and forwarding settings return to defaults, including the token. You must reconfigure afterwards. This cannot be undone.",
       "factoryType": "Type the device name “{{name}}” to confirm",
-      "factorySent": "Factory reset sent, waiting for the device to reboot"
+      "factorySent": "Factory reset sent, waiting for the device to reboot",
+      "dangerZone": "Danger zone"
     },
     "config": {
       "title": "Device config",
@@ -2040,7 +2043,11 @@
       "tokenSaved": "Token updated",
       "tokenCleared": "Cleared the token on the device",
       "tokenClearTitle": "Clear the token of “{{name}}”?",
-      "tokenClearDesc": "The device will no longer need a token, and later requests are sent without authentication."
+      "tokenClearDesc": "The device will no longer need a token, and later requests are sent without authentication.",
+      "sections": "Config sections",
+      "tocChanged": "changed",
+      "tocError": "has errors",
+      "needsReboot": "Reboot required"
     },
     "diag": {
       "title": "Diagnostics",
@@ -2067,7 +2074,12 @@
         "low": "low"
       },
       "txTimeoutsTitle": "DMX UART TX timeouts: {{count}}",
-      "txTimeoutsBody": "Should stay at 0. A non-zero value means frames underran mid-output. Check load and wiring."
+      "txTimeoutsBody": "Should stay at 0. A non-zero value means frames underran mid-output. Check load and wiring.",
+      "live": "Live",
+      "paused": "Updates paused",
+      "updatedAt": "Updated {{time}}",
+      "pause": "Pause updates",
+      "resume": "Resume updates"
     },
     "logs": {
       "title": "Device log",
@@ -2145,7 +2157,18 @@
       "nameEmpty": "The file name cannot be empty",
       "nameTooLong": "The file name is too long (128 bytes max)",
       "nameChars": "The file name cannot contain path separators, .. or control characters",
-      "nameExt": "The file name must end with .artrec"
+      "nameExt": "The file name must end with .artrec",
+      "filter": "Filter file names",
+      "capacity": "{{used}} / {{total}} used",
+      "upload": "Upload files",
+      "play": "Play",
+      "noProgram": "No program number",
+      "listTitle": "Device files",
+      "listCaption": "Program files on the device SD card, sorted by program number",
+      "noMatch": "No matching files",
+      "noMatchBody": "No file name contains “{{q}}”",
+      "shown": "Showing {{shown}} of {{count}} file(s)",
+      "keyboardHint": "F2 rename · Del delete · Ctrl+S download · Ctrl+F filter"
     },
     "transfer": {
       "title": "Transfers",
@@ -2219,7 +2242,49 @@
         "skipped": "Skipped"
       },
       "failHint": "The device usually still runs the old firmware, so you can retry.",
-      "summary": "{{ok}} succeeded, {{failed}} failed, {{skipped}} skipped."
+      "summary": "{{ok}} succeeded, {{failed}} failed, {{skipped}} skipped.",
+      "selectUpgradable": "Select all upgradable ({{count}})"
+    },
+    "ago": {
+      "now": "just now",
+      "sec": "{{n}}s ago",
+      "min": "{{n}} min ago",
+      "hour": "{{n}} h ago",
+      "day": "{{n}} d ago"
+    },
+    "header": {
+      "updated": "Updated",
+      "staleSince": "Data from {{time}}",
+      "modePlayable": "Plays programs from the SD card",
+      "modeNotPlayable": "This mode does not play programs",
+      "fwVerified": "Verified",
+      "sdFree": "{{free}} free",
+      "sdTotal": "of {{total}}",
+      "backOnline": "“{{name}}” is back online"
+    },
+    "fleet": {
+      "label": "Device status summary",
+      "total": "{{n}} devices",
+      "online": "{{n}} online",
+      "needToken": "{{n}} need token",
+      "offline": "{{n}} offline"
+    },
+    "nowPlaying": {
+      "title": "Now playing"
+    },
+    "modeShort": {
+      "0": "Same as Program: playback only, no forwarding",
+      "1": "Receive Art-Net / sACN live and output",
+      "2": "Record-only mode, playback stops",
+      "3": "Record-only mode, playback stops",
+      "4": "Play programs from the SD card by number",
+      "5": "Record-only mode, playback stops"
+    },
+    "quick": {
+      "title": "Quick play",
+      "modeLabel": "Play mode",
+      "empty": "No numbered program files on the device yet",
+      "modeHint": "The device is in “{{mode}}” mode. Picking a program will first ask to switch to Program mode."
     }
   },
   "dataDir": {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { heapContiguity, pushSample, sortTasks, sparkPoints, stackLevel, toSample } from "../diag";
+import { diagNeedsAttention, heapContiguity, pushSample, sortTasks, sparkPoints, stackLevel, toSample } from "../diag";
 import type { Diag, TaskDiag } from "../types";
 
 const task = (name: string, stackMin: number, cpu: number | null): TaskDiag => ({
@@ -56,5 +56,26 @@ describe("diag", () => {
     expect(sparkPoints([0, 10], 100, 20)).toBe("0.0,20.0 100.0,0.0");
     expect(sparkPoints([5, 5, 5], 100, 10)).toBe("0.0,10.0 50.0,10.0 100.0,10.0");
     expect(sparkPoints([0, 500], 100, 10, 0, 1000)).toBe("0.0,10.0 100.0,5.0");
+  });
+});
+
+describe("diagNeedsAttention", () => {
+  const diag = (over: Partial<Diag> = {}): Diag => ({
+    heap: { free: 100_000, minFree: 50_000, largestBlock: 80_000, psramFree: 1_000_000 },
+    tasks: [task("main", 4096, 10)],
+    dmxUart: { ports: 2, txTimeouts: 0 },
+    player: { state: 0, badFrames: 0 },
+    ...over,
+  });
+
+  it("一切正常时为 false", () => {
+    expect(diagNeedsAttention(diag())).toBe(false);
+    expect(diagNeedsAttention(diag({ dmxUart: null }))).toBe(false);
+  });
+
+  it("UART 发送超时或任务栈危险时为 true；栈偏低不算", () => {
+    expect(diagNeedsAttention(diag({ dmxUart: { ports: 2, txTimeouts: 1 } }))).toBe(true);
+    expect(diagNeedsAttention(diag({ tasks: [task("dmx", 512, 5)] }))).toBe(true);
+    expect(diagNeedsAttention(diag({ tasks: [task("dmx", 1500, 5)] }))).toBe(false);
   });
 });

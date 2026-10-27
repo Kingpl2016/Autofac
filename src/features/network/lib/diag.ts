@@ -130,3 +130,15 @@ export function sparkPoints(
     })
     .join(" ");
 }
+
+/**
+ * 诊断结果里是否有需要关注的问题（用于 Tab 上的提示点）：DMX UART 发送超时，或有任务栈余量危险。
+ *
+ * # Arguments
+ *
+ * * `diag` - 最近一次诊断。
+ */
+export function diagNeedsAttention(diag: Diag): boolean {
+  if (diag.dmxUart && diag.dmxUart.txTimeouts > 0) return true;
+  return diag.tasks.some((task) => stackLevel(task.stackMin) === "danger");
+}

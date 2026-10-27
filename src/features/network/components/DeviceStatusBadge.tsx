@@ -1,52 +1,29 @@
-import { CircleCheck, KeyRound, Loader2, RotateCw, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { cn } from "@/lib/utils";
+import { StatusDot } from "@/shared/components/StatusDot";
 import type { LinkState } from "../lib/access";
-
-const STYLE: Record<LinkState, string> = {
-  online: "text-success",
-  needToken: "text-warning",
-  offline: "text-muted-foreground",
-  checking: "text-muted-foreground",
-  rebooting: "text-warning",
-};
-
-const LABEL: Record<LinkState, string> = {
-  online: "network.rail.online",
-  needToken: "network.rail.needToken",
-  offline: "network.rail.offline",
-  checking: "network.rail.checking",
-  rebooting: "network.rail.rebooting",
-};
+import { LINK_VISUAL } from "../lib/linkVisual";
 
 interface DeviceStatusBadgeProps {
   state: LinkState;
+  /** 只画指示点、文字留给读屏（用于折叠的设备栏） */
+  dotOnly?: boolean;
   className?: string;
 }
 
 /**
- * 设备连接状态：图标 + 文字（状态不只靠颜色表达）。
+ * 设备连接状态：形状 + 颜色 + 文字（状态不只靠颜色表达）。
  */
-export function DeviceStatusBadge({ state, className }: DeviceStatusBadgeProps) {
+export function DeviceStatusBadge({ state, dotOnly, className }: DeviceStatusBadgeProps) {
   const { t } = useTranslation();
-  const cls = "size-3.5 shrink-0";
-  const icon =
-    state === "online" ? (
-      <CircleCheck className={cls} aria-hidden />
-    ) : state === "needToken" ? (
-      <KeyRound className={cls} aria-hidden />
-    ) : state === "offline" ? (
-      <WifiOff className={cls} aria-hidden />
-    ) : state === "rebooting" ? (
-      <RotateCw className={cn(cls, "animate-spin motion-reduce:animate-none")} aria-hidden />
-    ) : (
-      <Loader2 className={cn(cls, "animate-spin motion-reduce:animate-none")} aria-hidden />
+  const v = LINK_VISUAL[state];
+  if (dotOnly) {
+    return (
+      <span className={className}>
+        <StatusDot tone={v.tone} shape={v.shape} />
+        <span className="sr-only">{t(v.label)}</span>
+      </span>
     );
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", STYLE[state], className)}>
-      {icon}
-      {t(LABEL[state])}
-    </span>
-  );
+  }
+  return <StatusDot tone={v.tone} shape={v.shape} label={t(v.label)} className={className} />;
 }

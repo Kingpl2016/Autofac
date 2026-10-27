@@ -29,7 +29,7 @@ export function SortableFileRow({ sortDisabled, ...rowProps }: SortableFileRowPr
       bindRow={setNodeRef}
       bindHandle={setActivatorNodeRef}
       drag={{
-        // 只用纵向位移：行宽由网格决定，不要被缩放变形
+        // 只用纵向位移：行宽由表格决定，不要被缩放变形
         style: { transform: transform ? `translate3d(0, ${Math.round(transform.y)}px, 0)` : undefined, transition },
         isDragging,
         disabled: sortDisabled,

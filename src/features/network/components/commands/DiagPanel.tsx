@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OctagonAlert, TriangleAlert } from "lucide-react";
+import { OctagonAlert, Pause, Play, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/shared/components/StatusDot";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { cn } from "@/lib/utils";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
@@ -10,6 +13,12 @@ import { heapContiguity, sortTasks, sparkPoints, stackLevel, type DiagSample } f
 import { errorText } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
 import type { NetDevice } from "../../lib/types";
+
+/** `HH:mm:ss`（诊断每 2 秒刷新，需要精确到秒）。 */
+function formatClockTime(ts: number): string {
+  const d = new Date(ts);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+}
 
 interface DiagPanelProps {
   device: NetDevice;
@@ -24,7 +33,8 @@ interface DiagPanelProps {
  */
 export function DiagPanel({ device, access, active }: DiagPanelProps) {
   const { t } = useTranslation();
-  const { diag, samples, error, isLoading } = useDiag(device.id, active && access.canRead);
+  const [paused, setPaused] = useState(false);
+  const { diag, samples, error, isLoading, updatedAt } = useDiag(device.id, active && access.canRead && !paused);
 
   if (isLoading || (!diag && !error)) {
     return <Skeleton aria-busy="true" className="h-64 rounded-xl bg-surface-2" />;
@@ -46,6 +56,24 @@ export function DiagPanel({ device, access, active }: DiagPanelProps) {
 
   return (
     <div className="grid gap-(--density-gutter)">
+      {/* 实时区的暂停开关与更新时间：暂停后停止轮询，数值与曲线停在当前快照 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusDot
+          tone={paused ? "muted" : "success"}
+          shape={paused ? "square" : "circle"}
+          label={paused ? t("network.diag.paused") : t("network.diag.live")}
+        />
+        {updatedAt !== null && (
+          <span className="tabular text-xs text-muted-foreground">
+            {t("network.diag.updatedAt", { time: formatClockTime(updatedAt) })}
+          </span>
+        )}
+        <Button variant="outline" size="sm" className="ml-auto h-9 px-3" aria-pressed={paused} onClick={() => setPaused((v) => !v)}>
+          {paused ? <Play /> : <Pause />}
+          {paused ? t("network.diag.resume") : t("network.diag.pause")}
+        </Button>
+      </div>
+
       {diag.dmxUart && diag.dmxUart.txTimeouts > 0 && (
         <div role="alert" className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-destructive">
           <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />

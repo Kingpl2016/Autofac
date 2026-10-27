@@ -47,5 +47,7 @@ export function useDiag(id: string | null, enabled: boolean) {
     error: query.error,
     isLoading: query.isLoading,
     refetch: () => void query.refetch(),
+    /** 最近一次成功取到诊断的时间；没有为 `null` */
+    updatedAt: query.data ? query.dataUpdatedAt : null,
   };
 }

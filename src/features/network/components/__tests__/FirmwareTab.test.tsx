@@ -135,11 +135,11 @@ describe("FirmwareTab 目标设备", () => {
     await chooseFirmware();
     await screen.findByText("可升级");
 
-    const cbMain = screen.getByLabelText(/主舞台/) as HTMLInputElement;
-    const cbSide = screen.getByLabelText(/侧台/) as HTMLInputElement;
-    const cbBackup = screen.getByLabelText(/备份/) as HTMLInputElement;
-    expect(cbMain.checked).toBe(true);
-    expect(cbSide.checked).toBe(false);
+    const cbMain = screen.getByRole("checkbox", { name: /主舞台/ }) as HTMLButtonElement;
+    const cbSide = screen.getByRole("checkbox", { name: /侧台/ }) as HTMLButtonElement;
+    const cbBackup = screen.getByRole("checkbox", { name: /备份/ }) as HTMLButtonElement;
+    expect(cbMain.getAttribute("aria-checked")).toBe("true");
+    expect(cbSide.getAttribute("aria-checked")).toBe("false");
     expect(cbBackup.disabled).toBe(true);
     expect(screen.getByText("已是此版本")).toBeTruthy();
     expect(screen.getByText("离线")).toBeTruthy();
@@ -147,6 +147,37 @@ describe("FirmwareTab 目标设备", () => {
 
     fireEvent.click(cbSide);
     expect(screen.getByRole("button", { name: "升级 2 台设备" })).toBeTruthy();
+  });
+
+  it("“选中全部可升级”只勾选版本更旧的在线设备", async () => {
+    renderTab();
+    await chooseFirmware();
+    await screen.findByText("可升级");
+    fireEvent.click(screen.getByRole("checkbox", { name: /侧台/ }));
+    expect(screen.getByRole("button", { name: "升级 2 台设备" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "选中全部可升级（1）" }));
+    expect(screen.getByRole("checkbox", { name: /侧台/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("button", { name: "升级 1 台设备" })).toBeTruthy();
+  });
+
+  it("曾经在线、现在离线的设备不可选（不因缓存的旧状态被误判为可升级）", async () => {
+    let sideOnline = true;
+    api.netdevStatus.mockImplementation(async (id: string) => {
+      if (id === "d1") return status("1.4.2");
+      if (id === "d2" && sideOnline) return status("1.4.0");
+      throw { code: "network", message: "offline" };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <FirmwareTab device={main} devices={[main, side, backup]} access={access} />
+      </QueryClientProvider>,
+    );
+    await chooseFirmware();
+    await waitFor(() => expect(screen.getAllByText("可升级").length).toBe(2));
+    sideOnline = false;
+    await client.refetchQueries();
+    await waitFor(() => expect((screen.getByRole("checkbox", { name: /侧台/ }) as HTMLButtonElement).disabled).toBe(true));
   });
 
   it("确认对话框列出设备与版本；取消不会开始", async () => {
@@ -157,6 +188,8 @@ describe("FirmwareTab 目标设备", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("1.5.0");
     expect(dialog.textContent).toContain("主舞台");
+    // 升级会回滚，不是破坏性操作：确认按钮用主色而不是危险色
+    expect(within(dialog).getByRole("button", { name: "开始升级" }).className).not.toContain("bg-destructive");
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.netdevOtaUpload).not.toHaveBeenCalled();

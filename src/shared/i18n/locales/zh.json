@@ -1782,9 +1782,13 @@
     "title": "网络设备",
     "subtitle": "通过 HTTP 管理 ESP32-P4 核心板：文件、指令与固件升级",
     "tabs": {
-      "files": "文件操作",
-      "commands": "指令操作",
-      "firmware": "固件升级"
+      "files": "文件",
+      "firmware": "固件",
+      "control": "播放控制",
+      "config": "配置",
+      "diag": "诊断与日志",
+      "configDirty": "有未保存的更改",
+      "diagAttention": "有需要关注的问题"
     },
     "modes": {
       "0": "自动",
@@ -1817,7 +1821,19 @@
       "removeDesc": "只会从本应用移除该设备及其保存的 Token，不会改动设备本身。",
       "removeConfirm": "移除",
       "selected": "当前设备",
-      "rebooting": "重启中"
+      "rebooting": "重启中",
+      "switch": "切换设备",
+      "sheetHint": "选择要管理的设备",
+      "collapse": "收起设备栏",
+      "expand": "展开设备栏",
+      "search": "搜索名称或 IP",
+      "noMatch": "没有匹配的设备",
+      "moreActions": "更多操作",
+      "copyIp": "复制 IP",
+      "ipCopied": "已复制 {{ip}}",
+      "keyboardHint": "↑↓ 切换设备 · F2 编辑 · Del 移除",
+      "showMore": "再显示 {{n}} 个",
+      "showLess": "收起"
     },
     "form": {
       "addTitle": "添加设备",
@@ -1849,7 +1865,6 @@
       "tokenCleared": "已清除本机保存的 Token"
     },
     "summary": {
-      "link": "链路",
       "linkUp": "已连接",
       "linkDown": "未连接",
       "sd": "SD 卡",
@@ -1860,7 +1875,6 @@
       "ip": "IP 地址",
       "dhcp": "DHCP",
       "staticIp": "静态",
-      "stale": "已过期，设备当前不在线",
       "sdLow": "空间不足"
     },
     "errors": {
@@ -1894,13 +1908,6 @@
       "rebootingTitle": "设备重启中",
       "rebootingBody": "设备恢复在线后会自动刷新，期间所有操作暂不可用。"
     },
-    "commands": {
-      "sections": "指令分类",
-      "control": "控制",
-      "config": "配置",
-      "diag": "诊断",
-      "logs": "日志"
-    },
     "modeDesc": {
       "0": "自动：简化实现，等同节目模式（仅回放，不转发）。",
       "1": "Art-Net 转发：停止回放，实时接收网络 Art-Net / sACN 并合并输出。",
@@ -1912,7 +1919,8 @@
     "control": {
       "modeTitle": "工作模式",
       "modeApplied": "已切换到“{{mode}}”",
-      "modeUnknown": "尚未读到设备的工作模式"
+      "modeUnknown": "尚未读到设备的工作模式",
+      "modeApplying": "切换中…"
     },
     "player": {
       "title": "播放器",
@@ -1935,18 +1943,12 @@
         "1": "已停止",
         "2": "播放中",
         "3": "已暂停"
+      },
+      "repeat": {
+        "0": "单次",
+        "1": "循环",
+        "2": "连播"
       }
-    },
-    "program": {
-      "title": "节目操作",
-      "no": "节目号",
-      "noHint": "1 到 255 的整数，对应设备上的节目编号",
-      "noInvalid": "节目号必须是 1 到 255 的整数",
-      "modeBlocked": "当前为“{{mode}}”模式，播放类操作被设备拒绝。请先切到“自动”或“节目”模式。删除不受影响。",
-      "deleteFile": "删除节目文件",
-      "deleteTitle": "删除节目 #{{no}}？",
-      "deleteDesc": "会删除设备 SD 卡上该节目对应的文件，无法恢复。若正在播放会先停止。",
-      "deleted": "已删除节目 #{{no}}"
     },
     "board": {
       "title": "设备操作",
@@ -1962,7 +1964,8 @@
       "factoryTitle": "恢复“{{name}}”出厂设置？",
       "factoryDesc": "网络、输出、转发等配置将全部还原为默认值，包括 Token；之后需要重新配置并重启。此操作无法撤销。",
       "factoryType": "输入设备名“{{name}}”以确认",
-      "factorySent": "已发送恢复出厂指令，等待设备重启"
+      "factorySent": "已发送恢复出厂指令，等待设备重启",
+      "dangerZone": "危险操作"
     },
     "config": {
       "title": "设备配置",
@@ -2040,7 +2043,11 @@
       "tokenSaved": "Token 已更新",
       "tokenCleared": "已清除设备上的 Token",
       "tokenClearTitle": "清除“{{name}}”的 Token？",
-      "tokenClearDesc": "清除后设备不再需要 Token，之后的操作将不带鉴权。"
+      "tokenClearDesc": "清除后设备不再需要 Token，之后的操作将不带鉴权。",
+      "sections": "配置分组",
+      "tocChanged": "有更改",
+      "tocError": "有错误",
+      "needsReboot": "需重启"
     },
     "diag": {
       "title": "诊断",
@@ -2067,7 +2074,12 @@
         "low": "偏低"
       },
       "txTimeoutsTitle": "DMX UART 发送超时累计 {{count}} 次",
-      "txTimeoutsBody": "正常应为 0。非 0 说明输出帧中途发生欠载，请检查负载和线路。"
+      "txTimeoutsBody": "正常应为 0。非 0 说明输出帧中途发生欠载，请检查负载和线路。",
+      "live": "实时更新中",
+      "paused": "已暂停更新",
+      "updatedAt": "更新于 {{time}}",
+      "pause": "暂停更新",
+      "resume": "继续更新"
     },
     "logs": {
       "title": "设备日志",
@@ -2145,7 +2157,18 @@
       "nameEmpty": "文件名不能为空",
       "nameTooLong": "文件名过长（最多 128 字节）",
       "nameChars": "文件名不能包含路径分隔符、.. 或控制字符",
-      "nameExt": "文件名须以 .artrec 结尾"
+      "nameExt": "文件名须以 .artrec 结尾",
+      "filter": "筛选文件名",
+      "capacity": "已用 {{used}} / {{total}}",
+      "upload": "上传文件",
+      "play": "播放",
+      "noProgram": "未分配节目号",
+      "listTitle": "设备文件",
+      "listCaption": "设备 SD 卡上的节目文件，按节目号排序",
+      "noMatch": "没有匹配的文件",
+      "noMatchBody": "没有文件名包含“{{q}}”的文件",
+      "shown": "显示 {{shown}} / {{count}} 个文件",
+      "keyboardHint": "F2 重命名 · Del 删除 · Ctrl+S 下载 · Ctrl+F 筛选"
     },
     "transfer": {
       "title": "传输队列",
@@ -2219,7 +2242,49 @@
         "skipped": "已跳过"
       },
       "failHint": "设备通常仍在旧固件上运行，可以重试。",
-      "summary": "成功 {{ok}} 台，失败 {{failed}} 台，跳过 {{skipped}} 台。"
+      "summary": "成功 {{ok}} 台，失败 {{failed}} 台，跳过 {{skipped}} 台。",
+      "selectUpgradable": "选中全部可升级（{{count}}）"
+    },
+    "ago": {
+      "now": "刚刚",
+      "sec": "{{n}} 秒前",
+      "min": "{{n}} 分钟前",
+      "hour": "{{n}} 小时前",
+      "day": "{{n}} 天前"
+    },
+    "header": {
+      "updated": "更新于",
+      "staleSince": "数据来自 {{time}}",
+      "modePlayable": "可播放 SD 卡上的节目",
+      "modeNotPlayable": "此模式不播放节目",
+      "fwVerified": "已验证",
+      "sdFree": "剩余 {{free}}",
+      "sdTotal": "共 {{total}}",
+      "backOnline": "“{{name}}”已恢复在线"
+    },
+    "fleet": {
+      "label": "设备状态汇总",
+      "total": "{{n}} 台",
+      "online": "{{n}} 在线",
+      "needToken": "{{n}} 需 Token",
+      "offline": "{{n}} 离线"
+    },
+    "nowPlaying": {
+      "title": "正在播放"
+    },
+    "modeShort": {
+      "0": "等同节目模式，只回放不转发",
+      "1": "实时接收 Art-Net / sACN 并输出",
+      "2": "仅记录模式，停止回放",
+      "3": "仅记录模式，停止回放",
+      "4": "按编号播放 SD 卡上的节目",
+      "5": "仅记录模式，停止回放"
+    },
+    "quick": {
+      "title": "节目快选",
+      "modeLabel": "播放方式",
+      "empty": "设备上还没有已编号的节目文件",
+      "modeHint": "当前为“{{mode}}”模式，点击节目时会先询问是否切换到节目模式。"
     }
   },
   "dataDir": {

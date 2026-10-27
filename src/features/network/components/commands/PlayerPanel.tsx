@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Pause, Play, Repeat, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Segmented } from "@/shared/components/Segmented";
 import { StatusPill, type StatusTone } from "@/shared/components/StatusPill";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { useDeviceFiles } from "../../hooks/useDeviceFiles";
@@ -15,7 +15,8 @@ import { formatCount } from "@/shared/lib/format";
 import { formatClock } from "../../lib/format";
 import { netKeys } from "../../lib/queryKeys";
 import { runCommand } from "../../lib/run";
-import { PlayState, ProgramAction, SPEED_STEPS, type NetDevice } from "../../lib/types";
+import { PlayState, ProgramAction, type NetDevice } from "../../lib/types";
+import { SpeedMenu } from "../SpeedMenu";
 
 const TONE: Record<number, StatusTone> = {
   [PlayState.Idle]: "idle",
@@ -72,18 +73,36 @@ export function PlayerPanel({ device, access }: PlayerPanelProps) {
     <SurfacePanel
       title={t("network.player.title")}
       tone={playing ? "playing" : "default"}
-      actions={<StatusPill tone={TONE[state] ?? "idle"}>{t(`network.player.state.${state}`)}</StatusPill>}
+      actions={
+        <>
+          {player && loaded && (
+            <Badge variant="secondary">
+              <Repeat className="size-3" aria-hidden />
+              {t(`network.player.repeat.${player.repeat}`, { defaultValue: t("network.player.repeat.0") })}
+            </Badge>
+          )}
+          <StatusPill tone={TONE[state] ?? "idle"}>{t(`network.player.state.${state}`)}</StatusPill>
+        </>
+      }
     >
       {!player ? (
         <p className="text-sm text-muted-foreground">{t("network.player.unavailable")}</p>
       ) : (
         <div className="grid gap-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="min-w-0 truncate text-sm font-medium">
-              {loaded ? (fileName ?? t("network.player.programNo", { no: program })) : t("network.player.none")}
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+            <p className="min-w-0 truncate text-base font-medium">
+              {loaded ? (
+                <>
+                  <span className="tabular mr-2 text-muted-foreground">#{program}</span>
+                  {fileName ?? t("network.player.programNo", { no: program })}
+                </>
+              ) : (
+                <span className="text-muted-foreground">{t("network.player.none")}</span>
+              )}
             </p>
-            <p className="tabular text-sm text-muted-foreground">
-              {formatClock(shown)} / {formatClock(dur)}
+            <p className="num text-2xl font-semibold tracking-tight">
+              {formatClock(shown)}
+              <span className="text-base font-normal text-muted-foreground"> / {formatClock(dur)}</span>
             </p>
           </div>
 
@@ -150,13 +169,11 @@ export function PlayerPanel({ device, access }: PlayerPanelProps) {
               {t("network.player.playLoop")}
             </Button>
 
-            <Segmented
-              className="ml-auto"
-              ariaLabel={t("network.player.speed")}
-              busy={disabled}
-              value={String(player.speedX100)}
-              options={SPEED_STEPS.map((s) => ({ value: String(s), label: `${s / 100}×` }))}
-              onChange={(v) => void act(() => netdevSpeed(device.id, Number(v)))}
+            <SpeedMenu
+              className="ml-auto h-10 gap-1.5 px-3"
+              value={player.speedX100}
+              disabled={disabled}
+              onChange={(v) => void act(() => netdevSpeed(device.id, v))}
             />
           </div>
 

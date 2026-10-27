@@ -5,6 +5,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import i18n from "@/shared/i18n";
 
+// 行内“⋯”菜单（Radix Popper）依赖 ResizeObserver，jsdom 没有
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 const api = vi.hoisted(() => ({
   netdevListFiles: vi.fn(),
@@ -68,8 +78,13 @@ function renderTab(access: DeviceAccess = accessWith()) {
   );
 }
 
-const row = (name: string) => screen.getByText(name).closest("li") as HTMLElement;
+const row = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;
 const dialogButton = (name: string) => within(screen.getByRole("dialog")).getByRole("button", { name });
+/** 打开某一行的“⋯”菜单（Radix 菜单在 jsdom 里用键盘打开最稳）。 */
+const openMenu = (name: string) =>
+  fireEvent.keyDown(within(row(name)).getByRole("button", { name: `更多操作: ${name}` }), { key: "Enter" });
+/** 菜单项（名称里带着快捷键提示，所以按前缀匹配）。 */
+const menuItem = (label: string) => screen.getByRole("menuitem", { name: new RegExp(`^${label}`) });
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
@@ -88,7 +103,7 @@ describe("FilesTab 列表", () => {
   it("按节目号排序，未分配节目号的排在最后，目录不显示", async () => {
     renderTab();
     await screen.findByText("a.artrec");
-    const names = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
+    const names = screen.getAllByRole("row").map((li) => li.textContent ?? "");
     const order = ["a.artrec", "b.artrec", "new.artrec"].map((n) => names.findIndex((t) => t.includes(n)));
     expect(order).toEqual([...order].sort((x, y) => x - y));
     expect(order.every((i) => i >= 0)).toBe(true);
@@ -108,20 +123,64 @@ describe("FilesTab 列表", () => {
   it("不可写：上传 / 重命名 / 删除 / 播放全部禁用，下载仍可用", async () => {
     renderTab(accessWith({ state: "offline", canWrite: false }));
     await screen.findByText("a.artrec");
-    expect((screen.getByRole("button", { name: "选择文件" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "上传文件" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("设备当前不可写，无法上传")).toBeTruthy();
     const r = within(row("a.artrec"));
     expect((r.getByRole("button", { name: /单次播放/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect((r.getByRole("button", { name: /重命名/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect((r.getByRole("button", { name: /删除/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect((r.getByRole("button", { name: /下载/ }) as HTMLButtonElement).disabled).toBe(false);
+    openMenu("a.artrec");
+    expect(menuItem("重命名").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("删除").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("循环播放").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("下载").getAttribute("aria-disabled")).toBeNull();
   });
 
-  it("没有节目号的文件不能播放，并说明原因", async () => {
+  it("没有节目号的文件不能播放，并在行内说明原因", async () => {
     renderTab();
     await screen.findByText("new.artrec");
     const play = within(row("new.artrec")).getByRole("button", { name: /单次播放/ }) as HTMLButtonElement;
     expect(play.disabled).toBe(true);
-    expect(play.title).toBe("设备尚未给这个文件分配节目号");
+    const hint = document.getElementById(play.getAttribute("aria-describedby") ?? "");
+    expect(hint?.textContent).toBe("未分配节目号");
+  });
+
+  it("每行只有一个主按钮和一个“⋯”菜单；删除在分隔线之后", async () => {
+    renderTab();
+    await screen.findByText("a.artrec");
+    const buttons = within(row("a.artrec"))
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(buttons).toEqual(["拖动排序: a.artrec", "修改节目号: a.artrec", "单次播放: a.artrec", "更多操作: a.artrec"]);
+    openMenu("a.artrec");
+    const menu = screen.getByRole("menu");
+    const children = Array.from(menu.children).map((el) => el.getAttribute("role"));
+    expect(children.at(-2)).toBe("separator");
+    expect(menu.lastElementChild?.textContent).toMatch(/^删除/);
+  });
+
+  it("筛选：只显示匹配的文件，并停用拖动排序", async () => {
+    renderTab();
+    await screen.findByText("a.artrec");
+    fireEvent.change(screen.getByRole("searchbox", { name: "筛选文件名" }), { target: { value: "B." } });
+    expect(screen.queryByText("a.artrec")).toBeNull();
+    expect(screen.getByText("b.artrec")).toBeTruthy();
+    expect((within(row("b.artrec")).getByRole("button", { name: /拖动排序/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("显示 1 / 3 个文件")).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "筛选文件名" }), { target: { value: "zzz" } });
+    expect(screen.getByText("没有匹配的文件")).toBeTruthy();
+  });
+
+  it("行内快捷键：F2 重命名、Delete 删除（先确认）", async () => {
+    renderTab();
+    await screen.findByText("a.artrec");
+    const play = within(row("a.artrec")).getByRole("button", { name: /单次播放/ });
+    fireEvent.keyDown(play, { key: "F2" });
+    expect(screen.getByRole("textbox", { name: "重命名" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "重命名" }), { key: "Escape" });
+
+    fireEvent.keyDown(within(row("b.artrec")).getByRole("button", { name: /单次播放/ }), { key: "Delete" });
+    expect((await screen.findByRole("dialog")).textContent).toContain("b.artrec");
+    expect(api.netdevDeleteFile).not.toHaveBeenCalled();
   });
 
   it("正在播放的文件显示状态并提供停止", async () => {
@@ -141,7 +200,8 @@ describe("FilesTab 播放", () => {
     await screen.findByText("a.artrec");
     fireEvent.click(within(row("a.artrec")).getByRole("button", { name: /单次播放/ }));
     await waitFor(() => expect(api.netdevProgramOp).toHaveBeenCalledWith("d1", 1, 2));
-    fireEvent.click(within(row("b.artrec")).getByRole("button", { name: /循环播放/ }));
+    openMenu("b.artrec");
+    fireEvent.click(menuItem("循环播放"));
     await waitFor(() => expect(api.netdevProgramOp).toHaveBeenCalledWith("d1", 2, 3));
     expect(api.netdevSetWorkmode).not.toHaveBeenCalled();
   });
@@ -191,7 +251,8 @@ describe("FilesTab 删除与重命名", () => {
     api.netdevDeleteFile.mockResolvedValue(undefined);
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(within(row("a.artrec")).getByRole("button", { name: /删除/ }));
+    openMenu("a.artrec");
+    fireEvent.click(menuItem("删除"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("无法恢复");
     expect(api.netdevDeleteFile).not.toHaveBeenCalled();
@@ -203,7 +264,8 @@ describe("FilesTab 删除与重命名", () => {
     api.netdevDeleteFile.mockRejectedValue({ code: "busy", message: "x" });
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(within(row("a.artrec")).getByRole("button", { name: /删除/ }));
+    openMenu("a.artrec");
+    fireEvent.click(menuItem("删除"));
     fireEvent.click(await screen.findByRole("button", { name: "删除" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.error.mock.calls[0][0]).toContain("先停止播放");
@@ -213,7 +275,8 @@ describe("FilesTab 删除与重命名", () => {
     api.netdevRenameFile.mockResolvedValue(undefined);
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(within(row("a.artrec")).getByRole("button", { name: /重命名/ }));
+    openMenu("a.artrec");
+    fireEvent.click(menuItem("重命名"));
     const input = screen.getByRole("textbox", { name: "重命名" });
 
     fireEvent.change(input, { target: { value: "bad.txt" } });
@@ -229,7 +292,8 @@ describe("FilesTab 删除与重命名", () => {
   it("重命名：Esc 取消", async () => {
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(within(row("a.artrec")).getByRole("button", { name: /重命名/ }));
+    openMenu("a.artrec");
+    fireEvent.click(menuItem("重命名"));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "重命名" }), { key: "Escape" });
     expect(screen.queryByRole("textbox", { name: "重命名" })).toBeNull();
     expect(api.netdevRenameFile).not.toHaveBeenCalled();
@@ -332,7 +396,7 @@ describe("FilesTab 上传", () => {
     api.netdevUploadFile.mockImplementation((_id: string, name: string) => handle({ name, size: 1, program: 9 }));
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传文件" }));
     await waitFor(() => expect(api.netdevUploadFile).toHaveBeenCalledTimes(2));
     expect(api.netdevUploadFile.mock.calls.map((c) => [c[1], c[2]])).toEqual([
       ["one.artrec", "C:\\rec\\one.artrec"],
@@ -345,7 +409,7 @@ describe("FilesTab 上传", () => {
     pickers.pickArtrecFiles.mockResolvedValue(["C:\\rec\\notes.txt"]);
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传文件" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.error.mock.calls[0][0]).toContain("notes.txt");
     expect(api.netdevUploadFile).not.toHaveBeenCalled();
@@ -357,14 +421,14 @@ describe("FilesTab 上传", () => {
     renderTab();
     await screen.findByText("a.artrec");
 
-    fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传文件" }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("a.artrec");
     fireEvent.click(dialogButton("取消"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.netdevUploadFile).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传文件" }));
     fireEvent.click(await screen.findByRole("button", { name: "覆盖并上传" }));
     await waitFor(() => expect(api.netdevUploadFile).toHaveBeenCalledTimes(1));
   });
@@ -378,7 +442,7 @@ describe("FilesTab 上传", () => {
     }));
     renderTab();
     await screen.findByText("a.artrec");
-    fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传文件" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(api.netdevUploadFile).toHaveBeenCalledTimes(1);
     expect(toast.error.mock.calls[0][0]).toContain("空间不足");

@@ -36,7 +36,7 @@ import type { DeviceConfig, DeviceStatus, NetDevice } from "../../lib/types";
 import { BoardOpsPanel } from "../commands/BoardOpsPanel";
 import { ConfigPanel } from "../commands/ConfigPanel";
 import { PlayerPanel } from "../commands/PlayerPanel";
-import { ProgramPanel } from "../commands/ProgramPanel";
+import { ProgramQuickPick } from "../commands/ProgramQuickPick";
 import { WorkModePanel } from "../commands/WorkModePanel";
 
 const device: NetDevice = { id: "d1", name: "主舞台", host: "10.0.0.2", port: 80, hasToken: true };
@@ -116,47 +116,54 @@ describe("WorkModePanel", () => {
   });
 });
 
-describe("ProgramPanel", () => {
-  it("节目号越界时禁用按钮并提示", async () => {
-    wrap(<ProgramPanel device={device} access={accessWith(4)} />);
-    const input = screen.getByLabelText("节目号");
-    fireEvent.change(input, { target: { value: "300" } });
-    fireEvent.blur(input);
-    expect(await screen.findByText("节目号必须是 1 到 255 的整数")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "单次播放" }) as HTMLButtonElement).disabled).toBe(true);
-  });
+describe("ProgramQuickPick", () => {
+  const files = [
+    { name: "b.artrec", size: 1, isDir: false, program: 2 },
+    { name: "a.artrec", size: 1, isDir: false, program: 1 },
+    { name: "未编号.artrec", size: 1, isDir: false, program: null },
+  ];
 
-  it("发送动作码：停止 0 / 暂停 1 / 单次 2 / 循环 3", async () => {
+  it("只列出已编号的文件（按节目号排序），点击单次播放；切到循环后用动作 3", async () => {
+    api.netdevListFiles.mockResolvedValue(files);
     api.netdevProgramOp.mockResolvedValue(undefined);
-    wrap(<ProgramPanel device={device} access={accessWith(4)} />);
-    fireEvent.change(screen.getByLabelText("节目号"), { target: { value: "7" } });
-    for (const [name, action] of [
-      ["停止", 0],
-      ["暂停", 1],
-      ["单次播放", 2],
-      ["循环播放", 3],
-    ] as const) {
-      fireEvent.click(screen.getByRole("button", { name }));
-      await waitFor(() => expect(api.netdevProgramOp).toHaveBeenCalledWith("d1", 7, action));
-    }
+    wrap(<ProgramQuickPick device={device} access={accessWith(4)} />);
+    const first = await screen.findByRole("button", { name: "单次播放: a.artrec" });
+    const names = screen.getAllByRole("button", { name: /^单次播放: / }).map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(["单次播放: a.artrec", "单次播放: b.artrec"]);
+    expect(screen.queryByText("未编号.artrec")).toBeNull();
+
+    fireEvent.click(first);
+    await waitFor(() => expect(api.netdevProgramOp).toHaveBeenCalledWith("d1", 1, 2));
+
+    fireEvent.click(screen.getByRole("radio", { name: "循环播放" }));
+    fireEvent.click(screen.getByRole("button", { name: "循环播放: b.artrec" }));
+    await waitFor(() => expect(api.netdevProgramOp).toHaveBeenCalledWith("d1", 2, 3));
   });
 
-  it("非节目模式：播放类按钮禁用并说明，删除不受影响", () => {
-    wrap(<ProgramPanel device={device} access={accessWith(1)} />);
-    expect(screen.getByText(/播放类操作被设备拒绝/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "单次播放" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "删除节目文件" }) as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("删除节目文件要二次确认，文案说明会删文件", async () => {
-    api.netdevProgramOp.mockResolvedValue(undefined);
-    wrap(<ProgramPanel device={device} access={accessWith(1)} />);
-    fireEvent.click(screen.getByRole("button", { name: "删除节目文件" }));
+  it("非节目模式：说明会先询问；确认后先切到节目模式再播放", async () => {
+    const order: string[] = [];
+    api.netdevListFiles.mockResolvedValue(files);
+    api.netdevSetWorkmode.mockImplementation(async () => void order.push("mode"));
+    api.netdevProgramOp.mockImplementation(async () => void order.push("play"));
+    wrap(<ProgramQuickPick device={device} access={accessWith(1)} />);
+    expect(screen.getByText(/点击节目时会先询问是否切换到节目模式/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "单次播放: a.artrec" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain("删除设备 SD 卡上该节目对应的文件");
     expect(api.netdevProgramOp).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
-    await waitFor(() => expect(api.netdevProgramOp).toHaveBeenCalledWith("d1", 1, 4));
+    fireEvent.click(within(dialog).getByRole("button", { name: "切换并播放" }));
+    await waitFor(() => expect(order).toEqual(["mode", "play"]));
+  });
+
+  it("不可写时节目按钮全部禁用；没有已编号文件时给出说明", async () => {
+    api.netdevListFiles.mockResolvedValue(files);
+    wrap(<ProgramQuickPick device={device} access={accessWith(4, false)} />);
+    const btn = (await screen.findByRole("button", { name: "单次播放: a.artrec" })) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    cleanup();
+
+    api.netdevListFiles.mockResolvedValue([files[2]]);
+    wrap(<ProgramQuickPick device={device} access={accessWith(4)} />);
+    expect(await screen.findByText("设备上还没有已编号的节目文件")).toBeTruthy();
   });
 });
 
@@ -180,10 +187,14 @@ describe("BoardOpsPanel", () => {
     await waitFor(() => expect(access.markRebooting).toHaveBeenCalled());
   });
 
-  it("恢复出厂必须输入设备名才能确认", async () => {
+  it("恢复出厂在默认折叠的危险区里，且必须输入设备名才能确认", async () => {
     api.netdevBoardOp.mockResolvedValue(undefined);
     const access = accessWith();
     wrap(<BoardOpsPanel device={device} access={access} />);
+    expect(screen.queryByRole("button", { name: "恢复出厂设置" })).toBeNull();
+    const zone = screen.getByRole("button", { name: "危险操作" });
+    expect(zone.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(zone);
     fireEvent.click(screen.getAllByRole("button", { name: "恢复出厂设置" })[0]);
     const dialog = await screen.findByRole("dialog");
     const confirm = within(dialog).getByRole("button", { name: "恢复出厂设置" }) as HTMLButtonElement;
@@ -198,9 +209,12 @@ describe("BoardOpsPanel", () => {
     expect(access.markRebooting).toHaveBeenCalled();
   });
 
-  it("只读时全部禁用", () => {
+  it("只读时全部禁用（危险区仍可展开查看）", () => {
     wrap(<BoardOpsPanel device={device} access={accessWith(4, false)} />);
-    for (const b of screen.getAllByRole("button")) expect((b as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "危险操作" }));
+    const ops = screen.getAllByRole("button").filter((b) => b.textContent !== "危险操作");
+    expect(ops.length).toBe(3);
+    for (const b of ops) expect((b as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -222,8 +236,11 @@ describe("PlayerPanel", () => {
     api.netdevPlayer.mockResolvedValue(player());
     api.netdevListFiles.mockResolvedValue([{ name: "开场秀.artrec", size: 1, isDir: false, program: 1 }]);
     wrap(<PlayerPanel device={device} access={accessWith()} />);
-    expect(await screen.findByText("0:30 / 2:00")).toBeTruthy();
+    expect(await screen.findByText("0:30")).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "播放位置" }).getAttribute("aria-valuetext")).toBe("0:30 / 2:00");
     expect(screen.getByText("播放中")).toBeTruthy();
+    // 重复模式 1 = 循环
+    expect(screen.getByText("循环")).toBeTruthy();
     expect(await screen.findByText("开场秀.artrec")).toBeTruthy();
     expect(screen.getByText("1,234")).toBeTruthy();
   });
@@ -246,7 +263,9 @@ describe("PlayerPanel", () => {
     api.netdevSpeed.mockResolvedValue(undefined);
     wrap(<PlayerPanel device={device} access={accessWith()} />);
     await screen.findByRole("slider", { name: "播放位置" });
-    fireEvent.click(screen.getByRole("radio", { name: "1.5×" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "播放倍速: 1×" }), { key: "Enter" });
+    expect(screen.getByRole("menuitemradio", { name: "1×" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "1.5×" }));
     await waitFor(() => expect(api.netdevSpeed).toHaveBeenCalledWith("d1", 150));
   });
 

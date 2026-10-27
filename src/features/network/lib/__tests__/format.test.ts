@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBytes, formatClock, formatSpeed, percentOf } from "../format";
+import { agoParts, formatBytes, formatClock, formatHourMinute, formatSpeed, percentOf } from "../format";
 
 describe("format", () => {
   it("formatBytes 按 1024 进位", () => {
@@ -28,5 +28,22 @@ describe("format", () => {
     expect(percentOf(5, 0)).toBeNull();
     expect(percentOf(300, 200)).toBe(100);
     expect(percentOf(-1, 200)).toBe(0);
+  });
+
+  it("agoParts 取最大的整单位，5 秒内为 now", () => {
+    expect(agoParts(0)).toEqual({ unit: "now", value: 0 });
+    expect(agoParts(4_999)).toEqual({ unit: "now", value: 0 });
+    expect(agoParts(-10)).toEqual({ unit: "now", value: 0 });
+    expect(agoParts(5_000)).toEqual({ unit: "sec", value: 5 });
+    expect(agoParts(59_999)).toEqual({ unit: "sec", value: 59 });
+    expect(agoParts(60_000)).toEqual({ unit: "min", value: 1 });
+    expect(agoParts(3_599_000)).toEqual({ unit: "min", value: 59 });
+    expect(agoParts(7_200_000)).toEqual({ unit: "hour", value: 2 });
+    expect(agoParts(3 * 86_400_000)).toEqual({ unit: "day", value: 3 });
+  });
+
+  it("formatHourMinute 输出本地 HH:mm", () => {
+    expect(formatHourMinute(new Date(2026, 0, 1, 9, 5).getTime())).toBe("09:05");
+    expect(formatHourMinute(new Date(2026, 0, 1, 23, 59).getTime())).toBe("23:59");
   });
 });

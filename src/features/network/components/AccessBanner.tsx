@@ -13,7 +13,7 @@ interface AccessBannerProps {
 }
 
 /**
- * 设备不可用时显示在内容区顶部的说明横幅：写明原因，并给出下一步操作。
+ * 设备不可用时显示在设备头下方的内联提示条：写明原因，并给出下一步操作。
  * 可用（`ok`）时不渲染。
  */
 export function AccessBanner({ access, onEditDevice }: AccessBannerProps) {
@@ -55,10 +55,12 @@ export function AccessBanner({ access, onEditDevice }: AccessBannerProps) {
     return null;
   }
 
+  // 只有“需要 Token”是用户必须立刻处理的问题，用 alert；离线 / 重启中用礼貌的 status，
+  // 避免轮询抖动（短暂掉线又恢复）时读屏被反复打断。
   return (
     <div
-      role={state === "rebooting" ? "status" : "alert"}
-      className={cn("mb-(--density-gutter) flex flex-wrap items-start gap-3 rounded-lg border px-4 py-3", tone)}
+      role={state === "needToken" ? "alert" : "status"}
+      className={cn("flex flex-wrap items-start gap-3 rounded-lg border px-4 py-3", tone)}
     >
       {icon}
       <div className="min-w-0 flex-1">
