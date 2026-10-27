@@ -24,6 +24,11 @@ desktop.ini
 src-tauri/target
 # tauri-build 每次构建自动生成的 ACL / 能力 schema
 src-tauri/gen
+# 打包脚本（scripts/build_tauri.py）：成品、WebView2 固定运行时及其下载缓存
+/release/
+src-tauri/webview2-runtime-*/
+scripts/.cache/
+/bin/
 
 # 环境变量与密钥（不要提交）
 .env

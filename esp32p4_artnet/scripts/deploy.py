@@ -7,7 +7,8 @@
 外加一个 HTTP 推送式 OTA。
 
 子命令：
-  build    构建固件（--prod 叠加生产配置，--ccache 开编译缓存，--bump 自增版本）
+  build    构建固件（--prod 叠加生产配置，--ccache 开编译缓存，--bump 自增版本）；
+           构建成功后把 .bin 拷贝到仓库根目录 release/<项目>_v<版本>[_prod].bin
   flash    构建并经串口烧录（--port）
   monitor  打开串口监视器（--port）
   ota      构建并经 HTTP 把固件 OTA 推送到设备（--host / --token）
@@ -199,6 +200,25 @@ def bump_version(part: str) -> str:
     return new
 
 
+# 成品统一放仓库根目录的 release/（与桌面端打包脚本 scripts/build_tauri.py 共用）。
+RELEASE_DIR = PROJECT_DIR.parent / "release"
+
+
+def publish_release(prod: bool) -> Path:
+    """把 build/<PROJECT>.bin 拷贝到 release/，文件名带固件版本号。
+
+    命名：<PROJECT>_v<版本>.bin；生产配置（--prod）追加 `_prod`，避免与开发版互相覆盖。
+    """
+    src = PROJECT_DIR / "build" / f"{PROJECT}.bin"
+    if not src.is_file():
+        die(f"找不到固件产物 {src}，无法拷贝到 release。")
+    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    dst = RELEASE_DIR / f"{PROJECT}_v{read_version()}{'_prod' if prod else ''}.bin"
+    shutil.copy2(src, dst)
+    info(f"已拷贝到 {dst}（{dst.stat().st_size} 字节）")
+    return dst
+
+
 def do_build(a: argparse.Namespace) -> None:
     ensure_zstd()
     if getattr(a, "bump", None):
@@ -213,6 +233,7 @@ def do_build(a: argparse.Namespace) -> None:
         run(idf_cmd([*dflag, "set-target", a.target]), env=env)
     run(idf_cmd([*dflag, "build"]), env=env)
     info(f"构建完成：build/{PROJECT}.bin")
+    publish_release(a.prod)
 
 
 def do_flash(a: argparse.Namespace) -> None:
