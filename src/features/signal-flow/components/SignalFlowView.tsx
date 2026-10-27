@@ -5,7 +5,6 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -43,14 +42,6 @@ import { signalItems } from "../lib/signalChanges";
 import { useSignalFlowPrefs, type FlowViewMode } from "../stores/useSignalFlowPrefs";
 import { FlowLegend } from "./FlowLegend";
 import { FlowListView } from "./FlowListView";
-
-/** 小地图里各节点种类的颜色。 */
-const MINIMAP_COLORS: Record<string, string> = {
-  source: "var(--chart-2)",
-  player: "var(--warning)",
-  universe: "var(--primary)",
-  destination: "var(--chart-3)",
-};
 
 /**
  * 信号流页：三列 来源 → Universe → 目的地 有向图。
@@ -270,14 +261,9 @@ function SignalFlowContent() {
               proOptions={{ hideAttribution: true }}
               colorMode={theme}
             >
+              {/* 不放右下角的小地图：它盖住画布一角，三列布局用缩放 / 适应视图就能看全 */}
               <Background />
               <Controls />
-              <MiniMap
-                pannable
-                zoomable
-                ariaLabel={t("signalFlow.minimap")}
-                nodeColor={(n) => MINIMAP_COLORS[n.type ?? ""] ?? "var(--muted-foreground)"}
-              />
             </ReactFlow>
           </FlowDisplayContext.Provider>
         )}

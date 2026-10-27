@@ -15,8 +15,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use arc_swap::ArcSwapOption;
 use artnet_net::DmxFrame;
 use recorder::{
-    can_start, plan_universes, DiskGuard, DiskLevel, EncoderConfig, FileRecorder, RecordFilter,
-    RecoveryOutcome, SessionConfig, SessionStats, StartParams, UniversePlan,
+    can_start, plan_universes, ActivityDelta, ActivityTimeline, DiskGuard, DiskLevel,
+    EncoderConfig, FileRecorder, RecordFilter, RecoveryOutcome, SessionConfig, SessionStats,
+    StartParams, UniversePlan,
 };
 use serde::{Deserialize, Serialize};
 use settings::{AppSettings, RecordingCompression};
@@ -92,6 +93,10 @@ pub struct RecordingStatus {
     pub part: u32,
     /// 已录制时长（微秒，当前分段内）。
     pub elapsed_us: u64,
+    /// 整个录制会话的时长（微秒，跨分段累加）。
+    pub session_elapsed_us: u64,
+    /// 各分段在会话时间轴上的起点（微秒，升序；第一段为 0；未录制时为空）。
+    pub part_starts_us: Vec<u64>,
     /// 会话统计。
     pub stats: SessionStats,
     /// 因录制通道已满而丢弃的帧数。
@@ -102,6 +107,54 @@ pub struct RecordingStatus {
     pub disk_free_bytes: Option<u64>,
     /// 最近一次检查得到的磁盘空间等级。
     pub disk_level: DiskLevel,
+}
+
+/// 录制活动时间线的前端 DTO（行数据为 Base64 字符串，与时间线概览同一编码）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityDto {
+    /// 桶布局代次，每次合并桶加一。
+    pub generation: u32,
+    /// 桶宽（微秒）。
+    pub bucket_us: u64,
+    /// 时间线当前总桶数。
+    pub len: usize,
+    /// 本次数据覆盖的第一个桶下标。
+    pub from: usize,
+    /// 各行对应的 Universe 编号。
+    pub universes: Vec<u16>,
+    /// 变化强度行（Base64，每字节一个桶，0~255）。
+    pub change: Vec<String>,
+    /// 最大电平行（Base64，每字节一个桶，0~255）。
+    pub level: Vec<String>,
+    /// 各分段在会话时间轴上的起点（微秒）。
+    pub part_starts_us: Vec<u64>,
+}
+
+impl From<ActivityDelta> for ActivityDto {
+    fn from(d: ActivityDelta) -> Self {
+        Self {
+            generation: d.generation,
+            bucket_us: d.bucket_us,
+            len: d.len,
+            from: d.from,
+            universes: d.universes,
+            change: d.change.iter().map(|r| player::b64::encode(r)).collect(),
+            level: d.level.iter().map(|r| player::b64::encode(r)).collect(),
+            part_starts_us: d.part_starts_us,
+        }
+    }
+}
+
+/// `recording:stats` 事件载荷：录制状态 + 自上次推送以来的活动时间线增量。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatsEvent<'a> {
+    /// 录制状态（字段平铺到载荷顶层，与 `recording_status` 返回值同形）。
+    #[serde(flatten)]
+    status: &'a RecordingStatus,
+    /// 活动时间线增量。
+    activity: ActivityDto,
 }
 
 /// 一个已完成的录制文件。
@@ -293,6 +346,8 @@ struct ThreadCtx {
     free_space: FreeSpaceFn,
     /// 磁盘空间检查间隔。
     disk_every: Duration,
+    /// 本次录制的活动时间线（录制线程写，`recording_activity` 命令读）。
+    activity: Arc<Mutex<ActivityTimeline>>,
 }
 
 /// 进行中的录制句柄。
@@ -312,6 +367,8 @@ struct Inner {
     free_space: FreeSpaceFn,
     /// 磁盘空间检查间隔（毫秒）；生产环境恒为 [`DISK_CHECK_EVERY`]，测试可缩短。
     disk_every_ms: AtomicU64,
+    /// 最近一次录制的活动时间线（开始录制时复位，停止后保留到下次开始）。
+    activity: Arc<Mutex<ActivityTimeline>>,
 }
 
 impl FrameSink for Inner {
@@ -379,6 +436,7 @@ impl RecordingController {
                 recovered: Mutex::new(Vec::new()),
                 free_space,
                 disk_every_ms: AtomicU64::new(DISK_CHECK_EVERY.as_millis() as u64),
+                activity: Arc::new(Mutex::new(ActivityTimeline::new(Vec::new()))),
             }),
         }
     }
@@ -490,6 +548,19 @@ impl RecordingController {
         s.recording = self.is_recording();
         s.dropped = self.inner.dropped.load(Ordering::Relaxed);
         s
+    }
+
+    /// 最近一次录制的活动时间线全量快照（`recording_activity` 命令用）。
+    ///
+    /// 前端中途打开页面、或桶布局代次与本地不一致时，用它一次取回全部桶。
+    ///
+    /// # Returns
+    ///
+    /// 全量 [`ActivityDto`]（`from = 0`）。从未录制过时总桶数为 0、Universe 集合为空；
+    /// 录制停止后保留最后一次录制的数据，直到下次开始录制。
+    #[must_use]
+    pub fn activity(&self) -> ActivityDto {
+        lock(&self.inner.activity).snapshot().into()
     }
 
     /// 取走启动时恢复出的孤立录制结果（取走后清空）。
@@ -625,11 +696,13 @@ impl RecordingController {
             name,
             path: path.clone(),
             part: 1,
+            part_starts_us: vec![0],
             universes: plan.accepted.clone(),
             disk_free_bytes: free_now,
             disk_level: free_now.map_or(DiskLevel::Ok, recorder::classify),
             ..RecordingStatus::default()
         };
+        lock(&self.inner.activity).reset(first.universes().to_vec());
         self.inner.tap.store(Some(Arc::new(tx)));
         self.inner.mode.set_recording(true);
 
@@ -643,6 +716,7 @@ impl RecordingController {
             mode: self.inner.mode.clone(),
             free_space: self.inner.free_space.clone(),
             disk_every: Duration::from_millis(self.inner.disk_every_ms.load(Ordering::Relaxed)),
+            activity: self.inner.activity.clone(),
         };
         let handle = std::thread::Builder::new()
             .name("artrec-recorder".into())
@@ -703,6 +777,8 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
     let mut result = RecordingResult::default();
     let mut rec = first;
     let mut part: u32 = 1;
+    // 当前分段在会话时间轴上的起点（微秒）：活动时间线与会话时长跨分段累加
+    let mut part_offset: u64 = 0;
     let mut t0 = Instant::now();
     let mut next_tick = t0 + TICK;
     let mut next_checkpoint = t0 + CHECKPOINT_EVERY;
@@ -741,9 +817,15 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
 
         let now = Instant::now();
         if now >= next_tick {
-            if let Err(e) = rec.tick() {
-                result.error = Some(e.to_string());
-                break 'outer;
+            match rec.tick() {
+                Ok(Some(enc)) => {
+                    lock(&ctx.activity).observe(part_offset + enc.index.time_us, rec.snapshot());
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    result.error = Some(e.to_string());
+                    break 'outer;
+                }
             }
             // 按绝对时刻推进，不累积漂移；落后超过一个 TICK 时直接对齐到当前时刻，避免连续追帧
             next_tick += TICK;
@@ -759,7 +841,7 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
             next_checkpoint = now + CHECKPOINT_EVERY;
         }
         if now >= next_stats {
-            publish(ctx, &rec, part, t0);
+            publish(ctx, &rec, part, part_offset, t0);
             next_stats = now + STATS_EVERY;
         }
         if now >= next_disk {
@@ -783,6 +865,8 @@ fn record_loop(ctx: &ThreadCtx, first: FileRecorder, rx: &Receiver<DmxFrame>) ->
                 }
             }
             part += 1;
+            part_offset += total;
+            lock(&ctx.activity).mark_part(part_offset);
             let mut params = ctx.base.clone();
             params.stem = format!("{}-part{part}", ctx.base.stem);
             params.name = format!("{} ({part})", ctx.base.name);
@@ -854,19 +938,40 @@ fn check_disk(ctx: &ThreadCtx, guard: &mut DiskGuard) -> Option<DiskLevel> {
     changed
 }
 
-/// 刷新共享状态并向前端推送 `recording:stats`。
-fn publish(ctx: &ThreadCtx, rec: &FileRecorder, part: u32, t0: Instant) {
+/// 刷新共享状态并向前端推送 `recording:stats`（状态 + 活动时间线增量）。
+///
+/// # Arguments
+///
+/// * `ctx` - 录制线程上下文。
+/// * `rec` - 当前分段的录制器。
+/// * `part` - 当前分段序号（从 1 起）。
+/// * `part_offset` - 当前分段在会话时间轴上的起点（微秒）。
+/// * `t0` - 当前分段的起始时刻。
+fn publish(ctx: &ThreadCtx, rec: &FileRecorder, part: u32, part_offset: u64, t0: Instant) {
+    let elapsed_us = t0.elapsed().as_micros() as u64;
+    let session_us = part_offset + elapsed_us;
+    let delta = {
+        let mut a = lock(&ctx.activity);
+        a.advance_to(session_us);
+        a.take_delta()
+    };
     let status = {
         let mut s = lock(&ctx.status);
         s.recording = true;
         s.part = part;
         s.path = rec.final_path().to_string_lossy().into_owned();
-        s.elapsed_us = t0.elapsed().as_micros() as u64;
+        s.elapsed_us = elapsed_us;
+        s.session_elapsed_us = session_us;
+        s.part_starts_us.clone_from(&delta.part_starts_us);
         s.stats = rec.stats();
         s.dropped = ctx.dropped.load(Ordering::Relaxed);
         s.clone()
     };
-    (ctx.emit)("recording:stats", to_json(&status));
+    let event = StatsEvent {
+        status: &status,
+        activity: delta.into(),
+    };
+    (ctx.emit)("recording:stats", to_json(&event));
 }
 
 /// 录制结束：复位状态并通知前端。
@@ -1049,6 +1154,15 @@ mod tests {
             last = f[0][0];
         }
         assert_eq!(last, 40, "最终应录到该设备的最后一个值");
+    }
+
+    #[test]
+    fn activity_is_empty_before_any_recording() {
+        let ctl = RecordingController::new(Arc::new(RuntimeMode::new()));
+        let a = ctl.activity();
+        assert_eq!((a.len, a.from), (0, 0));
+        assert!(a.universes.is_empty() && a.change.is_empty() && a.level.is_empty());
+        assert!(ctl.status().part_starts_us.is_empty());
     }
 
     #[test]
@@ -1373,20 +1487,59 @@ mod tests {
         let tmp = Tmp::new("split");
         let ctl = RecordingController::new(Arc::new(RuntimeMode::new()));
         let snapshot = vec![snap(1, Protocol::ArtNet, &["10.0.0.1"])];
+        let events: Arc<std::sync::Mutex<Vec<serde_json::Value>>> = Arc::default();
+        let sink = events.clone();
+        let emit: Emitter = Arc::new(move |name, v| {
+            if name == "recording:stats" {
+                sink.lock().unwrap().push(v);
+            }
+        });
         ctl.start_inner(
-            noop(),
+            emit,
             &AppSettings::default(),
             tmp.0.clone(),
             &snapshot,
             args("seg", RecordFilter::default(), vec![]),
-            Some(Duration::from_millis(200)),
+            // 分段长度需大于统计推送间隔（250ms），否则分段内来不及推送 stats
+            Some(Duration::from_millis(400)),
         )
         .unwrap();
-        for i in 0..60u8 {
+        for i in 0..110u8 {
             ctl.offer(&dmx(1, "10.0.0.1", i + 1));
             std::thread::sleep(Duration::from_millis(10));
         }
+        let live = ctl.status();
+        assert!(live.session_elapsed_us >= live.elapsed_us);
         let out = ctl.stop().unwrap();
+
+        // 会话时长跨分段单调递增，分段起点被记录且与 activity 一致
+        let events = events.lock().unwrap();
+        let live_events: Vec<_> = events.iter().filter(|v| v["recording"] == true).collect();
+        assert!(!live_events.is_empty());
+        let mut last = 0u64;
+        for v in &live_events {
+            let s = v["sessionElapsedUs"].as_u64().unwrap();
+            assert!(s >= last, "会话时长应单调递增");
+            last = s;
+            assert!(v["activity"].is_object(), "录制中的 stats 应携带 activity");
+        }
+        let final_live = live_events.last().unwrap();
+        let starts = final_live["partStartsUs"].as_array().unwrap();
+        assert!(starts.len() >= 2, "分段起点 {starts:?}");
+        assert_eq!(starts[0], 0);
+        assert!(starts[1].as_u64().unwrap() >= 400_000);
+        assert_eq!(final_live["activity"]["partStartsUs"], final_live["partStartsUs"]);
+        // 增量拼起来覆盖整个时间线，且有非零变化
+        let full = ctl.activity();
+        assert_eq!(full.from, 0);
+        assert_eq!(full.universes, vec![1]);
+        assert!(full.len > 0);
+        assert!(live_events.iter().any(|v| {
+            v["activity"]["change"][0]
+                .as_str()
+                .is_some_and(|s| !s.is_empty())
+        }));
+        drop(events);
         assert!(out.error.is_none(), "{:?}", out.error);
         assert!(
             out.files.len() >= 2,

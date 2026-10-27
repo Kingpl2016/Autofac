@@ -4,11 +4,11 @@ import { toast } from "sonner";
 import i18n from "@/shared/i18n";
 import { onEvent } from "@/shared/tauri/events";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
-import { recordingStatus, recordingTakeRecovered } from "../lib/api";
+import { recordingActivity, recordingStatus, recordingTakeRecovered } from "../lib/api";
 import { formatDiskBytes, type DiskLevel } from "../../../shared/domain/disk";
 import type {
   RecordingResult,
-  RecordingStatus,
+  RecordingStatsEvent,
   RecoveryOutcome,
   SourceStat,
 } from "../lib/types";
@@ -41,13 +41,30 @@ export function useRecordingListeners() {
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setSources = useRecordingStore((s) => s.setSources);
   const setLast = useRecordingStore((s) => s.setLast);
+  const applyActivity = useRecordingStore((s) => s.applyActivity);
+  const setActivityFull = useRecordingStore((s) => s.setActivityFull);
   const patchStatus = useEngineStatusStore((s) => s.patch);
 
   useEffect(() => {
+    let fetchingActivity = false;
+    /** 拉取全量活动时间线（增量无法合并时）；同一时刻只发一次请求。 */
+    const refetchActivity = () => {
+      if (fetchingActivity) return;
+      fetchingActivity = true;
+      void recordingActivity()
+        .then(setActivityFull)
+        .catch(() => {})
+        .finally(() => {
+          fetchingActivity = false;
+        });
+    };
+
     const unlisteners: Array<Promise<() => void>> = [
-      onEvent<RecordingStatus>("recording:stats", (p) => {
-        setStatus(p);
-        patchStatus({ recording: p.recording });
+      onEvent<RecordingStatsEvent>("recording:stats", (p) => {
+        const { activity, ...status } = p;
+        setStatus(status);
+        patchStatus({ recording: status.recording });
+        if (activity && !applyActivity(activity)) refetchActivity();
       }),
       onEvent<RecordingResult>("recording:finished", (r) => {
         setLast(r);
@@ -73,6 +90,8 @@ export function useRecordingListeners() {
       .then((s) => {
         setStatus(s);
         patchStatus({ recording: s.recording });
+        // 录制进行中才打开（或刷新）界面：一次取回已录部分的时间线
+        if (s.recording) refetchActivity();
       })
       .catch(() => {});
     void recordingTakeRecovered()
@@ -82,5 +101,5 @@ export function useRecordingListeners() {
     return () => {
       for (const u of unlisteners) void u.then((fn) => fn());
     };
-  }, [setStatus, setSources, setLast, patchStatus]);
+  }, [setStatus, setSources, setLast, applyActivity, setActivityFull, patchStatus]);
 }

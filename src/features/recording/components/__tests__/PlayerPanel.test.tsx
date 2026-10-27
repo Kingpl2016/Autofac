@@ -61,15 +61,15 @@ const sampleOverview = (): Overview => ({
   skippedFrames: 0,
 });
 
-function renderPanel(go: () => void = () => {}) {
+function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrap = (ui: ReactElement) => (
     <QueryClientProvider client={client}>{ui}</QueryClientProvider>
   );
-  const result = render(wrap(<PlayerPanel onGoLibrary={go} />));
+  const result = render(wrap(<PlayerPanel />));
   return {
     ...result,
-    rerenderPanel: () => result.rerender(wrap(<PlayerPanel onGoLibrary={go} />)),
+    rerenderPanel: () => result.rerender(wrap(<PlayerPanel />)),
   };
 }
 
@@ -84,12 +84,10 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("PlayerPanel", () => {
-  it("未打开节目时给出引导并可跳转节目库", () => {
-    const go = vi.fn();
-    renderPanel(go);
+  it("未打开节目时给出说明，不再有“前往节目库”按钮（节目库就在旁边）", () => {
+    renderPanel();
     expect(screen.getByText(/还没有打开节目/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "前往节目库" }));
-    expect(go).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "前往节目库" })).toBeNull();
   });
 
   it("停止态点播放发送 play；播放态显示暂停并发送 pause", async () => {
@@ -124,13 +122,16 @@ describe("PlayerPanel", () => {
     await waitFor(() => expect(api.playerSetRepeat).toHaveBeenLastCalledWith("off"));
   });
 
-  it("关闭节目发送 close（只卸载节目，退出播放器模式由横幅负责）", async () => {
+  it("关闭节目发送 close（只卸载节目，退出播放器模式由页面传入的操作负责）", async () => {
     usePlayerStore.setState({ status: loaded() });
     renderPanel();
     expect(screen.queryByRole("button", { name: "退出播放器模式" })).toBeNull();
+    expect(screen.queryByText("实时接收已暂停")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "关闭节目" }));
     await waitFor(() => expect(api.playerClose).toHaveBeenCalledTimes(1));
   });
+
+
 
   it("拖动进度条会发送 seek，并显示时间", async () => {
     usePlayerStore.setState({ status: loaded({ posUs: 5_000_000 }) });
@@ -239,7 +240,7 @@ describe("PlayerPanel 键盘快捷键", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <PlayerPanel onGoLibrary={() => {}} active={false} />
+        <PlayerPanel active={false} />
       </QueryClientProvider>,
     );
     press(" ");

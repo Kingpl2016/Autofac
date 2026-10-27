@@ -3,8 +3,10 @@ import { Circle } from "lucide-react";
 import { DMX_KIND_PLAYBACK } from "@/shared/lib/dmxFrame";
 import { registerDmxFrameHandler } from "@/shared/lib/dmxFrameHandlers";
 import { defineFeaturePlugin, namedExport } from "@/shared/plugin";
+import { HeaderPlayerControls } from "./components/HeaderPlayerControls";
 import { HeaderRecordButton } from "./components/HeaderRecordButton";
 import { PlaybackBadge } from "./components/PlaybackBadge";
+import { RecordingOverlay } from "./components/RecordingOverlay";
 import { RecordingRuntime } from "./RecordingRuntime";
 import { usePlayerStore } from "./stores/usePlayerStore";
 
@@ -37,6 +39,10 @@ export const recordingPlugin = defineFeaturePlugin({
       registerDmxFrameHandler(DMX_KIND_PLAYBACK, usePlayerStore.getState().applyChannelFrame),
       slots.register("header.actions", { id: "playback-badge", order: 10, component: PlaybackBadge }),
       slots.register("header.actions", { id: "record-button", order: 30, component: HeaderRecordButton }),
+      // 播放器模式下顶栏左侧的迷你传输条（任何页面都能控制播放）
+      slots.register("header.status", { id: "player-controls", order: 20, component: HeaderPlayerControls }),
+      // 录制时窗口四周的录制色光晕
+      slots.register("layout.overlays", { id: "recording-overlay", order: 30, component: RecordingOverlay }),
     ];
     return () => {
       for (const dispose of disposers) dispose();

@@ -170,6 +170,79 @@ export function applyAssignments(files: readonly NetFile[], assignments: readonl
   );
 }
 
+/** 暂存的节目号更改：文件名 → 目标节目号（只记录与设备上不同的项）。 */
+export type ProgramDraft = ReadonlyMap<string, number>;
+
+/**
+ * 把暂存的节目号更改叠加到设备文件列表上，得到界面展示用的列表。
+ *
+ * 草稿里已不存在于设备的文件会被忽略。
+ *
+ * # Arguments
+ *
+ * * `files` - 设备上的文件列表（不会被修改）。
+ * * `draft` - 暂存的更改。
+ *
+ * # Returns
+ *
+ * 叠加后的新列表；草稿为空时原样返回一份拷贝。
+ */
+export function applyDraft(files: readonly NetFile[], draft: ProgramDraft): NetFile[] {
+  return files.map((f) => {
+    const no = draft.get(f.name);
+    return no === undefined ? f : { ...f, program: no };
+  });
+}
+
+/**
+ * 把一批新的分配并入暂存的更改。
+ *
+ * 目标号与设备上现有的一致时撤销该文件的暂存项，这样“拖走再拖回来”不会留下空更改。
+ *
+ * # Arguments
+ *
+ * * `draft` - 已有的暂存更改。
+ * * `files` - 设备上的文件列表（用来判断是否回到原值）。
+ * * `assignments` - 本次编辑产生的分配（基于叠加后的列表规划）。
+ *
+ * # Returns
+ *
+ * 新的暂存更改（不会修改入参）。
+ */
+export function mergeDraft(
+  draft: ProgramDraft,
+  files: readonly NetFile[],
+  assignments: readonly ProgramAssignment[],
+): Map<string, number> {
+  const next = new Map(draft);
+  for (const a of assignments) {
+    const base = files.find((f) => f.name === a.file);
+    if (!base) continue;
+    if (base.program === a.no) next.delete(a.file);
+    else next.set(a.file, a.no);
+  }
+  return next;
+}
+
+/**
+ * 暂存更改对应的待提交分配：只含仍存在于设备、且与设备现状不同的文件。
+ *
+ * # Arguments
+ *
+ * * `files` - 设备上的文件列表。
+ * * `draft` - 暂存的更改。
+ *
+ * # Returns
+ *
+ * 按设备文件顺序排列的分配；没有更改时为空数组。
+ */
+export function draftAssignments(files: readonly NetFile[], draft: ProgramDraft): ProgramAssignment[] {
+  return files.flatMap((f) => {
+    const no = draft.get(f.name);
+    return no === undefined || no === f.program ? [] : [{ no, file: f.name }];
+  });
+}
+
 /**
  * 这批分配是否会动到某个节目号（目标号，或被改动文件当前的号）。
  *

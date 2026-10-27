@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { playerOverview } from "../lib/api";
+import { OVERVIEW_QUERY_KEY } from "../lib/programCaches";
 import type { Overview } from "../lib/types";
 
 /**
@@ -12,7 +13,7 @@ import type { Overview } from "../lib/types";
  */
 export function useOverview(path: string) {
   return useQuery<Overview>({
-    queryKey: ["player-overview", path],
+    queryKey: [OVERVIEW_QUERY_KEY, path],
     queryFn: () => playerOverview(path),
     enabled: path !== "",
     staleTime: Infinity,

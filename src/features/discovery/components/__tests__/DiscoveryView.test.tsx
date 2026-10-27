@@ -101,6 +101,16 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("DiscoveryView 网络扫描", () => {
+  it("“实时 · 扫描状态”紧挨在页头的“网络扫描”按钮左侧，不再单独占一行", () => {
+    renderView();
+    const scanButton = screen.getByRole("button", { name: "网络扫描" });
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("尚未扫描");
+    // 与扫描按钮同在页头右侧操作区
+    expect(scanButton.parentElement?.contains(status)).toBe(true);
+    expect(scanButton.parentElement?.textContent).toContain("实时");
+  });
+
   it("扫描期间按钮禁用并显示“扫描中…”，完成后状态条显示响应与新增数量", async () => {
     useEngineDataStore.setState({ devices: [dev({ ip: "10.0.0.1" })] });
     let resolve!: (v: unknown) => void;

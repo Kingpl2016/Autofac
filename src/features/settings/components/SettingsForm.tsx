@@ -15,6 +15,19 @@ import { SettingRow } from "./SettingRow";
 import { ShortcutsSection } from "./ShortcutsSection";
 import { useNetworkInterfaces } from "../hooks/useNetworkInterfaces";
 import type { AppSettings } from "../lib/types";
+import { usePrefsStore } from "@/shared/stores/prefsStore";
+
+/** 录制光晕开关：界面偏好，立即生效（不随设置草稿保存）。 */
+function RecordingGlowRow() {
+  const { t } = useTranslation();
+  const on = usePrefsStore((s) => s.recordingGlow);
+  const set = usePrefsStore((s) => s.setRecordingGlow);
+  return (
+    <SettingRow label={t("settings.recordingGlow")} hint={t("settings.recordingGlowHint")}>
+      <Switch checked={on} aria-label={t("settings.recordingGlow")} onCheckedChange={set} />
+    </SettingRow>
+  );
+}
 
 interface SettingsFormProps {
   settings: AppSettings;
@@ -430,6 +443,7 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             }
           />
         </SettingRow>
+        <RecordingGlowRow />
       </SettingsSectionById>
 
       {/* 播放器模式 */}

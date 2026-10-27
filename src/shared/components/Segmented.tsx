@@ -107,7 +107,7 @@ export function Segmented<T extends string>({
             onFocus={() => activation === "manual" && setFocusIndex(i)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "num inline-flex min-w-12 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+              "num inline-flex min-w-12 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-xs font-medium transition-colors",
               size === "md" ? "h-9" : "py-2",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "disabled:cursor-not-allowed disabled:opacity-60",

@@ -117,12 +117,13 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
             onValueChange={(v) => setUniverseChoice(Number(v))}
           >
             <SelectTrigger id="curve-universe" className="tabular">
-              <SelectValue />
+              {/* 显式给出当前值：Radix 靠把选中项的 ItemText 传送进来显示，数字子节点（尤其 0）会显示为空 */}
+              <SelectValue>{universe === null ? "" : String(universe)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {universes.map((u) => (
                 <SelectItem key={u} value={String(u)} className="tabular">
-                  {u}
+                  {String(u)}
                 </SelectItem>
               ))}
             </SelectContent>

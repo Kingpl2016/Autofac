@@ -399,10 +399,37 @@ impl DeviceClient {
             .map(drop)
     }
 
-    /// 按顺序应用一组节目号分配（用于改号 / 交换 / 拖动排序）；中途失败会尽力回滚。
+    /// 批量重排节目号（`POST /api/programs/reorder`），设备端原子生效。
     ///
-    /// 每条都用 `force` 覆盖：被覆盖的文件必须也在本批里被重新分配（调用方保证这是一个排列），
-    /// 否则它会失去节目号。失败时按开始前的映射把涉及的编号与文件恢复原状。
+    /// 列出的文件按给定编号重新映射；未列出的现有映射保持原编号，
+    /// 若与新编号冲突，设备整体拒绝（[`NetdevError::Busy`]），不会改动任何映射。
+    ///
+    /// # Arguments
+    ///
+    /// * `assignments` - 新的「节目号 → 文件」映射；节目号与文件名都不得重复。
+    ///
+    /// # Errors
+    ///
+    /// - 参数不合法（空、重复、越界、文件名非法）时返回 [`NetdevError::Invalid`]，不发请求。
+    /// - 目标文件不存在返回 [`NetdevError::NotFound`]；编号冲突或会改动正在播放的节目
+    ///   返回 [`NetdevError::Busy`]；其余网络或设备错误按常规映射。
+    /// - 固件不支持该接口（旧版本）时返回 [`NetdevError::Http`]（状态 405）。
+    pub async fn reorder_programs(&self, assignments: &[ProgramAssign]) -> Result<()> {
+        validate_assignments(assignments)?;
+        self.send(
+            self.request(Method::POST, "/api/programs/reorder")
+                .json(&json!({ "entries": assignments })),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// 应用一组节目号分配（用于改号 / 交换 / 拖动排序）。
+    ///
+    /// 优先走设备端的原子批量重排（[`Self::reorder_programs`]）：要么全部生效，要么不改动。
+    /// 旧固件没有该接口（405）时，退回逐条 `PUT` 并在中途失败时尽力回滚：
+    /// 此时每条都用 `force` 覆盖，被覆盖的文件必须也在本批里被重新分配（调用方保证这是一个排列），
+    /// 否则它会失去节目号；失败时按开始前的映射把涉及的编号与文件恢复原状。
     ///
     /// # Arguments
     ///
@@ -411,9 +438,14 @@ impl DeviceClient {
     /// # Errors
     ///
     /// 参数不合法（空、重复、越界）时返回 [`NetdevError::Invalid`]；
-    /// 某条分配失败时返回该条的 [`NetdevError`]（已尽力回滚）。
+    /// 设备拒绝或某条分配失败时返回对应的 [`NetdevError`]
+    /// （原子路径不改动任何映射；回退路径已尽力回滚）。
     pub async fn assign_programs(&self, assignments: &[ProgramAssign]) -> Result<()> {
         validate_assignments(assignments)?;
+        match self.reorder_programs(assignments).await {
+            Err(NetdevError::Http { status: 405 }) => {} // 旧固件：走逐条分配
+            other => return other,
+        }
         let before = self.list_programs().await?;
         for a in assignments {
             if let Err(e) = self.assign_program(a.no, &a.file, true).await {
@@ -673,9 +705,65 @@ mod tests {
         assert!(server.received_requests().await.unwrap().is_empty());
     }
 
+    /// 模拟旧固件：没有批量重排接口（路径被通配路由命中但方法不符，返回 405）。
+    async fn mount_no_reorder(server: &MockServer) {
+        Mock::given(method("POST"))
+            .and(path("/api/programs/reorder"))
+            .respond_with(ResponseTemplate::new(405))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn assign_programs_uses_atomic_reorder() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/programs/reorder"))
+            .and(body_json(json!({
+                "entries": [{ "no": 2, "file": "a.artrec" }, { "no": 1, "file": "b.artrec" }]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "programs": [] })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let c = client_for(&server, None);
+        c.assign_programs(&[assign(2, "a.artrec"), assign(1, "b.artrec")]).await.unwrap();
+        // 只有一次 POST，没有逐条 PUT，也不需要事先读取映射。
+        let reqs = server.received_requests().await.unwrap();
+        assert_eq!(reqs.len(), 1, "{reqs:?}");
+    }
+
+    #[tokio::test]
+    async fn reorder_errors_are_reported_without_fallback() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/programs/reorder"))
+            .respond_with(ResponseTemplate::new(409).set_body_json(json!({ "error": "busy" })))
+            .mount(&server)
+            .await;
+        let c = client_for(&server, None);
+        let r = c.assign_programs(&[assign(1, "a.artrec")]).await;
+        assert!(matches!(r, Err(NetdevError::Busy)), "{r:?}");
+        // 业务错误不得退回逐条 PUT，否则会绕过设备端的整体拒绝。
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn reorder_programs_validates_before_sending() {
+        let server = MockServer::start().await;
+        let c = client_for(&server, None);
+        assert!(matches!(c.reorder_programs(&[]).await, Err(NetdevError::Invalid(_))));
+        assert!(matches!(
+            c.reorder_programs(&[assign(1, "a.artrec"), assign(1, "b.artrec")]).await,
+            Err(NetdevError::Invalid(_))
+        ));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
     #[tokio::test]
     async fn assign_programs_applies_in_order() {
         let server = MockServer::start().await;
+        mount_no_reorder(&server).await;
         Mock::given(path("/api/programs"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "programs": [{ "no": 1, "file": "a.artrec", "size": 1 }, { "no": 2, "file": "b.artrec", "size": 1 }]
@@ -705,6 +793,7 @@ mod tests {
     #[tokio::test]
     async fn assign_programs_rolls_back_on_failure() {
         let server = MockServer::start().await;
+        mount_no_reorder(&server).await;
         Mock::given(path("/api/programs"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "programs": [{ "no": 1, "file": "a.artrec", "size": 1 }, { "no": 2, "file": "b.artrec", "size": 1 }]

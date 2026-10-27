@@ -7,6 +7,11 @@ import { createRegistry, type Registry, type RegistryItem } from "./registry";
 export interface RouteLayoutHandle {
   /** 内容区不留内边距、自己管理滚动（编辑器等占满内容区的页面）。 */
   fullBleed?: boolean;
+  /**
+   * 进入本页即进入播放器模式（不弹确认，停止的功能与播放器模式相同）；
+   * 从这类页面离开到普通页面时，恢复为进入前的实时模式。由应用模式插件负责执行。
+   */
+  playerMode?: boolean;
 }
 
 /** 插件贡献的一条主布局下的路由。`id` 同时是注册表键。 */

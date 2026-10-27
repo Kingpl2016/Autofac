@@ -1,4 +1,5 @@
 import type {
+  ActivityDto,
   FinishedFile,
   LibraryEntry,
   RecordFilter,
@@ -9,10 +10,12 @@ import type {
   RecoveryOutcome,
 } from "@/features/recording/lib/types";
 import { EMPTY_STATUS } from "@/features/recording/lib/types";
-import type { UniverseProgram } from "../lib/patterns";
+import { renderSegments, toSegments, type Segment, type UniverseProgram } from "../lib/patterns";
 import type { LiveUniverseSeed } from "../types";
+import { createDemoActivity, type DemoActivity } from "./activity";
 import { diskInfoOf, diskLevelOf } from "./disk";
-import { createLibrary, sanitizeFileStem, type Library } from "./library";
+import { createLibrary, defaultHeader, sanitizeFileStem, type Library } from "./library";
+import { createLibraryOpsCommands } from "./libraryOps";
 import type { LiveEngine } from "./live";
 import {
   createGate,
@@ -54,7 +57,30 @@ interface Session {
   frames: number;
   bytes: number;
   dropped: number;
+  /** 活动时间线（与后端一样只在内存里统计）。 */
+  activity: DemoActivity;
+  /** 各 Universe 的分段图案（与 `accepted` 同序；没有图案的 Universe 为 null，输出全 0）。 */
+  segments: (Segment[] | null)[];
+  /** 上一次采样活动的会话时间（微秒）。 */
+  lastSampleUs: number;
+  /** 自动分段长度（微秒）；0 表示不分段。取自开始录制时的设置。 */
+  splitUs: number;
 }
+
+/** 活动时间线的采样间隔（微秒，与后端录制节拍相近）。 */
+const ACTIVITY_SAMPLE_US = 22_000;
+
+/** 空的活动时间线（从未录制过）。 */
+const EMPTY_ACTIVITY: ActivityDto = {
+  generation: 0,
+  bucketUs: 250_000,
+  len: 0,
+  from: 0,
+  universes: [],
+  change: [],
+  level: [],
+  partStartsUs: [],
+};
 
 /** 录制模块：除命令外，对外暴露节目库与录制状态。 */
 export interface RecordingModule extends DemoModule {
@@ -109,16 +135,31 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
   let lastDiskLevel = diskLevelOf(diskFree);
   let recovered: RecoveryOutcome[] | null = buildRecovered(world, library);
   const statsGate = createGate(STATS_EVERY_MS);
+  /** 最近一次录制的活动时间线（停止后保留到下次开始，与后端一致）。 */
+  let lastActivity: DemoActivity | null = null;
+
+  /** 会话时间轴上的各分段起点（第一段为 0）。 */
+  const partStartsOf = (s: Session, sessionUs: number): number[] => {
+    const starts = [0];
+    if (s.splitUs > 0) {
+      for (let t = s.splitUs; t <= sessionUs; t += s.splitUs) starts.push(t);
+    }
+    return starts;
+  };
 
   const statusOf = (s: Session, nowMs: number): RecordingStatus => {
     const fullFrames = Math.floor(s.frames / FULL_FRAME_EVERY);
-    const elapsedUs = Math.round((nowMs - s.startedAtMs) * 1000);
+    const sessionElapsedUs = Math.round((nowMs - s.startedAtMs) * 1000);
+    const partStartsUs = partStartsOf(s, sessionElapsedUs);
+    const elapsedUs = sessionElapsedUs - partStartsUs[partStartsUs.length - 1];
     return {
       recording: true,
       name: s.name,
       path: s.path,
-      part: 1,
+      part: partStartsUs.length,
       elapsedUs,
+      sessionElapsedUs,
+      partStartsUs,
       stats: {
         frames: Math.round(s.frames),
         fullFrames,
@@ -136,6 +177,25 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
       diskFreeBytes: Math.round(diskFree),
       diskLevel: diskLevelOf(diskFree),
     };
+  };
+
+  /** 按采样间隔把当前图案喂给活动时间线，跨过分段边界时记录分段起点。 */
+  const sampleActivity = (s: Session, nowMs: number) => {
+    const sessionUs = Math.round((nowMs - s.startedAtMs) * 1000);
+    if (sessionUs - s.lastSampleUs < ACTIVITY_SAMPLE_US) return;
+    s.lastSampleUs = sessionUs;
+    // 图案按世界时间取值，与实时信号保持一致
+    const tSec = nowMs / 1000;
+    const snaps = s.segments.map((segs) => (segs ? renderSegments(segs, tSec) : []));
+    for (const start of partStartsOf(s, sessionUs).slice(1)) s.activity.markPart(start);
+    s.activity.observe(sessionUs, snaps);
+  };
+
+  /** `recording:stats` 载荷：状态 + 活动增量。 */
+  const statsEventOf = (s: Session, nowMs: number) => {
+    const status = statusOf(s, nowMs);
+    s.activity.advanceTo(status.sessionElapsedUs);
+    return { ...status, activity: s.activity.takeDelta() };
   };
 
   const idleStatus = (): RecordingStatus => ({
@@ -173,6 +233,7 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
         valid: true,
         editable: false,
         exported: true,
+        header: defaultHeader(frames),
       };
       library.add({
         entry,
@@ -232,7 +293,17 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
           programs.push({ universe: u.universe, ...u.program });
         }
 
+        const programOf = new Map(programs.map((p) => [p.universe, p]));
+        const activity = createDemoActivity(accepted);
+        lastActivity = activity;
         session = {
+          activity,
+          segments: accepted.map((u) => {
+            const p = programOf.get(u);
+            return p ? toSegments(p) : null;
+          }),
+          lastSampleUs: -ACTIVITY_SAMPLE_US,
+          splitUs: Math.max(0, world.hooks.settings().recording.splitMinutes) * 60_000_000,
           name: a.name.trim() || stem,
           notes: a.notes.trim(),
           path,
@@ -248,13 +319,16 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
           dropped: 0,
         };
         world.log("info", `录制开始: ${session.name} (${accepted.length} 个 Universe)`);
-        world.bus.emit("recording:stats", statusOf(session, world.elapsedMs()));
+        sampleActivity(session, world.elapsedMs());
+        world.bus.emit("recording:stats", statsEventOf(session, world.elapsedMs()));
         return { path, plan: { accepted, rejectedOutOfRange, rejectedOverCapacity } };
       },
 
       recording_stop: () => finish(null),
 
       recording_status: () => (session ? statusOf(session, world.elapsedMs()) : idleStatus()),
+
+      recording_activity: (): ActivityDto => lastActivity?.snapshot() ?? EMPTY_ACTIVITY,
 
       recording_disk_info: (args: CommandArgs) => {
         const asked = typeof args.path === "string" ? args.path.trim() : "";
@@ -283,6 +357,8 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
         world.hooks.programMoved(path, null);
         world.log("info", `已删除节目: ${path}`);
       },
+
+      ...createLibraryOpsCommands(world, library),
 
       recording_take_recovered: () => {
         const out = recovered ?? [];
@@ -325,7 +401,8 @@ export function createRecordingModule(world: World, live: LiveEngine): Recording
         }
       }
 
-      if (statsGate(elapsedMs).fire) world.bus.emit("recording:stats", statusOf(session, elapsedMs));
+      sampleActivity(session, elapsedMs);
+      if (statsGate(elapsedMs).fire) world.bus.emit("recording:stats", statsEventOf(session, elapsedMs));
     },
   };
 }

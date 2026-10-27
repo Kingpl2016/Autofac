@@ -18,11 +18,23 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("StatusLogBar", () => {
-  it("运行时长已移到顶栏：底部条只留包速率", () => {
-    render(<StatusLogBar />);
-    expect(screen.getByText(/包速率/).textContent).toContain("44");
-    expect(screen.queryByText(/运行时长/)).toBeNull();
-    expect(screen.queryByText(/3725/)).toBeNull();
+  it("运行时长在包速率右侧，用人话显示，悬停给出精确值；还没有数据时不显示", () => {
+    useEngineStatusStore.setState({ uptimeSec: 12_420 });
+    const { rerender } = render(<StatusLogBar />);
+    const rate = screen.getByText(/包速率/);
+    expect(rate.textContent).toContain("44");
+    const uptime = screen.getByText("已运行 3 小时 27 分");
+    expect(uptime.getAttribute("title")).toBe("引擎已运行 3:27:00");
+    // 同一组里紧跟在包速率后面
+    expect(rate.nextElementSibling).toBe(uptime);
+
+    act(() => useEngineStatusStore.setState({ uptimeSec: 42 }));
+    rerender(<StatusLogBar />);
+    expect(screen.getByText("已运行 42 秒")).toBeTruthy();
+
+    act(() => useEngineStatusStore.setState({ uptimeSec: 0 }));
+    rerender(<StatusLogBar />);
+    expect(screen.queryByText(/已运行/)).toBeNull();
   });
 
   it("“清空”在“包速率”左边（同一组），无日志时禁用，点击清空", () => {

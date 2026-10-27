@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
+
+// 每行的“⋯”菜单（Radix Popper）依赖 ResizeObserver，jsdom 没有
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 
 const toast = vi.hoisted(() => ({
   success: vi.fn(),
@@ -17,6 +27,8 @@ const api = vi.hoisted(() => ({
   recordingsRename: vi.fn(),
   recordingsDelete: vi.fn(),
   playerOpen: vi.fn(),
+  playerPlay: vi.fn(),
+  playerPause: vi.fn(),
 }));
 const modeApi = vi.hoisted(() => ({
   appModeSet: vi.fn(),
@@ -88,6 +100,14 @@ function renderPanel(onPlayed?: () => void) {
   );
 }
 
+/** 打开某个节目的“⋯”菜单（Radix 菜单在 jsdom 里用键盘打开最稳）。 */
+const openMenu = (name: string) =>
+  fireEvent.keyDown(screen.getByRole("button", { name: `更多操作: ${name}` }), { key: "Enter" });
+/** 关闭当前打开的菜单。 */
+const closeMenu = () => fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+/** 菜单项（名称可能带说明文字，按前缀匹配）。 */
+const menuItem = (label: string) => screen.getByRole("menuitem", { name: new RegExp(`^${label}`) });
+
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
   vi.clearAllMocks();
@@ -108,17 +128,50 @@ describe("LibraryPanel", () => {
     renderPanel();
     expect(await screen.findByText("开场秀")).toBeTruthy();
     expect(screen.getByText("文件损坏")).toBeTruthy();
-    const uploads = screen.getAllByRole("button", { name: "上传到设备" }) as HTMLButtonElement[];
-    expect(uploads[0].disabled).toBe(false);
-    expect(uploads[1].disabled).toBe(true);
+    openMenu("开场秀");
+    expect(menuItem("上传到设备").getAttribute("aria-disabled")).toBeNull();
+    closeMenu();
+    openMenu("bad");
+    expect(menuItem("上传到设备").getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("没有在线的网络设备时禁用上传", async () => {
+  it("紧凑行：序号 + 名称 + 一行摘要；详细信息收进悬停提示与菜单顶部", async () => {
+    renderPanel();
+    await screen.findByText("开场秀");
+    const rows = screen.getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent?.slice(0, 2))).toEqual(["01", "02"]);
+    // 摘要：时长 · Universe 数 · 大小；不再平铺日期 / 来源 / 帧数
+    expect(rows[0].textContent).toContain("1:05.0 · 2 个 Universe");
+    expect(rows[0].textContent).not.toContain("2.0 KiB");
+    expect(rows[0].textContent).not.toContain("10.0.0.1");
+    expect(screen.getByText("开场秀").getAttribute("title")).toContain("10.0.0.1");
+    openMenu("开场秀");
+    expect(screen.getByRole("menu").textContent).toContain("show.artrec");
+    expect(screen.getByRole("menu").textContent).toContain("10.0.0.1");
+    expect(screen.getByRole("menu").textContent).toContain("2.0 KiB");
+  });
+
+  it("搜索时序号保持节目在库里的位置", async () => {
+    api.recordingsList.mockResolvedValue([
+      entry(),
+      entry({ path: "D:/rec/b.artrec", fileName: "b.artrec", name: "收尾曲" }),
+    ]);
+    renderPanel();
+    await screen.findByText("收尾曲");
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索节目" }), { target: { value: "收尾" } });
+    const rows = screen.getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent?.startsWith("02")).toBe(true);
+  });
+
+  it("没有在线的网络设备时禁用上传，并在菜单里说明原因", async () => {
     net.online = false;
     renderPanel();
     await screen.findByText("开场秀");
-    const uploads = screen.getAllByRole("button", { name: "上传到设备" }) as HTMLButtonElement[];
-    expect(uploads.every((b) => b.disabled)).toBe(true);
+    openMenu("开场秀");
+    const upload = menuItem("上传到设备");
+    expect(upload.getAttribute("aria-disabled")).toBe("true");
+    expect(upload.textContent).toContain("需要先添加并选中一台在线的网络设备");
   });
 
   it("删除需要二次确认", async () => {
@@ -126,7 +179,8 @@ describe("LibraryPanel", () => {
     renderPanel();
     await screen.findByText("开场秀");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    openMenu("开场秀");
+    fireEvent.click(menuItem("删除"));
     expect(await screen.findByText("删除节目？")).toBeTruthy();
     expect(api.recordingsDelete).not.toHaveBeenCalled();
 
@@ -143,7 +197,8 @@ describe("LibraryPanel", () => {
     renderPanel();
     await screen.findByText("开场秀");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    openMenu("开场秀");
+    fireEvent.click(menuItem("删除"));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(Array.from(dialog.querySelectorAll("button")).find((b) => b.textContent === "删除")!);
     await waitFor(() =>
@@ -157,8 +212,9 @@ describe("LibraryPanel", () => {
     renderPanel();
     await screen.findByText("开场秀");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "重命名" })[0]);
-    const input = screen.getByRole("textbox", { name: "重命名" });
+    openMenu("开场秀");
+    fireEvent.click(menuItem("重命名"));
+    const input = await screen.findByRole("textbox", { name: "重命名" });
     fireEvent.change(input, { target: { value: "新名字" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -171,7 +227,8 @@ describe("LibraryPanel", () => {
     renderPanel();
     await screen.findByText("开场秀");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "上传到设备" })[0]);
+    openMenu("开场秀");
+    fireEvent.click(menuItem("上传到设备"));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(toast.success.mock.calls[0][0]).toContain("show.artrec");
   });
@@ -257,13 +314,18 @@ describe("LibraryPanel 搜索与高亮", () => {
     useRecordingStore.setState({ last: null });
   });
 
-  it("正在回放的节目带“回放中”标记", async () => {
+  it.each([
+    ["playing", "回放中"],
+    ["paused", "已暂停"],
+    ["stopped", "已打开"],
+  ] as const)("已打开的节目按播放状态标记（%s → %s），打开但没在播时不显示“回放中”", async (state, label) => {
     usePlayerStore.setState({
-      status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/show.artrec" },
+      status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/show.artrec", state },
     });
     renderPanel();
     await screen.findByText("开场秀");
-    expect(screen.getByText("回放中")).toBeTruthy();
+    expect(screen.getByText(label)).toBeTruthy();
+    if (state !== "playing") expect(screen.queryByText("回放中")).toBeNull();
   });
 });
 
@@ -280,6 +342,9 @@ describe("LibraryPanel 回放入口", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "进入播放器模式" }));
     await waitFor(() => expect(api.playerOpen).toHaveBeenCalledWith("D:/rec/show.artrec"));
+    // “回放”打开后立即开始播放，而不是停在 0:00
+    await waitFor(() => expect(api.playerPlay).toHaveBeenCalledTimes(1));
+    expect(api.playerOpen.mock.invocationCallOrder[0]).toBeLessThan(api.playerPlay.mock.invocationCallOrder[0]);
     await waitFor(() => expect(onPlayed).toHaveBeenCalledTimes(1));
     expect(modeApi.stopRecordingForModeChange).not.toHaveBeenCalled();
     // 节目由后端 player_open 自动进入播放器模式，不需要再单独调用 app_mode_set
@@ -331,8 +396,31 @@ describe("LibraryPanel 回放入口", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "回放此节目" })[0]);
     await waitFor(() => expect(api.playerOpen).toHaveBeenCalledWith("D:/rec/show.artrec"));
+    await waitFor(() => expect(api.playerPlay).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("进入播放器模式？")).toBeNull();
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("已打开的节目：主按钮是暂停 / 播放，不会重新打开（不回到开头）", async () => {
+    useEngineStatusStore.setState({ appMode: "player" });
+    usePlayerStore.setState({
+      status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/show.artrec", state: "playing" },
+    });
+    renderPanel();
+    await screen.findByText("开场秀");
+
+    fireEvent.click(screen.getByRole("button", { name: "暂停: 开场秀" }));
+    await waitFor(() => expect(api.playerPause).toHaveBeenCalledTimes(1));
+    expect(api.playerOpen).not.toHaveBeenCalled();
+
+    act(() =>
+      usePlayerStore.setState({
+        status: { ...EMPTY_PLAYBACK, loaded: true, path: "D:/rec/show.artrec", state: "paused" },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "播放: 开场秀" }));
+    await waitFor(() => expect(api.playerPlay).toHaveBeenCalledTimes(1));
+    expect(api.playerOpen).not.toHaveBeenCalled();
   });
 
   it("后端提示录制进行中时给出可读文案", async () => {
@@ -395,13 +483,15 @@ describe("LibraryPanel 节目编辑器的节目", () => {
     expect(screen.getAllByText("文件损坏")).toHaveLength(1);
   });
 
-  it("只有可编辑的节目有“在节目编辑器中打开”按钮，点击跳转并带上节目路径", async () => {
+  it("只有可编辑的节目菜单里有“在节目编辑器中打开”，点击跳转并带上节目路径", async () => {
     api.recordingsList.mockResolvedValue(editorEntries());
     renderWithLocation();
     await screen.findByText("已导出的秀");
-    const buttons = screen.getAllByRole("button", { name: "在节目编辑器中打开" });
-    expect(buttons).toHaveLength(2);
-    fireEvent.click(buttons[0]);
+    openMenu("录的");
+    expect(screen.queryByRole("menuitem", { name: "在节目编辑器中打开" })).toBeNull();
+    closeMenu();
+    openMenu("已导出的秀");
+    fireEvent.click(menuItem("在节目编辑器中打开"));
     expect(screen.getByTestId("location").textContent).toBe(`/editor?open=${encodeURIComponent("D:/rec/已导出.artrec")}`);
   });
 
@@ -410,10 +500,10 @@ describe("LibraryPanel 节目编辑器的节目", () => {
     renderWithLocation();
     await screen.findByText("新做的秀");
     const card = screen.getByText("新做的秀").closest("li") as HTMLElement;
-    const play = card.querySelector("button[aria-label=\"播放节目\"], button[title=\"播放节目\"]") as HTMLButtonElement | null;
-    if (play) expect(play.disabled).toBe(true);
-    const upload = card.querySelector("button[aria-label=\"上传到设备\"]") as HTMLButtonElement;
-    expect(upload.disabled).toBe(true);
-    expect(card.querySelector("button[aria-label=\"在节目编辑器中打开\"]")).not.toBeNull();
+    const play = card.querySelector('button[aria-label="回放此节目"]') as HTMLButtonElement;
+    expect(play.disabled).toBe(true);
+    openMenu("新做的秀");
+    expect(menuItem("上传到设备").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("在节目编辑器中打开").getAttribute("aria-disabled")).toBeNull();
   });
 });

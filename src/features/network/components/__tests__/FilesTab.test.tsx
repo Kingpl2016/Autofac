@@ -321,20 +321,29 @@ describe("FilesTab 修改节目号与拖动手柄", () => {
     expect(within(row("a.artrec")).queryByRole("button", { name: /修改节目号/ })).toBeNull();
   });
 
-  it("目标号空闲：直接改，并提交一条分配", async () => {
+  it("目标号空闲：只暂存，不发请求；点“提交更改”才提交一条分配", async () => {
     api.netdevAssignPrograms.mockResolvedValue(undefined);
     renderTab();
     await screen.findByText("a.artrec");
     openEditor("a.artrec");
     fireEvent.change(editorInput(), { target: { value: "7" } });
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
+
+    // 列表立刻显示新号并标记待提交，但设备还没收到任何请求
+    expect(await within(row("a.artrec")).findByText("#7")).toBeTruthy();
+    expect(within(row("a.artrec")).getByText("待提交")).toBeTruthy();
+    expect(screen.getByRole("region", { name: /1 个文件的节目号有未提交的更改/ })).toBeTruthy();
+    expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "提交更改" }));
     await waitFor(() =>
       expect(api.netdevAssignPrograms).toHaveBeenCalledWith("d1", [{ no: 7, file: "a.artrec" }]),
     );
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("“a.artrec”的节目号已改为 #7"));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("已提交 1 个文件的节目号更改"));
+    await waitFor(() => expect(screen.queryByRole("region", { name: /未提交的更改/ })).toBeNull());
   });
 
-  it("目标号被占用：写明将与对方互换，确认后提交两条分配", async () => {
+  it("目标号被占用：写明将与对方互换，确认后暂存两条分配，提交时一次发出", async () => {
     api.netdevAssignPrograms.mockResolvedValue(undefined);
     renderTab();
     await screen.findByText("a.artrec");
@@ -342,12 +351,58 @@ describe("FilesTab 修改节目号与拖动手柄", () => {
     fireEvent.change(editorInput(), { target: { value: "2" } });
     expect(await screen.findByText(/#2 已被“b.artrec”使用，确认后两个文件互换节目号/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "互换" }));
-    await waitFor(() =>
-      expect(api.netdevAssignPrograms).toHaveBeenCalledWith("d1", [
+    expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole("button", { name: "提交更改" }));
+    await waitFor(() => expect(api.netdevAssignPrograms).toHaveBeenCalledTimes(1));
+    // 原子批量重排与顺序无关，只要这两条一起发出
+    const sent = api.netdevAssignPrograms.mock.calls[0][1] as Array<{ no: number; file: string }>;
+    expect(sent).toHaveLength(2);
+    expect(sent).toEqual(
+      expect.arrayContaining([
         { no: 2, file: "a.artrec" },
         { no: 1, file: "b.artrec" },
       ]),
     );
+  });
+
+  it("多次修改合并成一次提交；暂存的文件在提交前不能播放", async () => {
+    api.netdevAssignPrograms.mockResolvedValue(undefined);
+    renderTab();
+    await screen.findByText("a.artrec");
+    openEditor("a.artrec");
+    fireEvent.change(editorInput(), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await within(row("a.artrec")).findByText("#7");
+    openEditor("new.artrec");
+    fireEvent.change(editorInput(), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await within(row("new.artrec")).findByText("#9");
+
+    expect(screen.getByRole("region", { name: /2 个文件的节目号有未提交的更改/ })).toBeTruthy();
+    expect((within(row("a.artrec")).getByRole("button", { name: /单次播放/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "提交更改" }));
+    await waitFor(() => expect(api.netdevAssignPrograms).toHaveBeenCalledTimes(1));
+    expect(api.netdevAssignPrograms).toHaveBeenCalledWith("d1", [
+      { no: 7, file: "a.artrec" },
+      { no: 9, file: "new.artrec" },
+    ]);
+  });
+
+  it("放弃更改：恢复设备上的节目号，不发请求", async () => {
+    renderTab();
+    await screen.findByText("a.artrec");
+    openEditor("a.artrec");
+    fireEvent.change(editorInput(), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await within(row("a.artrec")).findByText("#7");
+
+    fireEvent.click(screen.getByRole("button", { name: "放弃更改" }));
+    expect(within(row("a.artrec")).getByText("#1")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: /未提交的更改/ })).toBeNull();
+    expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
   });
 
   it("没有节目号的文件不能抢别人的号；不合法的号也不能提交", async () => {
@@ -376,15 +431,24 @@ describe("FilesTab 修改节目号与拖动手柄", () => {
     expect(api.netdevAssignPrograms).not.toHaveBeenCalled();
   });
 
-  it("设备改号失败：提示原因并还原列表", async () => {
+  it("设备提交失败：提示原因，暂存的更改保留以便重试", async () => {
     api.netdevAssignPrograms.mockRejectedValue({ code: "busy", message: "x" });
     renderTab();
     await screen.findByText("a.artrec");
     openEditor("a.artrec");
     fireEvent.change(editorInput(), { target: { value: "7" } });
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await within(row("a.artrec")).findByText("#7");
+    fireEvent.click(screen.getByRole("button", { name: "提交更改" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(within(row("a.artrec")).getByText("#1")).toBeTruthy();
+    // 草稿还在：号码仍是暂存值，提示条仍在
+    await waitFor(() => expect(screen.getByRole("region", { name: /未提交的更改/ })).toBeTruthy());
+    expect(within(row("a.artrec")).getByText("#7")).toBeTruthy();
+
+    api.netdevAssignPrograms.mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole("button", { name: "提交更改" }));
+    await waitFor(() => expect(api.netdevAssignPrograms).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("region", { name: /未提交的更改/ })).toBeNull());
   });
 });
 

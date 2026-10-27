@@ -12,7 +12,7 @@ import {
   type Modifier,
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { HardDrive, RefreshCw, Search, Upload, UploadCloud } from "lucide-react";
+import { Check, HardDrive, RefreshCw, Search, Undo2, Upload, UploadCloud } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { pickArtrecFiles } from "@/shared/tauri/pickers";
 import { cn } from "@/lib/utils";
 import { useDeviceFiles } from "../../hooks/useDeviceFiles";
 import { useFileActions } from "../../hooks/useFileActions";
+import { useProgramDraft } from "../../hooks/useProgramDraft";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { errorText } from "../../lib/errors";
 import { activeProgramNo, filePlayState, planReorder, sortFiles } from "../../lib/files";
@@ -45,6 +46,7 @@ interface FilesTabProps {
  * - 工具条：筛选（Ctrl+F）、文件数与容量、刷新、上传。
  * - 上传：点“上传文件”选择，或把 .artrec 拖到窗口里（拖入时整张表出现投放遮罩）；空表时显示大块拖放区。
  * - 每行：拖动手柄改顺序（即重排节目号）、点节目号改号、主按钮播放 / 停止、“⋯”菜单里是循环播放 / 下载 / 重命名 / 删除。
+ * - 改顺序 / 改号 / 互换只暂存在本机（行内标“待提交”），顶部提示条点“提交更改”后一次性发给设备，“放弃更改”则恢复。
  */
 export function FilesTab({ device, access }: FilesTabProps) {
   const { t } = useTranslation();
@@ -55,13 +57,15 @@ export function FilesTab({ device, access }: FilesTabProps) {
   const player = status?.player ?? null;
   const playingNo = activeProgramNo(player);
   const actions = useFileActions({ device, workMode, files, refresh, playingNo });
+  // 改号 / 互换 / 拖动排序先暂存在本机，点“提交”后一次性发给设备
+  const draft = useProgramDraft({ deviceId: device.id, files, playingNo, commit: actions.reassign });
   const [hovering, setHovering] = useState(false);
   const [deleting, setDeleting] = useState<NetFile | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
 
-  const sorted = useMemo(() => sortFiles(files), [files]);
+  const sorted = useMemo(() => sortFiles(draft.files), [draft.files]);
   const q = filter.trim().toLowerCase();
   const visible = useMemo(() => (q ? sorted.filter((f) => f.name.toLowerCase().includes(q)) : sorted), [sorted, q]);
   const numbered = useMemo(() => visible.filter((f) => f.program !== null), [visible]);
@@ -83,8 +87,7 @@ export function FilesTab({ device, access }: FilesTabProps) {
     const moved = numbered[from];
     const plan = planReorder(numbered, from, to);
     if (!moved || plan.length === 0) return;
-    const no = plan.find((a) => a.file === moved.name)?.no;
-    void actions.reassign(plan, no === undefined ? undefined : t("network.files.renumbered", { name: moved.name, no }));
+    void draft.stage(plan);
   };
 
   // 读屏播报：dnd-kit 默认是英文，这里换成本地化文案
@@ -144,13 +147,17 @@ export function FilesTab({ device, access }: FilesTabProps) {
     playingNo,
     canWrite,
     renaming: renaming === file.name,
+    pending: draft.changed.has(file.name),
     onStartRename: () => setRenaming(file.name),
     onCancelRename: () => setRenaming(null),
     onRename: async (to: string) => {
       const ok = to === file.name || (await actions.rename(file.name, to));
-      if (ok) setRenaming(null);
+      if (ok) {
+        if (to !== file.name) draft.renameKey(file.name, to);
+        setRenaming(null);
+      }
     },
-    onReassign: actions.reassign,
+    onReassign: draft.stage,
     onPlay: (loop: boolean) => actions.requestPlay(file, loop),
     onStop: () => void actions.stop(file),
     onDownload: () => void actions.download(file),
@@ -205,6 +212,27 @@ export function FilesTab({ device, access }: FilesTabProps) {
           </Button>
         </div>
       </div>
+
+      {draft.count > 0 && (
+        <div
+          role="region"
+          aria-label={t("network.files.pendingTitle", { count: draft.count })}
+          className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5"
+        >
+          <span className="text-sm font-medium">{t("network.files.pendingTitle", { count: draft.count })}</span>
+          <span className="text-xs text-muted-foreground">{t("network.files.pendingHint")}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" className="h-9 px-3" disabled={actions.reassigning} onClick={draft.discard}>
+              <Undo2 />
+              {t("network.files.discard")}
+            </Button>
+            <Button size="sm" className="h-9 px-4" disabled={!canWrite || actions.reassigning} onClick={() => void draft.submit()}>
+              <Check />
+              {t("network.files.commit")}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <section
         aria-label={t("network.files.listTitle")}

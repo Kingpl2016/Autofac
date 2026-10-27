@@ -130,16 +130,21 @@ describe("PlayerModeView", () => {
     expect(api.playerOpen).not.toHaveBeenCalled();
   });
 
-  it("播放器模式：显示常驻横幅与回放面板（空状态引导去节目库）", async () => {
+  it("播放器模式：输出状态与退出按钮在页头右侧，没有额外的说明横幅，空状态没有“前往节目库”按钮", async () => {
     useEngineStatusStore.setState({ appMode: "player", receivers: "suspended" });
     renderView();
     expect(screen.queryByRole("heading", { level: 2, name: "进入播放器模式" })).toBeNull();
-    expect(screen.getByText("播放器模式")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "退出播放器模式" })).toBeTruthy();
+    // 页头：标题 + 副标题在左，右侧操作区里是输出状态与退出按钮
+    const header = screen.getByRole("heading", { level: 1, name: "播放器" }).parentElement?.parentElement as HTMLElement;
+    expect(within(header).getByText("在播放器模式下播放节目库里的节目")).toBeTruthy();
+    expect(within(header).getByRole("button", { name: "退出播放器模式" })).toBeTruthy();
+    expect(within(header).getByText("输出就绪")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "退出播放器模式" })).toHaveLength(1);
+    expect(screen.queryByText(/输出走转发表或指定设备/)).toBeNull();
     expect(screen.getByText(/还没有打开节目/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "前往节目库" }));
-    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "节目库" }));
+    expect(screen.queryByRole("button", { name: "前往节目库" })).toBeNull();
+    expect(screen.getByRole("complementary", { name: "节目库" })).toBeTruthy();
     expect(await screen.findByText("开场秀")).toBeTruthy();
   });
 

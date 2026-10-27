@@ -1,0 +1,1 @@
+export { libraryPlugin } from "./plugin";

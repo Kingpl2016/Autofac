@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { LogList } from "@/shared/components/LogList";
 import { useLogStore } from "@/shared/stores/logStore";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
+import { UptimeBadge } from "./UptimeBadge";
 
 /** 日志面板的最小高度（像素）。 */
 const MIN_HEIGHT = 120;
@@ -22,9 +23,8 @@ const maxHeight = () => Math.max(MIN_HEIGHT, Math.floor(window.innerHeight * MAX
 const clampHeight = (h: number) => Math.min(maxHeight(), Math.max(MIN_HEIGHT, Math.round(h)));
 
 /**
- * 底部状态条：左侧是可折叠的系统日志，右侧依次是“清空”和包速率。
+ * 底部状态条：左侧是可折叠的系统日志，右侧依次是“清空”、包速率和引擎运行时长。
  * 展开的日志面板可以拖动顶边向上拉伸（也可用方向键微调，双击恢复默认高度）。
- * 运行时长在顶栏显示（见 `UptimeBadge`）。
  */
 export function StatusLogBar() {
   const { t } = useTranslation();
@@ -145,6 +145,7 @@ export function StatusLogBar() {
             <Activity className="size-3.5" aria-hidden />
             {t("statusBar.packetRate")}: {packetRate} {t("dashboard.packetsPerSec")}
           </span>
+          <UptimeBadge />
         </div>
       </div>
 

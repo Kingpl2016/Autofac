@@ -165,7 +165,9 @@ export function DeviceTable({
   ];
 
   return (
-    <table aria-label={t("discovery.tableLabel")} className="w-full table-fixed text-sm">
+    // 固定布局下名称列吃掉其余固定宽度列剩下的空间；给表格设最小宽度，窗口再窄时横向滚动，
+    // 而不是把名称列挤到 0 宽（曾出现“设备”列整列消失、表头竖排）
+    <table aria-label={t("discovery.tableLabel")} className="w-full min-w-[48rem] table-fixed text-sm">
       <thead>
         <tr>
           {columns.map((c) => {
@@ -179,7 +181,8 @@ export function DeviceTable({
                   sorted ? (sort.dir === "asc" ? "ascending" : "descending") : undefined
                 }
                 className={cn(
-                  "sticky top-0 z-10 h-10 border-b border-border bg-card px-4 text-left text-xs font-medium text-muted-foreground",
+                  // 表头不换行：窄窗口下“设备”等短标题曾被挤成竖排
+                  "sticky top-0 z-10 h-10 whitespace-nowrap border-b border-border bg-card px-4 text-left text-xs font-medium text-muted-foreground",
                   c.className,
                 )}
               >

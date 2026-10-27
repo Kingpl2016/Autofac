@@ -3,7 +3,10 @@ import { invoke } from "@/shared/tauri/invoke";
 import type { DiskInfo } from "../../../shared/domain/disk";
 import { decodeOverview } from "./overview";
 import type {
+  ActivityDto,
   ChannelSeries,
+  EditRequest,
+  EditResult,
   LibraryEntry,
   Overview,
   OverviewDto,
@@ -55,6 +58,11 @@ export function recordingStatus(): Promise<RecordingStatus> {
   return invoke<RecordingStatus>("recording_status");
 }
 
+/** 读取录制活动时间线的全量快照（中途打开页面或代次不一致时用）。 */
+export function recordingActivity(): Promise<ActivityDto> {
+  return invoke<ActivityDto>("recording_activity");
+}
+
 /** 节目库列表的查询键；其他功能（如节目编辑器保存节目）据此刷新列表。 */
 export const RECORDINGS_QUERY_KEY = ["recordings"] as const;
 
@@ -71,6 +79,26 @@ export function recordingsRename(path: string, newName: string): Promise<string>
 /** 删除节目及其 sidecar。 */
 export function recordingsDelete(path: string): Promise<void> {
   return invoke<void>("recordings_delete", { path });
+}
+
+/** 修改节目备注（编辑器节目会同步改写工程里的备注）。 */
+export function recordingsSetNotes(path: string, notes: string): Promise<void> {
+  return invoke<void>("recordings_set_notes", { path, notes });
+}
+
+/** 创建节目副本，返回副本路径（重名时后端自动追加编号）。 */
+export function recordingsDuplicate(path: string, newName: string): Promise<string> {
+  return invoke<string>("recordings_duplicate", { path, newName });
+}
+
+/** 编辑导出：截取 / 拼接片段、只保留部分 Universe，另存或替换原节目。 */
+export function recordingsEdit(req: EditRequest): Promise<EditResult> {
+  return invoke<EditResult>("recordings_edit", { req });
+}
+
+/** 取消进行中的编辑导出。 */
+export function recordingsEditCancel(jobId: string): Promise<void> {
+  return invoke<void>("recordings_edit_cancel", { jobId });
 }
 
 /** 取走应用启动时恢复出的孤立录制结果（取走后清空）。 */

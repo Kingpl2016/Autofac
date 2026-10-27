@@ -60,6 +60,107 @@ pub struct LibraryEntry {
     pub editable: bool,
     /// `.artrec` 文件是否存在。`false` 且 `editable` 表示工程已保存但还没导出（或导出失败）。
     pub exported: bool,
+    /// 由文件头（A 区）派生的格式信息；文件头不可解析（`valid = false`）时为 `None`。
+    pub header: Option<HeaderInfo>,
+}
+
+/// 节目文件的压缩算法（前端标签用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Compression {
+    /// 无压缩。
+    None,
+    /// Zstd。
+    Zstd,
+}
+
+/// 由文件头发现的需要提示用户的问题。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HeaderIssue {
+    /// 帧数为 0：节目里没有任何数据，播放不会有输出。
+    EmptyProgram,
+    /// sidecar 记录的时长与文件头相差超过 1 秒（文件可能被替换或 sidecar 过期）。
+    DurationMismatch,
+    /// 文件次版本高于本程序写入的版本：能播放基础帧，但可能有不认识的扩展。
+    NewerMinor,
+}
+
+/// 由文件头（A 区）派生的格式信息（只读文件头，不解析帧数据）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
+pub struct HeaderInfo {
+    /// 主版本。
+    pub ver_major: u16,
+    /// 次版本。
+    pub ver_minor: u16,
+    /// 压缩算法。
+    pub compression: Compression,
+    /// 压缩等级（无压缩时为文件里的原值，界面忽略）。
+    pub compress_level: u8,
+    /// 文件头 `LOOP_PLAY` 标志：推荐循环播放。
+    pub loop_flag: bool,
+    /// 文件头 `ALLOW_DIFF_FRAME` 标志：可能含差分帧（不支持的解析器必须拒绝打开）。
+    pub diff_frames: bool,
+    /// 帧索引表（C 区）位于 Chunk 池（D 区）之后。规范允许任意顺序，但固件若硬编码
+    /// “C 紧跟 B”会读错，界面据此提示。
+    pub frame_index_at_tail: bool,
+    /// 需要提示的问题（无问题时为空）。
+    pub issues: Vec<HeaderIssue>,
+}
+
+/// sidecar 与文件头时长允许的偏差（微秒）。
+const DURATION_TOLERANCE_US: u64 = 1_000_000;
+
+impl HeaderInfo {
+    /// 由解析出的文件头构造格式信息（不含需要 sidecar 才能判断的问题）。
+    ///
+    /// # Arguments
+    ///
+    /// * `h` - 已解析的文件头。
+    ///
+    /// # Returns
+    ///
+    /// 带 `emptyProgram` / `newerMinor` 判定的 [`HeaderInfo`]。
+    #[must_use]
+    pub fn from_header(h: &artrec_core::FileHeader) -> Self {
+        let mut issues = Vec::new();
+        if h.frame_count == 0 {
+            issues.push(HeaderIssue::EmptyProgram);
+        }
+        if h.ver_major == artrec_core::VER_MAJOR && h.ver_minor > artrec_core::VER_MINOR {
+            issues.push(HeaderIssue::NewerMinor);
+        }
+        Self {
+            ver_major: h.ver_major,
+            ver_minor: h.ver_minor,
+            compression: match h.compress_algo {
+                artrec_core::CompressAlgo::None => Compression::None,
+                artrec_core::CompressAlgo::Zstd => Compression::Zstd,
+            },
+            compress_level: h.compress_level,
+            loop_flag: h.loop_play(),
+            diff_frames: h.allows_diff(),
+            frame_index_at_tail: h.frame_index_offset > h.chunk_pool_offset,
+            issues,
+        }
+    }
+
+    /// 结合 sidecar 记录的时长补充 `durationMismatch` 判定。
+    ///
+    /// # Arguments
+    ///
+    /// * `header_us` - 文件头的总时长（微秒）。
+    /// * `sidecar_us` - sidecar 记录的时长（微秒）；为 0 表示 sidecar 未记录，不判定。
+    pub fn check_duration(&mut self, header_us: u64, sidecar_us: u64) {
+        if sidecar_us > 0
+            && header_us.abs_diff(sidecar_us) > DURATION_TOLERANCE_US
+            && !self.issues.contains(&HeaderIssue::DurationMismatch)
+        {
+            self.issues.push(HeaderIssue::DurationMismatch);
+        }
+    }
 }
 
 /// 库操作错误。
@@ -186,6 +287,8 @@ struct HeaderSummary {
     frames: u64,
     /// Universe 编号（B 区顺序）。
     universes: Vec<u16>,
+    /// 文件头派生的格式信息。
+    info: HeaderInfo,
 }
 
 /// 只读文件头（A 区）与 Universe 表（B 区）判断节目是否有效，不读帧索引。
@@ -214,6 +317,7 @@ fn probe_header(path: &Path) -> Option<HeaderSummary> {
         duration_us: header.total_duration_us,
         frames: u64::from(header.frame_count),
         universes: unis.iter().map(|u| u.universe).collect(),
+        info: HeaderInfo::from_header(&header),
     })
 }
 
@@ -250,6 +354,7 @@ fn entry_from(path: &Path, meta: &Metadata, exported: bool) -> Option<LibraryEnt
         valid: false,
         editable: show_project_path(path).is_file(),
         exported,
+        header: None,
     };
 
     // 事实以 `.artrec` 本体为准（头可解析才算有效）；sidecar 只补充名称与来源等元信息
@@ -258,6 +363,7 @@ fn entry_from(path: &Path, meta: &Metadata, exported: bool) -> Option<LibraryEnt
         entry.duration_us = h.duration_us;
         entry.frames = h.frames;
         entry.universes = h.universes;
+        entry.header = Some(h.info);
     }
     if let Some(side) = read_sidecar(path) {
         if !side.name.trim().is_empty() {
@@ -266,6 +372,10 @@ fn entry_from(path: &Path, meta: &Metadata, exported: bool) -> Option<LibraryEnt
         entry.notes = side.notes;
         entry.sources = side.sources.iter().map(ToString::to_string).collect();
         entry.recovered = side.recovered;
+        let header_us = entry.duration_us;
+        if let Some(info) = entry.header.as_mut() {
+            info.check_duration(header_us, side.duration_us);
+        }
     }
     Some(entry)
 }
@@ -826,6 +936,68 @@ mod tests {
             list_library_uncached(dir.path()),
             "缓存版与直读版结果一致"
         );
+    }
+
+    #[test]
+    fn header_info_reflects_flags_compression_and_issues() {
+        use super::{Compression, HeaderIssue};
+        let dir = TempDir::new("lib-header");
+
+        // 普通录制：Zstd、无标志、索引在尾部、无问题
+        let plain = make_artrec(&dir, "plain", 3);
+        // 循环 + 差分标志、无压缩
+        let unis = vec![UniDesc::from_universe(1, 512).unwrap()];
+        let flags = artrec_core::FLAG_LOOP | artrec_core::FLAG_DIFF_FRAME;
+        let mut w =
+            ArtRecWriter::new(Cursor::new(Vec::new()), unis, CompressAlgo::None, 0, flags, 0)
+                .unwrap();
+        w.add_full_frame(0, &[vec![1u8; 512]]).unwrap();
+        std::fs::write(
+            dir.path().join("flags.artrec"),
+            w.finish(10_000_000).unwrap().into_inner(),
+        )
+        .unwrap();
+        // 零帧
+        make_artrec(&dir, "empty", 0);
+        // sidecar 时长与文件头相差 5 秒
+        let mism = make_artrec(&dir, "mism", 2);
+        write_sidecar(
+            &mism,
+            &Sidecar {
+                duration_us: 5_002_000,
+                ..Sidecar::default()
+            },
+        )
+        .unwrap();
+        // sidecar 时长与文件头一致
+        write_sidecar(
+            &plain,
+            &Sidecar {
+                duration_us: 3000,
+                ..Sidecar::default()
+            },
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("junk.artrec"), b"not artrec").unwrap();
+
+        let list = list_library_uncached(dir.path());
+        let by = |n: &str| list.iter().find(|e| e.file_name == n).unwrap().header.clone();
+
+        let p = by("plain.artrec").unwrap();
+        assert_eq!((p.ver_major, p.ver_minor), (1, 0));
+        assert_eq!(p.compression, Compression::Zstd);
+        assert_eq!(p.compress_level, 3);
+        assert!(!p.loop_flag && !p.diff_frames);
+        assert!(p.frame_index_at_tail);
+        assert!(p.issues.is_empty(), "{:?}", p.issues);
+
+        let f = by("flags.artrec").unwrap();
+        assert_eq!(f.compression, Compression::None);
+        assert!(f.loop_flag && f.diff_frames);
+
+        assert_eq!(by("empty.artrec").unwrap().issues, vec![HeaderIssue::EmptyProgram]);
+        assert_eq!(by("mism.artrec").unwrap().issues, vec![HeaderIssue::DurationMismatch]);
+        assert!(by("junk.artrec").is_none(), "文件头不可解析时没有格式信息");
     }
 
     #[test]

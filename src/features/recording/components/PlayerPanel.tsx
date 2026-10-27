@@ -34,8 +34,6 @@ import {
 const PERF_WARN_THRESHOLD = 16;
 
 interface PlayerPanelProps {
-  /** 跳转到节目库（未打开节目时的引导） */
-  onGoLibrary: () => void;
   /** 面板当前是否可见；不可见时不响应键盘快捷键（默认可见） */
   active?: boolean;
 }
@@ -50,7 +48,7 @@ function messageOf(e: unknown): string {
  *
  * 状态完全来自后端 `player:state` 事件；本面板只发命令，不在本地推算播放位置。
  */
-export function PlayerPanel({ onGoLibrary, active = true }: PlayerPanelProps) {
+export function PlayerPanel({ active = true }: PlayerPanelProps) {
   const { t } = useTranslation();
   const status = usePlayerStore((s) => s.status);
   const channels = usePlayerStore((s) => s.channels);
@@ -99,9 +97,6 @@ export function PlayerPanel({ onGoLibrary, active = true }: PlayerPanelProps) {
           <Film className="size-7" aria-hidden />
         </span>
         <p className="max-w-sm text-sm text-muted-foreground">{t("player.empty")}</p>
-        <Button variant="outline" onClick={onGoLibrary}>
-          {t("player.goLibrary")}
-        </Button>
       </div>
     );
   }

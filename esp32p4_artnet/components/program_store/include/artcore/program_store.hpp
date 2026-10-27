@@ -89,6 +89,26 @@ public:
     /// 解除某编号的映射（不删文件）。
     [[nodiscard]] Result<void> unassign(uint16_t no) noexcept;
 
+    /// 批量重排：一次性提交新的「编号 → 文件」映射，原子生效。
+    ///
+    /// 语义：
+    /// - `entries` 中列出的文件按给定编号重新映射（可含空洞，不要求连续）。
+    /// - 未列出的现有映射保持原编号；若其编号被 `entries` 占用则整体拒绝。
+    /// - 全程先校验再提交：任一条目非法则不改变任何状态；落盘失败时内存回滚。
+    ///
+    /// # Arguments
+    ///
+    /// * `entries` - 新映射列表（仅用 `no` 与 `file`，`size` 被忽略并由磁盘重新取值）。
+    ///
+    /// # Errors
+    ///
+    /// - 列表为空 / 超过上限、编号越界、编号或文件名重复、文件名非法返回
+    ///   [`Status::InvalidArg`]。
+    /// - 文件不存在返回 [`Status::NotFound`]。
+    /// - 列出的编号与未列出的现有映射冲突返回 [`Status::Busy`]。
+    /// - 落盘失败返回 [`Status::IoError`]（内存映射已回滚）。
+    [[nodiscard]] Result<void> reorder(const std::vector<ProgramEntry>& entries) noexcept;
+
     /// 新文件加入：若未映射则分配最小空闲编号。
     ///
     /// # Arguments

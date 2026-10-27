@@ -42,6 +42,17 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("ChannelCurves", () => {
+  it("Universe 下拉框显示当前选中的编号（包括 0）", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChannelCurves path={PATH} durationUs={600_000_000} posUs={0} universes={[0, 1]} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(api.playerSeries).toHaveBeenCalled());
+    expect(screen.getByRole("combobox", { name: "Universe" }).textContent).toBe("0");
+  });
+
   it("默认查询第一路 Universe 的通道 1，整段节目", async () => {
     renderCurves();
     await waitFor(() => expect(api.playerSeries).toHaveBeenCalled());

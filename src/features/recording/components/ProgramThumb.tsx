@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
 import { useOverview } from "../hooks/useOverview";
 import { drawHeatmap, heatmapCells } from "../lib/heatmap";
@@ -18,6 +19,8 @@ interface ProgramThumbProps {
   valid: boolean;
   /** 叠在缩略图上的内容（如时长角标） */
   children?: React.ReactNode;
+  /** 覆盖外框尺寸（默认 `h-16` 撑满卡片宽度；列表紧凑行里用小方块） */
+  className?: string;
 }
 
 /**
@@ -26,7 +29,7 @@ interface ProgramThumbProps {
  * 只有卡片进入可视区后才请求概览（后端按文件缓存到 sidecar），避免节目很多时一次性扫描全部文件。
  * 缩略图本身是装饰（对读屏隐藏）；`children` 作为叠加角标，不受影响。
  */
-export function ProgramThumb({ path, valid, children }: ProgramThumbProps) {
+export function ProgramThumb({ path, valid, children, className }: ProgramThumbProps) {
   const appearanceRevision = useAppearanceRevision();
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,7 +72,7 @@ export function ProgramThumb({ path, valid, children }: ProgramThumbProps) {
   }, [data, appearanceRevision]);
 
   return (
-    <div className="relative h-16 overflow-hidden rounded-lg bg-surface-1">
+    <div className={cn("relative h-16 overflow-hidden rounded-lg bg-surface-1", className)}>
       <div ref={boxRef} className="size-full" aria-hidden data-testid="program-thumb">
         {data && data.universes.length > 0 && (
           <canvas ref={canvasRef} className="block size-full" />

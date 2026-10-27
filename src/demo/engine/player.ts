@@ -9,7 +9,7 @@ import { DMX_KIND_PLAYBACK, encodeDmxFrame } from "@/shared/lib/dmxFrame";
 import { renderSegments, toSegments } from "../lib/patterns";
 import { FULL_FRAME_MS, sameData, sameList } from "../lib/streamHub";
 import type { ForwardingModule } from "./forwarding";
-import type { Library, ProgramRecord } from "./library";
+import { sourceTimeSec, type Library, type ProgramRecord } from "./library";
 import { buildOverview, buildSeries } from "./overview";
 import {
   createGate,
@@ -112,7 +112,7 @@ export function createPlayerModule(
     const epoch = world.stream.epoch();
     const full = needFull || epoch !== seenEpoch || nowMs - lastFullMs >= FULL_FRAME_MS;
     seenEpoch = epoch;
-    const posSec = status.posUs / 1_000_000;
+    const posSec = rec ? sourceTimeSec(rec, status.posUs / 1_000_000) : 0;
     const entries: Array<{ universe: number; data: readonly number[] }> = [];
     const next = new Map<number, number[]>();
     for (const universe of viewed) {

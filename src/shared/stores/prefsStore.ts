@@ -30,6 +30,10 @@ interface PrefsState {
   sidebarCollapsed: boolean;
   /** 录制开始 / 停止的全局快捷键 */
   recordHotkeys: RecordHotkeys;
+  /** 录制时窗口四周是否显示录制色光晕（默认开） */
+  recordingGlow: boolean;
+  /** 设置录制光晕开关 */
+  setRecordingGlow: (on: boolean) => void;
   /** 设置界面语言 */
   setLanguage: (language: Language) => void;
   /** 切换侧栏折叠状态 */
@@ -59,6 +63,7 @@ interface PrefsData {
   language: Language;
   sidebarCollapsed: boolean;
   recordHotkeys: RecordHotkeys;
+  recordingGlow: boolean;
 }
 
 /** 校验一个加速键字符串：非空字符串才有效。 */
@@ -99,6 +104,8 @@ function sanitizePrefs(raw: unknown, current: PrefsData): PrefsData {
         current.recordHotkeys.stop,
       ),
     },
+    recordingGlow:
+      typeof r.recordingGlow === "boolean" ? r.recordingGlow : current.recordingGlow,
   };
 }
 
@@ -111,6 +118,8 @@ export const usePrefsStore = create<PrefsState>()(
       language: detectSystemLanguage(),
       sidebarCollapsed: false,
       recordHotkeys: { ...DEFAULT_RECORD_HOTKEYS },
+      recordingGlow: true,
+      setRecordingGlow: (recordingGlow) => set({ recordingGlow }),
       setLanguage: (language) => set({ language }),
       toggleSidebar: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -126,10 +135,11 @@ export const usePrefsStore = create<PrefsState>()(
       name: "prefs",
       version: 1,
       storage: createTauriPersistStorage<PrefsData>(),
-      partialize: ({ language, sidebarCollapsed, recordHotkeys }) => ({
+      partialize: ({ language, sidebarCollapsed, recordHotkeys, recordingGlow }) => ({
         language,
         sidebarCollapsed,
         recordHotkeys,
+        recordingGlow,
       }),
       // 没有已保存数据（首次运行 / 读取失败）时保持当前值，不被默认值覆盖
       merge: (persisted, current) =>

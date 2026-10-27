@@ -122,6 +122,34 @@ describe("HeaderRecordButton", () => {
     expect(dl.querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("分段录制：停止按钮显示会话总时长，旁边标出 P2；详情同时列出本段与会话时长", async () => {
+    useRecordingStore.setState({
+      status: live({
+        part: 2,
+        elapsedUs: 5_000_000,
+        sessionElapsedUs: 65_000_000,
+        partStartsUs: [0, 60_000_000],
+      }),
+    });
+    renderButton();
+    expect(screen.getByRole("button", { name: "停止录制" }).textContent).toContain("1:05.0");
+    expect(screen.getByLabelText("第 2 段").textContent).toBe("P2");
+    fireEvent.click(screen.getByRole("button", { name: "录制详情" }));
+    const dl = (await screen.findByText("会话总时长")).closest("dl")!;
+    expect(dl.textContent).toContain("第 2 段时长");
+    expect(dl.textContent).toContain("0:05.0");
+    expect(screen.getAllByTestId("record-head-strip").length).toBeGreaterThan(0);
+  });
+
+  it("有丢帧时顶栏直接用图标 + 文字标出丢帧数；没有分段时不显示 P1", () => {
+    useRecordingStore.setState({ status: live({ part: 1, dropped: 7 }) });
+    renderButton();
+    const badge = screen.getByTestId("header-rec-dropped");
+    expect(badge.textContent).toContain("丢帧 7");
+    expect(badge.querySelector("svg")).toBeTruthy();
+    expect(screen.queryByText("P1")).toBeNull();
+  });
+
   it("播放器模式：不隐藏，用 aria-disabled 保持可聚焦，名称里写明原因，点击不会开始录制", () => {
     useEngineStatusStore.setState({ appMode: "player" });
     renderButton();

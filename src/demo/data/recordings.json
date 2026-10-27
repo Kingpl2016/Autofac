@@ -104,6 +104,7 @@
       "durationSec": 180,
       "rateHz": 40,
       "sources": ["192.168.1.21"],
+      "header": { "loopFlag": true, "diffFrames": true, "compressLevel": 1 },
       "universes": [
         { "universe": 16, "pattern": "rainbow", "from": 1, "to": 510, "fixture": 3, "speed": 0.4 },
         { "universe": 17, "pattern": "rainbow", "from": 1, "to": 510, "fixture": 3, "speed": 0.4, "phase": 0.17 },
@@ -121,6 +122,7 @@
       "durationSec": 150,
       "rateHz": 30,
       "sources": ["192.168.1.31"],
+      "header": { "verMinor": 1, "compression": "none", "issues": ["durationMismatch", "newerMinor"] },
       "universes": [
         { "universe": 40, "pattern": "chase", "from": 1, "to": 510, "fixture": 3, "speed": 0.6 },
         { "universe": 41, "pattern": "chase", "from": 1, "to": 510, "fixture": 3, "speed": 0.6, "phase": 0.2 },

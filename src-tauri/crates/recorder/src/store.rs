@@ -565,6 +565,26 @@ impl FileRecorder {
         self.session.stats()
     }
 
+    /// 最近一次写帧时的合并快照，见 [`RecorderSession::snapshot`]。
+    ///
+    /// # Returns
+    ///
+    /// 各路快照缓冲的只读切片。
+    #[must_use]
+    pub fn snapshot(&self) -> &[Vec<u8>] {
+        self.session.snapshot()
+    }
+
+    /// 本文件录制的 Universe 集合，见 [`RecorderSession::universes`]。
+    ///
+    /// # Returns
+    ///
+    /// Universe 编号切片。
+    #[must_use]
+    pub fn universes(&self) -> &[u16] {
+        self.session.universes()
+    }
+
     /// 正常结束：等刷盘线程做完已交付的工作并退出，再补收尾帧与索引、回填头部、
     /// 原子重命名并写 sidecar。
     ///

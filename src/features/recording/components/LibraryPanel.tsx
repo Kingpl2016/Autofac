@@ -1,62 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Clapperboard, Pencil, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useAppModeStore, useModeActions } from "@/features/app-mode";
-import {
-  errorText as netErrorText,
-  netdevUploadRecording,
-  useActiveDevice,
-  useDeviceStatus,
-  useTransferStore,
-} from "@/features/network";
 import { SurfacePanel } from "../../../shared/components/SurfacePanel";
+import { ProgramActionsMenu } from "./ProgramActionsMenu";
+import { ProgramDeleteDialog } from "./ProgramDeleteDialog";
+import { ProgramPlayButton } from "./ProgramPlayButton";
+import { ProgramRenameInput } from "./ProgramRenameInput";
+import { ProgramStatusBadges } from "./ProgramStatusBadges";
 import { ProgramThumb } from "./ProgramThumb";
+import { useProgramActions } from "../hooks/useProgramActions";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
-import {
-  RECORDINGS_QUERY_KEY,
-  playerOpen,
-  recordingsDelete,
-  recordingsList,
-  recordingsRename,
-} from "../lib/api";
+import { RECORDINGS_QUERY_KEY, recordingsList } from "../lib/api";
 import { formatBytes, formatDurationUs } from "../lib/filter";
-import {
-  LIB_ERR_EXISTS,
-  LIB_ERR_NOT_FOUND,
-  LIB_ERR_OUTSIDE,
-  LIB_ERR_TRASH,
-  PLAYER_ERR_BAD_PATH,
-  PLAYER_ERR_RECORDING_ACTIVE,
-  PLAYER_ERR_SHOW_ACTIVE,
-  type LibraryEntry,
-} from "../lib/types";
+import { libraryHref } from "../lib/libraryRoutes";
+import { hasProgramFlags } from "../lib/programFlags";
+import type { LibraryEntry } from "../lib/types";
 
-const LIBRARY_KEY = RECORDINGS_QUERY_KEY;
 /** 入场交错的最大档位与步长（毫秒），超过后不再递增以免长列表显得迟钝。 */
 const STAGGER_MAX_STEPS = 8;
 const STAGGER_STEP_MS = 30;
-
-/** 把任意异常规整为字符串。 */
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /** 节目是否匹配搜索词（名称 / 文件名 / 备注 / 来源）。 */
 function matchesQuery(e: LibraryEntry, q: string): boolean {
@@ -71,118 +41,42 @@ interface LibraryPanelProps {
 }
 
 /**
- * 节目库侧栏：以卡片列出录制目录里的 `.artrec` 节目（含迷你热力图缩略图），
- * 支持搜索、回放、重命名、删除（二次确认）与上传到当前网络设备。
+ * 节目库侧栏：以紧凑的编号行列出录制目录里的 `.artrec` 节目
+ * （序号、迷你热力图、名称 + 状态、时长 · Universe 数 · 大小、回放按钮、“⋯”菜单）。
+ * 完整信息（文件名、时间、来源、备注、帧数、格式）在名称的悬停提示和菜单顶部；
+ * 编辑、编辑导出、上传、重命名、复制、在节目库中查看、删除（二次确认）收在“⋯”菜单里。
+ * 完整的表格视图与批量操作在节目库页面（`/library`）。
  *
- * 回放走统一的模式切换（`useModeActions`）：实时模式下点击回放会先弹出“进入播放器模式？”确认，
- * 确认后（必要时先停止录制）由后端 `player_open` 自动进入播放器模式；已在播放器模式则直接切换节目。
+ * 回放走统一的模式切换（`useProgramActions` → `useModeActions`）：实时模式下点击回放会先弹出
+ * “进入播放器模式？”确认，确认后由后端 `player_open` 自动进入播放器模式；已在播放器模式则直接切换节目。
  */
 export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { device: netDevice } = useActiveDevice();
-  const netStatus = useDeviceStatus(netDevice?.id ?? null);
-  const canUpload = netDevice !== null && netStatus.online;
+  const actions = useProgramActions(onPlayed);
   const lastResult = useRecordingStore((s) => s.last);
   const recording = useRecordingStore((s) => s.status.recording);
-  const transitioning = useAppModeStore((s) => s.transitioning);
-  const { requestMode } = useModeActions();
-  const playingPath = usePlayerStore((s) => (s.status.loaded ? s.status.path : ""));
   const repeat = usePlayerStore((s) => (s.status.loaded ? s.status.repeat : "off"));
+  const { loadedPath: playingPath, loadedState } = actions;
 
   const [query, setQuery] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
   const [toDelete, setToDelete] = useState<LibraryEntry | null>(null);
-  const [uploading, setUploading] = useState<string | null>(null);
 
   const list = useQuery({
-    queryKey: LIBRARY_KEY,
+    queryKey: RECORDINGS_QUERY_KEY,
     queryFn: recordingsList,
   });
 
   // 一次录制结束后自动刷新列表
   useEffect(() => {
-    if (lastResult) void client.invalidateQueries({ queryKey: LIBRARY_KEY });
+    if (lastResult) void client.invalidateQueries({ queryKey: RECORDINGS_QUERY_KEY });
   }, [lastResult, client]);
 
-  const refresh = () => void client.invalidateQueries({ queryKey: LIBRARY_KEY });
-
-  const describeError = (e: unknown): string => {
-    const raw = messageOf(e);
-    if (raw === LIB_ERR_EXISTS) return t("recording.libErrExists");
-    if (raw === LIB_ERR_OUTSIDE) return t("recording.libErrOutside");
-    if (raw === LIB_ERR_NOT_FOUND) return t("recording.libErrNotFound");
-    // 后端格式为 `trash_failed: <系统给出的原因>`；此时文件原样保留，不会被永久删除
-    if (raw.startsWith(LIB_ERR_TRASH)) {
-      return t("recording.libErrTrash", { reason: raw.slice(LIB_ERR_TRASH.length).replace(/^:\s*/, "") });
-    }
-    return raw;
-  };
-
-  const commitRename = async (entry: LibraryEntry) => {
-    const next = draft.trim();
+  const commitRename = (entry: LibraryEntry, next: string) => {
     setRenaming(null);
-    if (!next || next === entry.name) return;
-    try {
-      await recordingsRename(entry.path, next);
-      refresh();
-    } catch (e: unknown) {
-      toast.error(describeError(e));
-    }
-  };
-
-  const confirmDelete = async () => {
-    const entry = toDelete;
-    setToDelete(null);
-    if (!entry) return;
-    try {
-      await recordingsDelete(entry.path);
-      toast.success(t("recording.libDeleted", { name: entry.name }));
-      refresh();
-    } catch (e: unknown) {
-      toast.error(describeError(e));
-    }
-  };
-
-  /** 把打开节目失败的原因说得比“切换模式失败”更具体。 */
-  const describeOpenError = (e: unknown): string => {
-    const raw = messageOf(e);
-    if (raw === PLAYER_ERR_RECORDING_ACTIVE) return t("player.errRecordingActive");
-    if (raw === PLAYER_ERR_SHOW_ACTIVE) return t("player.errShowActive");
-    if (raw === PLAYER_ERR_BAD_PATH) return t("recording.libErrOutside");
-    return t("player.openFailed", { reason: describeError(e) });
-  };
-
-  /** 请求回放：统一走模式切换（实时模式下先确认；已在播放器模式则直接换节目）。 */
-  const requestPlay = (entry: LibraryEntry) =>
-    requestMode("player", {
-      run: async () => {
-        await playerOpen(entry.path);
-        onPlayed?.();
-      },
-      describeError: describeOpenError,
-    });
-
-  const upload = async (entry: LibraryEntry) => {
-    if (!netDevice) return;
-    setUploading(entry.path);
-    try {
-      // 走全局传输队列：有进度、可取消，切换页面也不会中断
-      const name = await useTransferStore.getState().run(
-        { kind: "upload", deviceId: netDevice.id, label: entry.fileName },
-        (onProgress) => netdevUploadRecording(netDevice.id, entry.path, onProgress),
-      );
-      toast.success(t("recording.libUploaded", { name }));
-    } catch (e: unknown) {
-      const code = (e as { code?: string } | null)?.code;
-      if (code !== "cancelled") {
-        toast.error(t("recording.libUploadFailed", { reason: netErrorText(t, e) }));
-      }
-    } finally {
-      setUploading(null);
-    }
+    void actions.rename(entry, next);
   };
 
   // 刚结束的这次录制产生的文件，在列表里标出“刚录制”
@@ -191,6 +85,8 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
     [lastResult],
   );
   const entries = useMemo(() => list.data ?? [], [list.data]);
+  // 序号按节目在整个库里的位置（从 1 起），搜索过滤时不重新编号
+  const indexOf = useMemo(() => new Map(entries.map((e, i) => [e.path, i + 1])), [entries]);
   // 连播时的“下一个”：与后端 `next_in_library` 同序（列表里紧随其后的有效节目）
   const nextPath = useMemo(() => {
     if (repeat !== "playlist" || !playingPath) return "";
@@ -227,7 +123,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
               variant="ghost"
               size="icon"
               className="size-9"
-              onClick={refresh}
+              onClick={actions.refresh}
               aria-label={t("recording.libRefresh")}
               title={t("recording.libRefresh")}
             >
@@ -260,9 +156,22 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
             {t("recording.libNoMatch")}
           </div>
         ) : (
-          <ul className="grid max-h-[calc(100dvh-16rem)] gap-3 overflow-y-auto pr-1">
+          <ol className="grid max-h-[calc(100dvh-16rem)] gap-1 overflow-y-auto pr-1" aria-label={t("recording.tabLibrary")}>
             {shown.map((e, i) => {
-              const isPlaying = e.path === playingPath;
+              const isLoaded = e.path === playingPath;
+              const isPlaying = isLoaded && loadedState === "playing";
+              const no = indexOf.get(e.path) ?? i + 1;
+              const isNext = e.path === nextPath;
+              const isFresh = freshPaths.has(e.path.replaceAll("\\", "/"));
+              const meta = t("recording.libMeta", {
+                frames: e.frames,
+                size: formatBytes(e.bytes),
+                n: e.universes.length,
+              });
+              const when = new Date(e.modifiedUnixMs).toLocaleString();
+              // 完整信息收在名称的悬停提示和“⋯”菜单顶部，列表本身只显示一行名称 + 一行摘要
+              const details = [e.fileName, [when, ...e.sources].join(" · "), e.notes, meta].filter(Boolean).join("\n");
+              const hasFlags = hasProgramFlags(e, isNext, isFresh);
               return (
                 <li
                   key={e.path}
@@ -270,180 +179,97 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                     if (el) itemRefs.current.set(e.path, el);
                     else itemRefs.current.delete(e.path);
                   }}
+                  aria-current={isLoaded ? "true" : undefined}
                   className={cn(
-                    "group animate-fade-up grid gap-2.5 rounded-xl border bg-surface-1/60 p-2.5 transition-colors hover:bg-surface-3/50",
-                    isPlaying ? "border-success/50 glow-success" : "border-transparent",
+                    "group animate-fade-up rounded-lg border transition-colors duration-150 motion-reduce:transition-none",
+                    isPlaying
+                      ? "border-success/45 bg-success/5"
+                      : isLoaded
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-transparent hover:bg-surface-3/50",
                   )}
                   style={{ animationDelay: `${Math.min(i, STAGGER_MAX_STEPS) * STAGGER_STEP_MS}ms` }}
                 >
-                  <ProgramThumb path={e.path} valid={e.valid}>
-                    <span className="num absolute right-1.5 bottom-1.5 rounded bg-background/80 px-1.5 py-0.5 text-[0.7rem] font-semibold">
-                      {formatDurationUs(e.durationUs)}
+                  <div className="flex items-center gap-2.5 px-2 py-1.5">
+                    {/* 序号：节目在库里的位置（搜索时保持不变，方便口头沟通“第 3 个”） */}
+                    <span
+                      className={cn(
+                        "num w-6 shrink-0 text-right text-xs font-semibold",
+                        isLoaded ? (isPlaying ? "text-success" : "text-primary") : "text-muted-foreground",
+                      )}
+                    >
+                      {String(no).padStart(2, "0")}
                     </span>
-                  </ProgramThumb>
+                    <ProgramThumb path={e.path} valid={e.valid} className="h-9 w-14 shrink-0 rounded-md" />
 
-                  <div className="min-w-0">
-                    {renaming === e.path ? (
-                      <div className="flex items-center gap-1.5">
-                        <Input
-                          autoFocus
-                          className="h-9"
-                          aria-label={t("recording.libRename")}
-                          value={draft}
-                          onChange={(ev) => setDraft(ev.target.value)}
-                          onKeyDown={(ev) => {
-                            if (ev.key === "Enter") void commitRename(e);
-                            if (ev.key === "Escape") setRenaming(null);
-                          }}
+                    <div className="min-w-0 flex-1">
+                      {renaming === e.path ? (
+                        <ProgramRenameInput
+                          initial={e.name}
+                          onCommit={(next) => commitRename(e, next)}
+                          onCancel={() => setRenaming(null)}
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 shrink-0"
-                          aria-label={t("common.ok")}
-                          onClick={() => void commitRename(e)}
-                        >
-                          <Check />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 shrink-0"
-                          aria-label={t("common.cancel")}
-                          onClick={() => setRenaming(null)}
-                        >
-                          <X />
-                        </Button>
+                      ) : (
+                        <>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-sm font-medium" title={details}>
+                              {e.name}
+                            </span>
+                            {/* 徽章如实反映播放状态：打开了但没在播时不再显示“回放中” */}
+                            {isPlaying && <Badge variant="success" className="shrink-0">{t("player.live")}</Badge>}
+                            {isLoaded && loadedState === "paused" && (
+                              <Badge variant="warning" className="shrink-0">{t("player.statePaused")}</Badge>
+                            )}
+                            {isLoaded && loadedState === "stopped" && (
+                              <Badge variant="outline" className="shrink-0">{t("recording.libOpened")}</Badge>
+                            )}
+                          </div>
+                          <div className="num truncate text-xs text-muted-foreground">
+                            {formatDurationUs(e.durationUs)} · {t("recording.libUniverses", { n: e.universes.length })} ·{" "}
+                            {formatBytes(e.bytes)}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {renaming !== e.path && (
+                      <div className="flex shrink-0 items-center">
+                        <ProgramPlayButton
+                          entry={e}
+                          actions={actions}
+                          idleClassName="group-hover:bg-primary group-hover:text-primary-foreground group-focus-within:bg-primary group-focus-within:text-primary-foreground"
+                        />
+                        <ProgramActionsMenu
+                          entry={e}
+                          actions={actions}
+                          onRename={() => setRenaming(e.path)}
+                          onDelete={() => setToDelete(e)}
+                          onShowInLibrary={() => void navigate(libraryHref(e.path))}
+                        />
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-sm font-semibold" title={e.fileName}>
-                            {e.name}
-                          </span>
-                          {isPlaying && <Badge variant="success">{t("player.live")}</Badge>}
-                          {e.path === nextPath && (
-                            <Badge variant="outline">{t("recording.libNext")}</Badge>
-                          )}
-                          {freshPaths.has(e.path.replaceAll("\\", "/")) && (
-                            <Badge>{t("recording.libNew")}</Badge>
-                          )}
-                          {e.editable && <Badge variant="outline">{t("recording.libEditable")}</Badge>}
-                          {e.editable && !e.exported && (
-                            <Badge variant="warning">{t("recording.libNotExported")}</Badge>
-                          )}
-                          {!e.valid && e.exported !== false && (
-                            <Badge variant="destructive">{t("recording.libInvalid")}</Badge>
-                          )}
-                          {e.recovered && (
-                            <Badge variant="warning">{t("recording.libRecovered")}</Badge>
-                          )}
-                        </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {new Date(e.modifiedUnixMs).toLocaleString()}
-                          {e.sources.length > 0 && ` · ${e.sources.join(", ")}`}
-                          {e.notes && ` · ${e.notes}`}
-                        </div>
-                      </>
                     )}
                   </div>
 
-                  <p className="num text-xs text-muted-foreground">
-                    {t("recording.libMeta", {
-                      frames: e.frames,
-                      size: formatBytes(e.bytes),
-                      n: e.universes.length,
-                    })}
-                  </p>
-
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="mr-auto group-hover:bg-primary group-hover:text-primary-foreground group-focus-within:bg-primary group-focus-within:text-primary-foreground"
-                      aria-label={t("player.playProgram")}
-                      title={t("player.playProgram")}
-                      disabled={!e.valid || transitioning}
-                      onClick={() => requestPlay(e)}
-                    >
-                      <Play className="fill-current" />
-                      {t("recording.tabPlayer")}
-                    </Button>
-                    {e.editable && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t("recording.libEdit")}
-                        title={t("recording.libEdit")}
-                        onClick={() => void navigate(`/editor?open=${encodeURIComponent(e.path)}`)}
-                      >
-                        <Clapperboard className="size-4" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("recording.libUpload")}
-                      title={
-                        canUpload
-                          ? t("recording.libUpload")
-                          : t("recording.libUploadNeedsDevice")
-                      }
-                      disabled={!canUpload || !e.valid || uploading === e.path}
-                      onClick={() => void upload(e)}
-                    >
-                      <Upload className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("recording.libRename")}
-                      title={t("recording.libRename")}
-                      onClick={() => {
-                        setDraft(e.name);
-                        setRenaming(e.path);
-                      }}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("common.delete")}
-                      title={t("common.delete")}
-                      onClick={() => setToDelete(e)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
+                  {hasFlags && renaming !== e.path && (
+                    <div className="flex flex-wrap items-center gap-1 pb-2 pl-[6.125rem] pr-2">
+                      <ProgramStatusBadges entry={e} isNext={isNext} isFresh={isFresh} />
+                    </div>
+                  )}
                 </li>
               );
             })}
-          </ul>
+          </ol>
         )}
         {recording && (
           <p className="mt-3 text-xs text-muted-foreground">{t("recording.libRecordingNote")}</p>
         )}
       </SurfacePanel>
 
-      <Dialog open={toDelete !== null} onOpenChange={(o) => !o && setToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("recording.libDeleteTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("recording.libDeleteDesc", { name: toDelete?.name ?? "" })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setToDelete(null)}>
-              {t("common.cancel")}
-            </Button>
-            <Button variant="destructive" onClick={() => void confirmDelete()}>
-              {t("common.delete")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProgramDeleteDialog
+        entry={toDelete}
+        onCancel={() => setToDelete(null)}
+        onConfirm={(entry) => void actions.remove(entry)}
+      />
     </>
   );
 }

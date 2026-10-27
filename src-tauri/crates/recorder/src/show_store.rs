@@ -96,6 +96,47 @@ fn write_project_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
     result
 }
 
+/// 改写工程文件里一个顶层字符串字段（如 `name`、`notes`），其余内容原样保留。
+///
+/// 节目库在编辑器之外改名 / 改备注 / 复制时调用：工程 JSON 里也存着名称与备注，
+/// 下次在编辑器里保存会以工程里的值为准，只改 sidecar 会被覆盖回去。
+///
+/// # Arguments
+///
+/// * `artrec` - 节目的 `.artrec` 路径（处理其 `.artrec.show`）。
+/// * `key` - 顶层字段名。
+/// * `value` - 新值。
+///
+/// # Returns
+///
+/// 确实改写了工程文件返回 `true`；工程文件不存在、内容不是 JSON 对象或超过
+/// [`MAX_PROJECT_BYTES`]（不贸然覆盖）时返回 `false`。
+///
+/// # Errors
+///
+/// 读取（不存在除外）或写回失败返回 [`io::Error`]，此时工程文件保持原样。
+pub(crate) fn patch_show_string(artrec: &Path, key: &str, value: &str) -> io::Result<bool> {
+    let file = show_project_path(artrec);
+    let text = match std::fs::metadata(&file) {
+        Ok(m) if m.len() > MAX_PROJECT_BYTES => return Ok(false),
+        Ok(_) => std::fs::read_to_string(&file)?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    let Ok(serde_json::Value::Object(mut obj)) = serde_json::from_str::<serde_json::Value>(&text)
+    else {
+        return Ok(false);
+    };
+    if obj.get(key).and_then(serde_json::Value::as_str) == Some(value) {
+        return Ok(false);
+    }
+    obj.insert(key.to_owned(), serde_json::Value::String(value.to_owned()));
+    let out = serde_json::to_string(&serde_json::Value::Object(obj))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    write_project_file(&file, out.as_bytes())?;
+    Ok(true)
+}
+
 /// 把工程保存进节目库。
 ///
 /// 新建时在目录里选一个不与现有 `.artrec` / `.artrec.show` 冲突的文件名；覆盖保存时沿用原路径。

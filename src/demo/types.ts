@@ -10,6 +10,7 @@ import type { Protocol } from "@/shared/domain/engine";
 import type { ForwardingTable } from "@/features/forwarding/lib/types";
 import type { NetworkInterface, AppSettings } from "@/features/settings/lib/types";
 import type { AppInfo } from "@/features/about/lib/api";
+import type { HeaderInfo } from "@/features/recording/lib/types";
 import type { DeviceConfig } from "@/features/network/lib/types";
 import type { FixtureModel, ImportOutcome } from "@/features/fixtures/lib/types";
 import type { PatternSpec, UniverseProgram } from "./lib/patterns";
@@ -117,6 +118,8 @@ export interface ProgramSeed {
   /** 省略为 true；false 表示文件头损坏 */
   valid?: boolean;
   corruptFrames?: number;
+  /** 文件头派生信息的覆盖项（省略的字段取默认：v1.0、Zstd L3、无标志、索引在尾部、无问题） */
+  header?: Partial<HeaderInfo>;
   universes: UniverseProgram[];
 }
 

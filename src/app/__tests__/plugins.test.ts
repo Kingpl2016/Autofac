@@ -24,7 +24,7 @@ describe("应用插件清单", () => {
     const groups = groupNavItems(host.nav.sections.list(), host.nav.items.list());
     expect(groups.map((g) => [g.section.id, g.items.map((i) => i.to)])).toEqual([
       ["signal", ["/", "/universes", "/discovery", "/forwarding", "/signal-flow"]],
-      ["program", ["/recording", "/editor", "/thing-model"]],
+      ["program", ["/recording", "/library", "/editor", "/thing-model"]],
       ["network", ["/network"]],
       ["system", ["/settings", "/about"]],
     ]);
@@ -71,6 +71,8 @@ describe("应用插件清单", () => {
     const routes = host.routes.list();
     expect(routes.some((r) => r.path === "player")).toBe(true);
     expect(host.nav.items.list().some((i) => i.to === "/player")).toBe(false);
-    expect(routes.find((r) => r.path === "editor")?.handle).toEqual({ fullBleed: true });
+    expect(routes.find((r) => r.path === "editor")?.handle).toEqual({ fullBleed: true, playerMode: true });
+    // 节目库与节目编辑页进入即进入播放器模式
+    expect(routes.filter((r) => r.handle?.playerMode).map((r) => r.path).toSorted()).toEqual(["editor", "library", "library/edit"]);
   });
 });

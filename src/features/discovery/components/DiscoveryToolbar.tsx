@@ -1,9 +1,10 @@
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Network, RefreshCw, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { CategoryFilter, StatusFilter } from "../lib/filters";
 import { SegmentedControl, type SegmentOption } from "../../../shared/components/SegmentedControl";
 
@@ -28,7 +29,8 @@ interface DiscoveryToolbarProps {
 }
 
 /**
- * 工具栏：左侧是搜索与两组筛选（分类 / 在线状态），右侧是导出、清理离线、刷新。
+ * 工具栏：左侧是搜索与两组筛选（分类 / 在线状态，空间不够时在左侧区域内换行），
+ * 右侧是 MAC 列、导出、清理离线、刷新（固定在第一行最右，不会被挤到单独一行）。
  * 两组筛选始终可见（不藏进菜单），方便一眼看出当前生效的条件。
  */
 export function DiscoveryToolbar({
@@ -57,8 +59,9 @@ export function DiscoveryToolbar({
     { value: "offline", label: t("discovery.statusOffline"), count: statusCounts.offline },
   ];
 
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+  // 左侧筛选区：空间不够时在区域内换行
+  const filters = (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
       <div className="relative w-64">
         <Search
           className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -106,49 +109,94 @@ export function DiscoveryToolbar({
         value={status}
         onChange={onStatusChange}
       />
-
-      <div className="ml-auto flex items-center gap-2">
-        <Button
-          variant={showMac ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={showMac}
-          onClick={onToggleMac}
-          title={t("discovery.toggleMacHint")}
-        >
-          <Network />
-          {t("discovery.toggleMac")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onExport}
-          disabled={!canExport}
-          title={t("discovery.exportList")}
-        >
-          <Download />
-          {t("common.export")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onClearOffline}
-          disabled={offlineCount === 0}
-          title={t("discovery.clearOffline")}
-        >
-          <Trash2 />
-          {t("discovery.clearOffline")}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="size-10"
-          onClick={onRefresh}
-          aria-label={t("discovery.refresh")}
-          title={t("discovery.refresh")}
-        >
-          <RefreshCw />
-        </Button>
-      </div>
     </div>
+  );
+
+  // 右侧操作组：不收缩、不换行，始终停在第一行最右；窗口窄于 1800px 时只留图标（文字留给读屏，悬停给出提示）
+  const actions = (
+    <div className="flex shrink-0 items-center gap-2">
+      <ToolButton
+        icon={<Network />}
+        label={t("discovery.toggleMac")}
+        hint={t("discovery.toggleMacHint")}
+        variant={showMac ? "secondary" : "outline"}
+        pressed={showMac}
+        onClick={onToggleMac}
+      />
+      <ToolButton
+        icon={<Download />}
+        label={t("common.export")}
+        hint={t("discovery.exportList")}
+        disabled={!canExport}
+        onClick={onExport}
+      />
+      <ToolButton
+        icon={<Trash2 />}
+        label={t("discovery.clearOffline")}
+        hint={t("discovery.clearOffline")}
+        disabled={offlineCount === 0}
+        onClick={onClearOffline}
+      />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10"
+            onClick={onRefresh}
+            aria-label={t("discovery.refresh")}
+          >
+            <RefreshCw />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t("discovery.refresh")}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div className="flex items-start gap-3">
+        {filters}
+        {actions}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+interface ToolButtonProps {
+  icon: ReactNode;
+  label: string;
+  hint: string;
+  variant?: "outline" | "secondary";
+  pressed?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+/**
+ * 工具栏按钮：很宽的窗口（≥ 1800px，筛选与按钮能排进一行）显示图标 + 文字；更窄时只显示图标，文字仍在按钮里供读屏，
+ * 悬停 / 键盘聚焦时用提示给出名称。禁用的按钮不响应悬停，所以提示包在外层 `span` 上。
+ */
+function ToolButton({ icon, label, hint, variant = "outline", pressed, disabled, onClick }: ToolButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex" tabIndex={disabled ? 0 : undefined}>
+          <Button
+            variant={variant}
+            size="sm"
+            className="max-[1800px]:w-10 max-[1800px]:px-0"
+            aria-pressed={pressed}
+            disabled={disabled}
+            onClick={onClick}
+          >
+            {icon}
+            <span className="max-[1800px]:sr-only">{label}</span>
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{hint}</TooltipContent>
+    </Tooltip>
   );
 }

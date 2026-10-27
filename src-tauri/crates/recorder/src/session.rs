@@ -231,6 +231,27 @@ impl<W: Write + Seek> RecorderSession<W> {
         self.enc.encode(&mut self.w, t, &self.snap)
     }
 
+    /// 最近一次 [`RecorderSession::tick`] 刷新后的合并快照（与 [`RecorderSession::universes`] 同序，
+    /// 每路 [`DMX_LEN`] 字节）。
+    ///
+    /// # Returns
+    ///
+    /// 各路快照缓冲的只读切片；尚未 tick 过时全为 0。
+    #[must_use]
+    pub fn snapshot(&self) -> &[Vec<u8>] {
+        &self.snap
+    }
+
+    /// 本会话录制的 Universe 集合（UniDesc 顺序）。
+    ///
+    /// # Returns
+    ///
+    /// Universe 编号切片。
+    #[must_use]
+    pub fn universes(&self) -> &[u16] {
+        &self.universes
+    }
+
     /// 刷新底层缓冲，使已写 Chunk 落到操作系统。
     ///
     /// # Errors

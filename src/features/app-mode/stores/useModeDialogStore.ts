@@ -19,6 +19,8 @@ export interface ModeRequest {
    * 让发起方（例如节目库）能把“节目打不开”说得比“切换模式失败”更具体。
    */
   describeError?: (e: unknown) => string | undefined;
+  /** 进入播放器模式后留在当前页面，不跳转到播放器页（节目库页面里直接回放时使用）。 */
+  stay?: boolean;
 }
 
 interface ModeDialogState {

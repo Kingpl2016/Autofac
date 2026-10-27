@@ -12,6 +12,8 @@ import { PulseRing } from "./console/PulseRing";
 import { StatusPill } from "../../../shared/components/StatusPill";
 import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { TimeCode } from "./console/TimeCode";
+import { RecordTimeline } from "./RecordTimeline";
+import { sessionBase, useRecordingClock } from "../hooks/useRecordingClock";
 import { MIN_START_FREE_BYTES, formatDiskBytes, type DiskInfo } from "../../../shared/domain/disk";
 import { formatBytes } from "../lib/filter";
 import type { RecordingResult, RecordingStatus, UniversePlan } from "../lib/types";
@@ -82,7 +84,11 @@ export function RecordConsole({
   const lastDuration = last?.files.reduce((n, f) => n + f.durationUs, 0) ?? 0;
   const lastDropped = last?.dropped ?? 0;
 
-  const shownUs = recording ? status.elapsedUs : lastDuration;
+  // 录制中显示整个会话的时长（跨分段累加），两次推送之间平滑外推
+  const clock = useRecordingClock();
+  const shownUs = recording
+    ? Math.max(clock.sessionUs, sessionBase(status))
+    : lastDuration;
   const shownUniverses = recording ? status.universes : plan.accepted;
   const fieldLabel = "text-xs font-medium text-muted-foreground";
 
@@ -308,6 +314,10 @@ export function RecordConsole({
         {shownUniverses.length > 0 && (
           <UniverseActivity universes={shownUniverses} snapshots={snapshots} />
         )}
+
+        <div className="mt-5 empty:hidden">
+          <RecordTimeline />
+        </div>
 
         {!recording && plan.rejectedOutOfRange.length > 0 && (
           <Warn>

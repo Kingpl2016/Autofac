@@ -77,18 +77,10 @@ describe("HeaderBar", () => {
     expect(container.querySelector("header")!.className).toContain("bg-primary/5");
   });
 
-  it("顶栏用人话显示引擎运行时长，悬停给出精确值；还没有数据时不显示", () => {
-    const { rerender } = renderBar();
-    expect(screen.queryByText(/已运行/)).toBeNull();
-
+  it("运行时长不在顶栏（已移到底部状态条包速率右侧）", () => {
     useEngineStatusStore.setState({ uptimeSec: 12_420 });
-    rerender(bar());
-    const el = screen.getByText("已运行 3 小时 27 分");
-    expect(el.parentElement?.getAttribute("title")).toBe("引擎已运行 3:27:00");
-
-    useEngineStatusStore.setState({ uptimeSec: 42 });
-    rerender(bar());
-    expect(screen.getByText("已运行 42 秒")).toBeTruthy();
+    renderBar();
+    expect(screen.queryByText(/已运行/)).toBeNull();
   });
 
   it("顶栏提供信号检测器入口，并标出快捷键", () => {

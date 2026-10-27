@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Circle, Loader2, Square, TriangleAlert } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,7 +14,9 @@ import { usePrefsStore } from "@/shared/stores/prefsStore";
 import { formatBytes, formatDurationUs } from "../lib/filter";
 import { startQuickRecording, stopRecordingWithToast } from "../lib/recordControl";
 import { useRecordingStore } from "../stores/useRecordingStore";
+import { useRecordingClock } from "../hooks/useRecordingClock";
 import { PulseRing } from "./console/PulseRing";
+import { RecordHeadStrip } from "./RecordHeadStrip";
 
 /** 鼠标离开后延迟多久收起详情（毫秒）：给指针从按钮移到浮层留出时间。 */
 const HOVER_CLOSE_MS = 150;
@@ -38,6 +41,7 @@ export function HeaderRecordButton() {
   const [busy, setBusy] = useState<"start" | "stop" | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const closeTimer = useRef<number | null>(null);
+  const clock = useRecordingClock();
 
   const recording = status.recording;
   const blocked = appMode === "player";
@@ -95,15 +99,38 @@ export function HeaderRecordButton() {
               ) : (
                 <Square className="fill-current" aria-hidden />
               )}
-              {/* 预留固定宽度，时间码跳动时不挤动旁边的控件 */}
+              {/* 预留固定宽度，时间码跳动时不挤动旁边的控件；显示整个会话的时长（跨分段累加） */}
               <span className="num inline-block min-w-[6ch] text-left">
-                {formatDurationUs(status.elapsedUs)}
+                {formatDurationUs(clock.sessionUs)}
               </span>
               <PulseRing active className="-mr-1" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{t("header.recStopHint", { key: stopKey })}</TooltipContent>
         </Tooltip>
+
+        {status.part > 1 && (
+          <Badge
+            variant="outline"
+            className="num"
+            title={t("header.recPartLabel", { n: status.part })}
+            aria-label={t("header.recPartLabel", { n: status.part })}
+          >
+            {t("header.recPartShort", { n: status.part })}
+          </Badge>
+        )}
+        {status.dropped > 0 && (
+          <Badge variant="warning" className="num" data-testid="header-rec-dropped">
+            <TriangleAlert className="size-3" aria-hidden />
+            {t("header.recDropped", { n: status.dropped })}
+          </Badge>
+        )}
+        <div className="ml-1 hidden lg:block">
+          <RecordHeadStrip
+            sessionUs={clock.sessionUs}
+            label={t("header.recHeadStrip", { elapsed: formatDurationUs(clock.sessionUs) })}
+          />
+        </div>
 
         <Popover open={detailsOpen} onOpenChange={setDetailsOpen}>
           <PopoverTrigger asChild>
@@ -124,7 +151,7 @@ export function HeaderRecordButton() {
             onPointerLeave={hoverClose}
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            <RecordStats />
+            <RecordStats sessionUs={clock.sessionUs} partUs={clock.partUs} />
           </PopoverContent>
         </Popover>
       </div>
@@ -164,13 +191,33 @@ export function HeaderRecordButton() {
   );
 }
 
-/** 录制详情：两列定义列表，丢帧 > 0 时用图标 + 文字标出（不只靠颜色）。 */
-function RecordStats() {
+interface RecordStatsProps {
+  /** 会话总时长（微秒，已平滑外推） */
+  sessionUs: number;
+  /** 当前分段时长（微秒） */
+  partUs: number;
+}
+
+/**
+ * 录制详情：迷你录制时间线 + 两列定义列表，丢帧 > 0 时用图标 + 文字标出（不只靠颜色）。
+ * 分段录制时同时列出“本段时长”与“会话总时长”。
+ */
+function RecordStats({ sessionUs, partUs }: RecordStatsProps) {
   const { t } = useTranslation();
   const s = useRecordingStore((st) => st.status);
 
+  const durationRows: Array<{ label: string; value: string; warn?: boolean }> =
+    s.part > 1
+      ? [
+          { label: t("recording.statSessionDuration"), value: formatDurationUs(sessionUs) },
+          {
+            label: t("recording.statPartDuration", { n: s.part }),
+            value: formatDurationUs(partUs),
+          },
+        ]
+      : [{ label: t("recording.statDuration"), value: formatDurationUs(sessionUs) }];
   const rows: Array<{ label: string; value: string; warn?: boolean }> = [
-    { label: t("recording.statDuration"), value: formatDurationUs(s.elapsedUs) },
+    ...durationRows,
     { label: t("recording.statFrames"), value: String(s.stats.frames) },
     { label: t("recording.statDropped"), value: String(s.dropped), warn: s.dropped > 0 },
     { label: t("recording.statSize"), value: formatBytes(s.stats.bytes) },
@@ -185,16 +232,22 @@ function RecordStats() {
   }
 
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-      {rows.map((r) => (
-        <div key={r.label} className="contents">
-          <dt className={cn("text-muted-foreground", r.warn && "text-warning")}>{r.label}</dt>
-          <dd className={cn("num text-right font-medium", r.warn && "text-warning")}>
-            {r.warn && <TriangleAlert className="mr-1 inline size-3.5 align-text-bottom" aria-hidden />}
-            {r.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <div className="grid gap-3">
+      <RecordHeadStrip
+        sessionUs={sessionUs}
+        label={t("header.recHeadStrip", { elapsed: formatDurationUs(sessionUs) })}
+      />
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        {rows.map((r) => (
+          <div key={r.label} className="contents">
+            <dt className={cn("text-muted-foreground", r.warn && "text-warning")}>{r.label}</dt>
+            <dd className={cn("num text-right font-medium", r.warn && "text-warning")}>
+              {r.warn && <TriangleAlert className="mr-1 inline size-3.5 align-text-bottom" aria-hidden />}
+              {r.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

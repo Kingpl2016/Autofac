@@ -17,14 +17,15 @@ export function HeaderBar() {
         data-layout="header"
         // 播放器模式：底边换成强调色 + 极淡底色，任何页面都能一眼看出当前模式（只改颜色，不引起布局位移）
         className={cn(
-          "flex h-14 shrink-0 items-center justify-between border-b bg-card px-6",
+          "flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-card px-6",
           playerMode ? "border-b-2 border-primary/60 bg-primary/5" : "border-border",
         )}
       >
-        <div className="flex items-center gap-4">
+        {/* 左侧可收缩（内容多时被裁掉而不是挤压右侧），右侧操作区保持原宽，文字都不换行 */}
+        <div className="flex min-w-0 flex-1 items-center gap-4 overflow-hidden whitespace-nowrap">
           <Slot name="header.status" />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
           <Slot name="header.actions" />
         </div>
       </header>

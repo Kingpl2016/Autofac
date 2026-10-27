@@ -39,6 +39,7 @@ const DEMO_EVENTS: ReadonlySet<string> = new Set([
   "recording:disk",
   "recording:finished",
   "recording:stats",
+  "recordings:edit",
   "show:bake",
   "show:state",
 ]);

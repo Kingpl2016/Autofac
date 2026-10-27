@@ -617,6 +617,50 @@ esp_err_t h_programs_get(httpd_req_t* req) {
 /// 下载某编号对应的节目文件（支持 Range）。
 esp_err_t send_file_range(httpd_req_t* req, const std::string& full);
 
+/// 批量重排请求体上限：255 条 × 最长 128 字节文件名，远大于通用 JSON 上限。
+constexpr std::size_t kMaxReorderBody = 64 * 1024;
+
+/// 批量重排：`POST /api/programs/reorder`，body `{"entries":[{"no":1,"file":"a.artrec"},...]}`。
+esp_err_t h_programs_reorder(httpd_req_t* req) {
+    ApiDeps& d = srv(req)->deps();
+    if (!check_auth(req, d)) return send_401(req);
+    std::string body;
+    if (!recv_body(req, body, kMaxReorderBody)) return send_err(req, Status::InvalidArg);
+    CJsonPtr root(cJSON_Parse(body.c_str()));
+    cJSON* arr = root ? cJSON_GetObjectItem(root.get(), "entries") : nullptr;
+    if (!cJSON_IsArray(arr)) return send_err(req, Status::InvalidArg);
+
+    std::vector<ProgramEntry> entries;
+    cJSON* it = nullptr;
+    cJSON_ArrayForEach(it, arr) {
+        cJSON* jno = cJSON_GetObjectItem(it, "no");
+        cJSON* jfile = cJSON_GetObjectItem(it, "file");
+        if (!cJSON_IsNumber(jno) || !cJSON_IsString(jfile) ||
+            jno->valuedouble != static_cast<double>(jno->valueint) || jno->valueint < 1 ||
+            jno->valueint > 255) {
+            return send_err(req, Status::InvalidArg);
+        }
+        entries.push_back(
+            ProgramEntry{static_cast<uint16_t>(jno->valueint), jfile->valuestring, 0});
+    }
+
+    // 播放中的节目编号 / 文件对应关系不得被改动，否则状态里的 programNo 会指向别的文件。
+    PlayerStatus ps = d.player->status();
+    if (ps.state != static_cast<uint8_t>(PlayState::Idle) && ps.program_no != 0) {
+        if (auto cur = d.store->file_for(ps.program_no)) {
+            for (const auto& e : entries) {
+                if ((e.file == *cur) != (e.no == ps.program_no)) {
+                    return send_err(req, Status::Busy);
+                }
+            }
+        }
+    }
+
+    auto r = d.store->reorder(entries);
+    if (!r) return send_err(req, r.error());
+    return h_programs_get(req);  // 返回重排后的完整列表，便于客户端直接刷新
+}
+
 esp_err_t h_programs_wild(httpd_req_t* req) {
     ApiDeps& d = srv(req)->deps();
     if (!check_auth(req, d)) return send_401(req);
@@ -924,6 +968,7 @@ Result<void> ApiServer::start(const ApiDeps& deps, uint16_t port) noexcept {
     reg(s, this, "/api/ota/status", HTTP_GET, h_ota_status);
     reg(s, this, "/api/ota/confirm", HTTP_POST, h_ota_confirm);
     reg(s, this, "/api/programs", HTTP_GET, h_programs_get);
+    reg(s, this, "/api/programs/reorder", HTTP_POST, h_programs_reorder);
     reg(s, this, "/api/programs/*", HTTP_GET, h_programs_wild);
     reg(s, this, "/api/programs/*", HTTP_PUT, h_programs_wild);
     reg(s, this, "/api/programs/*", HTTP_DELETE, h_programs_wild);

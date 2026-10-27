@@ -5,8 +5,8 @@ import { formatUptime, splitUptime } from "@/shared/lib/uptime";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 
 /**
- * 顶栏的引擎运行时长：用“已运行 3 小时 27 分”这种人话显示，悬停给出精确的 `h:mm:ss`。
- * 引擎刚启动、还没有数据时不显示。自己订阅每秒变化的时长，只重渲这一小块。
+ * 底部状态条的引擎运行时长（位于包速率右侧）：用“已运行 3 小时 27 分”这种人话显示，
+ * 悬停给出精确的 `h:mm:ss`。引擎刚启动、还没有数据时不显示。自己订阅每秒变化的时长，只重渲这一小块。
  */
 export function UptimeBadge() {
   const { t } = useTranslation();
@@ -18,11 +18,11 @@ export function UptimeBadge() {
 
   return (
     <span
-      className="flex items-center gap-1.5 text-sm text-muted-foreground"
+      className="tabular flex items-center gap-1.5 whitespace-nowrap"
       title={t("statusBar.uptimeExact", { value: formatUptime(Math.floor(uptimeSec)) })}
     >
-      <Clock className="size-4" aria-hidden />
-      <span className="tabular">{t("statusBar.uptimeRunning", { text })}</span>
+      <Clock className="size-3.5" aria-hidden />
+      {t("statusBar.uptimeRunning", { text })}
     </span>
   );
 }

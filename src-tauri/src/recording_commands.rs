@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter as _, Manager};
 use tauri_plugin_opener::OpenerExt as _;
 
 use host_core::recording::{
-    DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult,
+    ActivityDto, DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult,
     RecordingStatus,
 };
 use crate::data_dir::DataRoot;
@@ -250,6 +250,20 @@ pub async fn recording_stop(app: AppHandle) -> Result<RecordingResult, String> {
 #[tauri::command]
 pub fn recording_status(app: AppHandle) -> RecordingStatus {
     app.artnet_core().recording().status()
+}
+
+/// 录制活动时间线全量快照（前端中途打开页面或桶布局代次不一致时调用）。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+///
+/// # Returns
+///
+/// 全量 [`ActivityDto`]；从未录制过时总桶数为 0。
+#[tauri::command]
+pub fn recording_activity(app: AppHandle) -> ActivityDto {
+    app.artnet_core().recording().activity()
 }
 
 /// 错误码：目标名称已存在。

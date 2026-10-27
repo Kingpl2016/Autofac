@@ -37,6 +37,8 @@ interface FileRowProps {
   playingNo: number | null;
   canWrite: boolean;
   renaming: boolean;
+  /** 节目号有尚未提交的更改：此时设备上的号还是旧的，所以暂不能播放 */
+  pending?: boolean;
   /** 有值表示这一行可拖动排序 */
   drag?: RowDrag;
   /** 把行 / 手柄的 DOM 节点交给 dnd-kit（与 `drag` 一起提供） */
@@ -64,7 +66,8 @@ export function FileRow({ bindRow, bindHandle, ...props }: FileRowProps) {
   const { file, playState, canWrite, renaming, drag } = props;
   const noProgram = file.program === null;
   const playing = playState !== null;
-  const playDisabled = !canWrite || noProgram;
+  const pending = props.pending === true;
+  const playDisabled = !canWrite || noProgram || pending;
   const hintId = useId();
   // 从菜单进入重命名时，阻止菜单关闭后把焦点还给“⋯”按钮（焦点应留在输入框里）
   const keepFocus = useRef(false);
@@ -85,7 +88,7 @@ export function FileRow({ bindRow, bindHandle, ...props }: FileRowProps) {
       onKeyDown={onKeyDown}
       className={cn(
         "border-b border-border last:border-b-0 transition-colors duration-150 motion-reduce:transition-none",
-        playing ? "bg-success/10" : "hover:bg-surface-3/50 focus-within:bg-surface-3/40",
+        playing ? "bg-success/10" : pending ? "bg-warning/10" : "hover:bg-surface-3/50 focus-within:bg-surface-3/40",
         drag?.isDragging && "relative z-10 border-transparent bg-surface-3 shadow-lg ring-1 ring-primary/50",
       )}
     >
@@ -139,6 +142,11 @@ export function FileRow({ bindRow, bindHandle, ...props }: FileRowProps) {
             {noProgram && (
               <span id={hintId} className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                 {t("network.files.noProgram")}
+              </span>
+            )}
+            {pending && (
+              <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                {t("network.files.pendingBadge")}
               </span>
             )}
           </div>

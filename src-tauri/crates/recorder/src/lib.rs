@@ -9,15 +9,21 @@
 //! - [`sidecar`]：节目元数据 sidecar（`.artrec.json`）与概览缓存（`.artrec.ovw`）的路径与读写。
 //! - [`bake`]：把"按时间取帧"的数据源烘焙成 `.artrec`（节目编辑器保存时使用）。
 //! - [`library`]：节目库列举（带进程级缓存）、重命名与删除。
+//! - [`manage`]：修改备注、创建副本、为新节目挑选不冲突的路径。
+//! - [`edit`]：编辑导出（截取 / 拼接片段、只保留部分 Universe），另存或替换原节目。
+//! - [`activity`]：录制活动时间线（按时间分桶 × Universe 的变化强度与电平，仅内存）。
 //!
 //! 时间戳均为"相对录制起点的微秒"，由宿主层在 socket 接收点用单调时钟取得，
 //! 因此录制期间系统时间被调整不会影响时间轴。
 
+pub mod activity;
 pub mod bake;
 pub mod disk;
+pub mod edit;
 pub mod encoder;
 pub mod filter;
 pub mod library;
+pub mod manage;
 pub mod session;
 pub mod show_store;
 pub mod sidecar;
@@ -25,6 +31,7 @@ pub mod store;
 #[cfg(test)]
 mod testutil;
 
+pub use activity::{scale_change, ActivityDelta, ActivityTimeline, INITIAL_BUCKET_US, MAX_BUCKETS};
 pub use bake::{bake_file, BakeError, BakeReport, BakeSpec};
 pub use disk::{
     can_start, classify, DiskGuard, DiskLevel, CRITICAL_FREE_BYTES, MIN_START_FREE_BYTES,
@@ -34,10 +41,13 @@ pub use encoder::{
     Encoded, EncoderConfig, FrameEncoder, FrameKind, DEFAULT_DIFF_RATIO_DIV,
     DEFAULT_KEYFRAME_INTERVAL_US,
 };
+pub use edit::{edit_recording, normalize_segments, EditError, EditOutput, EditReport, EditSpec};
 pub use filter::{RecordFilter, UniverseRange};
+pub use manage::{duplicate_recording, set_notes, unique_entry_path};
 pub use library::{
     delete_recording, delete_recording_with, list_library, list_library_uncached, rename_recording,
-    resolve_entry, resolve_in_dir, trash_paths, LibraryCache, LibraryEntry, LibraryError, TrashFn,
+    resolve_entry, resolve_in_dir, trash_paths, Compression, HeaderInfo, HeaderIssue, LibraryCache,
+    LibraryEntry, LibraryError, TrashFn,
 };
 pub use session::{
     plan_universes, RecorderSession, SessionConfig, SessionStats, UniversePlan, DMX_LEN,

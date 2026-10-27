@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleStop, ListOrdered, LogOut, Pause, Play, Repeat, Square } from "lucide-react";
+import { CircleStop, ListOrdered, Pause, Play, Repeat, Square, X } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { announce } from "@/shared/stores/announcerStore";
@@ -10,6 +9,7 @@ import { Segmented } from "../../../shared/components/Segmented";
 import { StatusPill, type StatusTone } from "../../../shared/components/StatusPill";
 import { SurfacePanel } from "../../../shared/components/SurfacePanel";
 import { TimeCode } from "./console/TimeCode";
+import { useScrubSeek } from "../hooks/useScrubSeek";
 import { formatDurationUs } from "../lib/filter";
 import {
   SPEED_STEPS,
@@ -18,9 +18,6 @@ import {
   type PlaybackStatus,
   type RepeatMode,
 } from "../lib/types";
-
-/** 拖动进度条时向后端发送 seek 的最小间隔（毫秒）。 */
-const SEEK_THROTTLE_MS = 60;
 
 const STATE_TONE: Record<PlayState, StatusTone> = {
   playing: "playing",
@@ -45,6 +42,9 @@ interface TransportDeckProps {
   /** 是否响应键盘快捷键（回放模式不可见时应关闭，避免空格键被隐藏面板吞掉） */
   hotkeys?: boolean;
 }
+
+/** 进度滑块直径（像素），与 `.scrub-range` 的 `--scrub-thumb`（1.125rem）一致。 */
+const SCRUB_THUMB_PX = 18;
 
 /** 快捷键跳转步长（微秒）：方向键 5 秒，Shift + 方向键 1 秒。 */
 const HOTKEY_SEEK_US = 5_000_000;
@@ -101,16 +101,7 @@ export function TransportDeck({
   hotkeys = true,
 }: TransportDeckProps) {
   const { t } = useTranslation();
-  const [dragPos, setDragPos] = useState<number | null>(null);
-  const lastSeekAt = useRef(0);
-  const trailing = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (trailing.current) clearTimeout(trailing.current);
-    },
-    [],
-  );
+  const { dragPos, scrub, commit } = useScrubSeek(onSeek);
 
   const playing = status.state === "playing";
 
@@ -149,27 +140,17 @@ export function TransportDeck({
   const shown = dragPos ?? status.posUs;
   const max = Math.max(status.durationUs, 1);
   const ratio = Math.min(1, Math.max(0, shown / max));
+  const commitDrag = () => commit();
 
-  const throttledSeek = (pos: number) => {
-    const now = performance.now();
-    if (trailing.current) clearTimeout(trailing.current);
-    if (now - lastSeekAt.current >= SEEK_THROTTLE_MS) {
-      lastSeekAt.current = now;
-      onSeek(pos);
-    } else {
-      // 保证最后一次位置一定会发出
-      trailing.current = setTimeout(() => {
-        lastSeekAt.current = performance.now();
-        onSeek(pos);
-      }, SEEK_THROTTLE_MS);
-    }
-  };
-
-  const commit = () => {
-    if (dragPos === null) return;
-    if (trailing.current) clearTimeout(trailing.current);
-    onSeek(dragPos);
-    setDragPos(null);
+  // 悬停预览：指针在滑杆上时显示该位置对应的时间
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
+  /** 指针位置 → 0~1（按滑块中心的活动范围换算：两端各内缩半个滑块直径）。 */
+  const pointerRatio = (e: React.PointerEvent<HTMLInputElement>): number => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const inset = SCRUB_THUMB_PX / 2;
+    const usable = rect.width - inset * 2;
+    if (usable <= 0) return 0;
+    return Math.min(1, Math.max(0, (e.clientX - rect.left - inset) / usable));
   };
 
   return (
@@ -177,9 +158,9 @@ export function TransportDeck({
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">{status.name}</h2>
         <StatusPill tone={STATE_TONE[status.state]}>{t(STATE_LABEL[status.state])}</StatusPill>
-        <Badge variant="outline">{t("player.liveSuspended")}</Badge>
+        {/* 关闭节目只卸载节目、不退出播放器模式（退出在页头右侧） */}
         <Button variant="outline" size="sm" className="ml-auto" onClick={onExit}>
-          <LogOut />
+          <X />
           {t("player.exit")}
         </Button>
       </div>
@@ -244,16 +225,41 @@ export function TransportDeck({
         </div>
       </div>
 
-      {/* 进度滑杆：下层 DOM 画轨道与填充，上层原生 range 负责交互与读屏语义 */}
-      <div className="relative mt-5 h-6">
-        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-surface-1">
+      {/* 进度滑杆：下层 DOM 画轨道、填充与悬停预览，上层原生 range 负责交互与读屏语义。
+          轨道两端内缩半个滑块直径（与 `.scrub-range` 的约定一致），填充终点正好落在滑块中心。 */}
+      <div className="group/scrub relative mt-6 h-8">
+        <div className="absolute inset-x-[0.5625rem] top-1/2 h-2 -translate-y-1/2">
           <div
             className={cn(
-              "h-full origin-left rounded-full bg-primary",
-              playing && dragPos === null && "transition-transform duration-100 ease-linear",
+              "size-full overflow-hidden rounded-full bg-foreground/15 ring-1 ring-inset ring-foreground/10",
+              "transition-transform duration-150 group-hover/scrub:scale-y-125 motion-reduce:transition-none",
             )}
-            style={{ transform: `scaleX(${ratio})` }}
-          />
+          >
+            <div
+              className={cn(
+                "h-full origin-left rounded-full bg-primary",
+                playing && dragPos === null && "transition-transform duration-100 ease-linear motion-reduce:transition-none",
+              )}
+              style={{ transform: `scaleX(${ratio})` }}
+            />
+          </div>
+          {hoverRatio !== null && (
+            <>
+              {/* 悬停位置的细线与时间气泡（纯视觉提示，读屏用滑杆自己的 valuetext） */}
+              <span
+                className="pointer-events-none absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/60"
+                style={{ left: `${hoverRatio * 100}%` }}
+                aria-hidden
+              />
+              <span
+                className="num pointer-events-none absolute bottom-full mb-3 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-0.5 text-xs font-medium text-popover-foreground shadow-md"
+                style={{ left: `${hoverRatio * 100}%` }}
+                aria-hidden
+              >
+                {formatDurationUs(hoverRatio * status.durationUs)}
+              </span>
+            </>
+          )}
         </div>
         <input
           type="range"
@@ -264,19 +270,18 @@ export function TransportDeck({
           value={Math.min(shown, max)}
           aria-label={t("player.seekBar")}
           aria-valuetext={`${formatDurationUs(shown)} / ${formatDurationUs(status.durationUs)}`}
-          onChange={(e) => {
-            const pos = Number(e.target.value);
-            setDragPos(pos);
-            throttledSeek(pos);
-          }}
-          onPointerUp={commit}
-          onKeyUp={commit}
-          onBlur={commit}
+          onChange={(e) => scrub(Number(e.target.value))}
+          onPointerMove={(e) => setHoverRatio(pointerRatio(e))}
+          onPointerLeave={() => setHoverRatio(null)}
+          onPointerUp={commitDrag}
+          onKeyUp={commitDrag}
+          onBlur={commitDrag}
         />
       </div>
-      {hotkeys && (
-        <p className="mt-3 text-xs text-muted-foreground">{t("player.hotkeyHint")}</p>
-      )}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {hotkeys ? <p>{t("player.hotkeyHint")}</p> : <span />}
+        <span className="num">{t("player.remaining", { time: formatDurationUs(Math.max(0, status.durationUs - shown)) })}</span>
+      </div>
     </SurfacePanel>
   );
 }

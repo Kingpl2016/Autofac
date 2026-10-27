@@ -73,7 +73,6 @@ vi.mock("@xyflow/react", async (orig) => {
     useReactFlow: () => ({ fitView: rf.fitView }),
     Background: () => null,
     Controls: () => null,
-    MiniMap: () => null,
     Handle: () => null,
   };
 });

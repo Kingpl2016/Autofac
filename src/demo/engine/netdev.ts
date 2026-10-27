@@ -519,13 +519,22 @@ export function createNetdevModule(world: World, library: Library): DemoModule {
         if (new Set(list.map((a) => a.no)).size !== list.length || new Set(list.map((a) => a.file)).size !== list.length) {
           netFail("invalid", "节目号或文件名重复");
         }
-        // 与固件一致：一个文件只对应一个编号；被占用的编号会被覆盖
-        for (const a of list) {
-          m.files = m.files.map((f) => {
-            if (f.name === a.file) return { ...f, program: a.no };
-            return f.program === a.no ? { ...f, program: null } : f;
-          });
+        // 与固件批量重排一致：原子生效；未列出的文件保持原编号，编号冲突则整体拒绝
+        const nos = new Set(list.map((a) => a.no));
+        const listed = new Set(list.map((a) => a.file));
+        if (m.files.some((f) => f.program !== null && !listed.has(f.name) && nos.has(f.program))) {
+          netFail("busy", "设备忙或该文件正在播放");
         }
+        // 正在播放的节目，其编号 ↔ 文件的对应关系不得改变
+        const playingNo = m.player.state !== 0 ? m.player.programNo : null;
+        const playingFile = m.files.find((f) => f.program !== null && f.program === playingNo);
+        if (playingFile && list.some((a) => (a.file === playingFile.name) !== (a.no === playingNo))) {
+          netFail("busy", "设备忙或该文件正在播放");
+        }
+        m.files = m.files.map((f) => {
+          const a = list.find((x) => x.file === f.name);
+          return a ? { ...f, program: a.no } : f;
+        });
         log(m, `调整节目号：${list.map((a) => `${a.no}→${a.file}`).join("，")}`);
       },
 

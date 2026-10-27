@@ -16,7 +16,7 @@ import { DeviceDetailPanel } from "./DeviceDetailPanel";
 import { DeviceTable, type DeviceTableHandle } from "./DeviceTable";
 import { DiscoveryEmptyState } from "./DiscoveryEmptyState";
 import { DiscoveryToolbar } from "./DiscoveryToolbar";
-import { ScanStatusBar } from "./ScanStatusBar";
+import { ScanNoReplyAlert, ScanStatus } from "./ScanStatus";
 import type { SegmentOption } from "../../../shared/components/SegmentedControl";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useDiscoveryPrefs } from "../stores/useDiscoveryPrefs";
@@ -56,7 +56,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * 设备发现页：扫描状态条 + 筛选工具栏 + 设备表格，选中设备后右侧并排显示详情面板。
+ * 设备发现页：页头（扫描状态 + 网络扫描）+ 筛选工具栏 + 设备表格，选中设备后右侧并排显示详情面板。
  * 分类 / 在线状态 / 排序会经 Tauri Store 保存，下次打开自动恢复；搜索词与选中项不保存。
  */
 export function DiscoveryView() {
@@ -69,7 +69,7 @@ export function DiscoveryView() {
   const { scanning, last, showNoReply, scan, dismissNoReply } = useNetworkScan();
   const freshIps = useNewDevices();
   const wide = useMediaQuery("(min-width: 1280px)");
-  const medium = useMediaQuery("(min-width: 1024px)");
+  const xwide = useMediaQuery("(min-width: 1536px)");
 
   const rawCategory = useDiscoveryPrefs((s) => s.category);
   const status = useDiscoveryPrefs((s) => s.status);
@@ -194,8 +194,10 @@ export function DiscoveryView() {
 
   // 窄窗口或打开详情时隐藏 MAC / 信息列（详情里有完整信息），保证主要列不被挤压；
   // MAC 列另外受用户偏好控制
-  const showMac = prefShowMac && wide && !selected;
-  const showInfo = medium && !selected;
+  // 信息列 + MAC 列一共约 24rem，窗口 ≥ 1536px 才放得下
+  const showMac = prefShowMac && xwide && !selected;
+  // 信息列 13rem：窗口 ≥ 1280px 时才放得下而不挤压名称列
+  const showInfo = wide && !selected;
 
   return (
     <div className="flex h-full min-h-[28rem] flex-col gap-4">
@@ -204,19 +206,24 @@ export function DiscoveryView() {
         title={t("discovery.title")}
         subtitle={t(sacnEnabled ? "discovery.subtitle" : "discovery.subtitleArtnetOnly")}
         actions={
-          <Button size="sm" onClick={() => void scan()} disabled={scanning} aria-busy={scanning}>
-            {scanning ? <Loader2 className="animate-spin" /> : <RadarIcon />}
-            {scanning ? t("discovery.scanning") : t("discovery.networkScan")}
-          </Button>
+          // “实时 · 扫描状态”挨着它所描述的“网络扫描”按钮，不再单独占一整行
+          <>
+            <ScanStatus scanning={scanning} last={last} />
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={() => void scan()}
+              disabled={scanning}
+              aria-busy={scanning}
+            >
+              {scanning ? <Loader2 className="animate-spin" /> : <RadarIcon />}
+              {scanning ? t("discovery.scanning") : t("discovery.networkScan")}
+            </Button>
+          </>
         }
       />
 
-      <ScanStatusBar
-        scanning={scanning}
-        last={last}
-        showNoReply={showNoReply}
-        onDismissNoReply={dismissNoReply}
-      />
+      {showNoReply && <ScanNoReplyAlert onDismiss={dismissNoReply} />}
 
       <DiscoveryToolbar
         query={query}

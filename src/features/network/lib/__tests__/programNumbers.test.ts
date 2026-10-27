@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   activeProgramNo,
   applyAssignments,
+  applyDraft,
+  draftAssignments,
   isValidProgramNo,
+  mergeDraft,
   planReorder,
   planSetNumber,
   smallestFreeProgramNo,
@@ -136,5 +139,52 @@ describe("正在播放的节目不能被改号", () => {
     expect(touchesProgramNo(files, [{ no: 2, file: "a" }], 2)).toBe(true); // 目标号
     expect(touchesProgramNo(files, [{ no: 9, file: "b" }], 2)).toBe(true); // 文件当前的号
     expect(touchesProgramNo(files, [{ no: 9, file: "c" }], 2)).toBe(false);
+  });
+});
+
+describe("暂存更改（一次性提交）", () => {
+  const base = [f("a", 1), f("b", 2), f("c", null)];
+
+  it("mergeDraft：只记录与设备不同的项；回到原值就撤销", () => {
+    const d1 = mergeDraft(new Map(), base, [{ no: 7, file: "a" }]);
+    expect([...d1]).toEqual([["a", 7]]);
+    const d2 = mergeDraft(d1, base, [{ no: 1, file: "a" }]);
+    expect(d2.size).toBe(0);
+  });
+
+  it("mergeDraft：忽略设备上不存在的文件，且不修改入参", () => {
+    const d0 = new Map<string, number>();
+    const d1 = mergeDraft(d0, base, [{ no: 3, file: "ghost" }]);
+    expect(d1.size).toBe(0);
+    mergeDraft(d0, base, [{ no: 3, file: "c" }]);
+    expect(d0.size).toBe(0);
+  });
+
+  it("applyDraft：叠加暂存值，不修改设备列表", () => {
+    const view = applyDraft(base, new Map([["a", 2], ["b", 1]]));
+    expect(view.map((x) => x.program)).toEqual([2, 1, null]);
+    expect(base[0].program).toBe(1);
+  });
+
+  it("多次编辑可叠加：互换后再给未编号文件分配空闲号，得到一次性提交的完整分配", () => {
+    let draft = mergeDraft(new Map(), base, [
+      { no: 2, file: "a" },
+      { no: 1, file: "b" },
+    ]);
+    const view = applyDraft(base, draft);
+    const plan = planSetNumber(view, "c", 3);
+    expect(plan.kind).toBe("assign");
+    if (plan.kind === "assign") draft = mergeDraft(draft, base, plan.assignments);
+    expect(draftAssignments(base, draft)).toEqual([
+      { no: 2, file: "a" },
+      { no: 1, file: "b" },
+      { no: 3, file: "c" },
+    ]);
+  });
+
+  it("draftAssignments：设备上已不存在的文件、与设备一致的项都不进入提交", () => {
+    const draft = new Map([["a", 1], ["ghost", 9], ["b", 5]]);
+    expect(draftAssignments(base, draft)).toEqual([{ no: 5, file: "b" }]);
+    expect(draftAssignments(base, new Map())).toEqual([]);
   });
 });

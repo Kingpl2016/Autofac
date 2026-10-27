@@ -3,6 +3,7 @@ import { AppModeRuntime } from "./AppModeRuntime";
 import { CloseGuardDialog } from "./components/CloseGuardDialog";
 import { ModeConfirmDialog } from "./components/ModeConfirmDialog";
 import { ModeSwitch } from "./components/ModeSwitch";
+import { PlayerRouteMode } from "./components/PlayerRouteMode";
 
 /**
  * 应用模式（实时 / 播放器）插件：顶栏模式开关，以及整个应用只挂载一次的确认对话框。
@@ -18,6 +19,8 @@ export const appModePlugin: AppPlugin = {
       slots.register("layout.overlays", { id: "mode-confirm", order: 10, component: ModeConfirmDialog }),
       // 退出守卫：录制或播放进行中关闭窗口时的确认
       slots.register("layout.overlays", { id: "close-guard", order: 20, component: CloseGuardDialog }),
+      // 声明了 `handle.playerMode` 的页面（节目库、节目编辑）自动进入 / 退出播放器模式（无界面）
+      slots.register("layout.overlays", { id: "player-route-mode", order: 0, component: PlayerRouteMode }),
     ];
     return () => {
       for (const dispose of disposers) dispose();

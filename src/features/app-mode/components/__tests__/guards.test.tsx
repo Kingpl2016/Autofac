@@ -22,7 +22,7 @@ import { EnterPlayerCard } from "../EnterPlayerCard";
 import { LiveOnly } from "../LiveOnly";
 import { ModeConfirmDialog } from "../ModeConfirmDialog";
 import { ModeGuardNotice } from "../ModeGuardNotice";
-import { PlayerModeBanner } from "../PlayerModeBanner";
+import { PlayerModeActions } from "../PlayerModeActions";
 
 function renderIn(ui: React.ReactNode) {
   return render(
@@ -50,13 +50,12 @@ beforeEach(async () => {
 
 afterEach(() => cleanup());
 
-describe("PlayerModeBanner", () => {
-  it("常驻横幅：模式说明 + 输出状态 + 唯一的“退出播放器模式”入口", () => {
-    renderIn(<PlayerModeBanner />);
-    expect(screen.getByText("播放器模式")).toBeTruthy();
-    expect(screen.getByText("实时接收已停止，输出走转发表或指定设备")).toBeTruthy();
+describe("PlayerModeActions", () => {
+  it("输出状态 + 唯一的“退出播放器模式”入口，不再有说明文字", () => {
+    renderIn(<PlayerModeActions />);
     expect(screen.getByText("输出就绪")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "退出播放器模式" })).toHaveLength(1);
+    expect(screen.queryByText(/输出走转发表或指定设备/)).toBeNull();
   });
 
   it.each([
@@ -65,12 +64,12 @@ describe("PlayerModeBanner", () => {
     ["down", "输出不可用"],
   ] as const)("发送器 %s 时用文字标明（不只靠颜色）", (sender, text) => {
     useEngineStatusStore.setState({ sender });
-    renderIn(<PlayerModeBanner />);
+    renderIn(<PlayerModeActions />);
     expect(screen.getByText(text)).toBeTruthy();
   });
 
   it("没有在播放时点击退出直接切回实时", async () => {
-    renderIn(<PlayerModeBanner />);
+    renderIn(<PlayerModeActions />);
     fireEvent.click(screen.getByRole("button", { name: "退出播放器模式" }));
     await waitFor(() => expect(api.appModeSet).toHaveBeenCalledWith("live"));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -78,7 +77,7 @@ describe("PlayerModeBanner", () => {
 
   it("切换进行中禁用退出按钮", () => {
     useAppModeStore.setState({ transitioning: true });
-    renderIn(<PlayerModeBanner />);
+    renderIn(<PlayerModeActions />);
     expect((screen.getByRole("button", { name: "退出播放器模式" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -147,8 +147,17 @@ pub fn bake_project(
     .map_err(|e| bake_error_text(&e))
 }
 
-/// 该节目是否正被回放打开。
-fn is_open_in_player(app: &AppHandle, artrec: &Path) -> bool {
+/// 该节目是否正被回放打开（节目库替换节目前也用它检查，Windows 上无法替换被打开的文件）。
+///
+/// # Arguments
+///
+/// * `app` - 应用句柄。
+/// * `artrec` - 节目的 `.artrec` 路径。
+///
+/// # Returns
+///
+/// 播放器已打开该节目（按规范化路径比较）时为 `true`。
+pub(crate) fn is_open_in_player(app: &AppHandle, artrec: &Path) -> bool {
     let status = app.artnet_core().playback().status();
     if !status.loaded {
         return false;

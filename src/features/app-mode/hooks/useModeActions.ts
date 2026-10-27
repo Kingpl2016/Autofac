@@ -56,7 +56,7 @@ export function useModeActions() {
           announce(t("mode.enteredPlayer"));
           toast.success(t("mode.enteredPlayer"));
         }
-        if (pathname !== PLAYER_ROUTE) {
+        if (pathname !== PLAYER_ROUTE && !request.stay) {
           navigate(PLAYER_ROUTE);
           focusMainHeading();
         }
@@ -84,7 +84,7 @@ export function useModeActions() {
    */
   const requestMode = (
     target: AppModeName,
-    extra?: Pick<ModeRequest, "run" | "describeError">,
+    extra?: Pick<ModeRequest, "run" | "describeError" | "stay">,
   ) => {
     const status = useEngineStatusStore.getState();
     if (useAppModeStore.getState().transitioning) return;

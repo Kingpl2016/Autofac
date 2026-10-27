@@ -51,7 +51,12 @@ export interface RecordingStatus {
   name: string;
   path: string;
   part: number;
+  /** 当前分段内的已录时长（微秒） */
   elapsedUs: number;
+  /** 整个录制会话的时长（微秒，跨分段累加） */
+  sessionElapsedUs: number;
+  /** 各分段在会话时间轴上的起点（微秒，第一段为 0；未录制时为空） */
+  partStartsUs: number[];
   stats: SessionStats;
   dropped: number;
   universes: number[];
@@ -59,6 +64,42 @@ export interface RecordingStatus {
   diskFreeBytes: number | null;
   /** 最近一次检查得到的磁盘空间等级 */
   diskLevel: DiskLevel;
+}
+
+/**
+ * 录制活动时间线（对应 host-core `ActivityDto`）：按时间分桶 × Universe 的变化强度与最大电平。
+ * 行数据为 Base64，`change[行]` 的第 i 个字节对应桶 `from + i`。
+ */
+export interface ActivityDto {
+  /** 桶布局代次，后端每次合并桶加一 */
+  generation: number;
+  /** 桶宽（微秒） */
+  bucketUs: number;
+  /** 时间线总桶数 */
+  len: number;
+  /** 本次数据覆盖的第一个桶 */
+  from: number;
+  universes: number[];
+  change: string[];
+  level: string[];
+  partStartsUs: number[];
+}
+
+/** 解码后的完整活动时间线（前端 store 里维护）。 */
+export interface Activity {
+  generation: number;
+  bucketUs: number;
+  len: number;
+  universes: number[];
+  /** 每行一个字节数组，长度为 `len` */
+  change: Uint8Array[];
+  level: Uint8Array[];
+  partStartsUs: number[];
+}
+
+/** `recording:stats` 事件载荷：录制状态 + 活动时间线增量（最终一次推送不带增量）。 */
+export interface RecordingStatsEvent extends RecordingStatus {
+  activity?: ActivityDto;
 }
 
 /** Universe 规划结果。 */
@@ -126,6 +167,26 @@ export interface LibraryEntry {
   editable: boolean;
   /** `.artrec` 文件是否存在；`false` 且可编辑表示工程已保存但还没导出 */
   exported: boolean;
+  /** 由文件头派生的格式信息；文件头不可解析时为 null（旧版后端可能缺省） */
+  header?: HeaderInfo | null;
+}
+
+/** 文件头发现的问题。 */
+export type HeaderIssue = "emptyProgram" | "durationMismatch" | "newerMinor";
+
+/** 由 `.artrec` 文件头（A 区）派生的格式信息（对应 `recorder::HeaderInfo`）。 */
+export interface HeaderInfo {
+  verMajor: number;
+  verMinor: number;
+  compression: "none" | "zstd";
+  compressLevel: number;
+  /** 文件头推荐循环播放 */
+  loopFlag: boolean;
+  /** 允许差分帧（核心板固件可能不支持） */
+  diffFrames: boolean;
+  /** 帧索引表在 Chunk 池之后 */
+  frameIndexAtTail: boolean;
+  issues: HeaderIssue[];
 }
 
 /** 节目库错误码。 */
@@ -134,6 +195,51 @@ export const LIB_ERR_OUTSIDE = "outside_library";
 export const LIB_ERR_NOT_FOUND = "not_found";
 /** 无法移入回收站的错误码前缀（后面跟冒号和原因）。 */
 export const LIB_ERR_TRASH = "trash_failed";
+/** 编辑导出：没有可导出的内容（片段为空 / 没有保留任何 Universe）。 */
+export const LIB_ERR_EMPTY_EDIT = "empty_edit";
+/** 编辑导出：编辑器节目不能被替换，只能另存。 */
+export const LIB_ERR_EDITABLE_REPLACE = "editable_replace";
+/** 编辑导出：要替换的节目正被播放器打开。 */
+export const LIB_ERR_IN_USE = "in_use";
+/** 编辑导出被取消。 */
+export const LIB_ERR_CANCELLED = "cancelled";
+
+/** 源时间轴上要保留的一个片段（微秒，`[startUs, endUs)`）。 */
+export interface EditSegment {
+  startUs: number;
+  endUs: number;
+}
+
+/** 编辑导出请求（对应 `library_commands::EditRequest`）。 */
+export interface EditRequest {
+  path: string;
+  /** 前端生成的任务 id（进度事件与取消用） */
+  jobId: string;
+  /** 要保留的片段，按时间升序、互不重叠；导出时首尾拼接 */
+  segments: EditSegment[];
+  /** 要保留的 Universe；`null` 表示全部保留 */
+  universes: number[] | null;
+  output: { kind: "new"; name: string } | { kind: "replace" };
+}
+
+/** 编辑导出结果。 */
+export interface EditResult {
+  path: string;
+  durationUs: number;
+  frames: number;
+  bytes: number;
+  universes: number[];
+}
+
+/** `recordings:edit` 进度事件载荷。 */
+export interface EditProgressEvent {
+  jobId: string;
+  /** 0..1 */
+  progress: number;
+}
+
+/** 编辑导出进度事件名。 */
+export const EDIT_PROGRESS_EVENT = "recordings:edit";
 
 /** 后端错误码。 */
 export const REC_ERR_ALREADY = "already_recording";
@@ -148,6 +254,8 @@ export const EMPTY_STATUS: RecordingStatus = {
   path: "",
   part: 0,
   elapsedUs: 0,
+  sessionElapsedUs: 0,
+  partStartsUs: [],
   stats: {
     frames: 0,
     fullFrames: 0,

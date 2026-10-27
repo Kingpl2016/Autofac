@@ -8,6 +8,7 @@ mod about_commands;
 mod data_dir;
 mod app_mode_commands;
 mod fixture_commands;
+mod library_commands;
 mod media_commands;
 mod netdev_commands;
 mod playback_commands;
@@ -92,6 +93,8 @@ pub fn run() {
             app.manage(show_runtime::ShowRuntime::new());
             // 保存时的后台烘焙（.artrec）：串行调度。
             app.manage(show_bake::ShowBakeState::default());
+            // 节目库编辑导出：按任务 id 登记的取消标志。
+            app.manage(library_commands::EditJobs::default());
             // 信号检测器（测试信号发生器）：发送器常驻，窗口按需打开。
             app.manage(signal_checker_commands::SignalCheckerState::new(
                 app.handle(),
@@ -190,10 +193,15 @@ pub fn run() {
             recording_commands::recording_start,
             recording_commands::recording_stop,
             recording_commands::recording_status,
+            recording_commands::recording_activity,
             recording_commands::recording_take_recovered,
             recording_commands::recordings_list,
             recording_commands::recordings_rename,
             recording_commands::recordings_delete,
+            library_commands::recordings_set_notes,
+            library_commands::recordings_duplicate,
+            library_commands::recordings_edit,
+            library_commands::recordings_edit_cancel,
             playback_commands::player_open,
             playback_commands::player_play,
             playback_commands::player_pause,

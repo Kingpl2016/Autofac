@@ -107,8 +107,9 @@ export function PlayerPanel({ device, access }: PlayerPanelProps) {
           </div>
 
           {/* 下层 DOM 画轨道与填充，上层原生 range 负责交互与读屏语义 */}
-          <div className="relative h-6">
-            <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-surface-1">
+          {/* 轨道两端内缩半个滑块直径（与 `.scrub-range` 一致），填充终点落在滑块中心 */}
+          <div className="relative h-8">
+            <div className="absolute inset-x-[0.5625rem] top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-foreground/15 ring-1 ring-inset ring-foreground/10">
               <div
                 className="h-full origin-left rounded-full bg-primary transition-transform duration-100 ease-linear"
                 style={{ transform: `scaleX(${ratio})` }}

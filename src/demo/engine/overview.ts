@@ -1,7 +1,7 @@
 import type { ChannelSeries, OverviewDto, SeriesPoint } from "@/features/recording/lib/types";
 import { bytesToBase64 } from "../lib/base64";
 import { renderSegments, toSegments } from "../lib/patterns";
-import type { ProgramRecord } from "./library";
+import { sourceTimeSec, type ProgramRecord } from "./library";
 import { fail } from "./world";
 
 /** 概览默认桶数 / 允许范围（对应后端 `DEFAULT_BUCKETS` 与钳制范围）。 */
@@ -50,7 +50,7 @@ export function buildOverview(program: ProgramRecord, buckets?: number): Overvie
       let delta = 0;
       for (let k = 0; k < SAMPLES_PER_BUCKET; k += 1) {
         const t = ((b + (k + 0.5) / SAMPLES_PER_BUCKET) / want) * program.durationSec;
-        const frame = renderSegments(segments, t);
+        const frame = renderSegments(segments, sourceTimeSec(program, t));
         for (let i = 0; i < frame.length; i += 1) {
           if (frame[i] > peak) peak = frame[i];
           if (prev) {
@@ -80,6 +80,19 @@ export function buildOverview(program: ProgramRecord, buckets?: number): Overvie
   };
   overviewCache.set(key, dto);
   return dto;
+}
+
+/**
+ * 丢弃某个节目的概览缓存（节目内容被替换后调用，与后端删除 `.ovw` 对应）。
+ *
+ * # Arguments
+ *
+ * * `path` - 节目路径。
+ */
+export function forgetOverview(path: string): void {
+  for (const key of [...overviewCache.keys()]) {
+    if (key.startsWith(`${path}|`)) overviewCache.delete(key);
+  }
 }
 
 /** 曲线查询参数（已由命令层解析）。 */
@@ -128,7 +141,7 @@ export function buildSeries(program: ProgramRecord, q: SeriesRequest): ChannelSe
     const maxs = new Array<number>(series.length).fill(0);
     for (let k = 0; k < SAMPLES_PER_BUCKET; k += 1) {
       const tSec = (a + (width * (k + 0.5)) / SAMPLES_PER_BUCKET) / 1_000_000;
-      const frame = renderSegments(segments, tSec);
+      const frame = renderSegments(segments, sourceTimeSec(program, tSec));
       series.forEach((s, idx) => {
         const v = frame[s.channel] ?? 0;
         if (v < mins[idx]) mins[idx] = v;

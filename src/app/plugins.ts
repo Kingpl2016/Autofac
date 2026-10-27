@@ -15,6 +15,7 @@ import { enginePlugin } from "@/features/engine";
 import { fixturesPlugin } from "@/features/fixtures";
 import { forwardingPlugin } from "@/features/forwarding";
 import { i18nPlugin } from "@/features/i18n";
+import { libraryPlugin } from "@/features/library";
 import { networkPlugin } from "@/features/network";
 import { recordingPlugin } from "@/features/recording";
 import { settingsPlugin } from "@/features/settings";
@@ -40,6 +41,7 @@ export const appPlugins: readonly AppPlugin[] = [
   discoveryPlugin,
   forwardingPlugin,
   signalFlowPlugin,
+  libraryPlugin,
   showEditorPlugin,
   fixturesPlugin,
   networkPlugin,

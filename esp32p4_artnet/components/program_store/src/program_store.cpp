@@ -286,6 +286,67 @@ Result<void> ProgramStore::unassign(uint16_t no) noexcept {
     return persist_locked();
 }
 
+Result<void> ProgramStore::reorder(const std::vector<ProgramEntry>& entries) noexcept {
+    if (entries.empty() || entries.size() > kMaxNo) {
+        return err(Status::InvalidArg);
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // 放堆上：256 个槽位较大，HTTP 任务栈只有 8KB。
+    std::vector<std::optional<Slot>> next(kMaxNo + 1);
+
+    // 1. 校验并构建列出的映射（不触碰 slots_）。
+    for (const auto& e : entries) {
+        if (e.no < 1 || e.no > kMaxNo || next[e.no].has_value()) {
+            return err(Status::InvalidArg);  // 编号越界或重复
+        }
+        if (!storage::is_valid_program_filename(e.file)) {
+            return err(Status::InvalidArg);
+        }
+        for (uint16_t i = 1; i <= kMaxNo; ++i) {
+            if (next[i].has_value() && next[i]->file == e.file) {
+                return err(Status::InvalidArg);  // 同一文件被列出多次
+            }
+        }
+        auto sz = file_size(dir_ + "/" + e.file);
+        if (!sz.has_value()) {
+            return err(Status::NotFound);
+        }
+        next[e.no] = Slot{e.file, *sz};
+    }
+
+    // 2. 未列出的现有映射保持原编号；与新映射冲突则整体拒绝。
+    for (uint16_t no = 1; no <= kMaxNo; ++no) {
+        if (!slots_[no].has_value()) {
+            continue;
+        }
+        bool listed = false;
+        for (const auto& e : entries) {
+            if (e.file == slots_[no]->file) {
+                listed = true;
+                break;
+            }
+        }
+        if (listed) {
+            continue;
+        }
+        if (next[no].has_value()) {
+            return err(Status::Busy);
+        }
+        next[no] = slots_[no];
+    }
+
+    // 3. 提交：保留旧映射以便落盘失败时回滚。
+    std::vector<std::optional<Slot>> backup(slots_.begin(), slots_.end());
+    std::move(next.begin(), next.end(), slots_.begin());
+    if (auto r = persist_locked(); !r) {
+        std::move(backup.begin(), backup.end(), slots_.begin());
+        return err(r.error());
+    }
+    return {};
+}
+
 Result<uint16_t> ProgramStore::on_file_added(std::string_view file, uint64_t size) noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     std::string fname(file);

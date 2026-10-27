@@ -5,13 +5,12 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
 import { useOverview } from "../hooks/useOverview";
+import { useScrubSeek } from "../hooks/useScrubSeek";
 import { formatDurationUs } from "../lib/filter";
 import { drawHeatmap, heatmapCells, rowHeightFor, summarizeOverview } from "../lib/heatmap";
 import { timeToX, xToTimeUs } from "../lib/overview";
 import { themeColor } from "../lib/themeColor";
 
-/** 拖动时向后端发送 seek 的最小间隔（毫秒）。 */
-const SEEK_THROTTLE_MS = 60;
 /** 键盘左右键每次移动的时长占比。 */
 const KEY_STEP_RATIO = 0.01;
 /** 标尺刻度数（含两端）。 */
@@ -107,33 +106,22 @@ export function TimelineHeatmap({
     // appearanceRevision 只用于触发重绘：颜色变量变化后重新取色
   }, [cells, rowHeight, width, height, appearanceRevision]);
 
-  // 拖动跳转
+  // 拖动跳转：拖动期间播放头与读屏数值都以本地位置为准，紧跟指针
   const dragging = useRef(false);
-  const lastSeekAt = useRef(0);
-  const trailing = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (trailing.current) clearTimeout(trailing.current);
-    },
-    [],
-  );
+  const { dragPos, scrub, commit, cancel } = useScrubSeek(onSeek);
+  const shownPos = dragPos ?? posUs;
 
-  const seekFromEvent = (clientX: number, final: boolean) => {
+  const posFromEvent = (clientX: number): number | null => {
     const el = wrapRef.current;
-    if (!el) return;
+    if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const pos = xToTimeUs(clientX - rect.left, rect.width, durationUs);
-    if (trailing.current) clearTimeout(trailing.current);
-    const now = performance.now();
-    if (final || now - lastSeekAt.current >= SEEK_THROTTLE_MS) {
-      lastSeekAt.current = now;
-      onSeek(pos);
-    } else {
-      trailing.current = setTimeout(() => {
-        lastSeekAt.current = performance.now();
-        onSeek(pos);
-      }, SEEK_THROTTLE_MS);
-    }
+    return xToTimeUs(clientX - rect.left, rect.width, durationUs);
+  };
+  const seekFromEvent = (clientX: number, final: boolean) => {
+    const pos = posFromEvent(clientX);
+    if (pos === null) return;
+    if (final) commit(pos);
+    else scrub(pos);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -173,7 +161,7 @@ export function TimelineHeatmap({
     );
   }
 
-  const playheadPx = timeToX(posUs, width, durationUs);
+  const playheadPx = timeToX(shownPos, width, durationUs);
 
   const updateHover = (clientX: number) => {
     const el = wrapRef.current;
@@ -234,8 +222,8 @@ export function TimelineHeatmap({
           aria-label={t("player.timelineSlider")}
           aria-valuemin={0}
           aria-valuemax={durationUs}
-          aria-valuenow={Math.min(posUs, durationUs)}
-          aria-valuetext={`${formatDurationUs(posUs)} / ${formatDurationUs(durationUs)}`}
+          aria-valuenow={Math.min(shownPos, durationUs)}
+          aria-valuetext={`${formatDurationUs(shownPos)} / ${formatDurationUs(durationUs)}`}
           className="relative min-w-0 flex-1 cursor-pointer touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           style={{ height }}
           onKeyDown={onKeyDown}
@@ -256,6 +244,7 @@ export function TimelineHeatmap({
           }}
           onPointerCancel={() => {
             dragging.current = false;
+            cancel();
           }}
         >
           <canvas ref={canvasRef} className="block size-full" aria-hidden />

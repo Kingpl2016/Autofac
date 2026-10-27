@@ -10,7 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { EnterPlayerCard, PlayerModeBanner } from "@/features/app-mode";
+import { EnterPlayerCard, PlayerModeActions } from "@/features/app-mode";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
@@ -23,7 +23,8 @@ const WIDE_QUERY = "(min-width: 80rem)";
 /**
  * 播放器页（`/player`）：播放器模式的主页。
  *
- * - 播放器模式：常驻横幅（模式说明、输出健康、退出入口）+ 回放面板（传输台、时间线、曲线、输出目标、通道栅格）；
+ * - 播放器模式：回放面板（传输台、时间线、曲线、输出目标、通道栅格），输出健康状态与“退出播放器模式”
+ *   在页头（标题“播放器”与副标题）的右侧；
  * - 实时模式：入口卡片，说明进入后会发生什么，由用户主动进入（不会隐式切换）。
  *
  * 右侧常驻节目库（≥ 1280px），窄屏收进抽屉。两种模式下节目库都可用：
@@ -35,25 +36,23 @@ export function PlayerModeView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const wide = useMediaQuery(WIDE_QUERY);
 
-  const goLibrary = () => {
-    if (wide) {
-      document.getElementById("recording-library")?.focus();
-    } else {
-      setDrawerOpen(true);
-    }
-  };
-
   return (
     <>
       <PageHeader
         title={t("player.pageTitle")}
         subtitle={t("player.pageSubtitle")}
         actions={
-          !wide && (
-            <Button variant="outline" onClick={() => setDrawerOpen(true)}>
-              <Library aria-hidden />
-              {t("recording.tabLibrary")}
-            </Button>
+          (playerMode || !wide) && (
+            <>
+              {!wide && (
+                <Button variant="outline" onClick={() => setDrawerOpen(true)}>
+                  <Library aria-hidden />
+                  {t("recording.tabLibrary")}
+                </Button>
+              )}
+              {/* 页头最右：输出状态 + 退出播放器模式（播放器页上唯一的退出入口） */}
+              {playerMode && <PlayerModeActions />}
+            </>
           )
         }
       />
@@ -61,10 +60,7 @@ export function PlayerModeView() {
       <div className="grid items-start gap-(--density-gutter) xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="grid min-w-0 gap-(--density-gap)">
           {playerMode ? (
-            <>
-              <PlayerModeBanner />
-              <PlayerPanel onGoLibrary={goLibrary} active />
-            </>
+            <PlayerPanel active />
           ) : (
             <EnterPlayerCard />
           )}
