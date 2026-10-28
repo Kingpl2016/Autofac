@@ -174,7 +174,7 @@ impl Fft {
     }
 
     /// 实数输入的幅度谱 `|X[k]|`，`k = 0..=n/2`。
-    #[allow(clippy::many_single_char_names)]
+    #[expect(clippy::many_single_char_names, reason = "FFT 数学记法 n/i/x 等为习惯命名")]
     fn magnitudes(&mut self, input: &[f32], out: &mut [f32]) {
         let n = self.n;
         for (i, x) in input.iter().enumerate().take(n) {
@@ -574,7 +574,7 @@ mod tests {
 
     /// 合成的鼓点：`bpm` 速度、第一拍在 `first_s` 秒，每拍一声高频“嗒”，强拍再叠一声低频“咚”；
     /// `gain` 给出每个时刻的整体音量。
-    #[allow(clippy::many_single_char_names)]
+    #[expect(clippy::many_single_char_names, reason = "合成节拍的数学记法为习惯命名")]
     fn click_track(bpm: f64, first_s: f64, seconds: f64, gain: impl Fn(f64) -> f32) -> Vec<f32> {
         let n = (seconds * RATE) as usize;
         let mut out = vec![0.0f32; n];

@@ -67,7 +67,7 @@ pub fn resolve_sacn_ifaces(
                     .multi_nic
                     .iter()
                     .find(|n| n.name == nic.name)
-                    .map_or(true, |n| n.sacn_enabled);
+                    .is_none_or(|n| n.sacn_enabled);
                 if enabled && !out.contains(&ip) {
                     out.push(ip);
                 }

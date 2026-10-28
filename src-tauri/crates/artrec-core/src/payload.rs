@@ -1,7 +1,5 @@
 //! 全量帧 / 差分帧 Payload 的装配与拆分。
 
-use byteorder::{BigEndian, ByteOrder};
-
 use crate::error::{ArtRecError, Result};
 use crate::model::UniDesc;
 
@@ -155,15 +153,15 @@ pub(crate) fn apply_diff_payload(buffers: &mut [Vec<u8>], payload: &[u8]) -> Res
     if payload.len() < 2 {
         return Err(ArtRecError::Truncated("差分帧缺少 changed_cnt"));
     }
-    let cnt = usize::from(BigEndian::read_u16(&payload[0..2]));
+    let cnt = usize::from(u16::from_be_bytes([payload[0], payload[1]]));
     let Some(records) = payload.get(2..2 + cnt * 5) else {
         return Err(ArtRecError::Truncated("差分帧变更点截断"));
     };
     // records 恰为 cnt × 5 字节，余数必为空
     let (recs, _) = records.as_chunks::<5>();
     for rec in recs {
-        let uni_idx = usize::from(BigEndian::read_u16(&rec[0..2]));
-        let ch_addr = usize::from(BigEndian::read_u16(&rec[2..4]));
+        let uni_idx = usize::from(u16::from_be_bytes([rec[0], rec[1]]));
+        let ch_addr = usize::from(u16::from_be_bytes([rec[2], rec[3]]));
         if let Some(slot) = buffers.get_mut(uni_idx).and_then(|b| b.get_mut(ch_addr)) {
             *slot = rec[4];
         }
@@ -207,13 +205,11 @@ pub fn encode_diff(changes: &[DiffChange]) -> Vec<u8> {
 pub(crate) fn encode_diff_into(changes: &[DiffChange], out: &mut Vec<u8>) {
     out.clear();
     out.reserve(2 + changes.len() * 5);
-    let mut cnt = [0u8; 2];
-    BigEndian::write_u16(&mut cnt, changes.len() as u16);
-    out.extend_from_slice(&cnt);
+    out.extend_from_slice(&(changes.len() as u16).to_be_bytes());
     for c in changes {
         let mut rec = [0u8; 5];
-        BigEndian::write_u16(&mut rec[0..2], c.uni_idx);
-        BigEndian::write_u16(&mut rec[2..4], c.ch_addr);
+        rec[0..2].copy_from_slice(&c.uni_idx.to_be_bytes());
+        rec[2..4].copy_from_slice(&c.ch_addr.to_be_bytes());
         rec[4] = c.ch_val;
         out.extend_from_slice(&rec);
     }
@@ -236,7 +232,7 @@ pub fn decode_diff(payload: &[u8]) -> Result<Vec<DiffChange>> {
     if payload.len() < 2 {
         return Err(ArtRecError::Truncated("差分帧缺少 changed_cnt"));
     }
-    let cnt = BigEndian::read_u16(&payload[0..2]) as usize;
+    let cnt = u16::from_be_bytes([payload[0], payload[1]]) as usize;
     if payload.len() < 2 + cnt * 5 {
         return Err(ArtRecError::Truncated("差分帧变更点截断"));
     }
@@ -244,8 +240,8 @@ pub fn decode_diff(payload: &[u8]) -> Result<Vec<DiffChange>> {
     for i in 0..cnt {
         let base = 2 + i * 5;
         out.push(DiffChange {
-            uni_idx: BigEndian::read_u16(&payload[base..base + 2]),
-            ch_addr: BigEndian::read_u16(&payload[base + 2..base + 4]),
+            uni_idx: u16::from_be_bytes([payload[base], payload[base + 1]]),
+            ch_addr: u16::from_be_bytes([payload[base + 2], payload[base + 3]]),
             ch_val: payload[base + 4],
         });
     }
@@ -260,11 +256,10 @@ pub fn decode_diff(payload: &[u8]) -> Result<Vec<DiffChange>> {
 /// * `changes` - 变更列表。
 pub fn apply_diff(buffers: &mut [Vec<u8>], changes: &[DiffChange]) {
     for c in changes {
-        if let Some(buf) = buffers.get_mut(c.uni_idx as usize) {
-            if let Some(slot) = buf.get_mut(c.ch_addr as usize) {
+        if let Some(buf) = buffers.get_mut(c.uni_idx as usize)
+            && let Some(slot) = buf.get_mut(c.ch_addr as usize) {
                 *slot = c.ch_val;
             }
-        }
     }
 }
 

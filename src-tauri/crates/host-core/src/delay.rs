@@ -11,8 +11,9 @@
 
 use std::cmp::{Ordering as CmpOrdering, Reverse};
 use std::collections::BinaryHeap;
-use std::sync::Mutex;
 use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use tokio::sync::mpsc::{self, error::TryRecvError, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;

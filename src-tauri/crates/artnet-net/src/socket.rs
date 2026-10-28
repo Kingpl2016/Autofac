@@ -455,7 +455,7 @@ impl DmxSender {
     /// # Errors
     ///
     /// 发送失败时返回 [`std::io::Error`]。
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, reason = "sACN 扩展发送需透传完整协议字段")]
     pub async fn send_sacn_ext(
         &self,
         target: Option<SocketAddr>,

@@ -264,14 +264,13 @@ impl<W: Write + Seek> ArtRecWriter<W> {
     }
 
     fn write_chunk(&mut self, chunk_type: u16, time_us: u64, raw: &[u8]) -> Result<FrameIndex> {
-        if let Some(last) = self.index.last() {
-            if time_us < last.time_us {
+        if let Some(last) = self.index.last()
+            && time_us < last.time_us {
                 return Err(ArtRecError::NonMonotonicTime {
                     prev: last.time_us,
                     now: time_us,
                 });
             }
-        }
         // Zstd：复用上下文压缩进复用缓冲；无压缩：直接写原始 Payload，不再拷贝
         let packed: &[u8] = match self.codec.as_mut() {
             Some(codec) => {

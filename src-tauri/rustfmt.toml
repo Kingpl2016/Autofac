@@ -1,0 +1,3 @@
+# 固定格式化风格为 2021 版：即便 crate 升级到 Edition 2024，
+# rustfmt 的换行 / 缩进等规则仍按 2021 版执行，避免升级 edition 时全仓重排。
+style_edition = "2021"

@@ -21,8 +21,9 @@
 //! 只有主窗口订阅，所以 [`DmxStream`] 至多持有一个订阅者；新订阅替换旧订阅。
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+use parking_lot::Mutex;
 
 use signal_engine::SignalEngine;
 use tauri::ipc::{Channel, InvokeResponseBody};

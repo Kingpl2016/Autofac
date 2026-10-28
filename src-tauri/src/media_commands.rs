@@ -273,13 +273,8 @@ fn read_cache<T: DeserializeOwned>(file: &Path) -> Option<T> {
 /// 写入缓存（先写临时文件再重命名）；失败只记日志，不影响结果。
 fn write_cache<T: Serialize>(file: &Path, value: &T) {
     let write = || -> std::io::Result<()> {
-        if let Some(dir) = file.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let tmp = file.with_extension("tmp");
         let bytes = serde_json::to_vec(value).map_err(std::io::Error::other)?;
-        std::fs::write(&tmp, bytes)?;
-        std::fs::rename(&tmp, file)
+        fsutil::write_atomic(file, &bytes)
     };
     if let Err(e) = write() {
         tracing::warn!(error = %e, "写入素材分析缓存失败");

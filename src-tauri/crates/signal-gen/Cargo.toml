@@ -4,10 +4,8 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "测试信号发生器：15 种图案渲染、配置校验、手动数据与 44Hz UDP 发送器"
-[lints.clippy]
-pedantic = "warn"
-doc_markdown = "allow"
-cast_possible_truncation = "allow"
+[lints]
+workspace = true
 [dependencies]
 serde = { workspace = true }
 tokio = { workspace = true }
@@ -15,5 +13,6 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 artnet-net = { path = "../artnet-net" }
 forwarding = { path = "../forwarding" }
+parking_lot = { workspace = true }
 [dev-dependencies]
 serde_json = { workspace = true }

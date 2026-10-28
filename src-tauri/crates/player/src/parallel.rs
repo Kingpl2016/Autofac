@@ -468,12 +468,11 @@ pub(crate) fn overview_with<R: Read + Seek>(
     let mut pending = false;
     for s in 1..segs.len() {
         let (head, tail) = segs.split_at_mut(s);
-        if let (Some(prev), Some(cur)) = (head.last(), tail.first_mut()) {
-            if !cur.ready {
+        if let (Some(prev), Some(cur)) = (head.last(), tail.first_mut())
+            && !cur.ready {
                 cur.state.clone_from(&prev.state);
                 pending = true;
             }
-        }
     }
     // 第二阶段（仅在有落空段时）：补跑落空段
     if pending {
@@ -733,12 +732,11 @@ pub(crate) fn series_with<R: Read + Seek>(
     let mut pending = false;
     for s in 1..segs.len() {
         let (head, tail) = segs.split_at_mut(s);
-        if let (Some(prev), Some(cur)) = (head.last(), tail.first_mut()) {
-            if !cur.ready {
+        if let (Some(prev), Some(cur)) = (head.last(), tail.first_mut())
+            && !cur.ready {
                 cur.track.copy_state_from(&prev.track);
                 pending = true;
             }
-        }
     }
     // 第二阶段（仅在有落空段时）：补跑落空段
     if pending {

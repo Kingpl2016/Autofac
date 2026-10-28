@@ -2,8 +2,6 @@
 
 use std::net::Ipv4Addr;
 
-use byteorder::{BigEndian, ByteOrder};
-
 /// sACN 默认 UDP 端口。
 pub const SACN_PORT: u16 = 5568;
 /// ACN 包标识符 `"ASC-E1.17\0\0\0"`。
@@ -104,13 +102,12 @@ pub fn is_sacn(buf: &[u8]) -> bool {
 ///
 /// 解析出的 [`SacnData`]；非数据包或过短返回 `None`。
 #[must_use]
-#[allow(clippy::missing_panics_doc)]
 pub fn parse(buf: &[u8]) -> Option<SacnData> {
     if !is_sacn(buf) {
         return None;
     }
     // Root 向量
-    if BigEndian::read_u32(&buf[18..22]) != VECTOR_ROOT_DATA {
+    if u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]) != VECTOR_ROOT_DATA {
         return None;
     }
     let mut cid = [0u8; 16];
@@ -120,7 +117,7 @@ pub fn parse(buf: &[u8]) -> Option<SacnData> {
     if buf.len() < 115 {
         return None;
     }
-    if BigEndian::read_u32(&buf[40..44]) != VECTOR_FRAMING_DATA {
+    if u32::from_be_bytes([buf[40], buf[41], buf[42], buf[43]]) != VECTOR_FRAMING_DATA {
         return None;
     }
     // 源名称按原始字节复制（不解码、不分配），由 `SacnData::source_name` 按需解码
@@ -128,7 +125,7 @@ pub fn parse(buf: &[u8]) -> Option<SacnData> {
     source_name_raw.copy_from_slice(&buf[SOURCE_NAME_OFFSET..SOURCE_NAME_OFFSET + SOURCE_NAME_LEN]);
     let priority = buf[108];
     let sequence = buf[111];
-    let universe = BigEndian::read_u16(&buf[113..115]);
+    let universe = u16::from_be_bytes([buf[113], buf[114]]);
 
     // DMP 层从偏移 115 开始
     if buf.len() < 126 {
@@ -137,7 +134,7 @@ pub fn parse(buf: &[u8]) -> Option<SacnData> {
     if buf[117] != VECTOR_DMP_SET {
         return None;
     }
-    let prop_count = BigEndian::read_u16(&buf[123..125]) as usize;
+    let prop_count = u16::from_be_bytes([buf[123], buf[124]]) as usize;
     // 属性值首字节为 START Code，随后为通道数据
     let values_start = 125;
     if prop_count == 0 || buf.len() < values_start + prop_count {
@@ -417,8 +414,6 @@ fn flags_len(len: u16) -> [u8; 2] {
 /// 旧实现（`Vec` 逐段追加组包、解析时直接解码源名称）的原样拷贝，仅作一致性测试的参照。
 #[cfg(test)]
 mod reference {
-    use byteorder::{BigEndian, ByteOrder};
-
     use super::{is_sacn, ACN_PID, VECTOR_DMP_SET, VECTOR_FRAMING_DATA, VECTOR_ROOT_DATA};
 
     /// 旧版解析结果（`source_name` 为解码后的 `String`）。
@@ -437,7 +432,7 @@ mod reference {
         if !is_sacn(buf) {
             return None;
         }
-        if BigEndian::read_u32(&buf[18..22]) != VECTOR_ROOT_DATA {
+        if u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]) != VECTOR_ROOT_DATA {
             return None;
         }
         let mut cid = [0u8; 16];
@@ -445,7 +440,7 @@ mod reference {
         if buf.len() < 115 {
             return None;
         }
-        if BigEndian::read_u32(&buf[40..44]) != VECTOR_FRAMING_DATA {
+        if u32::from_be_bytes([buf[40], buf[41], buf[42], buf[43]]) != VECTOR_FRAMING_DATA {
             return None;
         }
         let source_name = {
@@ -455,14 +450,14 @@ mod reference {
         };
         let priority = buf[108];
         let sequence = buf[111];
-        let universe = BigEndian::read_u16(&buf[113..115]);
+        let universe = u16::from_be_bytes([buf[113], buf[114]]);
         if buf.len() < 126 {
             return None;
         }
         if buf[117] != VECTOR_DMP_SET {
             return None;
         }
-        let prop_count = BigEndian::read_u16(&buf[123..125]) as usize;
+        let prop_count = u16::from_be_bytes([buf[123], buf[124]]) as usize;
         let values_start = 125;
         if prop_count == 0 || buf.len() < values_start + prop_count {
             return None;
@@ -500,14 +495,11 @@ mod reference {
         buf.extend_from_slice(&[0x00, 0x00]);
         buf.extend_from_slice(ACN_PID);
         push_flags_len(&mut buf, root_pdu_len as u16);
-        let mut v = [0u8; 4];
-        BigEndian::write_u32(&mut v, VECTOR_ROOT_DATA);
-        buf.extend_from_slice(&v);
+        buf.extend_from_slice(&VECTOR_ROOT_DATA.to_be_bytes());
         buf.extend_from_slice(cid);
 
         push_flags_len(&mut buf, framing_len as u16);
-        BigEndian::write_u32(&mut v, VECTOR_FRAMING_DATA);
-        buf.extend_from_slice(&v);
+        buf.extend_from_slice(&VECTOR_FRAMING_DATA.to_be_bytes());
         let mut name = [0u8; 64];
         let nb = source_name.as_bytes();
         let n = nb.len().min(63);
@@ -517,18 +509,14 @@ mod reference {
         buf.extend_from_slice(&[0x00, 0x00]);
         buf.push(sequence);
         buf.push(options);
-        let mut uni = [0u8; 2];
-        BigEndian::write_u16(&mut uni, universe);
-        buf.extend_from_slice(&uni);
+        buf.extend_from_slice(&universe.to_be_bytes());
 
         push_flags_len(&mut buf, dmp_len as u16);
         buf.push(VECTOR_DMP_SET);
         buf.push(0xA1);
         buf.extend_from_slice(&[0x00, 0x00]);
         buf.extend_from_slice(&[0x00, 0x01]);
-        let mut pc = [0u8; 2];
-        BigEndian::write_u16(&mut pc, prop_count);
-        buf.extend_from_slice(&pc);
+        buf.extend_from_slice(&prop_count.to_be_bytes());
         buf.push(0x00);
         buf.extend_from_slice(&data[..channels]);
 
@@ -538,9 +526,7 @@ mod reference {
     /// 旧版 `push_flags_len`。
     fn push_flags_len(buf: &mut Vec<u8>, len: u16) {
         let fl = 0x7000 | (len & 0x0FFF);
-        let mut b = [0u8; 2];
-        BigEndian::write_u16(&mut b, fl);
-        buf.extend_from_slice(&b);
+        buf.extend_from_slice(&fl.to_be_bytes());
     }
 }
 

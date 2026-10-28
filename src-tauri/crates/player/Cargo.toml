@@ -5,19 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 description = "ArtRec 回放核心：时间驱动的帧调度、seek、保活，以及时间线概览与通道曲线分析（纯逻辑，无 IO / Tauri 依赖）"
 
-[lints.clippy]
-pedantic = "warn"
-# 领域专有名词（ArtRec/DMX/Universe/Zstd 等）无需反引号，关闭噪音项
-doc_markdown = "allow"
-cast_possible_truncation = "allow"
-cast_precision_loss = "allow"
-module_name_repetitions = "allow"
+[lints]
+workspace = true
 
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
 artrec-core = { path = "../artrec-core" }
 rayon = { workspace = true }
+base64 = { workspace = true }
 # 输出数据用共享引用计数缓冲：宿主转发到多个目的地时只增引用计数，不再逐目标拷贝。
 bytes = { workspace = true }
 

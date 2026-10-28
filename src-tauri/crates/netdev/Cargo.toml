@@ -5,13 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 description = "网络设备（ESP32-P4 核心板）HTTP 客户端：状态/控制/配置/文件/OTA、流式传输、设备注册表与凭据存储"
 
-[lints.clippy]
-pedantic = "warn"
-doc_markdown = "allow"
-cast_possible_truncation = "allow"
-cast_precision_loss = "allow"
-cast_sign_loss = "allow"
-module_name_repetitions = "allow"
+[lints]
+workspace = true
 
 [dependencies]
 serde = { workspace = true }
@@ -19,6 +14,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+fsutil = { path = "../fsutil" }
+parking_lot = { workspace = true }
 reqwest = { version = "=0.12.28", default-features = false, features = ["json", "stream"] }
 tokio-util = { version = "=0.7.20", features = ["io"] }
 futures-util = "=0.3.34"

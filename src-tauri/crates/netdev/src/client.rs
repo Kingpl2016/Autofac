@@ -2,6 +2,7 @@
 //!
 //! 流式传输（上传、下载、OTA 推送）见 [`crate::transfer`]。
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
@@ -20,6 +21,18 @@ use crate::validate::{check_host, check_port, check_program_file_name, check_tok
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 /// 建立连接的超时。
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// 进程级共享的 HTTP 客户端：所有设备客户端克隆同一个（reqwest 内部为 `Arc`，克隆廉价），
+/// 从而复用连接池，避免每条命令重建套接字、反复 TCP/HTTP 握手。
+///
+/// 仅与设备明文 HTTP 通信（无 TLS），构建几乎不会失败；万一失败，首次取用时以
+/// [`NetdevError::Network`] 上报而非 panic。
+static SHARED_HTTP: LazyLock<reqwest::Result<reqwest::Client>> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .no_proxy()
+        .build()
+});
 
 /// 路径段编码集：仅保留 RFC3986 非保留字符。
 ///
@@ -62,10 +75,10 @@ impl DeviceClient {
         if let Some(t) = &token {
             check_token(t)?;
         }
-        let http = reqwest::Client::builder()
-            .connect_timeout(CONNECT_TIMEOUT)
-            .no_proxy()
-            .build()?;
+        let http = SHARED_HTTP
+            .as_ref()
+            .map_err(|e| NetdevError::Network(e.to_string()))?
+            .clone();
         Ok(Self {
             base: format!("http://{host}:{port}"),
             token: token.filter(|t| !t.is_empty()),

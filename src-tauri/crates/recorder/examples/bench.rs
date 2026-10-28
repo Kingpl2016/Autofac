@@ -50,7 +50,7 @@ impl Pattern {
 }
 
 /// 生成第 `frame` 帧的 `n` 路 Universe 数据。
-fn gen(pattern: Pattern, n: usize, frame: u64, rng: &mut Rng) -> Vec<Vec<u8>> {
+fn gen_frame(pattern: Pattern, n: usize, frame: u64, rng: &mut Rng) -> Vec<Vec<u8>> {
     let mut out = vec![vec![0u8; 512]; n];
     for (ui, buf) in out.iter_mut().enumerate() {
         match pattern {
@@ -113,7 +113,7 @@ fn run(pattern: Pattern, n: usize, cfg: EncoderConfig) -> Row {
     let t0 = Instant::now();
     for f in 0..FPS * SECONDS {
         let t = f * period_us;
-        let data = gen(pattern, n, f, &mut rng);
+        let data = gen_frame(pattern, n, f, &mut rng);
         if enc.encode(&mut w, t, &data).unwrap().is_some() && f % 97 == 0 {
             samples.push((t, data));
         }

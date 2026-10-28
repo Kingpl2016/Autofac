@@ -121,10 +121,13 @@ name = "art-net-studio"
 version = "0.1.0"
 dependencies = [
  "artrec-core",
+ "dirs",
+ "fsutil",
  "host-core",
  "log",
  "netdev",
  "netif",
+ "parking_lot",
  "player",
  "recorder",
  "serde",
@@ -154,7 +157,6 @@ name = "artnet-net"
 version = "0.1.0"
 dependencies = [
  "artnet_protocol",
- "byteorder",
  "bytes",
  "divan",
  "serde",
@@ -177,7 +179,6 @@ dependencies = [
 name = "artrec-core"
 version = "0.1.0"
 dependencies = [
- "byteorder",
  "crc",
  "divan",
  "thiserror 2.0.21",
@@ -1568,6 +1569,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsutil"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2077,8 +2085,10 @@ dependencies = [
  "divan",
  "forwarding",
  "fs4",
+ "fsutil",
  "memory-stats",
  "netif",
+ "parking_lot",
  "player",
  "recorder",
  "rustc-hash",
@@ -2926,8 +2936,10 @@ dependencies = [
 name = "netdev"
 version = "0.1.0"
 dependencies = [
+ "fsutil",
  "futures-util",
  "keyring",
+ "parking_lot",
  "percent-encoding",
  "reqwest 0.12.28",
  "serde",
@@ -3489,6 +3501,7 @@ name = "player"
 version = "0.1.0"
 dependencies = [
  "artrec-core",
+ "base64 0.22.1",
  "bytes",
  "divan",
  "rayon",
@@ -3792,6 +3805,8 @@ dependencies = [
  "artnet-net",
  "artrec-core",
  "divan",
+ "fsutil",
+ "parking_lot",
  "serde",
  "serde_json",
  "signal-engine",
@@ -4426,10 +4441,12 @@ dependencies = [
 name = "settings"
 version = "0.1.0"
 dependencies = [
+ "fsutil",
  "serde",
  "serde_json",
  "signal-engine",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -4465,6 +4482,7 @@ name = "show-engine"
 version = "0.1.0"
 dependencies = [
  "calamine",
+ "fsutil",
  "serde",
  "serde_json",
  "symphonia",
@@ -4498,6 +4516,7 @@ version = "0.1.0"
 dependencies = [
  "artnet-net",
  "forwarding",
+ "parking_lot",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

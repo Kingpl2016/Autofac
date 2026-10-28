@@ -14,7 +14,9 @@
 //! 由测试在随机转发表上逐一比对保证。
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use forwarding::{
     offset_universe, ForwardDestination, ForwardMode, ForwardProtocol, ForwardingTable,
@@ -662,7 +664,7 @@ mod tests {
                         reference.allow(&d.id, r.target_universe, now, MIN_INTERVAL_MS_44HZ)
                     })
                     .collect();
-                let mut limiter = c.limiter.lock().unwrap();
+                let mut limiter = c.limiter.lock();
                 let got: Vec<bool> = c
                     .dests
                     .iter()

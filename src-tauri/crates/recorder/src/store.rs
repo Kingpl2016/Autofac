@@ -16,8 +16,10 @@ use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 use std::thread::JoinHandle;
+
+use parking_lot::{Condvar, Mutex, MutexGuard};
 
 use artrec_core::{
     read_header_and_unis, ArtRecError, ArtRecWriter, ChunkHdr, FrameIndex, CHUNKHDR_SIZE,
@@ -94,14 +96,15 @@ struct FlushShared {
 }
 
 impl FlushShared {
-    /// 加锁；锁中毒时恢复内部值（刷盘状态在任何时刻都自洽，不因别处 panic 而失效）。
+    /// 加锁（parking_lot 不毒化；刷盘状态在任何时刻都自洽，不因别处 panic 而失效）。
     fn lock(&self) -> MutexGuard<'_, FlushState> {
-        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+        self.state.lock()
     }
 
     /// 在条件变量上等待一次。
-    fn wait<'a>(&self, guard: MutexGuard<'a, FlushState>) -> MutexGuard<'a, FlushState> {
-        self.cv.wait(guard).unwrap_or_else(PoisonError::into_inner)
+    fn wait<'a>(&self, mut guard: MutexGuard<'a, FlushState>) -> MutexGuard<'a, FlushState> {
+        self.cv.wait(&mut guard);
+        guard
     }
 }
 
@@ -753,7 +756,7 @@ pub fn recover_orphans(dir: &Path) -> Vec<RecoveryOutcome> {
         .collect()
 }
 
-#[allow(clippy::too_many_lines)] // 恢复流程是一条线性的"校验 → 截断 → 补尾 → 改名"，拆分反而难读
+// 恢复流程是一条线性的"校验 → 截断 → 补尾 → 改名"，拆分反而难读
 fn recover_one(part: &Path) -> Result<RecoveryOutcome, StoreError> {
     let dir = part.parent().unwrap_or_else(|| Path::new("."));
     let name = part

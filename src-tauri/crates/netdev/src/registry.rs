@@ -1,7 +1,9 @@
 //! 已保存设备的注册表：设备清单持久化为 JSON，Token 交给 [`SecretStore`]。
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use parking_lot::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
@@ -96,7 +98,7 @@ impl DeviceRegistry {
     }
 
     fn lock(&self) -> MutexGuard<'_, Vec<SavedDevice>> {
-        self.devices.lock().unwrap_or_else(PoisonError::into_inner)
+        self.devices.lock()
     }
 
     /// 原子写盘：先写临时文件再重命名。
@@ -106,9 +108,7 @@ impl DeviceRegistry {
         }
         let text = serde_json::to_string_pretty(&FileData { devices: devices.to_vec() })
             .map_err(|e| NetdevError::LocalIo(e.to_string()))?;
-        let tmp: &Path = &self.path.with_extension("json.tmp");
-        std::fs::write(tmp, text)?;
-        std::fs::rename(tmp, &self.path)?;
+        fsutil::write_atomic(&self.path, text.as_bytes())?;
         Ok(())
     }
 

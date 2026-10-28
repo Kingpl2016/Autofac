@@ -16,8 +16,10 @@
 //!    与原逐帧处理等价。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+
+use parking_lot::Mutex;
 
 use artnet_net::{Bytes, DmxFrame, Protocol};
 use signal_engine::SignalEngine;
@@ -110,15 +112,14 @@ impl IngestPipeline {
             for frame in frames.iter().filter(keep) {
                 let now_ms = self.now_ms(frame);
                 engine.ingest(frame, now_ms);
-                if routes.has_routes(frame.universe) {
-                    if let Some(data) = engine.merged_bytes(frame.universe) {
+                if routes.has_routes(frame.universe)
+                    && let Some(data) = engine.merged_bytes(frame.universe) {
                         pending.push(Pending {
                             universe: frame.universe,
                             data,
                             now_ms,
                         });
                     }
-                }
             }
         }
         // 解析路由 + 限速，与回放共用同一分发器
@@ -159,8 +160,10 @@ impl IngestPipeline {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Mutex, Weak};
+    use std::sync::{Arc, Weak};
     use std::time::{Duration, Instant};
+
+    use parking_lot::Mutex;
 
     use artnet_net::artnet::{self, ArtNetPacket};
     use artnet_net::socket::DmxSender;
@@ -284,7 +287,7 @@ mod tests {
         assert_eq!(jobs[0].data.as_ptr(), a.data.as_ptr(), "单来源零拷贝");
         assert_eq!(jobs[2].data, vec![50, 200, 7]);
         assert_eq!(
-            r.engine.lock().unwrap().merged(3),
+            r.engine.lock().merged(3),
             Some(&[50u8, 200, 7][..])
         );
     }
@@ -308,7 +311,7 @@ mod tests {
         assert_eq!(sent, vec![0, 25], "10ms 与 30ms 的帧距上次放行不足 22ms");
         assert_eq!(r.dispatcher.output_stats().snapshot().dropped, 2);
         assert_eq!(
-            r.engine.lock().unwrap().total_packets(),
+            r.engine.lock().total_packets(),
             4,
             "被限速的帧照常摄取"
         );
@@ -330,7 +333,7 @@ mod tests {
             .process_batch(&[frame(&r, Protocol::ArtNet, 9, 1, &[1, 2], 0)], &mut jobs);
         assert!(jobs.is_empty());
         assert_eq!(r.sink.0.load(Ordering::Relaxed), 1);
-        assert_eq!(r.engine.lock().unwrap().merged(9), Some(&[1u8, 2][..]));
+        assert_eq!(r.engine.lock().merged(9), Some(&[1u8, 2][..]));
     }
 
     /// sACN 关闭时 sACN 帧既不摄取、不旁路，也不转发；Art-Net 帧不受影响。
@@ -347,7 +350,7 @@ mod tests {
             &mut jobs,
         );
         assert_eq!(r.sink.0.load(Ordering::Relaxed), 1);
-        let e = r.engine.lock().unwrap();
+        let e = r.engine.lock();
         assert!(e.merged(5).is_none(), "sACN 帧不应被摄取");
         assert!(e.merged(6).is_some());
         drop(e);
@@ -376,7 +379,7 @@ mod tests {
                 .process_batch(&[frame(&r, Protocol::ArtNet, 1, 1, &[1], 0)], &mut jobs);
             assert!(jobs.is_empty());
             assert_eq!(r.sink.0.load(Ordering::Relaxed), 0);
-            assert_eq!(r.engine.lock().unwrap().total_packets(), 0);
+            assert_eq!(r.engine.lock().total_packets(), 0);
         }
         r.mode.set_playback(false);
         r.mode.set_player(false);

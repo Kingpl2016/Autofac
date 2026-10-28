@@ -114,7 +114,7 @@ fn color(c: [u8; 3]) -> [f64; 3] {
 }
 
 /// 在颜色列表上循环插值：`pos` 取 `[0,1)`，列表首尾相接。
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names, reason = "插值数学记法 n/i/t 等为习惯命名")]
 fn cycle_color(colors: &[[u8; 3]], pos: f64) -> [f64; 3] {
     let n = colors.len();
     if n == 1 {

@@ -742,7 +742,7 @@ mod tests {
     use super::*;
     use crate::compile::Slot;
 
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(clippy::unnecessary_wraps, reason = "测试辅助：与被测 API 的 Option 签名对齐")]
     fn slot(offset: u16) -> Option<Slot> {
         Some(Slot { offset, width: 1, big_endian: true })
     }

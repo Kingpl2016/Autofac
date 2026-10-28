@@ -612,11 +612,10 @@ impl FixtureModel {
         if self.name.trim().is_empty() {
             return Err(FixtureError::EmptyName);
         }
-        if let Some(m) = self.matrix {
-            if m.cols == 0 || m.rows == 0 || m.heads() > MAX_HEADS {
+        if let Some(m) = self.matrix
+            && (m.cols == 0 || m.rows == 0 || m.heads() > MAX_HEADS) {
                 return Err(FixtureError::BadMatrix);
             }
-        }
         if self.modes.len() > MAX_MODES {
             return Err(FixtureError::BadMode { id: String::new() });
         }
@@ -730,11 +729,10 @@ fn validate_capabilities(p: &FixtureProperty) -> Result<(), FixtureError> {
         if prev_end.is_some_and(|e| lo <= e) {
             return Err(bad());
         }
-        if let Some([a, b]) = c.physical {
-            if !a.is_finite() || !b.is_finite() {
+        if let Some([a, b]) = c.physical
+            && (!a.is_finite() || !b.is_finite()) {
                 return Err(bad());
             }
-        }
         prev_end = Some(hi);
     }
     Ok(())
@@ -877,17 +875,17 @@ pub fn reassign_sequential(props: &mut [FixtureProperty]) {
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde skip_serializing_if 要求 fn(&T) -> bool 签名")]
 fn is_false(v: &bool) -> bool {
     !*v
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde skip_serializing_if 要求 fn(&T) -> bool 签名")]
 fn is_zero(v: &u16) -> bool {
     *v == 0
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde skip_serializing_if 要求 fn(&T) -> bool 签名")]
 fn is_one(v: &f64) -> bool {
     (*v - 1.0).abs() < f64::EPSILON
 }

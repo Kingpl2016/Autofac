@@ -5,10 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 description = "DMX 接收管线：Universe 状态、多源合并（HTP/LTP/Priority）、源超时与统计"
 
-[lints.clippy]
-pedantic = "warn"
-doc_markdown = "allow"
-cast_possible_truncation = "allow"
+[lints]
+workspace = true
 
 [dependencies]
 serde = { workspace = true }

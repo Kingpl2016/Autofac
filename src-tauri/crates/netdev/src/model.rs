@@ -121,8 +121,7 @@ pub struct UploadReceipt {
 }
 
 /// 设备配置（`GET /api/config`）。
-// 与固件 JSON 一一对应，布尔字段多属正常。
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools, reason = "与固件 JSON 一一对应，布尔字段多属正常")]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DeviceConfig {

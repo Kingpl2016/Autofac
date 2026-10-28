@@ -104,12 +104,7 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 ///
 /// 写临时文件或重命名失败返回 [`io::Error`]，此时目标文件保持原样。
 fn write_atomic(target: &Path, bytes: &[u8]) -> io::Result<()> {
-    let tmp = with_suffix(target, ".tmp");
-    let result = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, target));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    fsutil::write_atomic(target, bytes)
 }
 
 /// 给定 `.artrec` 路径，返回其 sidecar 路径（追加 `.json`）。
@@ -387,8 +382,10 @@ mod tests {
     #[test]
     fn overview_cache_write_failure_is_reported() {
         let dir = TempDir::new("ovw-cache-fail");
-        // 父目录不存在：写临时文件失败
-        let art = dir.path().join("missing").join("x.artrec");
+        // 父路径是文件而非目录：建目录与写入都无法进行，失败应被上报
+        let blocker = dir.path().join("blocker");
+        std::fs::write(&blocker, b"x").unwrap();
+        let art = blocker.join("x.artrec");
         assert!(write_overview_cache(&art, b"x").is_err());
     }
 }

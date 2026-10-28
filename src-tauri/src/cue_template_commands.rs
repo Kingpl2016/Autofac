@@ -94,14 +94,7 @@ pub fn check_json(text: &str) -> Result<(), String> {
 ///
 /// 创建目录、写临时文件或改名失败时返回底层 IO 错误。
 pub fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    fs::write(&tmp, text)?;
-    fs::rename(&tmp, path)
+    fsutil::write_atomic(path, text.as_bytes())
 }
 
 /// 检查导入 / 导出路径：必须以 `.json` 结尾。

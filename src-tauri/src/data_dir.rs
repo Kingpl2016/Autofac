@@ -227,16 +227,17 @@ pub fn legacy_dirs(identifier: &str) -> Vec<PathBuf> {
     dirs
 }
 
-/// 旧版本默认节目库目录（“文档”下），不依赖 `AppHandle`。
+/// 旧版本默认节目库目录（系统“文档”文件夹下），不依赖 `AppHandle`。
+///
+/// 经 [`dirs::document_dir`] 定位“文档”，能正确处理 Windows 上“文档”被重定向到
+/// OneDrive / 其它盘，以及 Linux 的 XDG 用户目录设置。
 ///
 /// # Returns
 ///
-/// 目录路径（不保证存在）；找不到用户目录时为 `None`。
+/// 目录路径（不保证存在）；系统未提供“文档”目录时为 `None`。
 #[must_use]
 pub fn legacy_recordings_dir() -> Option<PathBuf> {
-    let home = if cfg!(windows) { std::env::var_os("USERPROFILE") } else { std::env::var_os("HOME") };
-    home.filter(|v| !v.is_empty())
-        .map(|h| PathBuf::from(h).join("Documents").join(LEGACY_RECORDINGS_DIR))
+    dirs::document_dir().map(|d| d.join(LEGACY_RECORDINGS_DIR))
 }
 
 /// 把旧位置里的设置类文件复制到新位置（只做一次）。

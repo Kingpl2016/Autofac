@@ -15,7 +15,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::io;
 use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
+
+use parking_lot::{Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use artnet_net::{artnet, sacn};
@@ -179,13 +181,12 @@ struct Shared {
 
 impl Shared {
     fn lock_state(&self) -> MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+        self.state.lock()
     }
 
     fn is_running(&self) -> bool {
         self.run
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
             .is_some()
     }
 
@@ -205,8 +206,7 @@ impl Shared {
         self.errors.fetch_add(1, Ordering::Relaxed);
         *self
             .last_error
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(message.to_string());
+            .lock() = Some(message.to_string());
     }
 }
 
@@ -395,8 +395,7 @@ impl SignalSender {
         let mut run = self
             .shared
             .run
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+            .lock();
         if run.is_some() {
             return Ok(()); // 并发的另一次 start 抢先了
         }
@@ -406,8 +405,7 @@ impl SignalSender {
         *self
             .shared
             .last_error
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = None;
+            .lock() = None;
         self.shared.lock_state().clock.reset();
 
         let (stop, stop_rx) = oneshot::channel();
@@ -424,7 +422,6 @@ impl SignalSender {
             .shared
             .run
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
             .take();
         if let Some(run) = run {
             let _ = run.stop.send(());
@@ -446,7 +443,6 @@ impl SignalSender {
             .shared
             .last_error
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
             .clone();
         let st = self.shared.lock_state();
         SenderStatus {
@@ -508,11 +504,10 @@ struct ErrorLimiter {
 
 impl ErrorLimiter {
     fn allow(&mut self, message: &str, now: Instant) -> bool {
-        if let Some((last_message, at)) = &self.last {
-            if last_message == message && now.duration_since(*at) < ERROR_REPEAT_WINDOW {
+        if let Some((last_message, at)) = &self.last
+            && last_message == message && now.duration_since(*at) < ERROR_REPEAT_WINDOW {
                 return false;
             }
-        }
         self.last = Some((message.to_string(), now));
         true
     }
@@ -532,7 +527,7 @@ impl RateMeter {
         }
     }
 
-    #[allow(clippy::cast_sign_loss)] // 频率非负
+    // 频率非负
     fn tick(&mut self, now: Instant, out: &AtomicU32) {
         self.ticks += 1;
         let elapsed = now.duration_since(self.started);
@@ -714,7 +709,7 @@ mod tests {
     fn sender() -> (SignalSender, Events) {
         let events: Events = Arc::default();
         let sink = events.clone();
-        let emit: EventSink = Arc::new(move |e| sink.lock().unwrap().push(e));
+        let emit: EventSink = Arc::new(move |e| sink.lock().push(e));
         (SignalSender::new(Handle::current(), emit), events)
     }
 
@@ -1019,14 +1014,13 @@ mod tests {
         recv_n(&sock, 4).await;
         tokio::time::sleep(Duration::from_millis(500)).await;
         s.set_preview(Some(50)); // 不在发送范围内
-        let before = events.lock().unwrap().len();
+        let before = events.lock().len();
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let after = events.lock().unwrap().len();
+        let after = events.lock().len();
         s.stop().await;
 
         let previews: Vec<_> = events
             .lock()
-            .unwrap()
             .iter()
             .filter_map(|e| match e {
                 SenderEvent::Preview { universe, data } => Some((*universe, data.clone())),

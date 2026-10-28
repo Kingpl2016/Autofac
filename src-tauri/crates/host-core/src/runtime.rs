@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
@@ -274,11 +275,10 @@ impl Runtime {
     pub fn new(cfg: &AppSettings, names_path: PathBuf, forwarding_path: PathBuf) -> Self {
         let engine = SignalEngine::new(cfg.merge.mode, u64::from(cfg.merge.source_timeout_ms));
         let mut registry = DeviceRegistry::new();
-        if let Ok(text) = std::fs::read_to_string(&names_path) {
-            if let Ok(names) = serde_json::from_str::<HashMap<String, String>>(&text) {
+        if let Ok(text) = std::fs::read_to_string(&names_path)
+            && let Ok(names) = serde_json::from_str::<HashMap<String, String>>(&text) {
                 registry.load_custom_names(names);
             }
-        }
         let forwarding = std::fs::read_to_string(&forwarding_path)
             .ok()
             .and_then(|t| ForwardingTable::from_json(&t).ok())
@@ -542,11 +542,13 @@ impl Runtime {
     ///
     /// * `table` - 新的转发表。
     pub fn save_forwarding(&self, table: ForwardingTable) {
-        if let Ok(text) = table.to_json() {
-            if let Some(parent) = self.forwarding_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+        match table.to_json() {
+            Ok(text) => {
+                if let Err(e) = fsutil::write_atomic(&self.forwarding_path, text.as_bytes()) {
+                    tracing::warn!(error = %e, "转发表写盘失败");
+                }
             }
-            let _ = std::fs::write(&self.forwarding_path, text);
+            Err(e) => tracing::warn!(error = %e, "转发表序列化失败"),
         }
         self.dispatcher.set_table(table);
     }
@@ -688,11 +690,13 @@ impl Runtime {
         if let Ok(addr) = ip.parse::<IpAddr>() {
             let mut r = lock(&self.registry);
             r.set_custom_name(addr, name);
-            if let Ok(text) = serde_json::to_string_pretty(&r.custom_names()) {
-                if let Some(parent) = self.names_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+            match serde_json::to_string_pretty(&r.custom_names()) {
+                Ok(text) => {
+                    if let Err(e) = fsutil::write_atomic(&self.names_path, text.as_bytes()) {
+                        tracing::warn!(error = %e, "设备自定义名写盘失败");
+                    }
                 }
-                let _ = std::fs::write(&self.names_path, text);
+                Err(e) => tracing::warn!(error = %e, "设备自定义名序列化失败"),
             }
         }
     }
@@ -934,11 +938,10 @@ impl Runtime {
                 }
             }
 
-            if stream_on {
-                if let Some(frame) = live.encode() {
+            if stream_on
+                && let Some(frame) = live.encode() {
                     self.stream.send(frame);
                 }
-            }
             // 来源统计（录制来源选择器用，无需跟随 UI 刷新率）
             if let Some(sources) = sources {
                 last_sources_emit = now;

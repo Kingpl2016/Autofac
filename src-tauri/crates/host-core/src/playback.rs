@@ -24,8 +24,10 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
+
+use parking_lot::Mutex;
 
 use artrec_core::ArtRecReader;
 use player::{PlayState, Player, PlayerConfig, DEFAULT_KEEPALIVE_US};
@@ -377,11 +379,10 @@ impl PlaybackController {
             }
             changed
         };
-        if changed {
-            if let Some(stream) = lock(&self.inner.stream).as_ref() {
+        if changed
+            && let Some(stream) = lock(&self.inner.stream).as_ref() {
                 stream.request_full();
             }
-        }
     }
 
     fn send(&self, cmd: Cmd) -> Result<(), String> {
@@ -1771,7 +1772,6 @@ mod tests {
             .inner
             .timing
             .lock()
-            .unwrap()
             .take()
             .expect("回放线程退出时应记录计时统计");
         println!(

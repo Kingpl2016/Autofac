@@ -11,10 +11,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use host_core::ArtnetCoreExt;
+use parking_lot::{Mutex, MutexGuard};
 use recorder::{bake_file, BakeError, BakeReport, BakeSpec};
 use serde::Serialize;
 use show_engine::{compile, ShowProject, OUTPUT_FPS};
@@ -90,16 +91,47 @@ impl ShowBakeState {
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
+    m.lock()
 }
 
-/// 把烘焙错误转成错误码 / 描述。
-fn bake_error_text(e: &BakeError) -> String {
-    match e {
-        BakeError::Empty => ERR_NOTHING_TO_BAKE.to_owned(),
-        BakeError::Cancelled => "cancelled".to_owned(),
-        BakeError::Encode(inner) => format!("encode_failed: {inner}"),
-        BakeError::Io(inner) => inner.to_string(),
+/// 烘焙失败原因（强类型；[`BakeFailure::code`] 给出与前端约定一致的错误码 / 描述）。
+#[derive(Debug)]
+enum BakeFailure {
+    /// 工程没有可烘焙内容（没有灯具或时长为 0）。
+    NothingToBake,
+    /// 工程文件读不到或无法解析。
+    InvalidProject,
+    /// 被更新的保存取消。
+    Cancelled,
+    /// 编码或文件系统错误（已带前缀的描述）。
+    Failed(String),
+}
+
+impl BakeFailure {
+    /// 前端错误码 / 描述。
+    ///
+    /// # Returns
+    ///
+    /// 与历史一致的字符串：`nothing_to_bake` / `invalid_project` / `cancelled`，
+    /// 或 `encode_failed: …` / IO 错误描述。
+    fn code(&self) -> String {
+        match self {
+            BakeFailure::NothingToBake => ERR_NOTHING_TO_BAKE.to_owned(),
+            BakeFailure::InvalidProject => ERR_INVALID_PROJECT.to_owned(),
+            BakeFailure::Cancelled => "cancelled".to_owned(),
+            BakeFailure::Failed(msg) => msg.clone(),
+        }
+    }
+}
+
+impl From<BakeError> for BakeFailure {
+    fn from(e: BakeError) -> Self {
+        match e {
+            BakeError::Empty => BakeFailure::NothingToBake,
+            BakeError::Cancelled => BakeFailure::Cancelled,
+            BakeError::Encode(inner) => BakeFailure::Failed(format!("encode_failed: {inner}")),
+            BakeError::Io(inner) => BakeFailure::Failed(inner.to_string()),
+        }
     }
 }
 
@@ -119,15 +151,15 @@ fn bake_error_text(e: &BakeError) -> String {
 ///
 /// 工程文件读不到 / 无法解析（`invalid_project`）、没有可烘焙内容（`nothing_to_bake`）、
 /// 被取消（`cancelled`），或编码 / 文件系统错误描述。
-pub fn bake_project(
+fn bake_project(
     artrec: &Path,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(f32),
-) -> Result<BakeReport, String> {
+) -> Result<BakeReport, BakeFailure> {
     let text = std::fs::read_to_string(recorder::show_project_path(artrec))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| BakeFailure::Failed(e.to_string()))?;
     let project: ShowProject =
-        serde_json::from_str(&text).map_err(|_| ERR_INVALID_PROJECT.to_owned())?;
+        serde_json::from_str(&text).map_err(|_| BakeFailure::InvalidProject)?;
     let compiled = compile(&project);
     let universes = compiled.universes().to_vec();
     let mut frames = compiled.new_frames();
@@ -144,7 +176,7 @@ pub fn bake_project(
             buffer.copy_from_slice(&frame.data);
         }
     })
-    .map_err(|e| bake_error_text(&e))
+    .map_err(BakeFailure::from)
 }
 
 /// 该节目是否正被回放打开（节目库替换节目前也用它检查，Windows 上无法替换被打开的文件）。
@@ -231,11 +263,11 @@ fn run_one(app: &AppHandle, artrec: &Path, cancel: &Arc<AtomicBool>) {
             let _ = app.emit("show:bake", &ev);
         }
         // 被更新的保存取消：新的烘焙会接着汇报
-        Err(e) if e == "cancelled" => {}
+        Err(BakeFailure::Cancelled) => {}
         Err(e) => {
-            let status = if e == ERR_NOTHING_TO_BAKE { "skipped" } else { "failed" };
+            let status = if matches!(e, BakeFailure::NothingToBake) { "skipped" } else { "failed" };
             let mut ev = BakeEvent::new(artrec, status);
-            ev.reason = Some(e);
+            ev.reason = Some(e.code());
             let _ = app.emit("show:bake", &ev);
         }
     }
@@ -316,8 +348,8 @@ mod tests {
         // 静止段不写帧：黑 → 红 → 黑 + 收尾帧
         assert_eq!(report.frames, 4);
 
-        let list = list_library_uncached(&tmp.0);
-        assert!(list[0].editable && list[0].exported && list[0].valid);
+        let entries = list_library_uncached(&tmp.0);
+        assert!(entries[0].editable && entries[0].exported && entries[0].valid);
     }
 
     #[test]
@@ -325,7 +357,7 @@ mod tests {
         let tmp = Tmp::new("empty");
         let artrec = saved(&tmp.0, r#"{"durationMs":2000}"#);
         let err = bake_project(&artrec, &AtomicBool::new(false), &mut |_| {}).unwrap_err();
-        assert_eq!(err, ERR_NOTHING_TO_BAKE);
+        assert_eq!(err.code(), ERR_NOTHING_TO_BAKE);
         assert!(!artrec.exists());
     }
 
@@ -335,7 +367,7 @@ mod tests {
         let artrec = saved(&tmp.0, "{}");
         // 合法 JSON 但缺少必需字段
         assert_eq!(
-            bake_project(&artrec, &AtomicBool::new(false), &mut |_| {}).unwrap_err(),
+            bake_project(&artrec, &AtomicBool::new(false), &mut |_| {}).unwrap_err().code(),
             ERR_INVALID_PROJECT
         );
         let ghost = tmp.0.join("ghost.artrec");
@@ -349,7 +381,7 @@ mod tests {
         bake_project(&artrec, &AtomicBool::new(false), &mut |_| {}).unwrap();
         let before = std::fs::read(&artrec).unwrap();
         let err = bake_project(&artrec, &AtomicBool::new(true), &mut |_| {}).unwrap_err();
-        assert_eq!(err, "cancelled");
+        assert_eq!(err.code(), "cancelled");
         assert_eq!(std::fs::read(&artrec).unwrap(), before);
     }
 

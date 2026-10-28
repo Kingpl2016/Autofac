@@ -45,7 +45,7 @@ thread_local! {
 /// # Returns
 ///
 /// 版本字符串的长度；内容在输出缓冲里（见 [`se_out_ptr`]）。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_version() -> u32 {
     put_out(env!("CARGO_PKG_VERSION").as_bytes())
 }
@@ -59,7 +59,7 @@ pub extern "C" fn se_version() -> u32 {
 /// # Returns
 ///
 /// 缓冲起始地址；`len` 为 0 时返回一个合法的非空悬垂地址。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_alloc(len: usize) -> *mut u8 {
     let mut buf = Vec::<u8>::with_capacity(len);
     let ptr = buf.as_mut_ptr();
@@ -77,7 +77,7 @@ pub extern "C" fn se_alloc(len: usize) -> *mut u8 {
 /// # Safety
 ///
 /// `ptr` 与 `len` 必须来自同一次 [`se_alloc`] 调用，且只能释放一次。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn se_free(ptr: *mut u8, len: usize) {
     if !ptr.is_null() {
         // SAFETY: 由调用方保证 `ptr`/`len` 来自 `se_alloc`（容量即 `len`）。
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn se_free(ptr: *mut u8, len: usize) {
 /// # Safety
 ///
 /// `ptr..ptr+len` 必须是可读的、已初始化的内存。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn se_load(ptr: *const u8, len: usize) -> u32 {
     // SAFETY: 由调用方保证区间可读。
     let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
@@ -139,7 +139,7 @@ pub fn load_bytes(bytes: &[u8]) -> u32 {
 /// # Arguments
 ///
 /// * `handle` - [`se_load`] 返回的句柄；无效句柄被忽略。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_drop(handle: u32) {
     STATE.with_borrow_mut(|s| {
         if let Some(slot) = handle.checked_sub(1).and_then(|i| s.slots.get_mut(i as usize)) {
@@ -158,7 +158,7 @@ pub extern "C" fn se_drop(handle: u32) {
 ///
 /// JSON `{"fixtures":[...],"universes":[...],"warnings":[...]}` 的长度（在输出缓冲里）；
 /// 句柄无效时为 0。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_fixture_ids(handle: u32) -> u32 {
     let json = with(handle, |l| {
         let ids: Vec<&str> = l.show.fixture_ids().collect();
@@ -182,7 +182,7 @@ pub extern "C" fn se_fixture_ids(handle: u32) -> u32 {
 /// # Returns
 ///
 /// 预览色的字节数（灯具数 × 3）；句柄无效时为 0。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_evaluate(handle: u32, t_ms: f64) -> u32 {
     with_mut(handle, |l| {
         let t = if t_ms.is_finite() { t_ms.floor() as i64 } else { 0 };
@@ -205,7 +205,7 @@ pub extern "C" fn se_evaluate(handle: u32, t_ms: f64) -> u32 {
 /// # Returns
 ///
 /// 缓冲地址；句柄无效时为空指针。在下一次求值前有效。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_preview_ptr(handle: u32) -> *const u8 {
     with(handle, |l| l.preview.as_ptr()).unwrap_or(std::ptr::null())
 }
@@ -220,7 +220,7 @@ pub extern "C" fn se_preview_ptr(handle: u32) -> *const u8 {
 /// # Returns
 ///
 /// 缓冲地址；越界或句柄无效时为空指针。在下一次求值前有效。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_frame_ptr(handle: u32, index: u32) -> *const u8 {
     with(handle, |l| {
         l.frames
@@ -248,7 +248,7 @@ pub extern "C" fn se_frame_ptr(handle: u32, index: u32) -> *const u8 {
 /// # Safety
 ///
 /// `ptr..ptr+len` 必须是可读的、已初始化的内存。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn se_sample_num(ptr: *const u8, len: usize, u_ms: f64, len_ms: f64) -> f64 {
     // SAFETY: 由调用方保证区间可读。
     let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
@@ -276,7 +276,7 @@ pub fn sample_num_bytes(bytes: &[u8], u_ms: f64, len_ms: f64) -> f64 {
 /// # Returns
 ///
 /// 地址；在下一次写入变长结果前有效。
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn se_out_ptr() -> *const u8 {
     STATE.with_borrow(|s| s.out.as_ptr())
 }

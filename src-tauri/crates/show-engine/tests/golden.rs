@@ -2,8 +2,6 @@
 //!
 //! 同一份 JSON 也被前端 `color.golden.test.ts` 读取，保证 Rust 求值与 TS 预览一致。
 
-#![allow(clippy::too_many_lines)]
-
 use serde_json::{json, Value};
 use show_engine::{compile, ShowProject};
 

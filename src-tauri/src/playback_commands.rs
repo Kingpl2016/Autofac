@@ -10,15 +10,16 @@
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
+use std::sync::LazyLock;
+
+use parking_lot::{Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use artrec_core::ArtRecReader;
 use player::{Overview, ScanError, SeriesError};
-use tauri::{AppHandle, Emitter as _};
+use tauri::AppHandle;
 
 use host_core::playback::{PlaybackStatus, RepeatMode};
-use host_core::recording::Emitter;
 use host_core::{ArtnetCoreExt, DispatchTarget};
 
 use crate::recording_commands::resolved_dir;
@@ -42,13 +43,13 @@ pub const ERR_SHOW_ACTIVE: &str = host_core::playback::ERR_SHOW_ACTIVE;
 /// 只服务于本文件与 `recording_commands` 两处命令，没有必要扩大到应用壳。
 static SESSION_GATE: Mutex<()> = Mutex::new(());
 
-/// 取得 [`SESSION_GATE`]（锁被毒化时照常取用：它不保护任何数据，只用于串行化）。
+/// 取得 [`SESSION_GATE`]（parking_lot 锁不毒化；它不保护任何数据，只用于串行化）。
 ///
 /// # Returns
 ///
 /// 守卫；在其作用域内其它"打开节目 / 开始录制"命令会等待。
 pub(crate) fn session_gate() -> MutexGuard<'static, ()> {
-    SESSION_GATE.lock().unwrap_or_else(PoisonError::into_inner)
+    SESSION_GATE.lock()
 }
 
 /// 解析并校验节目路径：必须是录制目录直接子级的 `.artrec`。
@@ -112,12 +113,7 @@ fn open_blocking(
         .filter(|n| !n.trim().is_empty())
         .or_else(|| file.file_stem().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_default();
-    let emit: Emitter = Arc::new({
-        let app = app.clone();
-        move |name, payload| {
-            let _ = app.emit(name, payload);
-        }
-    });
+    let emit = crate::app_emitter(app);
     let library_dir = resolved_dir(app);
     let _gate = session_gate();
     app.artnet_core()
@@ -409,9 +405,9 @@ static READERS: LazyLock<Mutex<ReaderLru>> =
 /// 读取器缓存的内容：(键, 模板读取器)，最近使用的在前。
 type ReaderLru = Vec<(ReaderKey, ArtRecReader<Detached>)>;
 
-/// 加锁读取器缓存（锁被毒化时照常取用：缓存项总是完整构造后才放入）。
+/// 加锁读取器缓存（parking_lot 锁不毒化；缓存项总是完整构造后才放入）。
 fn readers() -> MutexGuard<'static, ReaderLru> {
-    READERS.lock().unwrap_or_else(PoisonError::into_inner)
+    READERS.lock()
 }
 
 /// 打开节目供概览 / 曲线扫描使用：命中缓存时只打开文件并共享已解析的帧索引，
@@ -526,13 +522,11 @@ mod tests {
     };
 
     /// 串行化会访问进程级读取器缓存的测试（避免并行测试互相淘汰缓存项）。
-    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static SERIAL: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
-    /// 取得测试串行锁（前一个测试失败导致毒化时照常取用）。
-    fn serial() -> std::sync::MutexGuard<'static, ()> {
-        SERIAL
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    /// 取得测试串行锁。
+    fn serial() -> parking_lot::MutexGuard<'static, ()> {
+        SERIAL.lock()
     }
 
     /// 测试用临时目录（作用域结束时删除）。

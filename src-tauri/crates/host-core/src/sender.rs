@@ -13,8 +13,10 @@
 use std::future::Future;
 use std::io;
 use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use arc_swap::ArcSwapOption;
 use artnet_net::socket::DmxSender;

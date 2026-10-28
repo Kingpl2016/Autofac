@@ -5,8 +5,8 @@
 //! `import_failed:<open|no_models>`、`builtin_readonly`、`not_found`、`invalid_model:<原因>`、`io`。
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
+use parking_lot::Mutex;
 use serde::Serialize;
 use show_engine::fixture::{
     import_ofl, import_xlsx, FixtureLibrary, FixtureModel, ImportError, ImportWarning,
@@ -60,11 +60,8 @@ impl FixtureState {
     ///
     /// `f` 的返回值。
     fn with<T>(&self, f: impl FnOnce(&mut FixtureLibrary) -> T) -> T {
-        // 锁被毒化只可能来自此前某次操作 panic；库本身是整体替换的，数据仍然一致
-        let mut guard = self
-            .library
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // parking_lot 锁不毒化；库总是整体替换，即便某次操作 panic 数据也保持一致
+        let mut guard = self.library.lock();
         f(&mut guard)
     }
 }

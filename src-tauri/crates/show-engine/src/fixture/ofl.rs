@@ -335,7 +335,7 @@ impl<'a> Context<'a> {
         alias.to_owned()
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, reason = "OFL 属性解析需透传多个解析上下文")]
     fn property(
         &self,
         key: &str,
@@ -503,13 +503,12 @@ impl<'a> Context<'a> {
         for (start_key, value) in cap {
             let Some(prefix) = start_key.strip_suffix("Start") else { continue };
             let end = cap.get(&format!("{prefix}End"));
-            if let (Some((a, ua)), Some((b, ub))) = (entity(value), end.and_then(entity)) {
-                if ua == ub {
+            if let (Some((a, ua)), Some((b, ub))) = (entity(value), end.and_then(entity))
+                && ua == ub {
                     physical = Some([a, b]);
                     unit = ua;
                     break;
                 }
-            }
         }
         let color = cap
             .get("colors")

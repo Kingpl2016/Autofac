@@ -3,7 +3,8 @@
 //! Token 永远不写入注册表 JSON、日志或返回给前端的数据。
 
 use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+
+use parking_lot::Mutex;
 
 use crate::error::{NetdevError, Result};
 
@@ -92,19 +93,16 @@ pub struct MemoryStore {
 
 impl SecretStore for MemoryStore {
     fn get(&self, id: &str) -> Result<Option<String>> {
-        Ok(self.map.lock().unwrap_or_else(PoisonError::into_inner).get(id).cloned())
+        Ok(self.map.lock().get(id).cloned())
     }
 
     fn set(&self, id: &str, token: &str) -> Result<()> {
-        self.map
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(id.to_string(), token.to_string());
+        self.map.lock().insert(id.to_string(), token.to_string());
         Ok(())
     }
 
     fn delete(&self, id: &str) -> Result<()> {
-        self.map.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        self.map.lock().remove(id);
         Ok(())
     }
 }

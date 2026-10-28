@@ -5,12 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 description = "应用配置模型、持久化与校验（网络/协议/显示/合并/录制/更新）"
 
-[lints.clippy]
-pedantic = "warn"
-doc_markdown = "allow"
+[lints]
+workspace = true
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 signal-engine = { path = "../signal-engine" }
+fsutil = { path = "../fsutil" }

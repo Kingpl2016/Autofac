@@ -29,10 +29,11 @@
 //! 即求值时刻为 `位置 - latencyCompMs`。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use host_core::playback::normalize_target;
+use parking_lot::{Mutex, MutexGuard};
 use host_core::show_output::{OutputHandle, ShowOutput};
 use host_core::{ArtnetCoreExt, DispatchTarget};
 use serde::Serialize;
@@ -88,6 +89,7 @@ pub enum Transport {
 /// `show:state` 事件载荷与各命令的返回值。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(clippy::struct_excessive_bools, reason = "面向前端的播放状态 DTO，各布尔语义独立")]
 pub struct ShowState {
     /// 是否已加载工程。
     pub loaded: bool,
@@ -118,6 +120,7 @@ pub struct ShowState {
 }
 
 /// 传输状态机与工程快照。
+#[expect(clippy::struct_excessive_bools, reason = "内部传输状态机，布尔标志语义独立")]
 struct Control {
     show: Option<Arc<CompiledShow>>,
     target: Arc<DispatchTarget>,
@@ -238,15 +241,14 @@ impl Control {
             None => self.base_ms,
         };
         // A-B 循环：从区间终点之前开始播放时，到终点后回到起点（从终点之后开始则照常播完）
-        if let Some((a, b)) = self.loop_range {
-            if self.base_ms < b && raw >= b {
+        if let Some((a, b)) = self.loop_range
+            && self.base_ms < b && raw >= b {
                 let wrapped = a + (raw - b) % (b - a);
                 self.base_ms = wrapped;
                 self.origin = Some(now);
                 self.dirty = true;
                 return wrapped;
             }
-        }
         if raw < duration {
             return raw.max(0);
         }
@@ -384,7 +386,7 @@ impl ShowRuntime {
 }
 
 fn lock(ctl: &Mutex<Control>) -> MutexGuard<'_, Control> {
-    ctl.lock().unwrap_or_else(PoisonError::into_inner)
+    ctl.lock()
 }
 
 /// 目标为转发表时返回启用的目的地个数；为路由表时返回启用的端口总数。
@@ -510,7 +512,7 @@ fn run_session(
             let target = ctl.target.clone();
             drop(ctl);
             if let (Some(show), Some(o)) = (show, out.as_ref()) {
-                send_blackout(o, &target, &show, &sleeper);
+                send_blackout(o, &target, &show, sleeper);
             }
             let mut ctl = lock(shared);
             if ctl.is_idle() {
@@ -533,7 +535,7 @@ fn run_session(
             let target = ctl.target.clone();
             drop(ctl);
             if let (Some(show), Some(o)) = (show, out.as_ref()) {
-                send_blackout(o, &target, &show, &sleeper);
+                send_blackout(o, &target, &show, sleeper);
             }
             let mut ctl = lock(shared);
             if !ctl.send_enabled {
@@ -592,7 +594,7 @@ fn run_session(
 }
 
 /// 发两帧黑场（间隔一个节拍），降低 UDP 丢包导致灯具残留的概率。
-fn send_blackout(out: &ShowOutput, target: &Arc<DispatchTarget>, show: &CompiledShow, sleeper: &SpinSleeper) {
+fn send_blackout(out: &ShowOutput, target: &Arc<DispatchTarget>, show: &CompiledShow, sleeper: SpinSleeper) {
     let mut fs = show.new_frames();
     show.blackout_into(&mut fs);
     for i in 0..2 {
@@ -642,8 +644,8 @@ fn parse_output_target(
         return Ok(DispatchTarget::default());
     }
     let mut value = target.clone();
-    if value.get("kind").and_then(serde_json::Value::as_str) == Some("routed") {
-        if let Some(obj) = value.as_object_mut() {
+    if value.get("kind").and_then(serde_json::Value::as_str) == Some("routed")
+        && let Some(obj) = value.as_object_mut() {
             obj.insert(
                 "universes".into(),
                 if universes.is_null() { serde_json::json!([]) } else { universes.clone() },
@@ -652,7 +654,6 @@ fn parse_output_target(
                 obj.insert("sync".into(), sync.clone());
             }
         }
-    }
     let target: DispatchTarget =
         serde_json::from_value(value).map_err(|_| ERR_BAD_TARGET.to_string())?;
     normalize_target(target)
@@ -894,7 +895,7 @@ mod tests {
     fn 节拍偏移按乘除计算而不累加取整() {
         assert_eq!(tick_offset(30), Duration::from_secs(1));
         assert_eq!(tick_offset(1), Duration::from_micros(33_333));
-        assert_eq!(tick_offset(3), Duration::from_micros(100_000));
+        assert_eq!(tick_offset(3), Duration::from_millis(100));
     }
 
     #[test]
@@ -1038,6 +1039,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::default_trait_access, reason = "由 with_table 签名推断 ForwardingTable")]
     fn 会话线程按节拍推送状态_停止后释放互斥标志() {
         use host_core::mode::RuntimeMode;
         use host_core::{Dispatcher, SenderSlot};
@@ -1051,7 +1053,7 @@ mod tests {
         let states = Arc::new(Mutex::new(Vec::<ShowState>::new()));
         let publisher: Publisher = {
             let states = states.clone();
-            Arc::new(move |s| states.lock().unwrap().push(s.clone()))
+            Arc::new(move |s| states.lock().push(s.clone()))
         };
         let rt = ShowRuntime::new();
         {
@@ -1067,7 +1069,6 @@ mod tests {
         std::thread::sleep(Duration::from_millis(400));
         let playing: Vec<i64> = states
             .lock()
-            .unwrap()
             .iter()
             .filter(|s| s.transport == Transport::Playing)
             .map(|s| s.position_ms)
@@ -1083,7 +1084,7 @@ mod tests {
         }
         assert!(!mode.is_show(), "停止后会话线程应收尾并释放标志");
         assert!(rt.lock().session.is_none());
-        let last = states.lock().unwrap().last().cloned().unwrap();
+        let last = states.lock().last().cloned().unwrap();
         assert_eq!(last.transport, Transport::Stopped);
         assert!(!last.outputting);
 
@@ -1101,6 +1102,7 @@ mod tests {
     }
 
     /// 测试用的输出句柄与运行模式。
+    #[expect(clippy::default_trait_access, reason = "由 with_table 签名推断 ForwardingTable")]
     fn test_handle() -> (OutputHandle, Arc<host_core::mode::RuntimeMode>) {
         use host_core::mode::RuntimeMode;
         use host_core::{Dispatcher, SenderSlot};
@@ -1140,7 +1142,7 @@ mod tests {
         let states = Arc::new(Mutex::new(Vec::<ShowState>::new()));
         let publisher: Publisher = {
             let states = states.clone();
-            Arc::new(move |s| states.lock().unwrap().push(s.clone()))
+            Arc::new(move |s| states.lock().push(s.clone()))
         };
         let rt = ShowRuntime::new();
         mode.set_recording(true);
@@ -1151,9 +1153,9 @@ mod tests {
             ensure_session(&rt, &mut ctl, &publisher, &handle).expect("输出关闭时录制中也能播放");
             ctl.play(Instant::now());
         }
-        assert!(wait_until(|| states.lock().unwrap().iter().any(|s| s.transport == Transport::Playing)));
+        assert!(wait_until(|| states.lock().iter().any(|s| s.transport == Transport::Playing)));
         assert!(!mode.is_show(), "输出关闭时不置位 show 标志");
-        let last = states.lock().unwrap().last().cloned().unwrap();
+        let last = states.lock().last().cloned().unwrap();
         assert!(last.outputting && !last.sending && !last.output_enabled);
 
         // 录制中打开输出：失败，开关保持关闭

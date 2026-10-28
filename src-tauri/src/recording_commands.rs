@@ -4,14 +4,12 @@
 //! [`host_core::ArtnetCoreExt`] 访问），落盘逻辑位于 `recorder` crate。
 
 use std::path::PathBuf;
-use std::sync::Arc;
-
 use recorder::{LibraryEntry, LibraryError, RecoveryOutcome};
-use tauri::{AppHandle, Emitter as _, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt as _;
 
 use host_core::recording::{
-    ActivityDto, DirCheck, DiskInfo, Emitter, RecordingResult, RecordingStartArgs, RecordingStartResult,
+    ActivityDto, DirCheck, DiskInfo, RecordingResult, RecordingStartArgs, RecordingStartResult,
     RecordingStatus,
 };
 use crate::data_dir::DataRoot;
@@ -73,6 +71,7 @@ pub fn resolved_dir(app: &AppHandle) -> PathBuf {
 ///
 /// 恒为 `Ok`（保留 `Result` 以兼容前端签名）。
 #[tauri::command]
+#[expect(clippy::unnecessary_wraps, reason = "保留 Result 以兼容前端命令签名")]
 pub fn get_recording_dir(app: AppHandle) -> Result<String, String> {
     Ok(resolved_dir(&app).to_string_lossy().into_owned())
 }
@@ -208,12 +207,7 @@ fn start_blocking(
     let dir = recording_dir(app, &cfg.recording.directory);
     let core = app.artnet_core();
     let snapshot = core.snapshot();
-    let emit: Emitter = Arc::new({
-        let app = app.clone();
-        move |name, payload| {
-            let _ = app.emit(name, payload);
-        }
-    });
+    let emit = crate::app_emitter(app);
     core.recording().start(emit, &cfg, dir, &snapshot, args)
 }
 

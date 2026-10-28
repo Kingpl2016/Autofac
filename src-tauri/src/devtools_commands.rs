@@ -33,7 +33,6 @@ pub struct DevtoolsState {
 ///
 /// 开发构建里为实际状态；发布构建里恒为 `available: false, open: false`。
 #[tauri::command]
-#[allow(clippy::needless_pass_by_value)]
 pub fn devtools_state(app: AppHandle) -> DevtoolsState {
     #[cfg(debug_assertions)]
     {
@@ -63,7 +62,6 @@ pub fn devtools_state(app: AppHandle) -> DevtoolsState {
 ///
 /// 发布构建返回 [`ERR_UNSUPPORTED`]；找不到主窗口时返回 [`ERR_NO_WINDOW`]。
 #[tauri::command]
-#[allow(clippy::needless_pass_by_value)]
 pub fn devtools_set(app: AppHandle, open: bool) -> Result<DevtoolsState, String> {
     #[cfg(debug_assertions)]
     {

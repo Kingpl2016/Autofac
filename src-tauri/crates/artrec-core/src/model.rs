@@ -3,7 +3,7 @@
 //! 所有多字节整数默认以大端（网络字节序）写入；读取时依 `endian_tag` 字段
 //! 自动判定字节序。结构体尺寸与偏移严格对齐《ArtRec 灯光节目录制文件规范 v1.0》。
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
+
 
 use crate::error::{ArtRecError, Result};
 
@@ -94,21 +94,24 @@ enum Endian {
 
 impl Endian {
     fn read_u16(self, b: &[u8]) -> u16 {
+        let v = [b[0], b[1]];
         match self {
-            Endian::Big => BigEndian::read_u16(b),
-            Endian::Little => LittleEndian::read_u16(b),
+            Endian::Big => u16::from_be_bytes(v),
+            Endian::Little => u16::from_le_bytes(v),
         }
     }
     fn read_u32(self, b: &[u8]) -> u32 {
+        let v = [b[0], b[1], b[2], b[3]];
         match self {
-            Endian::Big => BigEndian::read_u32(b),
-            Endian::Little => LittleEndian::read_u32(b),
+            Endian::Big => u32::from_be_bytes(v),
+            Endian::Little => u32::from_le_bytes(v),
         }
     }
     fn read_u64(self, b: &[u8]) -> u64 {
+        let v = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]];
         match self {
-            Endian::Big => BigEndian::read_u64(b),
-            Endian::Little => LittleEndian::read_u64(b),
+            Endian::Big => u64::from_be_bytes(v),
+            Endian::Little => u64::from_le_bytes(v),
         }
     }
 }
@@ -152,17 +155,17 @@ impl FileHeader {
     pub fn to_bytes(&self) -> [u8; HEADER_SIZE as usize] {
         let mut b = [0u8; HEADER_SIZE as usize];
         b[0..4].copy_from_slice(&MAGIC);
-        BigEndian::write_u16(&mut b[4..6], ENDIAN_TAG_BE);
-        BigEndian::write_u16(&mut b[6..8], self.ver_major);
-        BigEndian::write_u16(&mut b[8..10], self.ver_minor);
-        BigEndian::write_u32(&mut b[10..14], self.flags);
-        BigEndian::write_u64(&mut b[14..22], self.rec_start_us);
-        BigEndian::write_u64(&mut b[22..30], self.total_duration_us);
-        BigEndian::write_u32(&mut b[30..34], self.universe_count);
-        BigEndian::write_u32(&mut b[34..38], self.frame_count);
-        BigEndian::write_u32(&mut b[38..42], self.universe_desc_offset);
-        BigEndian::write_u32(&mut b[42..46], self.frame_index_offset);
-        BigEndian::write_u32(&mut b[46..50], self.chunk_pool_offset);
+        b[4..6].copy_from_slice(&ENDIAN_TAG_BE.to_be_bytes());
+        b[6..8].copy_from_slice(&self.ver_major.to_be_bytes());
+        b[8..10].copy_from_slice(&self.ver_minor.to_be_bytes());
+        b[10..14].copy_from_slice(&self.flags.to_be_bytes());
+        b[14..22].copy_from_slice(&self.rec_start_us.to_be_bytes());
+        b[22..30].copy_from_slice(&self.total_duration_us.to_be_bytes());
+        b[30..34].copy_from_slice(&self.universe_count.to_be_bytes());
+        b[34..38].copy_from_slice(&self.frame_count.to_be_bytes());
+        b[38..42].copy_from_slice(&self.universe_desc_offset.to_be_bytes());
+        b[42..46].copy_from_slice(&self.frame_index_offset.to_be_bytes());
+        b[46..50].copy_from_slice(&self.chunk_pool_offset.to_be_bytes());
         b[50] = self.compress_algo as u8;
         b[51] = self.compress_level;
         // b[52..54] reserved0, b[54..64] reserved 均保持 0
@@ -196,7 +199,7 @@ impl FileHeader {
             return Err(ArtRecError::BadMagic(magic));
         }
         // endian_tag 以大端读取其原始两字节判定
-        let tag_be = BigEndian::read_u16(&b[4..6]);
+        let tag_be = u16::from_be_bytes([b[4], b[5]]);
         let endian = match tag_be {
             ENDIAN_TAG_BE => Endian::Big,
             ENDIAN_TAG_LE => Endian::Little,
@@ -307,10 +310,10 @@ impl UniDesc {
     #[must_use]
     pub fn to_bytes(&self) -> [u8; UNIDESC_SIZE as usize] {
         let mut b = [0u8; UNIDESC_SIZE as usize];
-        BigEndian::write_u16(&mut b[0..2], self.net);
-        BigEndian::write_u16(&mut b[2..4], self.subuni);
-        BigEndian::write_u16(&mut b[4..6], self.universe);
-        BigEndian::write_u16(&mut b[6..8], self.dmx_len);
+        b[0..2].copy_from_slice(&self.net.to_be_bytes());
+        b[2..4].copy_from_slice(&self.subuni.to_be_bytes());
+        b[4..6].copy_from_slice(&self.universe.to_be_bytes());
+        b[6..8].copy_from_slice(&self.dmx_len.to_be_bytes());
         // b[8..12] reserved u32 = 0
         b
     }
@@ -325,10 +328,10 @@ impl UniDesc {
             return Err(ArtRecError::Truncated("UniDesc 不足 16 字节"));
         }
         Ok(Self {
-            net: BigEndian::read_u16(&b[0..2]),
-            subuni: BigEndian::read_u16(&b[2..4]),
-            universe: BigEndian::read_u16(&b[4..6]),
-            dmx_len: BigEndian::read_u16(&b[6..8]),
+            net: u16::from_be_bytes([b[0], b[1]]),
+            subuni: u16::from_be_bytes([b[2], b[3]]),
+            universe: u16::from_be_bytes([b[4], b[5]]),
+            dmx_len: u16::from_be_bytes([b[6], b[7]]),
         })
     }
 }
@@ -349,9 +352,9 @@ impl FrameIndex {
     #[must_use]
     pub fn to_bytes(&self) -> [u8; FRAMEINDEX_SIZE as usize] {
         let mut b = [0u8; FRAMEINDEX_SIZE as usize];
-        BigEndian::write_u64(&mut b[0..8], self.time_us);
-        BigEndian::write_u32(&mut b[8..12], self.chunk_pos);
-        BigEndian::write_u16(&mut b[12..14], self.chunk_cmp_len);
+        b[0..8].copy_from_slice(&self.time_us.to_be_bytes());
+        b[8..12].copy_from_slice(&self.chunk_pos.to_be_bytes());
+        b[12..14].copy_from_slice(&self.chunk_cmp_len.to_be_bytes());
         // b[14..16] reserved u16 = 0
         b
     }
@@ -379,9 +382,9 @@ impl FrameIndex {
     /// 解析出的帧索引条目。
     pub(crate) fn from_array(b: &[u8; FRAMEINDEX_SIZE as usize]) -> Self {
         Self {
-            time_us: BigEndian::read_u64(&b[0..8]),
-            chunk_pos: BigEndian::read_u32(&b[8..12]),
-            chunk_cmp_len: BigEndian::read_u16(&b[12..14]),
+            time_us: u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]),
+            chunk_pos: u32::from_be_bytes([b[8], b[9], b[10], b[11]]),
+            chunk_cmp_len: u16::from_be_bytes([b[12], b[13]]),
         }
     }
 }
@@ -404,10 +407,10 @@ impl ChunkHdr {
     #[must_use]
     pub fn to_bytes(&self) -> [u8; CHUNKHDR_SIZE] {
         let mut b = [0u8; CHUNKHDR_SIZE];
-        BigEndian::write_u16(&mut b[0..2], self.chunk_type);
-        BigEndian::write_u16(&mut b[2..4], self.payload_raw_sz);
-        BigEndian::write_u16(&mut b[4..6], self.payload_cmp_sz);
-        BigEndian::write_u16(&mut b[6..8], self.crc16);
+        b[0..2].copy_from_slice(&self.chunk_type.to_be_bytes());
+        b[2..4].copy_from_slice(&self.payload_raw_sz.to_be_bytes());
+        b[4..6].copy_from_slice(&self.payload_cmp_sz.to_be_bytes());
+        b[6..8].copy_from_slice(&self.crc16.to_be_bytes());
         b
     }
 
@@ -421,10 +424,10 @@ impl ChunkHdr {
             return Err(ArtRecError::Truncated("ChunkHdr 不足 8 字节"));
         }
         Ok(Self {
-            chunk_type: BigEndian::read_u16(&b[0..2]),
-            payload_raw_sz: BigEndian::read_u16(&b[2..4]),
-            payload_cmp_sz: BigEndian::read_u16(&b[4..6]),
-            crc16: BigEndian::read_u16(&b[6..8]),
+            chunk_type: u16::from_be_bytes([b[0], b[1]]),
+            payload_raw_sz: u16::from_be_bytes([b[2], b[3]]),
+            payload_cmp_sz: u16::from_be_bytes([b[4], b[5]]),
+            crc16: u16::from_be_bytes([b[6], b[7]]),
         })
     }
 }

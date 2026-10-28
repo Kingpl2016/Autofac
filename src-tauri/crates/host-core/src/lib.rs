@@ -32,8 +32,8 @@ pub use runtime::{Runtime, ScanSummary};
 pub use sender::SenderSlot;
 
 use std::path::PathBuf;
-use std::sync::Mutex;
 
+use parking_lot::Mutex;
 use settings::AppSettings;
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Manager, Runtime as TauriRuntime, State};

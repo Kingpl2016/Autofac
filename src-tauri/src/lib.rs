@@ -1,7 +1,7 @@
 //! Art-Net Studio 的 Tauri 宿主入口。
 //!
 //! 装配窗口与插件。配置与实时子系统由 `host-core` 插件承载（配置/信号引擎/发现/转发/录制/回放），
-//! 网络设备为 `netdev` 库 + 宿主侧薄命令（见 [`netdev_commands`]）。
+//! 网络设备为 `netdev` 库 + 宿主侧薄命令（见 `netdev_commands` 模块）。
 //! 宿主层只做装配与命令注册。
 
 mod about_commands;
@@ -33,6 +33,23 @@ use host_core::{ArtnetCoreExt, SettingsExt};
 #[tauri::command]
 fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// 构造向前端广播事件的 [`host_core::recording::Emitter`]：把 `AppHandle::emit` 封装成
+/// 领域层使用的 `(事件名, JSON 载荷)` 回调。录制 / 回放 / 模式切换等命令共用，避免各处重复闭包。
+///
+/// # Arguments
+///
+/// * `app` - Tauri 应用句柄。
+///
+/// # Returns
+///
+/// 把事件广播到所有窗口的 [`host_core::recording::Emitter`]。
+pub(crate) fn app_emitter(app: &tauri::AppHandle) -> host_core::recording::Emitter {
+    let app = app.clone();
+    std::sync::Arc::new(move |name, payload| {
+        let _ = tauri::Emitter::emit(&app, name, payload);
+    })
 }
 
 /// 启动 Tauri 应用主循环。
@@ -119,12 +136,7 @@ pub fn run() {
             if cfg.player.start_in_player_mode {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    let emit: host_core::recording::Emitter = std::sync::Arc::new({
-                        let handle = handle.clone();
-                        move |name, payload| {
-                            let _ = tauri::Emitter::emit(&handle, name, payload);
-                        }
-                    });
+                    let emit = app_emitter(&handle);
                     if let Err(e) = handle
                         .artnet_core()
                         .set_app_mode(host_core::app_mode::AppMode::Player, &emit)

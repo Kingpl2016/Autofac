@@ -88,12 +88,7 @@ fn write_project_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
     if target.is_file() {
         let _ = std::fs::copy(target, with_suffix(target, BACKUP_SUFFIX));
     }
-    let tmp = with_suffix(target, ".tmp");
-    let result = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, target));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    fsutil::write_atomic(target, bytes)
 }
 
 /// 改写工程文件里一个顶层字符串字段（如 `name`、`notes`），其余内容原样保留。

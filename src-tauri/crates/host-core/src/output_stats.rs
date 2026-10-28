@@ -13,8 +13,10 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+
+use parking_lot::Mutex;
 
 use rustc_hash::FxHashMap;
 use serde::Serialize;

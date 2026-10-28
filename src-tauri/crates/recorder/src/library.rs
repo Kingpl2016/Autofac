@@ -12,7 +12,9 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs::{File, Metadata};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
+use std::sync::LazyLock;
+
+use parking_lot::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use artrec_core::{read_header_and_unis, FRAMEINDEX_SIZE};
@@ -30,7 +32,7 @@ use crate::store::{sanitize_file_stem, ARTREC_SUFFIX};
 /// 前端直接按字段显示徽标，不拆成状态枚举。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools, reason = "节目库条目的状态位语义独立")]
 pub struct LibraryEntry {
     /// `.artrec` 绝对路径。
     pub path: String,
@@ -89,7 +91,6 @@ pub enum HeaderIssue {
 /// 由文件头（A 区）派生的格式信息（只读文件头，不解析帧数据）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::struct_excessive_bools)]
 pub struct HeaderInfo {
     /// 主版本。
     pub ver_major: u16,
@@ -533,9 +534,9 @@ impl LibraryCache {
         Self::default()
     }
 
-    /// 加锁；锁被毒化（持锁线程 panic）时照常取用——缓存内容总是完整写入的条目。
+    /// 加锁（parking_lot 不毒化；缓存内容总是完整写入后才放入）。
     fn lock(&self) -> MutexGuard<'_, HashMap<PathBuf, (Fingerprint, LibraryEntry)>> {
-        self.entries.lock().unwrap_or_else(PoisonError::into_inner)
+        self.entries.lock()
     }
 
     /// 列出目录下全部节目（只重读指纹变化的文件），排序规则同 [`list_library`]。
@@ -653,11 +654,10 @@ fn scan_dir(dir: &Path) -> Vec<(PathBuf, Metadata, Fingerprint)> {
             if let Some(meta) = entry_metadata(&e, &path) {
                 sidecars.insert(e.file_name(), meta);
             }
-        } else if ext == "show" {
-            if let Some(meta) = entry_metadata(&e, &path) {
+        } else if ext == "show"
+            && let Some(meta) = entry_metadata(&e, &path) {
                 shows.insert(e.file_name(), meta);
             }
-        }
     }
 
     // 只有工程、还没有 `.artrec` 的节目：用工程文件充当主文件，路径是推算出的 `.artrec` 路径
@@ -737,14 +737,13 @@ pub fn rename_recording(dir: &Path, path: &Path, new_name: &str) -> Result<PathB
         if moved_artrec {
             std::fs::rename(&src, &dst)?;
         }
-        if src_show.is_file() {
-            if let Err(e) = std::fs::rename(&src_show, &dst_show) {
+        if src_show.is_file()
+            && let Err(e) = std::fs::rename(&src_show, &dst_show) {
                 if moved_artrec {
                     let _ = std::fs::rename(&dst, &src);
                 }
                 return Err(e.into());
             }
-        }
         let _ = std::fs::remove_file(sidecar_path(&src));
         move_overview_cache(&src, &dst);
     }

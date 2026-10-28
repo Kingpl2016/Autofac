@@ -4,7 +4,9 @@
 //! 取消或失败时清理临时文件。
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 use std::time::{Duration, Instant};
 
 use futures_util::{StreamExt, TryStreamExt};
@@ -61,7 +63,7 @@ impl Meter {
 
     /// 累加 `n` 字节；距上次回调不足间隔时跳过。
     fn advance(&self, n: u64) {
-        let mut s = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut s = self.state.lock();
         s.0 += n;
         if s.1.elapsed() >= PROGRESS_INTERVAL {
             s.1 = Instant::now();
@@ -73,7 +75,7 @@ impl Meter {
 
     /// 无条件回调一次当前值。
     fn flush(&self) {
-        let done = self.state.lock().unwrap_or_else(PoisonError::into_inner).0;
+        let done = self.state.lock().0;
         (self.on_progress)(self.snapshot(done));
     }
 }
@@ -267,7 +269,7 @@ impl TransferGuard {
 
 impl Drop for TransferGuard {
     fn drop(&mut self) {
-        self.table.map.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.id);
+        self.table.map.lock().remove(&self.id);
     }
 }
 
@@ -290,7 +292,7 @@ impl TransferTable {
         if id.is_empty() {
             return Err(NetdevError::Invalid("传输 id 不能为空".into()));
         }
-        let mut map = table.map.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut map = table.map.lock();
         if map.contains_key(id) {
             return Err(NetdevError::Invalid("传输 id 重复".into()));
         }
@@ -309,7 +311,7 @@ impl TransferTable {
     ///
     /// 找到并触发取消返回 `true`；传输已结束或不存在返回 `false`。
     pub fn cancel(&self, id: &str) -> bool {
-        let map = self.map.lock().unwrap_or_else(PoisonError::into_inner);
+        let map = self.map.lock();
         map.get(id).is_some_and(|t| {
             t.cancel();
             true
@@ -332,7 +334,7 @@ mod tests {
     fn collector() -> (ProgressFn, Arc<Mutex<Vec<Progress>>>) {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let s = Arc::clone(&seen);
-        (Arc::new(move |p| s.lock().unwrap().push(p)), seen)
+        (Arc::new(move |p| s.lock().push(p)), seen)
     }
 
     fn write_tmp(dir: &tempfile::TempDir, name: &str, len: usize) -> PathBuf {
@@ -376,7 +378,7 @@ mod tests {
         let reqs = server.received_requests().await.unwrap();
         assert_eq!(reqs[0].body, std::fs::read(&file).unwrap());
 
-        let seen = seen.lock().unwrap();
+        let seen = seen.lock();
         let last = seen.last().unwrap();
         assert_eq!((last.done, last.total), (300_000, 300_000));
         assert!(seen.windows(2).all(|w| w[0].done <= w[1].done));
@@ -447,7 +449,7 @@ mod tests {
         assert_eq!(r.new_version, "2.0.0");
         assert!(r.rebooting);
         assert_eq!(server.received_requests().await.unwrap()[0].body.len(), 50_000);
-        assert_eq!(seen.lock().unwrap().last().unwrap().done, 50_000);
+        assert_eq!(seen.lock().last().unwrap().done, 50_000);
     }
 
     #[tokio::test]
@@ -465,7 +467,7 @@ mod tests {
         client_for(&server).download_file("a b.artrec", &dest, cb, &CancellationToken::new()).await.unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), payload);
         assert!(!temp_path(&dest).exists());
-        assert_eq!(seen.lock().unwrap().last().unwrap().done, 70_000);
+        assert_eq!(seen.lock().last().unwrap().done, 70_000);
     }
 
     #[tokio::test]

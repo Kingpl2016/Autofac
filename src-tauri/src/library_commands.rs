@@ -6,9 +6,10 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use parking_lot::{Mutex, MutexGuard};
 use recorder::{EditError, EditOutput, EditSpec};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter as _, Manager};
@@ -35,7 +36,7 @@ pub struct EditJobs(Mutex<HashMap<String, Arc<AtomicBool>>>);
 
 impl EditJobs {
     fn lock(&self) -> MutexGuard<'_, HashMap<String, Arc<AtomicBool>>> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        self.0.lock()
     }
 }
 

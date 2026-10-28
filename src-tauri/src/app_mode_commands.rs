@@ -2,12 +2,9 @@
 //!
 //! 命令只做"提取 → 调用领域 → 返回 DTO"；切换顺序与互斥由 `host-core` 的 `ModeManager` 负责。
 
-use std::sync::Arc;
-
 use host_core::app_mode::{AppMode, ModeStatus};
-use host_core::recording::Emitter;
 use host_core::ArtnetCoreExt;
-use tauri::{AppHandle, Emitter as _, Manager as _};
+use tauri::{AppHandle, Manager as _};
 
 /// 读取当前应用模式状态。
 ///
@@ -43,12 +40,7 @@ pub fn app_mode_get(app: AppHandle) -> ModeStatus {
 /// 已有切换正在进行（`transition_in_progress`）或录制进行中（`recording_active`）。
 #[tauri::command]
 pub async fn app_mode_set(app: AppHandle, mode: AppMode) -> Result<ModeStatus, String> {
-    let emit: Emitter = Arc::new({
-        let app = app.clone();
-        move |name, payload| {
-            let _ = app.emit(name, payload);
-        }
-    });
+    let emit = crate::app_emitter(&app);
     app.artnet_core().set_app_mode(mode, &emit)
 }
 

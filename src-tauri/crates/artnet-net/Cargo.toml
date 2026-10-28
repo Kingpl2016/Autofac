@@ -5,18 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Art-Net 4 与 sACN (E1.31) 数据包编解码及 UDP 收发"
 
-[lints.clippy]
-pedantic = "warn"
-doc_markdown = "allow"
-cast_possible_truncation = "allow"
+[lints]
+workspace = true
 
 [dependencies]
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 artnet_protocol = { workspace = true }
-# byteorder 仅 sACN 手写编解码仍在使用。
-byteorder = { workspace = true }
 socket2 = { workspace = true }
 bytes = { workspace = true }
 

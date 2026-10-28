@@ -445,7 +445,7 @@ fn triangle(x: u64) -> u8 {
 /// # Returns
 ///
 /// `tick / hz` 秒。
-#[allow(clippy::cast_precision_loss)] // tick 远小于 2^53，转 f64 不丢精度
+// tick 远小于 2^53，转 f64 不丢精度
 fn tick_offset(tick: u64, hz: f64) -> Duration {
     Duration::from_secs_f64(tick as f64 / hz)
 }
@@ -501,7 +501,7 @@ fn wait_until(deadline: Instant, stop: &AtomicBool) {
 /// # Returns
 ///
 /// 每秒速率；时长为 0 时返回 `0.0`。
-#[allow(clippy::cast_precision_loss)] // 包数远小于 2^53，转 f64 不丢精度
+// 包数远小于 2^53，转 f64 不丢精度
 fn per_second(count: u64, elapsed: Duration) -> f64 {
     let secs = elapsed.as_secs_f64();
     if secs > 0.0 {
@@ -691,12 +691,10 @@ mod tests {
                         if let Some(ArtNetPacket::Dmx {
                             port_address, data, ..
                         }) = artnet::parse(&buf[..n])
-                        {
-                            if data.len() == CHANNELS {
+                            && data.len() == CHANNELS {
                                 dmx_ok += 1;
                                 universes.insert(port_address);
                             }
-                        }
                     }
                     // 发送端已结束且一次超时内再无数据：视为已排空。
                     Err(_) if rx_done.load(Ordering::SeqCst) => break,

@@ -8,8 +8,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 use std::thread::JoinHandle;
+
+use parking_lot::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use arc_swap::ArcSwapOption;
@@ -379,11 +381,10 @@ impl FrameSink for Inner {
             return;
         }
         let tap = self.tap.load();
-        if let Some(tx) = tap.as_deref() {
-            if let Err(TrySendError::Full(_)) = tx.try_send(frame.clone()) {
+        if let Some(tx) = tap.as_deref()
+            && let Err(TrySendError::Full(_)) = tx.try_send(frame.clone()) {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
             }
-        }
     }
 }
 

@@ -13,17 +13,26 @@ use crate::model::AppSettings;
 ///
 /// # Returns
 ///
-/// 解析（并规范化）后的配置；文件缺失返回 [`AppSettings::default`]。
+/// 解析（并规范化）后的配置；文件缺失或内容损坏都返回 [`AppSettings::default`]（损坏时原文件先备份）。
 ///
 /// # Errors
 ///
-/// 文件存在但读取或 JSON 解析失败时返回对应 [`crate::SettingsError`]。
+/// 文件存在但读取失败（IO 错误）时返回对应 [`crate::SettingsError`]；JSON 解析失败不算错误：
+/// 把原文件备份为同名 `.bad` 后回退默认（与设备注册表 / 灯具库一致，避免下次保存覆盖用户原文件）。
 pub fn load(path: &Path) -> Result<AppSettings> {
     if !path.exists() {
         return Ok(AppSettings::default());
     }
     let text = std::fs::read_to_string(path)?;
-    let mut settings: AppSettings = serde_json::from_str(&text)?;
+    let mut settings: AppSettings = match serde_json::from_str(&text) {
+        Ok(settings) => settings,
+        Err(e) => {
+            let bad = path.with_extension("json.bad");
+            let _ = std::fs::rename(path, &bad);
+            tracing::warn!(error = %e, backup = %bad.display(), "配置文件损坏，已备份并回退默认");
+            return Ok(AppSettings::default());
+        }
+    };
     settings.migrate();
     settings.normalize();
     Ok(settings)
@@ -40,13 +49,8 @@ pub fn load(path: &Path) -> Result<AppSettings> {
 ///
 /// 创建目录、序列化或写入失败时返回对应 [`crate::SettingsError`]。
 pub fn save(path: &Path, settings: &AppSettings) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let text = serde_json::to_string_pretty(settings)?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, text.as_bytes())?;
-    std::fs::rename(&tmp, path)?;
+    fsutil::write_atomic(path, text.as_bytes())?;
     Ok(())
 }
 

@@ -340,11 +340,10 @@ impl DeviceRegistry {
             self.custom_names.insert(ip, name.clone());
             Some(name)
         };
-        if let Some(d) = self.devices.get_mut(&ip) {
-            if assign(&mut d.custom_name, value) {
+        if let Some(d) = self.devices.get_mut(&ip)
+            && assign(&mut d.custom_name, value) {
                 self.version += 1;
             }
-        }
     }
 
     /// 将超时未活动的设备标记为离线。

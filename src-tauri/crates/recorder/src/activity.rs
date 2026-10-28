@@ -29,7 +29,6 @@ const CHANGE_SCALE: f64 = 24.0;
 ///
 /// `min(255, round(24 * log2(1 + n)))`；`n = 0` 时为 0，`n >= 1` 时至少为 24。
 #[must_use]
-#[allow(clippy::cast_sign_loss)] // 结果恒为非负
 pub fn scale_change(n: u32) -> u8 {
     if n == 0 {
         return 0;

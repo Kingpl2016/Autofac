@@ -176,6 +176,8 @@ fn bake_to_temp(
     let frames = writer.frame_count() as u64;
     let mut sink = writer.finish(spec.duration_us)?;
     sink.flush()?;
+    // 改名前落盘：断电后要么是旧文件、要么是完整的新文件，不会留下半截烘焙结果。
+    sink.get_ref().sync_all()?;
     let bytes = sink.get_ref().metadata()?.len();
     Ok(BakeReport {
         frames,

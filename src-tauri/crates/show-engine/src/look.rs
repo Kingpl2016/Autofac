@@ -325,7 +325,7 @@ impl ColorState {
     ///
     /// 插值结果。
     #[must_use]
-    #[allow(clippy::many_single_char_names)]
+    #[expect(clippy::many_single_char_names, reason = "颜色分量 a/b/t 为插值习惯命名")]
     pub fn lerp(a: &Self, b: &Self, t: f64) -> Self {
         let t = t.clamp(0.0, 1.0);
         let mix3 = |x: [f64; 3], y: [f64; 3]| [0, 1, 2].map(|i| x[i] + (y[i] - x[i]) * t);
@@ -398,7 +398,7 @@ fn kelvin_srgb(k: f64) -> [f64; 3] {
     kelvin_display(k)
 }
 
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names, reason = "r/g/b/h/s/v 为颜色空间习惯命名")]
 fn rgb_to_hsv([r, g, b]: [f64; 3]) -> (f64, f64, f64) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -416,7 +416,7 @@ fn rgb_to_hsv([r, g, b]: [f64; 3]) -> (f64, f64, f64) {
     (h, s, max)
 }
 
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names, reason = "h/s/v 为颜色空间习惯命名")]
 fn hsv_to_rgb(h: f64, s: f64, v: f64) -> [f64; 3] {
     let h6 = h.rem_euclid(1.0) * 6.0;
     let i = h6.floor();

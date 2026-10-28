@@ -3,7 +3,8 @@
 //! 概览数据是按 Universe 分行的字节矩阵；以 Base64 字符串序列化，
 //! 比 JSON 数字数组小约 3 倍，也让 sidecar 与 IPC 载荷保持紧凑。
 
-const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 
 /// 编码为标准 Base64（带 `=` 填充）。
 ///
@@ -16,42 +17,10 @@ const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 /// 标准字母表（`+` 与 `/`）的 Base64 字符串，长度为 4 的倍数；输入为空时返回空字符串。
 #[must_use]
 pub fn encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk[0],
-            chunk.get(1).copied().unwrap_or(0),
-            chunk.get(2).copied().unwrap_or(0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        out.push(ALPHABET[(n >> 18) as usize & 63] as char);
-        out.push(ALPHABET[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 {
-            ALPHABET[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            ALPHABET[n as usize & 63] as char
-        } else {
-            '='
-        });
-    }
-    out
+    STANDARD.encode(bytes)
 }
 
-fn value(c: u8) -> Option<u32> {
-    match c {
-        b'A'..=b'Z' => Some(u32::from(c - b'A')),
-        b'a'..=b'z' => Some(u32::from(c - b'a') + 26),
-        b'0'..=b'9' => Some(u32::from(c - b'0') + 52),
-        b'+' => Some(62),
-        b'/' => Some(63),
-        _ => None,
-    }
-}
-
-/// 解码标准 Base64；非法字符或长度返回 `None`。
+/// 解码标准 Base64；非法字符、长度或填充不合法返回 `None`。
 ///
 /// # Arguments
 ///
@@ -62,31 +31,7 @@ fn value(c: u8) -> Option<u32> {
 /// 解码成功返回原始字节；长度不是 4 的倍数、含非法字符或填充位置错误时返回 `None`。
 #[must_use]
 pub fn decode(text: &str) -> Option<Vec<u8>> {
-    let bytes = text.as_bytes();
-    if bytes.len() % 4 != 0 {
-        return None;
-    }
-    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
-    for (i, quad) in bytes.chunks(4).enumerate() {
-        let last = (i + 1) * 4 == bytes.len();
-        let pad = quad.iter().rev().take_while(|&&c| c == b'=').count();
-        if pad > 2 || (pad > 0 && !last) {
-            return None;
-        }
-        let mut n = 0u32;
-        for &c in &quad[..4 - pad] {
-            n = (n << 6) | value(c)?;
-        }
-        n <<= 6 * pad as u32;
-        out.push((n >> 16) as u8);
-        if pad < 2 {
-            out.push((n >> 8) as u8);
-        }
-        if pad < 1 {
-            out.push(n as u8);
-        }
-    }
-    Some(out)
+    STANDARD.decode(text).ok()
 }
 
 /// serde 适配：`Vec<Vec<u8>>` ⇄ Base64 字符串数组。

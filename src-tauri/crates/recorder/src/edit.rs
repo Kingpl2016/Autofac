@@ -310,6 +310,8 @@ fn write_edit(
     let frames = writer.frame_count() as u64;
     let mut sink = writer.finish(offset)?;
     sink.flush()?;
+    // 改名前落盘：断电后要么是原节目、要么是完整的新文件。
+    sink.get_ref().sync_all()?;
     let bytes = sink.get_ref().metadata()?.len();
     Ok((offset, frames, bytes, universes))
 }

@@ -1,0 +1,14 @@
+[package]
+name = "fsutil"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "原子文件写入：写同目录临时文件、fsync 落盘后 rename 替换目标（纯 std，无其它依赖）"
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = { workspace = true }

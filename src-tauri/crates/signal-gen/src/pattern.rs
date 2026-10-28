@@ -4,8 +4,6 @@
 //! 因此调速时画面连续、不跳变；随机图案用以（Universe 序号, 时间槽）为种子的伪随机数，
 //! 同一输入永远得到同一输出，便于测试。
 
-#![allow(clippy::cast_sign_loss, clippy::cast_precision_loss)]
-
 use serde::{Deserialize, Serialize};
 
 /// 一个 Universe 的通道数。
@@ -400,7 +398,7 @@ impl SplitMix64 {
 }
 
 #[cfg(test)]
-#[allow(clippy::float_cmp, clippy::naive_bytecount)] // 测试里要的就是精确值比较与简单计数
+#[expect(clippy::float_cmp, clippy::naive_bytecount, reason = "测试里要的就是精确值比较与简单计数")]
 mod tests {
     use std::collections::HashSet;
 

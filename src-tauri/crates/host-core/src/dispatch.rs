@@ -15,9 +15,10 @@
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use arc_swap::{ArcSwap, ArcSwapOption};
+use parking_lot::Mutex;
 use artnet_net::socket::DmxSender;
 use artnet_net::Bytes;
 use forwarding::{ForwardProtocol, ForwardingTable};
@@ -745,11 +746,10 @@ impl Dispatcher {
     /// 直发端点：与上次相同则复用缓存，否则新建并缓存。
     fn direct_endpoint(&self, ip: &str, protocol: ForwardProtocol, port: u16) -> Arc<Endpoint> {
         let cached = self.inner.direct.load();
-        if let Some(e) = &*cached {
-            if e.is_direct(ip, protocol, port) {
+        if let Some(e) = &*cached
+            && e.is_direct(ip, protocol, port) {
                 return Arc::clone(e);
             }
-        }
         let id = format!("{DIRECT_PREFIX}{ip}:{port}");
         let e = Arc::new(Endpoint::new(&id, protocol, ip, port, None));
         self.inner.direct.store(Some(e.clone()));

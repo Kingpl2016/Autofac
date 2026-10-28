@@ -43,11 +43,10 @@ impl RateLimiter {
     ) -> bool {
         // 已知目的地：借用查询，命中限流直接返回，零分配。
         if let Some(inner) = self.last.get_mut(dest_id) {
-            if let Some(&t) = inner.get(&universe) {
-                if now_ms.saturating_sub(t) < min_interval_ms {
+            if let Some(&t) = inner.get(&universe)
+                && now_ms.saturating_sub(t) < min_interval_ms {
                     return false;
                 }
-            }
             inner.insert(universe, now_ms);
             return true;
         }

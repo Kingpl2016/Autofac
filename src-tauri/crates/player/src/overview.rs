@@ -316,9 +316,7 @@ fn scale(c: u32, max: u32) -> u8 {
     }
     let v = 254.0 * f64::from(c).sqrt() / f64::from(max).sqrt();
     // 已钳制到 [1, 255]，转换不会丢失符号或溢出
-    #[allow(clippy::cast_sign_loss)]
-    let out = (1.0 + v).round().clamp(1.0, 255.0) as u8;
-    out
+    (1.0 + v).round().clamp(1.0, 255.0) as u8
 }
 
 #[cfg(test)]

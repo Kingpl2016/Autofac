@@ -14,8 +14,8 @@
 //! 切换由互斥保护：切换进行中再次触发会立刻返回 [`ERR_TRANSITION_IN_PROGRESS`]，而不是排队。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::playback::ERR_RECORDING_ACTIVE;

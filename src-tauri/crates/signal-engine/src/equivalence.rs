@@ -424,11 +424,10 @@ fn check(
 
         // 数据代号：合并结果变化时一定变化
         let data_gen = eng.data_gen(universe).unwrap();
-        if let Some((prev_gen, prev_data)) = observed.get(&universe) {
-            if *prev_data != expected.data {
+        if let Some((prev_gen, prev_data)) = observed.get(&universe)
+            && *prev_data != expected.data {
                 assert_ne!(data_gen, *prev_gen, "{ctx}: 合并结果变了但代号未变");
             }
-        }
         observed.insert(universe, (data_gen, expected.data));
         if su.sources.len() >= 2 && expected.conflict_channels > 0 {
             conflicted += 1;

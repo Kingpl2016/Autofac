@@ -252,11 +252,7 @@ fn write_file(path: &Path, models: &[FixtureModel]) -> io::Result<()> {
         models: models.to_vec(),
     };
     let json = serde_json::to_vec_pretty(&file).map_err(io::Error::other)?;
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    fs::write(&tmp, json)?;
-    fs::rename(&tmp, path)
+    fsutil::write_atomic(path, &json)
 }
 
 #[cfg(test)]

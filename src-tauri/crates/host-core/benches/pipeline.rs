@@ -17,11 +17,12 @@
 mod common;
 
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use artnet_net::{Bytes, DmxFrame, Protocol};
 use divan::counter::ItemsCount;
+use parking_lot::Mutex;
 use divan::{black_box, Bencher};
 use forwarding::ForwardingTable;
 use host_core::ingest::BATCH_LIMIT;

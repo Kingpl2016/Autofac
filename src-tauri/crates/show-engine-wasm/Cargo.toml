@@ -9,13 +9,8 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[lints.clippy]
-pedantic = "warn"
-doc_markdown = "allow"
-cast_possible_truncation = "allow"
-cast_sign_loss = "allow"
-cast_precision_loss = "allow"
-module_name_repetitions = "allow"
+[lints]
+workspace = true
 
 [dependencies]
 show-engine = { path = "../show-engine", default-features = false }
