@@ -1438,7 +1438,8 @@
         "objectWidth": "宽",
         "objectHeight": "高",
         "removeObject": "删除物件"
-      }
+      },
+      "dropHint": "松开：把灯具放在这里"
     },
     "inspector": {
       "title": "属性",
@@ -2130,7 +2131,21 @@
       "skipped": "{{count}} 台灯具因模型缺失或地址越界不会输出",
       "routedHint": "当前按工程的 Universe 路由表输出（每个 Universe 可以发往不同的节点）。",
       "openRouting": "Universe 与路由表…",
-      "routedBadge": "按表路由 · {{count}}"
+      "routedBadge": "按表路由 · {{count}}",
+      "advanced": "高级",
+      "listSep": "，",
+      "gammaShort": "Gamma {{value}}",
+      "latencyShort": "延迟补偿 {{value}} ms",
+      "syncShort": "同步已开",
+      "parkShort": "锁定 {{count}} 个通道",
+      "park": "通道锁定（Park）",
+      "parkHint": "被锁定的通道始终输出固定值，不受节目和编程器影响（例如烟机、常亮的工作灯）。",
+      "parkList": "已锁定的通道",
+      "unpark": "解除 U{{universe}}.{{channel}} 的锁定",
+      "parkUniverse": "锁定的 Universe",
+      "parkChannel": "锁定的通道",
+      "parkValue": "锁定的值（0~255）",
+      "parkAdd": "锁定"
     },
     "bake": {
       "running": "正在生成回放文件… {{percent}}%",
@@ -2593,7 +2608,8 @@
       "expand": "展开 {{name}}",
       "fixtures": "{{count}} 台灯具",
       "port": "{{protocol}} {{target}} → {{remote}}",
-      "noPorts": "未配置输出端口"
+      "noPorts": "未配置输出端口",
+      "dropHint": "松手：从落点地址开始配接"
     },
     "swatches": {
       "groupBy": "色块分区方式",
@@ -2636,7 +2652,7 @@
         },
         "library": {
           "title": "素材库",
-          "body": "左侧图标切换分区：媒体、灯具、Cue 模板、特效、预设、分组、历史。\n先到“灯具”添加灯具；模板和特效可以拖到时间线上，也可以点一下加到所选轨道。"
+          "body": "左侧图标切换分区：媒体、灯具、Cue 模板、特效、预设、分组、历史。\n先到“灯具”添加灯具：点“+”加一台，展开可批量添加，也可以把卡片拖到 Patch、舞台或时间线上。模板和特效可以拖到时间线上，也可以点一下加到所选轨道。"
         },
         "preview": {
           "title": "预览",
@@ -2656,7 +2672,7 @@
         },
         "shortcuts": {
           "title": "常用快捷操作",
-          "body": "Ctrl+K 命令面板（所有操作都能搜到）\n空格 播放 / 暂停，J / K / L 后退一帧 / 暂停 / 播放\nShift+Q 快捷轮盘，Shift+F10 右键菜单\n右上角的 ?（F1）里有快捷键一览、重新播放引导和本页提示。"
+          "body": "Ctrl+K 命令面板（所有操作都能搜到）\n空格 播放 / 暂停，J / K / L 后退一帧 / 暂停 / 播放\nShift+Q 快捷轮盘，Shift+F10 右键菜单\n右上角的 ?（F1）里有快捷键速查、新功能、问题反馈、重新播放引导和本页提示。"
         }
       },
       "hints": {
@@ -2687,6 +2703,14 @@
         "templates": {
           "title": "模板来自配置文件",
           "body": "模板按分组列出，右键可复制、改名、移到别的分组或删除；工具条可导入 / 导出模板文件、打开所在文件夹，手改文件后点“重新加载”。"
+        },
+        "fixtureAdd": {
+          "title": "添加灯具的三种方式",
+          "body": "点“+”快速加一台；点箭头展开批量添加，设好数量、起始地址、间隔和名称，下方会预览将占用的通道；也可以按住左侧把手把灯具拖到 Patch 的 Universe 卡片、舞台或时间线上。"
+        },
+        "effects": {
+          "title": "先调参数再插入",
+          "body": "点一下特效会打开参数面板：速度、大小、相位扩散、分翼、方向、顺序，调好后点“插入”；双击直接插入。特效来自配置文件，右键可复制为自己的特效。"
         }
       },
       "help": "帮助",
@@ -2694,7 +2718,7 @@
       "hideHints": "隐藏本页提示",
       "hintsShown": "已显示本页的全部提示，点小圆点查看",
       "hintsHidden": "已隐藏提示",
-      "shortcuts": "快捷键一览"
+      "shortcuts": "自定义快捷键…"
     },
     "undoAction": "撤销",
     "loop": {
@@ -2706,6 +2730,204 @@
       "cleared": "已把 {{count}} 层关键帧改成固定值",
       "none": "这里没有关键帧",
       "hint": "关键帧 {{time}}：点击把播放头移到这里，右键删除"
+    },
+    "fixtureAdd": {
+      "search": "搜索灯具：名称、编号、厂商",
+      "clearSearch": "清除搜索",
+      "typeFilter": "按类型筛选",
+      "all": "全部",
+      "noMatch": "没有符合条件的灯具",
+      "clearFilters": "清除筛选",
+      "list": "灯具模型",
+      "modes": "{{count}} 种模式",
+      "drag": "拖动 {{name}} 到 Patch、舞台或时间线",
+      "batch": "批量添加 {{name}}…",
+      "panel": "批量添加 {{name}}",
+      "less": "减少一台",
+      "more": "增加一台",
+      "quickCounts": "常用数量",
+      "mode": "模式",
+      "start": "起点",
+      "auto": "自动",
+      "manual": "指定",
+      "universe": "起始 Universe",
+      "address": "起始地址",
+      "gap": "间隔",
+      "gapUnit": "通道",
+      "name": "名称",
+      "nameHint": "{n} 为序号，第一台：{{first}}",
+      "group": "添加后编为一组",
+      "submit": "添加 {{count}} 台",
+      "range": "U{{universe}} {{start}}–{{end}}",
+      "listSep": "，",
+      "sep": " · ",
+      "preview": "将占用 {{ranges}}",
+      "previewNone": "放不下：没有足够的空闲通道",
+      "noConflict": "无冲突",
+      "partial": "有 {{count}} 台放不下",
+      "shifted": "起点已占用，顺延到 U{{universe}}.{{address}}",
+      "grouped": "已编为一组",
+      "noRoom": "没有足够的空闲通道放下 {{name}}",
+      "submitAria": "按以上设置添加 {{count}} 个 {{name}}"
+    },
+    "effectLib": {
+      "hint": "点一下选中并调参数，再点“插入”加到所选轨道的播放头处；双击直接插入。放在分组轨道上会按成员错开（扇形、波浪、追逐）。",
+      "tools": "特效库工具",
+      "import": "导入特效…",
+      "export": "导出全部特效…",
+      "reveal": "打开用户特效文件所在文件夹",
+      "reload": "重新加载特效文件",
+      "fileType": "特效文件",
+      "importEmpty": "文件里没有可用的特效",
+      "imported": "已导入：新增 {{added}} 个，替换 {{replaced}} 个，跳过 {{skipped}} 个",
+      "exported": "已导出 {{count}} 个特效",
+      "reloaded": "已重新加载，用户特效 {{count}} 个",
+      "loadFailed": "无法读取用户特效文件（{{reason}}），暂时只有内置特效",
+      "issuesTitle": "用户特效文件里有 {{count}} 处问题，已跳过",
+      "fileHint": "特效来自配置文件：内置特效随软件发布，用户特效在数据目录的 effects.json，可手改或导入；同 id 的用户特效覆盖内置的。文件只含参数，不含脚本。",
+      "groupList": "{{name}}特效",
+      "groups": {
+        "position": "位置",
+        "intensity": "强度",
+        "color": "颜色",
+        "beam": "光束",
+        "custom": "我的"
+      },
+      "menu": "{{name}} 的操作",
+      "insert": "插入到所选轨道",
+      "copyToMine": "复制为我的特效",
+      "duplicate": "复制",
+      "delete": "删除",
+      "copied": "已复制为 {{name}}",
+      "deleted": "已删除特效 {{name}}",
+      "params": "{{name}} 的参数",
+      "speed": "速度",
+      "speedValue": "一个周期的长度",
+      "speedUnit": "周期单位",
+      "beats": "拍",
+      "ms": "毫秒",
+      "size": "大小",
+      "sizeValue": "大小百分比",
+      "spread": "相位扩散",
+      "spreadValue": "相位扩散百分比",
+      "wings": "分翼",
+      "direction": "方向",
+      "forward": "正向",
+      "reverse": "反向",
+      "order": "顺序",
+      "orders": {
+        "members": "成员",
+        "stageX": "左右",
+        "stageY": "前后"
+      },
+      "reset": "恢复默认",
+      "insertSelected": "插入"
+    },
+    "help": {
+      "cheatSheet": "快捷键速查",
+      "whatsNew": "新功能",
+      "feedback": "问题反馈",
+      "copyDiagnostics": "复制诊断信息",
+      "openLogs": "打开日志文件夹",
+      "about": "关于 Art-Net Studio",
+      "diagShow": "当前节目：{{fixtures}} 台灯具，{{tracks}} 条轨道，{{cues}} 个片段，{{universes}} 个 Universe 路由",
+      "diagCopied": "诊断信息已复制，反馈问题时粘贴即可",
+      "diagFailed": "无法复制诊断信息",
+      "logsFailed": "无法打开日志文件夹"
+    },
+    "shortcutSheet": {
+      "title": "快捷键速查",
+      "description": "按分类列出所有快捷键（含你自定义的）。在输入框里打字时，大部分快捷键不响应。",
+      "search": "搜索命令或分类",
+      "customize": "自定义快捷键…"
+    },
+    "whatsNew": {
+      "title": "新功能",
+      "description": "这个版本的主要变化。",
+      "areas": {
+        "fixtures": "灯具",
+        "effects": "特效",
+        "timeline": "时间线",
+        "file": "文件",
+        "output": "输出",
+        "help": "帮助"
+      },
+      "items": {
+        "fixtureAdd": {
+          "title": "批量添加更顺手",
+          "body": "左侧灯具页可搜索、按类型筛选；展开面板设置数量、模式、起始地址、间隔和名称模板，实时预览将占用的通道，还能加完直接编组。"
+        },
+        "fixtureDrag": {
+          "title": "拖拽添加灯具",
+          "body": "把灯具卡片拖到 Patch 的 Universe 卡片（从落点地址配接）、舞台监视器（放在落点）或时间线上。"
+        },
+        "fixtureLibrary": {
+          "title": "灯具素材库改版",
+          "body": "列表带类型图标与筛选；详情显示能力徽标、关键参数卡片，通道条按功能组着色并附图例；可一键添加到当前节目。"
+        },
+        "effectLibrary": {
+          "title": "特效库配置文件",
+          "body": "24 个内置属性特效（位置、强度、颜色、光束），插入前可调速度、大小、相位扩散、分翼、方向与顺序；用户特效保存在 effects.json，可导入导出。"
+        },
+        "timelineTools": {
+          "title": "时间线工具",
+          "body": "缩放滑块与适应窗口、跟随播放头、吸附选项、波纹编辑、一键展开 / 收起轨道、标尺在时间码与小节·拍之间切换。"
+        },
+        "recentFiles": {
+          "title": "最近文件",
+          "body": "文件菜单列出最近打开的 10 个节目，空节目的预览区也会显示最近 5 个。"
+        },
+        "outputAdvanced": {
+          "title": "输出设置分为基本与高级",
+          "body": "常用的输出目标与路由直接可见，Gamma、延迟补偿、同步与锁定通道收进“高级”。"
+        },
+        "helpMenu": {
+          "title": "帮助菜单",
+          "body": "新增快捷键速查、新功能、问题反馈（复制诊断信息、打开日志文件夹）与关于。"
+        }
+      }
+    },
+    "recent": {
+      "title": "最近文件",
+      "clear": "清空列表",
+      "library": "节目库",
+      "removeOne": "从最近文件里移除 {{name}}",
+      "missing": "找不到“{{name}}”，文件可能已被移动或删除",
+      "remove": "从列表移除"
+    },
+    "timelineTools": {
+      "label": "时间线工具",
+      "snapOptions": "吸附选项",
+      "snapTo": "吸附到",
+      "snapKinds": {
+        "beats": "节拍",
+        "markers": "标记点",
+        "edges": "片段边缘",
+        "playhead": "播放头"
+      },
+      "snapHint": "节目起止始终可吸附；拖动时按住 Alt 临时关闭吸附。",
+      "ripple": "波纹编辑：删除片段时后面的片段前移补齐",
+      "rippleOn": "波纹编辑已开启",
+      "rippleOff": "波纹编辑已关闭",
+      "follow": "播放时跟随播放头",
+      "trackHeight": "轨道高度",
+      "allTracks": "全部轨道",
+      "heights": {
+        "compact": "紧凑",
+        "normal": "标准",
+        "tall": "宽松"
+      },
+      "collapseAll": "全部折叠",
+      "expandAll": "全部展开",
+      "ruler": "标尺刻度",
+      "timecode": "时间码",
+      "timecodeHint": "按分:秒与帧标注",
+      "bars": "小节",
+      "barsHint": "按小节·拍标注（来自节拍设置）",
+      "needTempo": "先设置节拍（BPM）才能按小节显示",
+      "zoom": "时间线缩放",
+      "zoomValue": "每秒 {{value}} 像素",
+      "fit": "适应窗口（Shift+Z）"
     }
   },
   "fixtures": {
@@ -2717,7 +2939,12 @@
       "noMatch": "没有匹配的模型",
       "builtin": "内置标准模型",
       "custom": "自定义模型",
-      "channels": "{{count}} 通道"
+      "channels": "{{count}} 通道",
+      "source": "来源",
+      "all": "全部",
+      "typeFilter": "按类型筛选",
+      "clearFilters": "清除筛选",
+      "modes": "{{count}} 模式"
     },
     "detail": {
       "builtin": "内置",
@@ -2734,7 +2961,15 @@
       "deleteTitle": "删除模型“{{name}}”？",
       "deleteDescription": "已加入节目的灯具实例不受影响，但之后无法再从素材库添加这个模型。此操作无法撤销。",
       "deleted": "已删除模型“{{name}}”",
-      "none": "没有可显示的模型"
+      "none": "没有可显示的模型",
+      "addToShow": "添加到当前节目",
+      "capabilities": "能力",
+      "modeCount": "通道模式",
+      "heads": "像素数",
+      "pan": "Pan 行程",
+      "tilt": "Tilt 行程",
+      "beam": "光束角",
+      "legend": "通道功能组图例"
     },
     "table": {
       "channel": "通道",
@@ -2909,6 +3144,23 @@
         "unsupportedFeature": "模型 {{model}}（{{sheet}}）用到了暂不支持的特性（{{detail}}），相关通道已跳过。",
         "invalidModelOfl": "模型 {{model}} 未通过校验（{{detail}}），已跳过。"
       }
+    },
+    "type": {
+      "dimmer": "调光灯",
+      "white": "白光灯",
+      "mixing": "混色灯",
+      "mover": "摇头灯",
+      "other": "其它"
+    },
+    "cap": {
+      "intensity": "调光",
+      "mixing": "混色",
+      "colorTemp": "色温",
+      "colorWheel": "颜色轮",
+      "position": "摇头",
+      "beam": "光束效果",
+      "focus": "聚焦 / 变焦",
+      "strobe": "频闪"
     }
   },
   "placeholder": {

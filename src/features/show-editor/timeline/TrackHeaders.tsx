@@ -8,18 +8,14 @@ import {
   Clapperboard,
   Headphones,
   Lamp,
-  Lightbulb,
   Lock,
   LockOpen,
-  Move,
-  Palette,
-  Sun,
   Trash2,
   Volume2,
   VolumeX,
-  type LucideIcon,
 } from "lucide-react";
 
+import { FIXTURE_TYPE_ICONS } from "@/features/fixtures";
 import { cn } from "@/lib/utils";
 import type { FixtureType } from "../lib/fixtureProfile";
 import type { Track } from "../lib/project";
@@ -35,22 +31,13 @@ const SCROLLBAR_ALLOWANCE = 16;
 /** 轨道头的三个开关。 */
 export type TrackFlag = "mute" | "solo" | "lock";
 
-/** 灯具类型的图标。 */
-const TYPE_ICONS: Record<FixtureType, LucideIcon> = {
-  dimmer: Lightbulb,
-  white: Sun,
-  mixing: Palette,
-  mover: Move,
-  other: Lamp,
-};
-
 /**
  * 轨道类型图标：灯具轨道按灯具类型（调光 / 白光 / 混色 / 摇头），分组与场景用各自的图标；
  * 颜色与片段类型色一致。灯具类型以 `role="img"` 的名称读出。
  */
 function TrackKindIcon({ kind, type }: { kind: Track["target"]["kind"]; type?: FixtureType | null }) {
   const { t } = useTranslation();
-  const Icon = kind === "group" ? Boxes : kind === "scene" ? Clapperboard : type ? TYPE_ICONS[type] : Lamp;
+  const Icon = kind === "group" ? Boxes : kind === "scene" ? Clapperboard : type ? FIXTURE_TYPE_ICONS[type] : Lamp;
   const label = type ? t(`editor.fixtureType.${type}`) : undefined;
   return (
     <span role={label ? "img" : undefined} aria-label={label} title={label} aria-hidden={label ? undefined : true} className="flex shrink-0">

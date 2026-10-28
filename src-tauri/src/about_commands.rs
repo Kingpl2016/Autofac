@@ -1,10 +1,16 @@
-//! 「关于」页所需的应用元信息命令。
+//! 「关于」页与帮助菜单所需的命令：应用元信息、打开日志文件夹。
 //!
-//! 前端关于页展示版本、构建配置与运行环境，并可一键复制为诊断信息。
-//! 这些信息全部在编译期或运行时即可确定，因此命令本身不做 I/O，也不会失败。
+//! 前端关于页展示版本、构建配置与运行环境，并可一键复制为诊断信息；这些信息全部在编译期或运行时即可确定，
+//! [`app_info`] 不做 I/O，也不会失败。帮助菜单的“问题反馈”可用 [`logs_reveal`] 打开日志文件夹。
 
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
+
+use crate::data_dir::DataRoot;
+
+/// 错误码：创建或打开日志文件夹失败。
+pub const ERR_IO: &str = "io";
 
 /// 构建配置：区分带调试断言的开发构建与发布构建。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -95,6 +101,31 @@ pub fn app_info(app: AppHandle) -> AppInfo {
         &package.version.to_string(),
         &app.config().identifier,
     )
+}
+
+/// 在系统文件管理器里打开日志文件夹（`data/logs`）；文件夹还不存在时先创建。
+///
+/// # Arguments
+///
+/// * `app` - 应用句柄（打开文件管理器）。
+/// * `root` - 数据根目录。
+///
+/// # Returns
+///
+/// 日志文件夹的完整路径。
+///
+/// # Errors
+///
+/// 创建文件夹或打开文件管理器失败时返回 [`ERR_IO`]。
+#[tauri::command]
+pub fn logs_reveal(app: AppHandle, root: State<'_, DataRoot>) -> Result<String, String> {
+    let dir = root.logs_dir();
+    std::fs::create_dir_all(&dir).map_err(|_| ERR_IO.to_owned())?;
+    let path = dir.to_string_lossy().into_owned();
+    app.opener()
+        .open_path(path.clone(), None::<&str>)
+        .map_err(|_| ERR_IO.to_owned())?;
+    Ok(path)
 }
 
 #[cfg(test)]

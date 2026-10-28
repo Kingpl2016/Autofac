@@ -37,3 +37,13 @@ export function warningParams(w: ImportWarning): Record<string, string | number>
     detail: w.detail ?? "—",
   };
 }
+
+/**
+ * 节目编辑器里“添加这个模型”的地址：编辑器打开左侧灯具页并展开该模型的批量添加面板。
+ *
+ * @param modelId 模型编号。
+ * @returns 路由地址。
+ */
+export function addToShowHref(modelId: string): string {
+  return `/editor?addFixture=${encodeURIComponent(modelId)}`;
+}

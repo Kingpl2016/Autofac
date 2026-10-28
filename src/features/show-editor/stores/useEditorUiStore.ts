@@ -64,6 +64,14 @@ interface EditorUiState {
    * @param obj 对象。
    */
   selectTimelineObject: (obj: TimelineObject | null) => void;
+  /** 左侧“灯具”页里展开了批量添加面板的模型（同一时间只展开一个） */
+  fixtureAddModelId: string | null;
+  /**
+   * 展开某个模型的批量添加面板；`null` 收起。
+   *
+   * @param id 模型编号。
+   */
+  setFixtureAddModel: (id: string | null) => void;
   /** 工具条的帮助菜单是否打开（F1） */
   helpOpen: boolean;
   /**
@@ -239,6 +247,14 @@ interface EditorUiState {
    * @param open 是否打开。
    */
   setKeymapOpen: (open: boolean) => void;
+  /** 快捷键速查表是否打开（帮助菜单） */
+  shortcutSheetOpen: boolean;
+  /**
+   * 打开 / 关闭快捷键速查表。
+   *
+   * @param open 是否打开。
+   */
+  setShortcutSheetOpen: (open: boolean) => void;
   /** 等待确认的节目时长（缩短会裁掉内容时）；`null` 为没有 */
   durationRequest: number | null;
   /**
@@ -309,6 +325,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     set(ids.length > 0 ? { selectedCueIds: ids, selectedMediaClipIds: [], selectedTimelineObject: null } : { selectedCueIds: ids }),
   renamingObjectId: null,
   setRenamingObject: (renamingObjectId) => set({ renamingObjectId }),
+  fixtureAddModelId: null,
+  setFixtureAddModel: (fixtureAddModelId) => set({ fixtureAddModelId }),
   helpOpen: false,
   setHelpOpen: (helpOpen) => set({ helpOpen }),
   hintsShowAll: false,
@@ -318,6 +336,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     set(obj ? { selectedTimelineObject: obj, selectedCueIds: [], selectedMediaClipIds: [] } : { selectedTimelineObject: null }),
   keymapOpen: false,
   setKeymapOpen: (keymapOpen) => set({ keymapOpen }),
+  shortcutSheetOpen: false,
+  setShortcutSheetOpen: (shortcutSheetOpen) => set({ shortcutSheetOpen }),
   durationRequest: null,
   setDurationRequest: (durationRequest) => set({ durationRequest }),
   draftOpen: false,

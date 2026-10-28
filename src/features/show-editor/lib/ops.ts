@@ -1,11 +1,10 @@
 import type { FixtureModel } from "@/features/fixtures";
+import { MAX_ADD_COUNT, applyAddPlan, planAddFixtures } from "./addPlan";
 import { newId } from "./ids";
-import { footprintOf, nextFreeSlot } from "./patch";
 import {
   DMX_CHANNELS,
   MAX_UNIVERSE,
   type FixtureGroup,
-  type FixtureInstance,
   type MediaRef,
   type OutputSettings,
   type ShowProject,
@@ -22,8 +21,7 @@ import { clamp, snapToFrame } from "./time";
  * 因此每次调用都会产生一个新的不可变快照，撤销重做按快照回退。
  */
 
-/** 一次最多添加的灯具数量。 */
-export const MAX_ADD_COUNT = 128;
+export { MAX_ADD_COUNT };
 
 /** 分组的最少成员数。 */
 export const MIN_GROUP_SIZE = 2;
@@ -86,19 +84,6 @@ export function trackFixtureIds(
   return ids.filter((id) => known.has(id));
 }
 
-/**
- * 把模型快照放进工程；已有同编号快照时以最新定义覆盖。
- *
- * @param draft 工程草稿。
- * @param model 素材库里的模型。
- */
-function upsertModel(draft: ShowProject, model: FixtureModel): void {
-  const copy = structuredClone(model);
-  const index = draft.fixtureModels.findIndex((m) => m.id === model.id);
-  if (index >= 0) draft.fixtureModels[index] = copy;
-  else draft.fixtureModels.push(copy);
-}
-
 /** 删掉没有任何灯具使用的模型快照，保持工程文件精简。 */
 function pruneModels(draft: ShowProject): void {
   const used = new Set(draft.fixtures.map((f) => f.modelId));
@@ -117,33 +102,7 @@ function pruneModels(draft: ShowProject): void {
  * @returns 新增灯具的 id（按添加顺序）。
  */
 export function addFixtures(draft: ShowProject, model: FixtureModel, count: number): string[] {
-  upsertModel(draft, model);
-  const footprint = footprintOf(model);
-  const total = clamp(Math.floor(count), 1, MAX_ADD_COUNT);
-  const existing = draft.fixtures.filter((f) => f.modelId === model.id).length;
-  const added: string[] = [];
-  for (let i = 0; i < total; i += 1) {
-    const last = draft.fixtures.at(-1);
-    const slot = nextFreeSlot(draft, footprint, last?.universe ?? 0);
-    if (!slot) break;
-    const fixture: FixtureInstance = {
-      id: newId(),
-      name: `${model.name} ${existing + i + 1}`,
-      modelId: model.id,
-      universe: slot.universe,
-      address: slot.address,
-    };
-    draft.fixtures.push(fixture);
-    draft.tracks.push({
-      id: newId(),
-      target: { kind: "fixture", id: fixture.id },
-      mute: false,
-      solo: false,
-      lock: false,
-    });
-    added.push(fixture.id);
-  }
-  return added;
+  return applyAddPlan(draft, model, planAddFixtures(draft, model, { count }));
 }
 
 /**

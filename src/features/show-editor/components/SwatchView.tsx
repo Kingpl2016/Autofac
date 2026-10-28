@@ -145,12 +145,14 @@ export function SwatchView({ colors }: { colors: ReadonlyMap<string, Rgb> }) {
     <div className="grid gap-2" onPointerLeave={() => setHover(null)}>
       <div data-tour="preview-swatch-tools" className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <Segmented<SwatchGroupBy>
+          size="xs"
           ariaLabel={t("editor.swatches.groupBy")}
           value={groupBy}
           options={SWATCH_GROUP_BY.map((v) => ({ value: v, label: t(`editor.swatches.by.${v}`) }))}
           onChange={setGroupBy}
         />
         <Segmented<SwatchDensity>
+          size="xs"
           ariaLabel={t("editor.swatches.density")}
           value={density}
           options={SWATCH_DENSITIES.map((v) => ({

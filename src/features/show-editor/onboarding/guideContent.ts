@@ -42,6 +42,8 @@ export const HINTS: readonly HintDef[] = [
   { id: "trackHeaders", target: "track-headers", side: "right" },
   { id: "timelineObjects", target: "marker-strip", side: "bottom" },
   { id: "templates", target: "templates", side: "right" },
+  { id: "fixtureAdd", target: "fixture-add", side: "right" },
+  { id: "effects", target: "effects", side: "right" },
   { id: "patchBatch", target: "patch-batch", side: "left" },
   { id: "universeView", target: "universe-view", side: "left" },
   { id: "colorInput", target: "color-input", side: "left" },

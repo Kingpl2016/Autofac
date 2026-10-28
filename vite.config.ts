@@ -19,15 +19,15 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve(import.meta.dirname, "./src"),
       },
     },
     build: {
       // 多页面：主应用 + 信号检测器独立窗口（由 Rust 侧以 signal-checker.html 打开）
       rolldownOptions: {
         input: {
-          main: path.resolve(__dirname, "index.html"),
-          "signal-checker": path.resolve(__dirname, "signal-checker.html"),
+          main: path.resolve(import.meta.dirname, "index.html"),
+          "signal-checker": path.resolve(import.meta.dirname, "signal-checker.html"),
         },
       },
     },

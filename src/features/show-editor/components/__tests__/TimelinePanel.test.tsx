@@ -634,3 +634,65 @@ describe("时间线标记类对象的删除", () => {
     expect(cue?.kind === "look" && cue.look.intensity?.kind === "keys" && cue.look.intensity.keys.map((k) => k.tMs)).toEqual([0, 2000]);
   });
 });
+
+describe("时间线头部工具", () => {
+  const renderFull = () =>
+    render(
+      <DndContext>
+        <Hotkeys />
+        <WithCommands />
+      </DndContext>,
+    );
+  const tools = () => screen.getByRole("toolbar", { name: "时间线工具" });
+
+  beforeEach(async () => {
+    await act(async () => {
+      await useEditorPrefsStore.setState({ rippleEdit: false, followPlayhead: true, rulerFormat: "timecode", snapKinds: { beats: true, markers: true, edges: true, playhead: true } });
+    });
+  });
+
+  it("波纹编辑开着时 Delete 删除片段会让后面的片段前移", () => {
+    const { a, cueA } = loadSample();
+    let later = "";
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        later = addStaticCue(d, a, 5000, { lengthMs: 1000 }) ?? "";
+      }),
+    );
+    renderFull();
+    fireEvent.click(within(tools()).getByRole("button", { name: /波纹编辑/ }));
+    expect(useEditorPrefsStore.getState().rippleEdit).toBe(true);
+    act(() => ui().selectCues([cueA]));
+    fireEvent.keyDown(screen.getByRole("group", { name: "轨道与 Cue" }), { key: "Delete" });
+    expect(project().cues.map((c) => c.id)).toEqual([later]);
+    expect(project().cues[0].startMs).toBeLessThan(5000);
+  });
+
+  it("跟随播放头、吸附目标、全部轨道高度、标尺刻度与适应窗口", async () => {
+    loadSample();
+    renderFull();
+    fireEvent.click(within(tools()).getByRole("button", { name: "播放时跟随播放头" }));
+    expect(useEditorPrefsStore.getState().followPlayhead).toBe(false);
+
+    fireEvent.pointerDown(within(tools()).getByRole("button", { name: "吸附选项" }), { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "标记点" }));
+    expect(useEditorPrefsStore.getState().snapKinds.markers).toBe(false);
+    // 没有节拍时“节拍”不可选
+    expect(screen.getByRole("menuitemcheckbox", { name: "节拍" }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    fireEvent.pointerDown(within(tools()).getByRole("button", { name: "轨道高度" }), { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "宽松" }));
+    expect(project().tracks.every((tr) => tr.height === "tall")).toBe(true);
+
+    expect((within(tools()).getByRole("radio", { name: "小节" }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => useProjectStore.getState().update((d) => void (d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 })));
+    fireEvent.click(within(tools()).getByRole("radio", { name: "小节" }));
+    expect(useEditorPrefsStore.getState().rulerFormat).toBe("bars");
+
+    const before = ui().pxPerSec;
+    fireEvent.click(within(tools()).getByRole("button", { name: /适应窗口/ }));
+    expect(ui().pxPerSec).not.toBe(before);
+    expect(within(tools()).getByRole("slider", { name: "时间线缩放" })).toBeTruthy();
+  });
+});

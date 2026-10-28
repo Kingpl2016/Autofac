@@ -10,6 +10,7 @@ vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 
 import { DIMMER, fakeFile, RGBW } from "../../lib/__tests__/testkit";
 import { createEmptyProject } from "../../lib/project";
+import { DEFAULT_FIXTURE_ADD, useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { InspectorPanel } from "../InspectorPanel";
@@ -32,6 +33,10 @@ beforeEach(async () => {
   invoke.mockReset();
   useProjectStore.getState().load(createEmptyProject(""));
   useEditorUiStore.getState().clearSelection();
+  useEditorUiStore.setState({ fixtureAddModelId: null });
+  await act(async () => {
+    await useEditorPrefsStore.setState({ fixtureAdd: DEFAULT_FIXTURE_ADD });
+  });
   useFixtureStore.setState({ models: [RGBW, DIMMER], status: "ready", error: null });
 });
 
@@ -48,6 +53,14 @@ function renderEditor() {
   );
 }
 
+/** 展开某个模型的批量添加面板，填数量并提交。 */
+function batchAdd(name: string, count: string) {
+  const toggle = screen.getByRole("button", { name: `批量添加 ${name}…` });
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  fireEvent.change(screen.getByLabelText("数量"), { target: { value: count } });
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^按以上设置添加 \\d+ 个 ${name}$`) }));
+}
+
 const rowOf = (name: string) => screen.getByLabelText(`${name} 的名称`).closest("li") as HTMLElement;
 
 describe("灯具与 Patch 面板", () => {
@@ -58,8 +71,7 @@ describe("灯具与 Patch 面板", () => {
 
   it("从素材库添加多个灯具：地址依次排布、自动选中、占用图给出摘要", () => {
     renderEditor();
-    fireEvent.change(screen.getByLabelText("数量"), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加 3 个 RGBW全彩灯" }));
+    batchAdd("RGBW全彩灯", "3");
 
     expect(useProjectStore.getState().project.fixtures).toHaveLength(3);
     for (const [name, range] of [
@@ -75,17 +87,15 @@ describe("灯具与 Patch 面板", () => {
 
   it("数量输入非法时按 1 处理，且上限为 128", () => {
     renderEditor();
-    fireEvent.change(screen.getByLabelText("数量"), { target: { value: "abc" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加 1 个 可调白光灯" }));
+    batchAdd("可调白光灯", "abc");
     expect(useProjectStore.getState().project.fixtures).toHaveLength(1);
     fireEvent.change(screen.getByLabelText("数量"), { target: { value: "9999" } });
-    expect(screen.getByRole("button", { name: "添加 128 个 可调白光灯" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "按以上设置添加 128 个 可调白光灯" })).toBeTruthy();
   });
 
   it("改地址造成重叠：红色提示、占用图警告，修正后恢复", () => {
     renderEditor();
-    fireEvent.change(screen.getByLabelText("数量"), { target: { value: "2" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加 2 个 RGBW全彩灯" }));
+    batchAdd("RGBW全彩灯", "2");
 
     const address = screen.getByLabelText("RGBW全彩灯 2 的起始地址");
     // Enter 提交靠“让输入框失焦”实现，jsdom 里需要先真正聚焦
@@ -118,8 +128,7 @@ describe("灯具与 Patch 面板", () => {
 
   it("勾选两个以上灯具才能编组；编组后出现分组，可调整成员顺序", () => {
     renderEditor();
-    fireEvent.change(screen.getByLabelText("数量"), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加 3 个 RGBW全彩灯" }));
+    batchAdd("RGBW全彩灯", "3");
 
     const groupButton = screen.getByRole("button", { name: "编为一组" }) as HTMLButtonElement;
     act(() => useEditorUiStore.getState().setSelectedFixtures([useProjectStore.getState().project.fixtures[0].id]));
@@ -169,13 +178,11 @@ describe("灯具与 Patch 面板", () => {
 
   it("撤销之后，已被删除灯具的勾选不再计入“删除所选”", async () => {
     renderEditor();
-    fireEvent.change(screen.getByLabelText("数量"), { target: { value: "2" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加 2 个 RGBW全彩灯" }));
+    batchAdd("RGBW全彩灯", "2");
     expect(screen.getByRole("button", { name: "删除所选（2）" })).toBeTruthy();
     act(() => useProjectStore.temporal.getState().undo());
     // 工程回到空，面板回到空状态；再添加新灯具时不会被旧勾选污染
     expect(screen.getByText("还没有灯具。到左侧“灯具”标签页添加。")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("数量"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "添加 1 个 可调白光灯" }));
     expect(screen.getByRole("button", { name: "删除所选（1）" })).toBeTruthy();
   });
@@ -274,26 +281,29 @@ describe("多 Universe 配接", () => {
     expect(screen.queryByRole("button", { name: /补建/ })).toBeNull();
   });
 
-  it("Universe 卡片：悬停色块与舞台互相高亮；切到通道格显示 512 格；可收起灯具清单", () => {
+  it("Universe 卡片：默认一行摘要，展开后列出灯具；悬停色块与舞台互相高亮；通道格 512 格（64 × 8）", () => {
     seed();
     render(<InspectorPanel />);
     const card = screen.getByRole("region", { name: "U0" });
+    // 收起时清单只给读屏
     const list = within(card).getByRole("list", { name: "Universe 0 的灯具（按地址）" });
-    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1–4灯1", "5–8灯2", "9–12灯3"]);
-    const block = card.querySelector('[data-owner="f2"]') as HTMLElement;
+    expect(list.className).toContain("sr-only");
+    fireEvent.click(within(card).getByRole("button", { name: "展开 U0" }));
+    const open = within(screen.getByRole("region", { name: "U0" })).getByRole("list", { name: "Universe 0 的灯具（按地址）" });
+    expect(open.className).not.toContain("sr-only");
+    expect(within(open).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1–4灯1", "5–8灯2", "9–12灯3"]);
+    const block = card.querySelector('[data-bar] [data-owner="f2"]') as HTMLElement;
     fireEvent.pointerMove(block);
     expect(useEditorUiStore.getState().hoverFixtureId).toBe("f2");
-    expect(within(list).getAllByRole("listitem")[1].className).toContain("bg-accent");
+    expect(within(open).getAllByRole("listitem")[1].className).toContain("bg-accent");
     fireEvent.pointerLeave(card.closest("ul") as HTMLElement);
     expect(useEditorUiStore.getState().hoverFixtureId).toBeNull();
 
     fireEvent.click(screen.getByRole("radio", { name: "通道格" }));
     const grid = within(screen.getByRole("region", { name: "U0" })).getByRole("img", { name: /Universe 0：占用 12/ });
     expect(grid.children).toHaveLength(512);
+    expect(grid.style.gridTemplateColumns).toContain("64");
     expect(grid.children[4].getAttribute("title")).toBe("通道 5 · 灯2");
-
-    fireEvent.click(screen.getByRole("button", { name: "收起 U0" }));
-    expect(screen.queryByRole("list", { name: "Universe 0 的灯具（按地址）" })).toBeNull();
     act(() => useEditorUiStore.getState().setUniverseView("cards"));
   });
 

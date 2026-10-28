@@ -8,11 +8,13 @@ import { createPreviewEvaluator } from "../lib/color";
 import { CENTER_VIEWS, useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import type { RecentFile } from "../stores/useRecentFilesStore";
 import { StageMonitor } from "../stage/StageMonitor";
 import { EmptyHint } from "./EmptyHint";
 import { FixtureSheet } from "./FixtureSheet";
 import { MediaPlayers } from "./MediaPlayers";
 import { PanelFrame } from "./PanelFrame";
+import { RecentFilesList } from "./RecentFilesList";
 import { SwatchView } from "./SwatchView";
 
 /**
@@ -20,9 +22,9 @@ import { SwatchView } from "./SwatchView";
  *
  * 颜色由 WASM 版 show-engine（与后端输出同一份代码）按工程计算，叠加编程器的值；因此没有输出会话时
  * 拖动播放头也能预览。默认显示色块（按 Universe 分区，见 `SwatchView`），视图选择会记住。
- * 视频与音频随后端时钟同步播放（见 `MediaPlayers`）。
+ * 视频与音频随后端时钟同步播放（见 `MediaPlayers`）。还没有灯具时，色块视图下列出最近的 5 个节目。
  */
-export function PreviewPanel() {
+export function PreviewPanel({ onOpenRecent }: { onOpenRecent?: (item: RecentFile) => void }) {
   const { t } = useTranslation();
   const fixtureCount = useProjectStore((s) => s.project.fixtures.length);
   const preview = usePreviewProject();
@@ -83,7 +85,10 @@ export function PreviewPanel() {
       <div className="flex flex-col gap-3 p-3">
         <MediaPlayers />
         {fixtureCount === 0 ? (
-          <EmptyHint>{t("editor.preview.empty")}</EmptyHint>
+          <>
+            <EmptyHint>{t("editor.preview.empty")}</EmptyHint>
+            {onOpenRecent && <RecentFilesList limit={5} onOpen={onOpenRecent} className="mx-auto w-full max-w-sm rounded-md border border-border bg-card p-1" />}
+          </>
         ) : (
           <SwatchView colors={evaluate(playheadMs)} />
         )}

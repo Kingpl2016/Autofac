@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { FileJson, FileSpreadsheet, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -9,6 +10,7 @@ import { PageHeader } from "@/shared/components/PageHeader";
 import { pickJsonFile, pickXlsxFile } from "@/shared/tauri/pickers";
 import { blankModel, cloneAsCustom, nextCustomId } from "../lib/draft";
 import { fixtureErrorText } from "../lib/errors";
+import { addToShowHref } from "../lib/format";
 import type { FixtureModel, ImportOutcome } from "../lib/types";
 import { useFixtureStore } from "../stores/useFixtureStore";
 import { FixtureDetail } from "./FixtureDetail";
@@ -28,6 +30,7 @@ interface EditingState {
  */
 export function FixtureLibraryView() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const models = useFixtureStore((s) => s.models);
   const status = useFixtureStore((s) => s.status);
   const error = useFixtureStore((s) => s.error);
@@ -121,7 +124,7 @@ export function FixtureLibraryView() {
           </Button>
         </div>
       ) : (
-        <div className="grid items-start gap-(--density-gap) lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="grid items-start gap-(--density-gap) lg:grid-cols-[20rem_minmax(0,1fr)]">
           <FixtureList
             models={models}
             selectedId={selected?.id ?? null}
@@ -140,6 +143,7 @@ export function FixtureLibraryView() {
                 })
               }
               onDelete={() => setConfirmDelete(true)}
+              onAddToShow={() => navigate(addToShowHref(selected.id))}
             />
           ) : (
             <p className="text-sm text-muted-foreground">

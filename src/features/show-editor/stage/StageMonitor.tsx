@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useDroppable } from "@dnd-kit/core";
 import { EyeOff, Move, Power, Sparkle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
 import { useEngine } from "../engine/useEngine";
+import { STAGE_DROP_ID, type StageDropData } from "../hooks/fixtureDrop";
 import { usePreviewProject } from "../hooks/usePreviewProject";
 import { createPreviewEvaluator } from "../lib/color";
 import { createDmxEvaluator } from "../lib/dmxPreview";
@@ -17,7 +19,7 @@ import { useProgrammerStore } from "../stores/useProgrammerStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { StageLayoutBar } from "./StageLayoutBar";
 import { Canvas2DStageRenderer, FIXTURE_RADIUS, type StageFixture, type StageRenderer, type StageTheme } from "./StageRenderer";
-import { fitStage, hitFixture, hitObject, lassoFixtures, placeFixtures, toCanvas } from "./stageGeometry";
+import { fitStage, hitFixture, hitObject, lassoFixtures, placeFixtures, toCanvas, toStage } from "./stageGeometry";
 import { useStageBackground } from "./useStageBackground";
 
 /** 默认 Pan 行程（度）：模型没有物理参数时。 */
@@ -109,6 +111,18 @@ export function StageMonitor() {
   }, [project]);
 
   const view = fitStage(project.stage, size.width, size.height);
+
+  // 从左侧灯具页拖来的模型：放在落点（舞台坐标，米）
+  const dropData: StageDropData = {
+    kind: "stage",
+    toStagePoint: (x, y) => {
+      const r = canvasRef.current?.getBoundingClientRect();
+      if (!r || r.width === 0) return null;
+      return toStage(view, x - r.left, y - r.top);
+    },
+  };
+  const { setNodeRef: setDropRef, isOver, active: dragActive } = useDroppable({ id: STAGE_DROP_ID, data: dropData });
+  const dropping = isOver && (dragActive?.data.current as { kind?: string } | undefined)?.kind === "fixtureModel";
 
   // 拖动中的预览位移（与 `moveFixtures` 同样的吸附规则：吸附作用于第一台灯）
   const fixtureShift = useMemo(() => {
@@ -353,7 +367,13 @@ export function StageMonitor() {
 
   return (
     <div className="flex h-full min-h-48 w-full flex-col">
-      <div ref={wrapRef} className="relative min-h-0 flex-1 overflow-hidden bg-stage-bg">
+      <div
+        ref={(el) => {
+          wrapRef.current = el;
+          setDropRef(el);
+        }}
+        className="relative min-h-0 flex-1 overflow-hidden bg-stage-bg"
+      >
         <canvas
           ref={canvasRef}
           role="img"
@@ -380,6 +400,11 @@ export function StageMonitor() {
             }
           }}
         />
+        {dropping && (
+          <div className="pointer-events-none absolute inset-1 z-10 flex items-end justify-center rounded-md border-2 border-dashed border-primary pb-3">
+            <span className="rounded bg-background/80 px-2 py-0.5 text-[11px] text-primary">{t("editor.stage.dropHint")}</span>
+          </div>
+        )}
         {project.fixtures.length === 0 && (
           <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 px-6 text-center text-xs text-muted-foreground">
             {t("editor.preview.empty")}

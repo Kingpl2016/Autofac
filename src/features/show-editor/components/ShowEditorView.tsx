@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/resizable";
 import { announce } from "@/shared/stores/announcerStore";
 import { useBakeEvents } from "../hooks/useBakeEvents";
+import { dropFixtureModel, resolveFixtureDrop } from "../hooks/fixtureDrop";
 import { useCueActions } from "../hooks/useCueActions";
 import { useEditorHotkeys } from "../hooks/useEditorHotkeys";
 import { useMediaDrop } from "../hooks/useMediaDrop";
@@ -43,16 +44,18 @@ import { FileDialogs } from "./FileDialogs";
 import { IconRail } from "./IconRail";
 import { InspectorPanel } from "./InspectorPanel";
 import { KeymapDialog } from "./KeymapDialog";
+import { FixtureModelChip, type FixtureModelDragData } from "./LibraryFixturesTab";
 import { LibraryPanel } from "./LibraryPanel";
 import { MediaChip, type MediaDragData } from "./MediaTab";
 import { PresetChip, type PresetDragData } from "./PresetsTab";
 import { PreviewPanel } from "./PreviewPanel";
 import { RadialMenu } from "./RadialMenu";
+import { ShortcutSheetDialog } from "./ShortcutSheetDialog";
 import { TemplateChip, type TemplateDragData } from "./TemplatesTab";
 import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 
 /** 可以从素材库拖到时间线上的东西。 */
-type DragData = TemplateDragData | EffectDragData | PresetDragData | MediaDragData;
+type DragData = TemplateDragData | EffectDragData | PresetDragData | MediaDragData | FixtureModelDragData;
 
 /** 预设拖到轨道上新建的片段长度（毫秒）。 */
 const PRESET_CLIP_MS = 4000;
@@ -84,6 +87,15 @@ export function ShowEditorView() {
     setParams({}, { replace: true });
     requestOpenPath(openParam);
   }, [openParam, setParams, requestOpenPath]);
+  // 从灯具素材库跳转而来（?addFixture=<模型编号>）：打开左侧灯具页并展开该模型的批量添加面板
+  const addFixtureParam = params.get("addFixture");
+  useEffect(() => {
+    if (!addFixtureParam) return;
+    setParams({}, { replace: true });
+    const ui = useEditorUiStore.getState();
+    ui.setLibraryTab("fixtures");
+    ui.setFixtureAddModel(addFixtureParam);
+  }, [addFixtureParam, setParams]);
   const [dragging, setDragging] = useState<DragData | null>(null);
   // 移动 6px 后才算开始拖拽，避免点击模板被误判为拖拽
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -91,16 +103,25 @@ export function ShowEditorView() {
   const onDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as DragData | undefined;
     setDragging(
-      data?.kind === "template" || data?.kind === "effect" || data?.kind === "preset" || data?.kind === "media" ? data : null,
+      data?.kind === "template" || data?.kind === "effect" || data?.kind === "preset" || data?.kind === "media" || data?.kind === "fixtureModel"
+        ? data
+        : null,
     );
   };
 
   const onDragEnd = (e: DragEndEvent) => {
     const data = e.active.data.current as DragData | undefined;
     setDragging(null);
-    if (!data || e.over?.id !== TIMELINE_DROP_ID) return;
+    if (!data) return;
     const start = e.activatorEvent as PointerEvent;
     const pointer = { x: start.clientX + e.delta.x, y: start.clientY + e.delta.y };
+    // 灯具模型：可放到 Patch 的 Universe 卡片、舞台监视器或时间线
+    if (data.kind === "fixtureModel") {
+      const target = resolveFixtureDrop(e.over ? { id: e.over.id, rect: e.over.rect, data: e.over.data } : null, pointer, TIMELINE_DROP_ID);
+      if (target) dropFixtureModel(data.modelId, target);
+      return;
+    }
+    if (e.over?.id !== TIMELINE_DROP_ID) return;
     const { tracks } = useProjectStore.getState().project;
     const viewport = readTimelineViewport();
     let result;
@@ -183,7 +204,7 @@ export function ShowEditorView() {
                 </ResizablePanel>
                 <ResizableHandle axis="x" />
                 <ResizablePanel minSize="25%">
-                  <PreviewPanel />
+                  <PreviewPanel onOpenRecent={file.requestOpenRecent} />
                 </ResizablePanel>
                 <ResizableHandle axis="x" />
                 <ResizablePanel defaultSize={340} minSize={260} maxSize="40%">
@@ -212,12 +233,14 @@ export function ShowEditorView() {
       <AutoDraftDialog />
       <DurationConfirmDialog />
       <KeymapDialog commands={commands} />
+      <ShortcutSheetDialog commands={commands} />
       <OnboardingRuntime />
       <DragOverlay dropAnimation={null}>
         {dragging?.kind === "template" && <TemplateChip template={dragging.template} overlay />}
         {dragging?.kind === "effect" && <EffectChip preset={dragging.preset} overlay />}
         {dragging?.kind === "preset" && <PresetChip name={dragging.name} swatch={dragging.swatch} />}
         {dragging?.kind === "media" && <MediaChip name={dragging.name} mediaKind={dragging.mediaKind} />}
+        {dragging?.kind === "fixtureModel" && <FixtureModelChip name={dragging.name} type={dragging.type} />}
       </DragOverlay>
     </DndContext>
   );

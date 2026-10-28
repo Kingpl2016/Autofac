@@ -19,6 +19,7 @@ import { createEmptyProject, type ShowProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
 import { AUTOSAVE_INTERVAL_MS, resetRecoveryCheck } from "../../hooks/useShowFile";
 import { useDocumentStore } from "../../stores/useDocumentStore";
+import { useRecentFilesStore } from "../../stores/useRecentFilesStore";
 import { selectDirty, useProjectStore } from "../../stores/useProjectStore";
 import { HINTS } from "../../onboarding/guideContent";
 import { TOUR_VERSION, useOnboardingStore } from "../../stores/useOnboardingStore";
@@ -116,6 +117,9 @@ beforeEach(async () => {
   resetRecoveryCheck();
   useProjectStore.getState().load(createEmptyProject(""));
   useDocumentStore.getState().setOrigin({ kind: "none" });
+  await act(async () => {
+    await useRecentFilesStore.setState({ items: [] });
+  });
 });
 
 afterEach(() => {
@@ -268,7 +272,7 @@ describe("从节目库打开", () => {
     expect(await within(dialog).findByText("开场")).toBeTruthy();
     expect(within(dialog).queryByText("录制来的")).toBeNull();
     expect(within(dialog).getByText("未导出")).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: /开场/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^开场/ }));
     await waitFor(() => expect(project().name).toBe("开场"));
     expect(origin()).toEqual({ kind: "library", path: "D:/rec/开场.artrec" });
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -383,5 +387,45 @@ describe("自动存档与恢复", () => {
     expect(callsOf("show_autosave_write")).toHaveLength(1);
     const written = JSON.parse(callsOf("show_autosave_write")[0][1]?.json as string) as ShowProject;
     expect(written.fixtures).toHaveLength(1);
+  });
+});
+
+describe("最近文件", () => {
+  it("打开后记入最近文件；文件菜单与空节目的预览区都列出，点击再次打开", async () => {
+    installBackend();
+    renderEditor(`/editor?open=${encodeURIComponent("D:/rec/开场.artrec")}`);
+    await waitFor(() => expect(project().name).toBe("开场"));
+    expect(useRecentFilesStore.getState().items).toEqual([expect.objectContaining({ path: "D:/rec/开场.artrec", kind: "library", name: "开场" })]);
+
+    // 新建空节目：预览区列出最近文件
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "新建节目" }));
+    await waitFor(() => expect(project().name).toBe(""));
+    const preview = screen.getByRole("region", { name: "预览" });
+    fireEvent.click(within(within(preview).getByRole("list", { name: "最近文件" })).getByRole("button", { name: /开场/ }));
+    await waitFor(() => expect(project().name).toBe("开场"));
+  });
+
+  it("文件已不存在：提示并可从列表移除；清空列表", async () => {
+    installBackend();
+    act(() => {
+      useRecentFilesStore.getState().record({ path: "D:/丢了.artshow", kind: "external", name: "丢了", openedAt: Date.now() });
+      useRecentFilesStore.getState().record({ path: "D:/rec/开场.artrec", kind: "library", name: "开场", openedAt: Date.now() });
+    });
+    renderEditor();
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
+    // 预览区（空节目）也有一份列表：取文件菜单里的那份
+    const preview = screen.getByRole("region", { name: "预览" });
+    const list = (await screen.findAllByRole("list", { name: "最近文件" })).find((l) => !preview.contains(l))!;
+    fireEvent.click(within(list).getByRole("button", { name: /^丢了/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const [message, opts] = toast.error.mock.calls.at(-1) as unknown as [string, { action: { onClick: () => void } }];
+    expect(message).toContain("找不到“丢了”");
+    act(() => opts.action.onClick());
+    expect(useRecentFilesStore.getState().items.map((x) => x.name)).toEqual(["开场"]);
+
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "清空列表" }));
+    expect(useRecentFilesStore.getState().items).toEqual([]);
   });
 });

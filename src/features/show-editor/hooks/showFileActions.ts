@@ -11,6 +11,7 @@ import { createEmptyProject, type ShowProject } from "../lib/project";
 import { useDocumentStore, type DocumentOrigin } from "../stores/useDocumentStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
+import { fileStem, useRecentFilesStore } from "../stores/useRecentFilesStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { useTimelineScrollStore } from "../timeline/timelineScrollStore";
 import { resetTaps } from "./editorActions";
@@ -22,6 +23,17 @@ import { stopPlayback } from "./transportActions";
  * 约定：失败时抛出后端错误码字符串（见 `showErrorText`）；成功后更新“已保存”基线和工程来源。
  * 保存期间用户继续编辑不会丢：基线取的是**写入磁盘的那一刻的快照**，之后的编辑仍然算未保存。
  */
+
+/**
+ * 记入最近文件（打开、保存成功后）：显示名取节目名，没有时取文件名。
+ *
+ * @param origin 工程来源（没有路径时不记）。
+ */
+function rememberRecent(origin: DocumentOrigin): void {
+  if (origin.kind === "none") return;
+  const name = useProjectStore.getState().project.name.trim() || fileStem(origin.path);
+  useRecentFilesStore.getState().record({ path: origin.path, kind: origin.kind, name, openedAt: Date.now() });
+}
 
 /** 保存到节目库的选项。 */
 export interface SaveLibraryOptions {
@@ -57,6 +69,7 @@ export async function saveToLibrary(options: SaveLibraryOptions): Promise<string
   });
   useDocumentStore.getState().setOrigin({ kind: "library", path });
   useProjectStore.getState().markSaved(snapshot);
+  rememberRecent({ kind: "library", path });
   await showAutosaveClear().catch(() => undefined);
   return path;
 }
@@ -71,6 +84,7 @@ export async function saveToFile(path: string): Promise<void> {
   await showExternalSave(path, serializeProject(snapshot));
   useDocumentStore.getState().setOrigin({ kind: "external", path });
   useProjectStore.getState().markSaved(snapshot);
+  rememberRecent({ kind: "external", path });
   await showAutosaveClear().catch(() => undefined);
 }
 
@@ -104,6 +118,7 @@ function install(project: ShowProject, origin: DocumentOrigin): void {
   if (usePlaybackStore.getState().state?.outputting) void stopPlayback();
   useProjectStore.getState().load(project);
   useDocumentStore.getState().setOrigin(origin);
+  rememberRecent(origin);
   useEditorUiStore.setState({
     selectedFixtureIds: [],
     selectedGroupId: null,

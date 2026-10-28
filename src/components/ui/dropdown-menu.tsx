@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 
 /** 下拉菜单内容（渲染到 body，避开父级的 overflow 裁剪）。 */
 const DropdownMenuContent = React.forwardRef<
@@ -52,6 +53,31 @@ const DropdownMenuRadioItem = React.forwardRef<
   </DropdownMenuPrimitive.RadioItem>
 ));
 DropdownMenuRadioItem.displayName = "DropdownMenuRadioItem";
+
+/** 多选项：选中时左侧显示对勾（选中态靠对勾与 `aria-checked` 表达，不靠颜色）。 */
+const DropdownMenuCheckboxItem = React.forwardRef<
+  React.ComponentRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
+>(({ className, children, ...props }, ref) => (
+  <DropdownMenuPrimitive.CheckboxItem
+    ref={ref}
+    className={cn(
+      "relative flex cursor-pointer select-none items-center gap-2 rounded-md py-2 pl-8 pr-3 text-sm outline-none transition-colors",
+      "focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "[&_svg]:size-4 [&_svg]:shrink-0",
+      className,
+    )}
+    {...props}
+  >
+    <span className="absolute left-2 flex size-4 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <Check aria-hidden />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.CheckboxItem>
+));
+DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
 
 /**
  * 普通菜单项。`variant="destructive"` 用于删除 / 移除这类不可逆操作（文字与图标用 destructive 色），
@@ -105,7 +131,9 @@ export {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
+  DropdownMenuGroup,
   DropdownMenuRadioItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,

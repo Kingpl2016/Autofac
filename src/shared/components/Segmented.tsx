@@ -26,8 +26,8 @@ interface SegmentedProps<T extends string> {
    * - `manual`：方向键只移动焦点，`Enter` / `Space` 才激活，适合有副作用的切换（如应用模式）。
    */
   activation?: "auto" | "manual";
-  /** 尺寸：`sm` 约 32px 高，`md` 约 36px 高。 */
-  size?: "sm" | "md";
+  /** 尺寸：`xs` 24px 高（面板里的紧凑工具条），`sm` 约 32px 高，`md` 约 36px 高。图标随尺寸统一缩放，与文字等高。 */
+  size?: "xs" | "sm" | "md";
   /** 忙碌时整组不可操作，并向读屏声明 `aria-busy`。 */
   busy?: boolean;
   className?: string;
@@ -107,8 +107,10 @@ export function Segmented<T extends string>({
             onFocus={() => activation === "manual" && setFocusIndex(i)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "num inline-flex min-w-12 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-xs font-medium transition-colors",
-              size === "md" ? "h-9" : "py-2",
+              "num inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors",
+              size === "xs" ? "h-6 min-w-8 px-2 text-[11px] [&_svg]:size-3.5" : "min-w-12 px-3 text-xs [&_svg]:size-3.5",
+              size === "md" ? "h-9 [&_svg]:size-4" : size === "sm" && "py-2",
+              "[&_svg]:shrink-0",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "disabled:cursor-not-allowed disabled:opacity-60",
               checked

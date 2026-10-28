@@ -1,17 +1,33 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
 import { produce } from "immer";
 
 import i18n from "@/shared/i18n";
+
+const backend = vi.hoisted(() => ({ file: null as string | null, writes: [] as string[] }));
+const invoke = vi.hoisted(() =>
+  vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+    if (cmd === "effects_read") return backend.file;
+    if (cmd === "effects_write") {
+      backend.file = String(args?.text);
+      backend.writes.push(backend.file);
+      return undefined;
+    }
+    return null;
+  }),
+);
+vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { useAnnouncerStore } from "@/shared/stores/announcerStore";
 import { addEffectCue } from "../../lib/cueOps";
+import { BUILTIN_EFFECTS } from "../../lib/effectLibrary";
 import { EFFECT_PRESETS, presetOf } from "../../lib/effectPresets";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject, type EffectCue } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
+import { useEffectLibraryStore } from "../../stores/useEffectLibraryStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { CueBlock } from "../../timeline/CueBlock";
 import { CueInspector } from "../CueInspector";
@@ -46,6 +62,9 @@ beforeEach(async () => {
   );
   useEditorUiStore.setState({ selectedCueIds: [], selectedTrackId: null, playheadMs: 0, inspectorTab: "patch" });
   useAnnouncerStore.setState({ message: "", seq: 0 });
+  backend.file = null;
+  backend.writes = [];
+  useEffectLibraryStore.setState({ user: [], status: "idle", error: null, issues: [] });
 });
 
 afterEach(() => cleanup());
@@ -60,13 +79,16 @@ describe("EffectsTab", () => {
 
   const classic = () => screen.getByRole("region", { name: "经典 RGB 特效" });
 
-  it("列出 8 种经典特效与 8 种属性特效", () => {
+  it("列出 8 种经典特效与配置文件里的属性特效（按分组）", async () => {
     renderTab();
+    await waitFor(() => expect(useEffectLibraryStore.getState().status).toBe("ready"));
     expect(within(classic()).getAllByRole("button")).toHaveLength(EFFECT_PRESETS.length);
     for (const name of ["呼吸", "彩虹", "追逐", "擦除", "渐变", "脉冲", "闪烁", "频闪"]) {
       expect(within(classic()).getByRole("button", { name })).toBeTruthy();
     }
-    expect(within(screen.getByRole("region", { name: "属性特效" })).getAllByRole("button")).toHaveLength(8);
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    expect(lib.querySelectorAll("[data-effect-id]")).toHaveLength(BUILTIN_EFFECTS.length);
+    for (const name of ["位置特效", "强度特效", "颜色特效", "光束特效"]) expect(within(lib).getByRole("list", { name })).toBeTruthy();
   });
 
   it("点击：加到所选轨道的播放头处，使用预设参数、选中并切到 Cue 属性页", () => {
@@ -88,7 +110,7 @@ describe("EffectsTab", () => {
   it("没有轨道时提示；放不下时提示", () => {
     useProjectStore.getState().load(createEmptyProject("empty"));
     renderTab();
-    fireEvent.click(screen.getByRole("button", { name: "呼吸" }));
+    fireEvent.click(within(classic()).getByRole("button", { name: "呼吸" }));
     expect(useAnnouncerStore.getState().message).toContain("轨道");
   });
 
@@ -99,12 +121,62 @@ describe("EffectsTab", () => {
       ui().selectTrack(trackId);
       ui().setPlayhead(1000);
     });
-    fireEvent.click(within(screen.getByRole("region", { name: "属性特效" })).getByRole("button", { name: "强度波浪" }));
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    fireEvent.click(within(lib).getByRole("button", { name: "强度波浪" }));
+    expect(project().cues).toHaveLength(0);
+    const panel = within(lib).getByRole("group", { name: "强度波浪 的参数" });
+    fireEvent.click(within(panel).getByRole("button", { name: "插入" }));
     const [cue] = project().cues;
     expect(cue).toMatchObject({ kind: "look", trackId, startMs: 1000 });
     expect(cue.kind === "look" && cue.look.intensity?.kind).toBe("curve");
     expect(ui().selectedCueIds).toEqual([cue.id]);
     expect(useAnnouncerStore.getState().message).toBe("已添加强度波浪");
+  });
+});
+
+describe("属性特效库", () => {
+  const renderTab = () =>
+    render(
+      <DndContext>
+        <EffectsTab />
+      </DndContext>,
+    );
+
+  it("参数面板：大小与反向写进新片段；双击按当前参数直接插入", async () => {
+    renderTab();
+    await waitFor(() => expect(useEffectLibraryStore.getState().status).toBe("ready"));
+    const trackId = project().tracks[0].id;
+    act(() => ui().selectTrack(trackId));
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    fireEvent.click(within(lib).getByRole("button", { name: "强度追逐" }));
+    const panel = within(lib).getByRole("group", { name: "强度追逐 的参数" });
+    const size = within(panel).getByLabelText("大小百分比");
+    fireEvent.change(size, { target: { value: "40" } });
+    fireEvent.blur(size);
+    fireEvent.click(within(panel).getByRole("button", { name: "插入" }));
+    const [cue] = project().cues;
+    expect(cue.kind === "look" && cue.look.intensity).toMatchObject({ kind: "curve", curve: { shape: "square", to: 40 } });
+
+    act(() => ui().setPlayhead(20_000));
+    fireEvent.doubleClick(within(lib).getByRole("button", { name: "强度追逐" }));
+    expect(project().cues).toHaveLength(2);
+  });
+
+  it("用户文件里的特效出现在“我的”分组，同 id 的覆盖内置的；格式不对的条目列出原因", async () => {
+    backend.file = JSON.stringify({
+      version: 1,
+      effects: [
+        { id: "circle", group: "position", name: "大圆", scale: "fraction", period: { kind: "beats", beats: 2 }, size: 0.4, look: { attrs: { pan: { shape: "sine", center: 0.5 } } } },
+        { id: "mine", name: "我的闪", period: { kind: "ms", ms: 300 }, size: 80, look: { intensity: { shape: "square", lo: 0, hi: 1 } } },
+        { id: "broken", name: "坏" },
+      ],
+    });
+    renderTab();
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    expect(await within(lib).findByRole("button", { name: "大圆" })).toBeTruthy();
+    expect(within(lib).queryByRole("button", { name: "画圆" })).toBeNull();
+    expect(within(within(lib).getByRole("list", { name: "我的特效" })).getByRole("button", { name: "我的闪" })).toBeTruthy();
+    expect(within(lib).getByRole("alert").textContent).toContain("1 处问题");
   });
 });
 

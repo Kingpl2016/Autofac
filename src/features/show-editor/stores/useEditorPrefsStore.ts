@@ -35,6 +35,38 @@ export function clampHeaderWidth(px: number): number {
   return Math.round(Math.min(TRACK_HEADER_WIDTH.max, Math.max(TRACK_HEADER_WIDTH.min, px)));
 }
 
+/** 吸附目标的种类：节拍、标记点、片段边缘（灯光与媒体）、播放头。工程起止始终可吸附。 */
+export const SNAP_KINDS = ["beats", "markers", "edges", "playhead"] as const;
+
+/** 吸附目标的种类。 */
+export type SnapKind = (typeof SNAP_KINDS)[number];
+
+/** 每种吸附目标是否开启。 */
+export type SnapKinds = Record<SnapKind, boolean>;
+
+/** 标尺的刻度：时间码，或小节·拍（需要节拍设置）。 */
+export const RULER_FORMATS = ["timecode", "bars"] as const;
+
+/** 标尺的刻度。 */
+export type RulerFormat = (typeof RULER_FORMATS)[number];
+
+/** 批量添加灯具面板上次用的设置（模式、名称与具体模型相关，不记）。 */
+export interface FixtureAddPrefs {
+  /** 数量 */
+  count: number;
+  /** 相邻灯具之间空出的通道数 */
+  gap: number;
+  /** 自动找空位；`false` 时从 `universe` / `address` 起 */
+  autoStart: boolean;
+  universe: number;
+  address: number;
+  /** 添加后编为一组 */
+  group: boolean;
+}
+
+/** 批量添加的默认设置。 */
+export const DEFAULT_FIXTURE_ADD: FixtureAddPrefs = { count: 4, gap: 0, autoStart: true, universe: 0, address: 1, group: false };
+
 /** 落盘的数据。 */
 export interface EditorPrefsData {
   centerView: CenterView;
@@ -42,6 +74,18 @@ export interface EditorPrefsData {
   swatchDensity: SwatchDensity;
   /** 时间线左侧轨道名称列的宽度（像素） */
   trackHeaderWidth: number;
+  /** 批量添加灯具的上次设置 */
+  fixtureAdd: FixtureAddPrefs;
+  /** 输出设置的“高级”分区是否展开（默认收起） */
+  outputAdvancedOpen: boolean;
+  /** 播放时时间线跟随播放头翻页 */
+  followPlayhead: boolean;
+  /** 吸附到哪些目标 */
+  snapKinds: SnapKinds;
+  /** 波纹编辑：删除片段时，同轨道后面的片段前移补齐 */
+  rippleEdit: boolean;
+  /** 标尺刻度 */
+  rulerFormat: RulerFormat;
 }
 
 interface EditorPrefsState extends EditorPrefsData {
@@ -69,6 +113,64 @@ interface EditorPrefsState extends EditorPrefsData {
    * @param px 宽度（像素）。
    */
   setTrackHeaderWidth: (px: number) => void;
+  /**
+   * 记住批量添加的设置（会逐字段规整）。
+   *
+   * @param patch 要改的字段。
+   */
+  setFixtureAdd: (patch: Partial<FixtureAddPrefs>) => void;
+  /**
+   * 展开 / 收起输出设置的“高级”分区。
+   *
+   * @param open 是否展开。
+   */
+  setOutputAdvancedOpen: (open: boolean) => void;
+  /**
+   * 开关跟随播放头。
+   *
+   * @param on 是否跟随。
+   */
+  setFollowPlayhead: (on: boolean) => void;
+  /**
+   * 开关某种吸附目标。
+   *
+   * @param kind 种类。
+   * @param on 是否吸附。
+   */
+  setSnapKind: (kind: SnapKind, on: boolean) => void;
+  /**
+   * 开关波纹编辑。
+   *
+   * @param on 是否开启。
+   */
+  setRippleEdit: (on: boolean) => void;
+  /**
+   * 切换标尺刻度。
+   *
+   * @param format 刻度。
+   */
+  setRulerFormat: (format: RulerFormat) => void;
+}
+
+/**
+ * 规整批量添加的设置：数量 1~128、间隔 0~64、Universe 0~2047、地址 1~512，非法值取 `fallback`。
+ *
+ * @param raw 未知数据。
+ * @param fallback 兜底值。
+ * @returns 合法设置。
+ */
+export function sanitizeFixtureAdd(raw: unknown, fallback: FixtureAddPrefs): FixtureAddPrefs {
+  const r = (raw ?? {}) as Partial<Record<keyof FixtureAddPrefs, unknown>>;
+  const int = (v: unknown, min: number, max: number, fb: number) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.floor(v))) : fb;
+  return {
+    count: int(r.count, 1, 128, fallback.count),
+    gap: int(r.gap, 0, 64, fallback.gap),
+    autoStart: typeof r.autoStart === "boolean" ? r.autoStart : fallback.autoStart,
+    universe: int(r.universe, 0, 2047, fallback.universe),
+    address: int(r.address, 1, 512, fallback.address),
+    group: typeof r.group === "boolean" ? r.group : fallback.group,
+  };
 }
 
 /** 默认值：预览先显示色块，按 Universe 分区。 */
@@ -77,6 +179,12 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   swatchGroupBy: "universe",
   swatchDensity: "comfortable",
   trackHeaderWidth: TRACK_HEADER_WIDTH.default,
+  fixtureAdd: DEFAULT_FIXTURE_ADD,
+  outputAdvancedOpen: false,
+  followPlayhead: true,
+  snapKinds: { beats: true, markers: true, edges: true, playhead: true },
+  rippleEdit: false,
+  rulerFormat: "timecode",
 };
 
 /**
@@ -95,6 +203,17 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     swatchGroupBy: pick(SWATCH_GROUP_BY, r.swatchGroupBy, current.swatchGroupBy),
     swatchDensity: pick(SWATCH_DENSITIES, r.swatchDensity, current.swatchDensity),
     trackHeaderWidth: typeof r.trackHeaderWidth === "number" ? clampHeaderWidth(r.trackHeaderWidth) : current.trackHeaderWidth,
+    fixtureAdd: sanitizeFixtureAdd(r.fixtureAdd, current.fixtureAdd),
+    outputAdvancedOpen: typeof r.outputAdvancedOpen === "boolean" ? r.outputAdvancedOpen : current.outputAdvancedOpen,
+    followPlayhead: typeof r.followPlayhead === "boolean" ? r.followPlayhead : current.followPlayhead,
+    snapKinds: Object.fromEntries(
+      SNAP_KINDS.map((k) => {
+        const v = (r.snapKinds as Partial<SnapKinds> | undefined)?.[k];
+        return [k, typeof v === "boolean" ? v : current.snapKinds[k]];
+      }),
+    ) as SnapKinds,
+    rippleEdit: typeof r.rippleEdit === "boolean" ? r.rippleEdit : current.rippleEdit,
+    rulerFormat: pick(RULER_FORMATS, r.rulerFormat, current.rulerFormat),
   };
 }
 
@@ -109,12 +228,40 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setSwatchGroupBy: (swatchGroupBy) => set({ swatchGroupBy }),
       setSwatchDensity: (swatchDensity) => set({ swatchDensity }),
       setTrackHeaderWidth: (px) => set({ trackHeaderWidth: clampHeaderWidth(px) }),
+      setFixtureAdd: (patch) => set((s) => ({ fixtureAdd: sanitizeFixtureAdd({ ...s.fixtureAdd, ...patch }, s.fixtureAdd) })),
+      setOutputAdvancedOpen: (outputAdvancedOpen) => set({ outputAdvancedOpen }),
+      setFollowPlayhead: (followPlayhead) => set({ followPlayhead }),
+      setSnapKind: (kind, on) => set((st) => ({ snapKinds: { ...st.snapKinds, [kind]: on } })),
+      setRippleEdit: (rippleEdit) => set({ rippleEdit }),
+      setRulerFormat: (rulerFormat) => set({ rulerFormat }),
     }),
     {
       name: "editor-prefs",
       version: 1,
       storage: createTauriPersistStorage<EditorPrefsData>(),
-      partialize: ({ centerView, swatchGroupBy, swatchDensity, trackHeaderWidth }) => ({ centerView, swatchGroupBy, swatchDensity, trackHeaderWidth }),
+      partialize: ({
+        centerView,
+        swatchGroupBy,
+        swatchDensity,
+        trackHeaderWidth,
+        fixtureAdd,
+        outputAdvancedOpen,
+        followPlayhead,
+        snapKinds,
+        rippleEdit,
+        rulerFormat,
+      }) => ({
+        centerView,
+        swatchGroupBy,
+        swatchDensity,
+        trackHeaderWidth,
+        fixtureAdd,
+        outputAdvancedOpen,
+        followPlayhead,
+        snapKinds,
+        rippleEdit,
+        rulerFormat,
+      }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },
   ),

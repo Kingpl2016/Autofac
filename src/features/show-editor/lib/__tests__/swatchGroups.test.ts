@@ -76,8 +76,23 @@ describe("预览色块分区", () => {
       swatchGroupBy: "universe",
       swatchDensity: "comfortable",
       trackHeaderWidth: 480,
+      fixtureAdd: DEFAULT_EDITOR_PREFS.fixtureAdd,
+      outputAdvancedOpen: false,
+      followPlayhead: true,
+      snapKinds: DEFAULT_EDITOR_PREFS.snapKinds,
+      rippleEdit: false,
+      rulerFormat: "timecode",
+    });
+    expect(sanitizeEditorPrefs({ snapKinds: { beats: false, edges: "x" }, rulerFormat: "bars", rippleEdit: true }, DEFAULT_EDITOR_PREFS)).toMatchObject({
+      snapKinds: { beats: false, markers: true, edges: true, playhead: true },
+      rulerFormat: "bars",
+      rippleEdit: true,
     });
     expect(sanitizeEditorPrefs({ trackHeaderWidth: "wide" }, DEFAULT_EDITOR_PREFS).trackHeaderWidth).toBe(208);
+    // 批量添加设置逐字段规整；高级分区开关只接受布尔
+    const p = sanitizeEditorPrefs({ fixtureAdd: { count: 999, gap: -3, autoStart: "x", address: 600, group: true }, outputAdvancedOpen: 1 }, DEFAULT_EDITOR_PREFS);
+    expect(p.fixtureAdd).toEqual({ count: 128, gap: 0, autoStart: true, universe: 0, address: 512, group: true });
+    expect(p.outputAdvancedOpen).toBe(false);
     expect(clampHeaderWidth(10.6 + 200)).toBe(211);
     expect(clampHeaderWidth(Number.NaN)).toBe(208);
   });

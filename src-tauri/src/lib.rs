@@ -8,6 +8,7 @@ mod about_commands;
 mod cue_template_commands;
 mod data_dir;
 mod devtools_commands;
+mod effect_commands;
 mod app_mode_commands;
 mod fixture_commands;
 mod library_commands;
@@ -169,6 +170,7 @@ pub fn run() {
             app_version,
             data_dir::data_dir_info,
             about_commands::app_info,
+            about_commands::logs_reveal,
             devtools_commands::devtools_state,
             devtools_commands::devtools_set,
             host_core::commands::get_settings,
@@ -244,6 +246,11 @@ pub fn run() {
             cue_template_commands::cue_templates_import,
             cue_template_commands::cue_templates_export,
             cue_template_commands::cue_templates_reveal,
+            effect_commands::effects_read,
+            effect_commands::effects_write,
+            effect_commands::effects_import,
+            effect_commands::effects_export,
+            effect_commands::effects_reveal,
             fixture_commands::fixture_list,
             fixture_commands::fixture_import_xlsx,
             fixture_commands::fixture_import_ofl,

@@ -485,3 +485,41 @@ export function autoRouteToNodes(draft: ShowProject, nodes: readonly NodeOutput[
   for (let i = 0; i < n; i += 1) routeToNode(draft, universes[i], nodes[i], true);
   return n;
 }
+
+// ---------------------------------------------------------------- Park
+
+/** 锁定通道最多的条数。 */
+export const MAX_PARK = 512;
+
+/**
+ * 锁定一个通道（同一 Universe + 通道已锁定时改为新值）。数值夹回合法范围。
+ *
+ * @param draft 工程草稿。
+ * @param entry Universe（0~2047）、通道（1~512）与固定值（0~255）。
+ * @returns 是否写入（条数已达 [`MAX_PARK`] 且是新通道时为 `false`）。
+ */
+export function setPark(draft: ShowProject, entry: { universe: number; channel: number; value: number }): boolean {
+  const universe = Math.min(MAX_UNIVERSE, Math.max(0, Math.floor(entry.universe) || 0));
+  const channel = Math.min(DMX_CHANNELS, Math.max(1, Math.floor(entry.channel) || 1));
+  const value = Math.min(255, Math.max(0, Math.round(entry.value) || 0));
+  const existing = draft.output.park.find((p) => p.universe === universe && p.channel === channel);
+  if (existing) {
+    existing.value = value;
+    return true;
+  }
+  if (draft.output.park.length >= MAX_PARK) return false;
+  draft.output.park.push({ universe, channel, value });
+  draft.output.park.sort((a, b) => a.universe - b.universe || a.channel - b.channel);
+  return true;
+}
+
+/**
+ * 解除一个通道的锁定。
+ *
+ * @param draft 工程草稿。
+ * @param universe Universe。
+ * @param channel 通道。
+ */
+export function removePark(draft: ShowProject, universe: number, channel: number): void {
+  draft.output.park = draft.output.park.filter((p) => !(p.universe === universe && p.channel === channel));
+}

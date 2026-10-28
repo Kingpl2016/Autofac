@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "effects": [
+    {
+      "id": "circle", "group": "position", "icon": "orbit", "scale": "fraction",
+      "name": { "zh": "画圆", "en": "Circle" },
+      "hint": { "zh": "Pan / Tilt 正弦错开 1/4 周期，光束画圆", "en": "Pan and tilt sines a quarter cycle apart draw a circle" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.15, "spread": 1, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": {
+          "pan": { "shape": "sine", "center": 0.5, "amp": 1 },
+          "tilt": { "shape": "sine", "center": 0.5, "amp": 1, "phase": 0.25 }
+        }
+      }
+    },
+    {
+      "id": "figure8", "group": "position", "icon": "infinity", "scale": "fraction",
+      "name": { "zh": "8 字", "en": "Figure 8" },
+      "hint": { "zh": "Tilt 频率是 Pan 的两倍，光束走 8 字", "en": "Tilt runs twice as fast as pan for a figure eight" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 0.15, "spread": 1, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": {
+          "pan": { "shape": "sine", "center": 0.5, "amp": 1 },
+          "tilt": { "shape": "sine", "center": 0.5, "amp": 0.5, "cycles": 2, "phase": 0.25 }
+        }
+      }
+    },
+    {
+      "id": "diamond", "group": "position", "icon": "diamond", "scale": "fraction",
+      "name": { "zh": "菱形", "en": "Diamond" },
+      "hint": { "zh": "Pan / Tilt 三角波错开 1/4 周期，光束走菱形", "en": "Triangle waves a quarter cycle apart trace a diamond" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.15, "spread": 1, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": {
+          "pan": { "shape": "triangle", "center": 0.5, "amp": 1 },
+          "tilt": { "shape": "triangle", "center": 0.5, "amp": 1, "phase": 0.25 }
+        }
+      }
+    },
+    {
+      "id": "square", "group": "position", "icon": "square", "scale": "fraction",
+      "name": { "zh": "四角跳点", "en": "Square" },
+      "hint": { "zh": "方波驱动，光束在四个角之间跳", "en": "Square waves jump the beam between four corners" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.15, "spread": 0.5, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": {
+          "pan": { "shape": "square", "center": 0.5, "amp": 1, "duty": 0.5 },
+          "tilt": { "shape": "square", "center": 0.5, "amp": 1, "duty": 0.5, "phase": 0.25 }
+        }
+      }
+    },
+    {
+      "id": "panSweep", "group": "position", "icon": "moveHorizontal", "scale": "fraction",
+      "name": { "zh": "水平扫动", "en": "Pan sweep" },
+      "hint": { "zh": "Pan 三角波来回扫", "en": "Pan sweeps back and forth" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.25, "spread": 0.5, "spreadBy": "phase",
+      "look": { "intensity": { "value": 1 }, "attrs": { "pan": { "shape": "triangle", "center": 0.5, "amp": 1 } } }
+    },
+    {
+      "id": "tiltSweep", "group": "position", "icon": "moveVertical", "scale": "fraction",
+      "name": { "zh": "垂直扫动", "en": "Tilt sweep" },
+      "hint": { "zh": "Tilt 三角波上下扫", "en": "Tilt sweeps up and down" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.2, "spread": 0.5, "spreadBy": "phase",
+      "look": { "intensity": { "value": 1 }, "attrs": { "tilt": { "shape": "triangle", "center": 0.5, "amp": 1 } } }
+    },
+    {
+      "id": "fan", "group": "position", "icon": "fan", "scale": "fraction",
+      "name": { "zh": "扇形展开", "en": "Fan" },
+      "hint": { "zh": "分组成员的 Pan 从左到右展开成扇形，并轻微摆动", "en": "Members fan out across pan with a gentle sway" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 0.25, "spread": 0, "spreadBy": "none",
+      "look": { "intensity": { "value": 1 }, "attrs": { "tilt": { "shape": "sine", "center": 0.5, "amp": 0.2 } } },
+      "fan": { "attr": "pan", "amp": 1 }
+    },
+    {
+      "id": "randomMove", "group": "position", "icon": "shuffle", "scale": "fraction",
+      "name": { "zh": "随机走位", "en": "Random move" },
+      "hint": { "zh": "Pan / Tilt 每个周期随机换一个位置", "en": "Pan and tilt jump to a random spot each cycle" },
+      "period": { "kind": "beats", "beats": 2 }, "size": 0.2, "spread": 0.37, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": {
+          "pan": { "shape": "random", "center": 0.5, "amp": 1 },
+          "tilt": { "shape": "random", "center": 0.5, "amp": 1, "phase": 0.5 }
+        }
+      }
+    },
+    {
+      "id": "intensityWave", "group": "intensity", "icon": "waves", "scale": "percent",
+      "name": { "zh": "强度波浪", "en": "Intensity wave" },
+      "hint": { "zh": "强度正弦起伏，分组成员依次错开形成波浪", "en": "Intensity rises and falls, offset along the group like a wave" },
+      "period": { "kind": "beats", "beats": 2 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "sine", "lo": 0, "hi": 1 } }
+    },
+    {
+      "id": "intensityChase", "group": "intensity", "icon": "moveRight", "scale": "percent",
+      "name": { "zh": "强度追逐", "en": "Intensity chase" },
+      "hint": { "zh": "分组成员轮流点亮", "en": "Members light up one after another" },
+      "period": { "kind": "beats", "beats": 1 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "square", "lo": 0, "hi": 1, "duty": "members" } }
+    },
+    {
+      "id": "breathe", "group": "intensity", "icon": "activity", "scale": "percent",
+      "name": { "zh": "呼吸", "en": "Breathe" },
+      "hint": { "zh": "整组一起缓慢明暗起伏，不熄灭", "en": "The whole group slowly breathes without going dark" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 100, "spread": 0, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "sine", "lo": 0.2, "hi": 1 } }
+    },
+    {
+      "id": "pulse", "group": "intensity", "icon": "zap", "scale": "percent",
+      "name": { "zh": "脉冲", "en": "Pulse" },
+      "hint": { "zh": "每拍瞬间点亮后衰减（锯齿波）", "en": "Snaps on each beat and decays (saw wave)" },
+      "period": { "kind": "beats", "beats": 1 }, "size": 100, "spread": 0.5, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "saw", "lo": 1, "hi": 0 } }
+    },
+    {
+      "id": "flicker", "group": "intensity", "icon": "sparkles", "scale": "percent",
+      "name": { "zh": "随机闪烁", "en": "Random flicker" },
+      "hint": { "zh": "强度随机跳动，成员之间各不相同", "en": "Intensity jumps randomly, different for each member" },
+      "period": { "kind": "ms", "ms": 250 }, "size": 100, "spread": 0.61, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "random", "lo": 0.1, "hi": 1 } }
+    },
+    {
+      "id": "fadeIn", "group": "intensity", "icon": "sunrise", "scale": "percent",
+      "name": { "zh": "渐亮", "en": "Fade in" },
+      "hint": { "zh": "整段从暗到亮走一次；有分组时依次渐亮", "en": "Fades up once over the clip; members follow one after another" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 100, "spread": 1, "spreadBy": "delay",
+      "look": { "intensity": { "shape": "ramp", "lo": 0, "hi": 1, "once": true } }
+    },
+    {
+      "id": "fadeOut", "group": "intensity", "icon": "sunset", "scale": "percent",
+      "name": { "zh": "渐暗", "en": "Fade out" },
+      "hint": { "zh": "整段从亮到暗走一次；有分组时依次渐暗", "en": "Fades down once over the clip; members follow one after another" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 100, "spread": 1, "spreadBy": "delay",
+      "look": { "intensity": { "shape": "ramp", "lo": 1, "hi": 0, "once": true } }
+    },
+    {
+      "id": "strobe", "group": "intensity", "icon": "zap", "scale": "percent",
+      "name": { "zh": "频闪", "en": "Strobe" },
+      "hint": { "zh": "强度方波（注意频闪安全）", "en": "Intensity square wave (mind strobe safety)" },
+      "period": { "kind": "ms", "ms": 125 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "look": { "intensity": { "shape": "square", "lo": 0, "hi": 1, "duty": 0.5 } }
+    },
+    {
+      "id": "rainbow", "group": "color", "icon": "rainbow", "scale": "percent",
+      "name": { "zh": "彩虹", "en": "Rainbow" },
+      "hint": { "zh": "颜色沿色相循环，分组成员错开色相", "en": "Cycles through the hues, offset across the group" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 100, "spread": 1, "spreadBy": "hue",
+      "look": {
+        "intensity": { "value": 1 },
+        "color": { "colors": [[255, 0, 0], [255, 255, 0], [0, 255, 0], [0, 255, 255], [0, 0, 255], [255, 0, 255]], "blend": "smooth" }
+      }
+    },
+    {
+      "id": "twoColor", "group": "color", "icon": "repeat", "scale": "percent",
+      "name": { "zh": "双色交替", "en": "Two-color alternate" },
+      "hint": { "zh": "两种颜色按拍切换；分组成员错开半拍形成交错", "en": "Switches between two colors on the beat; members alternate" },
+      "period": { "kind": "beats", "beats": 2 }, "size": 100, "spread": 0.5, "spreadBy": "delay",
+      "look": { "intensity": { "value": 1 }, "color": { "colors": [[255, 0, 0], [0, 64, 255]], "blend": "step" } }
+    },
+    {
+      "id": "colorChase", "group": "color", "icon": "palette", "scale": "percent",
+      "name": { "zh": "颜色追逐", "en": "Color chase" },
+      "hint": { "zh": "红、绿、蓝依次跳变，沿分组推进", "en": "Steps red, green, blue and travels along the group" },
+      "period": { "kind": "beats", "beats": 3 }, "size": 100, "spread": 1, "spreadBy": "delay",
+      "look": { "intensity": { "value": 1 }, "color": { "colors": [[255, 0, 0], [0, 255, 0], [0, 0, 255]], "blend": "step" } }
+    },
+    {
+      "id": "hueSweep", "group": "color", "icon": "blend", "scale": "percent",
+      "name": { "zh": "冷暖扫色", "en": "Warm-cool sweep" },
+      "hint": { "zh": "在暖橙、品红、紫、冰蓝之间平滑过渡", "en": "Glides between amber, magenta, violet and ice blue" },
+      "period": { "kind": "beats", "beats": 16 }, "size": 100, "spread": 0.5, "spreadBy": "delay",
+      "look": {
+        "intensity": { "value": 1 },
+        "color": { "colors": [[255, 96, 0], [255, 0, 128], [128, 0, 255], [0, 160, 255]], "blend": "smooth" }
+      }
+    },
+    {
+      "id": "zoomBreathe", "group": "beam", "icon": "zoomIn", "scale": "fraction",
+      "name": { "zh": "变焦呼吸", "en": "Zoom breathe" },
+      "hint": { "zh": "光束角在宽窄之间缓慢变化", "en": "Beam angle slowly widens and narrows" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 0.4, "spread": 0.5, "spreadBy": "phase",
+      "look": { "attrs": { "zoom": { "shape": "sine", "center": 0.5, "amp": 1 } } }
+    },
+    {
+      "id": "irisPulse", "group": "beam", "icon": "aperture", "scale": "fraction",
+      "name": { "zh": "光圈脉冲", "en": "Iris pulse" },
+      "hint": { "zh": "光圈每拍收紧后张开", "en": "Iris snaps closed on the beat and reopens" },
+      "period": { "kind": "beats", "beats": 1 }, "size": 0.5, "spread": 0, "spreadBy": "phase",
+      "look": { "attrs": { "iris": { "shape": "saw", "center": 0.5, "amp": 1 } } }
+    },
+    {
+      "id": "goboSpin", "group": "beam", "icon": "rotateCw", "scale": "fraction",
+      "name": { "zh": "图案旋转", "en": "Gobo spin" },
+      "hint": { "zh": "图案轮持续旋转（大小决定转速）", "en": "Spins the gobo continuously (size sets the speed)" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.25, "spread": 0, "spreadBy": "none",
+      "look": { "attrs": { "goboRotate": { "shape": "sine", "center": 0.75, "amp": 0.1 } } }
+    },
+    {
+      "id": "prismSpin", "group": "beam", "icon": "rotateCw", "scale": "fraction",
+      "name": { "zh": "棱镜摆动", "en": "Prism sway" },
+      "hint": { "zh": "棱镜来回旋转，分组成员错开", "en": "Prism rotates back and forth, offset across the group" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 0.3, "spread": 0.5, "spreadBy": "phase",
+      "look": { "attrs": { "prismRotate": { "shape": "triangle", "center": 0.5, "amp": 1 } } }
+    }
+  ]
+}

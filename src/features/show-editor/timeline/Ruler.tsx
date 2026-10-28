@@ -10,17 +10,18 @@ import { normalizeDuration } from "../lib/duration";
 import { MAX_DURATION_MS, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
 import { clamp, formatTimecode, snapToFrame } from "../lib/time";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { RULER_HEIGHT, START_LEFT } from "./timelineData";
-import { rulerTicks } from "./timelineLayout";
+import { barTicks, rulerTicks } from "./timelineLayout";
 import { useTimelineScrollStore } from "./timelineScrollStore";
 
 /** 一帧的毫秒数。 */
 const FRAME = Math.round(1000 / OUTPUT_FPS);
 
 /**
- * 时间线标尺：自适应刻度（缩放到帧级时显示帧号）、A-B 循环区间（可拖动 / 方向键调整入点出点，
+ * 时间线标尺：自适应刻度（时间码，缩放到帧级时显示帧号；或小节·拍）、A-B 循环区间（可拖动 / 方向键调整入点出点，
  * 在手柄上按 Delete 或点循环带中间的 × 清除），点击或拖动标尺定位播放头。
  */
 export function Ruler() {
@@ -31,6 +32,9 @@ export function Ruler() {
   const loop = useProjectStore((s) => s.project.loopRange);
   const update = useProjectStore((s) => s.update);
   const scrollLeft = useTimelineScrollStore((s) => s.left);
+  const tempo = useProjectStore((s) => s.project.tempo);
+  // 小节·拍刻度需要节拍设置；没有时退回时间码
+  const bars = useEditorPrefsStore((s) => s.rulerFormat === "bars") && tempo !== null;
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const seeking = useRef(false);
@@ -61,8 +65,8 @@ export function Ruler() {
   const ticks = useMemo(() => {
     const fromMs = ((scrollLeft - START_LEFT) / pxPerSec) * 1000;
     const toMs = Math.min(durationMs, fromMs + ((width + START_LEFT) / pxPerSec) * 1000);
-    return rulerTicks(pxPerSec, fromMs, toMs);
-  }, [scrollLeft, pxPerSec, durationMs, width]);
+    return bars && tempo ? barTicks(tempo, pxPerSec, fromMs, toMs) : rulerTicks(pxPerSec, fromMs, toMs);
+  }, [scrollLeft, pxPerSec, durationMs, width, bars, tempo]);
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;

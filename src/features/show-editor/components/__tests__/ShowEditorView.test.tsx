@@ -59,6 +59,15 @@ describe("ShowEditorView 外壳", () => {
     }
   });
 
+  it("?addFixture= 打开左侧灯具页并展开该模型的批量添加面板", () => {
+    useEditorUiStore.setState({ fixtureAddModelId: null });
+    invoke.mockImplementation(async (cmd: string) => (cmd === "fixture_list" ? [] : null));
+    renderView(`/editor?addFixture=${encodeURIComponent("1.5.1.4")}`);
+    expect(useEditorUiStore.getState().libraryTab).toBe("fixtures");
+    expect(useEditorUiStore.getState().fixtureAddModelId).toBe("1.5.1.4");
+    expect(within(screen.getByRole("tablist", { name: "素材库" })).getByRole("tab", { name: "灯具" }).getAttribute("aria-selected")).toBe("true");
+  });
+
   it("页面标题是 h1，显示默认的未命名节目", () => {
     renderView();
     expect(screen.getByRole("heading", { level: 1, name: "未命名节目" })).toBeTruthy();

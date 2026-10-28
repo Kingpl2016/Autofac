@@ -441,6 +441,37 @@
   --color-stage-grid: var(--stage-grid);
 }
 
+/*
+ * 属性功能组的数据色（灯具素材库的通道条与图例）：六个组色相拉开，明暗各一套；
+ * 颜色只是辅助，通道格里始终写着属性代码，图例带文字。
+ */
+:root {
+  --attr-intensity: oklch(0.72 0.13 85);
+  --attr-color: oklch(0.62 0.17 340);
+  --attr-position: oklch(0.6 0.13 235);
+  --attr-beam: oklch(0.62 0.13 160);
+  --attr-focus: oklch(0.6 0.14 290);
+  --attr-control: oklch(0.6 0.02 260);
+}
+
+.dark {
+  --attr-intensity: oklch(0.8 0.13 85);
+  --attr-color: oklch(0.7 0.16 340);
+  --attr-position: oklch(0.7 0.12 235);
+  --attr-beam: oklch(0.72 0.13 160);
+  --attr-focus: oklch(0.7 0.13 290);
+  --attr-control: oklch(0.68 0.02 260);
+}
+
+@theme inline {
+  --color-attr-intensity: var(--attr-intensity);
+  --color-attr-color: var(--attr-color);
+  --color-attr-position: var(--attr-position);
+  --color-attr-beam: var(--attr-beam);
+  --color-attr-focus: var(--attr-focus);
+  --color-attr-control: var(--attr-control);
+}
+
 @theme inline {
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);

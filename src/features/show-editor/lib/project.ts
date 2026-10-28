@@ -26,6 +26,9 @@ export const OUTPUT_FPS = 30;
 /** 一个 Universe 的 DMX 通道数。 */
 export const DMX_CHANNELS = 512;
 
+/** 新工程的默认 Gamma（常见 LED 灯具的感知校正）。 */
+export const DEFAULT_GAMMA = 2.2;
+
 /** Universe 编号上限（`.artrec` 规范：net 0~127 × subuni 0~15）。 */
 export const MAX_UNIVERSE = 2047;
 
@@ -546,7 +549,7 @@ export function createEmptyProject(name: string): ShowProject {
       target: { ...DEFAULT_OUTPUT_TARGET },
       loop: false,
       latencyCompMs: 0,
-      gamma: 2.2,
+      gamma: DEFAULT_GAMMA,
       universes: [],
       sync: { ...DEFAULT_SYNC },
       park: [],

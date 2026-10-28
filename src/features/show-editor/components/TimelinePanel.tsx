@@ -1,14 +1,13 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useDroppable } from "@dnd-kit/core";
-import { Film, Magnet, Music, ZoomIn, ZoomOut } from "lucide-react";
+import { Film, Music } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useCueActions } from "../hooks/useCueActions";
 import { nextMediaTrackName } from "../hooks/mediaActions";
 import { addMediaTrack } from "../lib/mediaClips";
 import { setTrackFlag, setTrackView, TRACK_HEIGHT_ORDER, trackName } from "../lib/ops";
-import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, zoomPxPerSec } from "../lib/zoom";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { BeatGrid } from "../timeline/BeatGrid";
@@ -28,6 +27,7 @@ import { EmptyHint } from "./EmptyHint";
 import { TimelineContextMenu } from "./TimelineContextMenu";
 import { PanelFrame } from "./PanelFrame";
 import { PlayheadTimecode } from "./PlayheadTimecode";
+import { TimelineTools } from "./TimelineTools";
 
 /** 新建 Cue（双击空白处）时使用的拖拽放置区 id。 */
 export const TIMELINE_DROP_ID = "timeline";
@@ -47,10 +47,6 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
   const update = useProjectStore((s) => s.update);
   const selectedTrackId = useEditorUiStore((s) => s.selectedTrackId);
   const selectedTrackIds = useEditorUiStore((s) => s.selectedTrackIds);
-  const pxPerSec = useEditorUiStore((s) => s.pxPerSec);
-  const snapEnabled = useEditorUiStore((s) => s.snapEnabled);
-  const setPxPerSec = useEditorUiStore((s) => s.setPxPerSec);
-  const toggleSnap = useEditorUiStore((s) => s.toggleSnap);
   const selectTrack = useEditorUiStore((s) => s.selectTrack);
   const selectCues = useEditorUiStore((s) => s.selectCues);
   const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
@@ -177,18 +173,8 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
           <PlayheadTimecode label={t("editor.timeline.playhead")} className="num mr-2 text-xs text-muted-foreground" />
           {iconButton(t("editor.mediaTracks.addAudio"), () => addMediaTrackOf("audio"), <Music aria-hidden />)}
           {iconButton(t("editor.mediaTracks.addVideo"), () => addMediaTrackOf("video"), <Film aria-hidden />)}
-          {iconButton(
-            snapEnabled ? t("editor.timeline.snapOn") : t("editor.timeline.snapOff"),
-            toggleSnap,
-            <Magnet aria-hidden />,
-            { pressed: snapEnabled },
-          )}
-          {iconButton(t("editor.timeline.zoomOut"), () => setPxPerSec(zoomPxPerSec(pxPerSec, -1)), <ZoomOut aria-hidden />, {
-            disabled: pxPerSec <= MIN_PX_PER_SEC,
-          })}
-          {iconButton(t("editor.timeline.zoomIn"), () => setPxPerSec(zoomPxPerSec(pxPerSec, 1)), <ZoomIn aria-hidden />, {
-            disabled: pxPerSec >= MAX_PX_PER_SEC,
-          })}
+          <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+          <TimelineTools commands={commands} />
         </>
       }
     >

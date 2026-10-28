@@ -5,6 +5,8 @@ import { FileDown, FilePlus2, FolderOpen, FolderSearch, Library, Save } from "lu
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ShowFileController } from "../hooks/useShowFile";
+import { useRecentFilesStore } from "../stores/useRecentFilesStore";
+import { RecentFilesList } from "./RecentFilesList";
 
 interface FileMenuProps {
   file: ShowFileController;
@@ -25,11 +27,12 @@ function MenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: stri
 }
 
 /**
- * 工具条上的文件操作：保存（Ctrl+S）和“文件”菜单（新建、打开、另存为新节目、导出副本）。
+ * 工具条上的文件操作：保存（Ctrl+S）和“文件”菜单（新建、打开、另存为新节目、导出副本、最近文件）。
  */
 export function FileMenu({ file }: FileMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const hasRecent = useRecentFilesStore((s) => s.items.length > 0);
   /** 菜单项被点击后先收起菜单，再执行动作（动作可能弹出对话框）。 */
   const run = (action: () => void) => () => {
     setOpen(false);
@@ -55,13 +58,15 @@ export function FileMenu({ file }: FileMenuProps) {
             {t("editor.file.menu")}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="grid w-64 gap-0.5 p-1.5" aria-label={t("editor.file.menu")}>
+        <PopoverContent align="start" className="grid w-72 gap-0.5 p-1.5" aria-label={t("editor.file.menu")}>
           <MenuItem icon={<FilePlus2 aria-hidden />} label={t("editor.file.new")} onClick={run(file.requestNew)} />
           <MenuItem icon={<Library aria-hidden />} label={t("editor.file.openLibrary")} onClick={run(file.requestOpenLibrary)} />
           <MenuItem icon={<FolderSearch aria-hidden />} label={t("editor.file.openFile")} onClick={run(file.requestOpenFile)} />
           <div className="my-1 h-px bg-border" role="separator" />
           <MenuItem icon={<FolderOpen aria-hidden />} label={t("editor.file.saveAsNew")} onClick={run(() => file.openSaveDialog(true))} />
           <MenuItem icon={<FileDown aria-hidden />} label={t("editor.file.exportCopy")} onClick={run(file.saveAsFile)} />
+          {hasRecent && <div className="my-1 h-px bg-border" role="separator" />}
+          <RecentFilesList manage onOpen={(item) => run(() => file.requestOpenRecent(item))()} />
         </PopoverContent>
       </Popover>
     </>

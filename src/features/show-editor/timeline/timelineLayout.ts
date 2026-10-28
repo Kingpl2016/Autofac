@@ -1,4 +1,4 @@
-import type { Track } from "../lib/project";
+import type { Tempo, Track } from "../lib/project";
 import { START_LEFT } from "./timelineData";
 
 /**
@@ -201,4 +201,43 @@ export function rulerTicks(pxPerSec: number, fromMs: number, toMs: number): Tick
     if (major.length > 2000) break;
   }
   return { major, minor, stepMs };
+}
+
+/** 小节·拍刻度里，每隔几小节标一次（按缩放取不挤的那一档）。 */
+const BAR_STEPS = [1, 2, 4, 8, 16, 32, 64, 128] as const;
+
+/**
+ * 小节·拍刻度：主刻度在小节线上（标 `小节`，缩放到能看清每拍时在拍上标 `小节.拍`），次刻度在拍上。
+ *
+ * @param tempo 节拍设置（BPM、第一拍偏移、每小节拍数）。
+ * @param pxPerSec 每秒像素数。
+ * @param fromMs 可见范围起点。
+ * @param toMs 可见范围终点。
+ * @returns 主 / 次刻度；`stepMs` 为主刻度间隔。
+ */
+export function barTicks(tempo: Pick<Tempo, "bpm" | "offsetMs" | "beatsPerBar">, pxPerSec: number, fromMs: number, toMs: number): Ticks {
+  const beatMs = 60_000 / Math.max(1, tempo.bpm);
+  const perBar = Math.max(1, Math.floor(tempo.beatsPerBar));
+  const pxPerMs = pxPerSec / 1000;
+  const beatPx = beatMs * pxPerMs;
+  // 每拍够宽时每拍都标（小节.拍），否则按小节步长标
+  const labelBeats = beatPx >= MIN_MAJOR_GAP_PX;
+  const barStep = BAR_STEPS.find((n) => n * perBar * beatPx >= MIN_MAJOR_GAP_PX) ?? BAR_STEPS[BAR_STEPS.length - 1];
+  const showMinor = beatPx >= MIN_MINOR_GAP_PX;
+  const from = Math.max(0, fromMs);
+  const first = Math.ceil((from - tempo.offsetMs) / beatMs);
+  const last = Math.floor((toMs - tempo.offsetMs) / beatMs);
+  const major: MajorTick[] = [];
+  const minor: number[] = [];
+  for (let k = Math.max(first, Math.ceil(-tempo.offsetMs / beatMs)); k <= last; k += 1) {
+    const ms = Math.round(tempo.offsetMs + k * beatMs);
+    if (ms < from) continue;
+    const bar = Math.floor(k / perBar);
+    const inBar = k - bar * perBar;
+    const isMajor = labelBeats || (inBar === 0 && bar % barStep === 0);
+    if (isMajor) major.push({ ms, label: labelBeats ? `${bar + 1}.${inBar + 1}` : String(bar + 1) });
+    else if (showMinor) minor.push(ms);
+    if (major.length + minor.length > 4000) break;
+  }
+  return { major, minor, stepMs: labelBeats ? beatMs : barStep * perBar * beatMs };
 }

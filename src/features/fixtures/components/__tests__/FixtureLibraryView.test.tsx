@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
 
@@ -26,6 +27,23 @@ vi.mock("@/shared/tauri/pickers", () => pickers);
 import type { FixtureModel, FixtureProperty, ImportOutcome } from "../../lib/types";
 import { useFixtureStore } from "../../stores/useFixtureStore";
 import { FixtureLibraryView } from "../FixtureLibraryView";
+
+/** 渲染页面（带路由，“添加到当前节目”会跳转；当前地址写在 location 里供断言）。 */
+function renderView() {
+  return render(
+    <MemoryRouter initialEntries={["/thing-model"]}>
+      <FixtureLibraryView />
+      <Routes>
+        <Route path="*" element={<LocationProbe />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function LocationProbe() {
+  const loc = useLocation();
+  return <span data-testid="location">{loc.pathname + loc.search}</span>;
+}
 
 function prop(overrides: Partial<FixtureProperty>): FixtureProperty {
   return {
@@ -106,7 +124,7 @@ afterEach(() => cleanup());
 describe("FixtureLibraryView", () => {
   it("加载后列出内置与自定义两组，并默认选中第一项显示通道属性", async () => {
     installBackend([rgb, head]);
-    render(<FixtureLibraryView />);
+    renderView();
 
     expect(await screen.findByRole("region", { name: "内置标准模型" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "自定义模型" })).toBeTruthy();
@@ -120,7 +138,7 @@ describe("FixtureLibraryView", () => {
 
   it("选中自定义模型后可编辑 / 删除，16 位属性显示字节序", async () => {
     installBackend([rgb, head]);
-    render(<FixtureLibraryView />);
+    renderView();
     fireEvent.click(await screen.findByRole("button", { name: /通用16CH摇头灯/ }));
 
     expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
@@ -131,7 +149,7 @@ describe("FixtureLibraryView", () => {
 
   it("搜索按名称或编号过滤，没有匹配时给出提示", async () => {
     installBackend([rgb, head]);
-    render(<FixtureLibraryView />);
+    renderView();
     await screen.findByRole("button", { name: /RGB全彩灯/ });
 
     const search = screen.getByRole("searchbox", { name: "搜索名称或编号" });
@@ -145,7 +163,7 @@ describe("FixtureLibraryView", () => {
 
   it("新建自定义模型：填写后保存，列表出现新模型并提示成功", async () => {
     installBackend([rgb]);
-    render(<FixtureLibraryView />);
+    renderView();
     await screen.findByRole("button", { name: /RGB全彩灯/ });
 
     fireEvent.click(screen.getByRole("button", { name: "新建自定义模型" }));
@@ -176,7 +194,7 @@ describe("FixtureLibraryView", () => {
 
   it("复制内置模型：编号可改、名称带副本后缀，编号被占用时提示", async () => {
     installBackend([rgb]);
-    render(<FixtureLibraryView />);
+    renderView();
     fireEvent.click(await screen.findByRole("button", { name: "复制为自定义" }));
     const dialog = await screen.findByRole("dialog");
     expect((within(dialog).getByLabelText("模型名称") as HTMLInputElement).value).toBe("RGB全彩灯（副本）");
@@ -189,7 +207,7 @@ describe("FixtureLibraryView", () => {
 
   it("删除自定义模型需要确认，确认后调用后端", async () => {
     installBackend([rgb, head]);
-    render(<FixtureLibraryView />);
+    renderView();
     fireEvent.click(await screen.findByRole("button", { name: /通用16CH摇头灯/ }));
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
 
@@ -209,7 +227,7 @@ describe("FixtureLibraryView", () => {
       skipped: ["1.4.1.4"],
       warnings: [{ kind: "channelsReassigned", sheet: "1-标准物模型", row: 8, modelId: "1.4.1.4", detail: null }],
     });
-    render(<FixtureLibraryView />);
+    renderView();
     await screen.findByRole("button", { name: /RGB全彩灯/ });
 
     pickers.pickXlsxFile.mockResolvedValueOnce(null);
@@ -229,7 +247,7 @@ describe("FixtureLibraryView", () => {
 
   it("编辑器：复制为新模式、均分能力区间，保存时带上模式与区间", async () => {
     installBackend([rgb, head]);
-    render(<FixtureLibraryView />);
+    renderView();
     fireEvent.click(await screen.findByRole("button", { name: /通用16CH摇头灯/ }));
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog");
@@ -260,7 +278,7 @@ describe("FixtureLibraryView", () => {
       if (cmd === "fixture_list") return [rgb];
       throw "import_failed:no_models";
     });
-    render(<FixtureLibraryView />);
+    renderView();
     await screen.findByRole("button", { name: /RGB全彩灯/ });
     fireEvent.click(screen.getByRole("button", { name: "导入物模型表" }));
     await waitFor(() =>
@@ -268,9 +286,33 @@ describe("FixtureLibraryView", () => {
     );
   });
 
+  it("来源与类型筛选、能力徽标与图例，“添加到当前节目”跳到编辑器", async () => {
+    installBackend([rgb, head]);
+    renderView();
+    await screen.findByRole("button", { name: /RGB全彩灯/ });
+
+    fireEvent.click(screen.getByRole("radio", { name: "自定义" }));
+    expect(screen.queryByRole("region", { name: "内置标准模型" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "全部" }));
+    fireEvent.click(screen.getByRole("button", { name: /摇头灯\s*1/ }));
+    expect(screen.queryByRole("button", { name: /RGB全彩灯/ })).toBeNull();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索名称或编号" }), { target: { value: "RGB" } });
+    expect(screen.getByText("没有匹配的模型")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
+    expect(screen.getByRole("button", { name: /RGB全彩灯/ })).toBeTruthy();
+
+    // 默认选中 RGB 灯：能力徽标与通道功能组图例
+    const caps = screen.getByRole("list", { name: "能力" });
+    expect(within(caps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["调光", "混色", "色温"]);
+    expect(within(screen.getByRole("list", { name: "通道功能组图例" })).getByText(/颜色/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "添加到当前节目" }));
+    expect(screen.getByTestId("location").textContent).toBe(`/editor?addFixture=${encodeURIComponent("1.4.1.4")}`);
+  });
+
   it("加载失败时显示错误并可重试", async () => {
     invoke.mockRejectedValueOnce("io");
-    render(<FixtureLibraryView />);
+    renderView();
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByText(/无法加载灯具库/)).toBeTruthy();
 

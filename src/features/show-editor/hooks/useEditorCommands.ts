@@ -85,6 +85,16 @@ export function useEditorCommands(onSave?: () => void): Command[] {
           if (deleteSelectedObject()) return;
           const media = aliveMedia();
           if (media.length === 0) {
+            // 波纹编辑开着时，删除片段等同于波纹删除（后面的片段前移补齐）
+            if (useEditorPrefsStore.getState().rippleEdit && hasSelection()) {
+              let removed = 0;
+              update((d) => {
+                removed = rippleDeleteCues(d, alive());
+              });
+              ui().selectCues([]);
+              if (removed > 0) announce(t("editor.timeline.removedCues", { count: removed }));
+              return;
+            }
             actions.removeSelected();
             return;
           }

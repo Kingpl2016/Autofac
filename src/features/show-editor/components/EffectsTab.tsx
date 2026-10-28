@@ -1,37 +1,20 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { useDraggable } from "@dnd-kit/core";
-import {
-  Activity,
-  AudioWaveform,
-  Blend,
-  ChevronsRight,
-  Infinity as InfinityIcon,
-  MoveHorizontal,
-  MoveRight,
-  MoveVertical,
-  Orbit,
-  Rainbow,
-  Sparkles,
-  Waves,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { Activity, AudioWaveform, Blend, ChevronsRight, MoveRight, Rainbow, Sparkles, Zap, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { announce } from "@/shared/stores/announcerStore";
 import { useCueActions } from "../hooks/useCueActions";
 import { supportedTargets, useTargetCapabilities } from "../hooks/useTargetCapabilities";
-import { ATTR_EFFECT_DEFAULTS, ATTR_EFFECTS, buildAttrEffect, type AttrEffectId } from "../lib/attrEffects";
-import { applicability, attrEffectNeeds, effectNeeds, type Applicability } from "../lib/cueDefaults";
-import { addEffectCue, addLookCue } from "../lib/cueOps";
+import { applicability, effectNeeds, type Applicability } from "../lib/cueDefaults";
+import { addEffectCue } from "../lib/cueOps";
 import { EFFECT_PRESETS, type EffectPreset } from "../lib/effectPresets";
-import type { TrackCapabilities } from "../lib/fixtureProfile";
-import { trackFixtureIds } from "../lib/ops";
 import type { EffectId } from "../lib/project";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { ApplyBadge } from "./ApplyBadge";
+import { EffectLibrarySection } from "./EffectLibrarySection";
 
 /** 拖拽数据：标明被拖的是特效预设。 */
 export interface EffectDragData {
@@ -113,97 +96,8 @@ function DraggableEffect({
   );
 }
 
-/** 属性特效的图标。 */
-const ATTR_ICONS: Record<AttrEffectId, LucideIcon> = {
-  circle: Orbit,
-  figure8: InfinityIcon,
-  panSweep: MoveHorizontal,
-  tiltSweep: MoveVertical,
-  intensityWave: Waves,
-  intensityChase: MoveRight,
-  strobe: Zap,
-  rainbow: Rainbow,
-};
-
-/** 属性特效的默认片段长度（毫秒）。 */
-const ATTR_EFFECT_LENGTH_MS = 8000;
-
 /**
- * 属性特效（新引擎）：点击在所选轨道的播放头处新建一个外观片段。
- * 放在分组轨道上时按成员错开相位（扇形画圆、波浪、追逐、彩虹）。
- */
-function AttrEffects({ caps }: { caps: TrackCapabilities[] }) {
-  const { t } = useTranslation();
-  const baseId = useId();
-  const actions = useCueActions();
-
-  const insert = (id: AttrEffectId) => {
-    const project = useProjectStore.getState().project;
-    const { playheadMs } = useEditorUiStore.getState();
-    // 多选了轨道时加到每条支持的轨道；每条轨道按自己的成员数展开
-    const needs = attrEffectNeeds(id);
-    const { all, supported: trackIds } = supportedTargets(project, useEditorUiStore.getState(), needs);
-    if (all.length === 0) {
-      announce(t("editor.templates.noTrack"));
-      return;
-    }
-    if (trackIds.length === 0) {
-      announce(t("editor.apply.rejected", { reason: t(`editor.apply.needs.${needs}`) }));
-      return;
-    }
-    const created = actions.insertOnTracks(trackIds, (d, trackId) => {
-      const track = d.tracks.find((tr) => tr.id === trackId);
-      if (!track) return null;
-      const members = trackFixtureIds(d, track).length;
-      const { look, spread } = buildAttrEffect(
-        id,
-        { ...ATTR_EFFECT_DEFAULTS[id], lengthMs: ATTR_EFFECT_LENGTH_MS, members },
-        project.tempo,
-      );
-      return addLookCue(d, trackId, playheadMs, look, ATTR_EFFECT_LENGTH_MS, spread);
-    });
-    if (created.length > 0) useEditorUiStore.getState().setInspectorTab("cue");
-    if (trackIds.length === 1) {
-      announce(created.length > 0 ? t("editor.attrEffects.added", { name: t(`editor.attrEffects.${id}`) }) : t("editor.templates.noRoom"));
-    }
-  };
-
-  return (
-    <section aria-label={t("editor.attrEffects.title")} className="flex flex-col gap-2">
-      <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.attrEffects.title")}</h3>
-      <p className="px-1 text-xs text-muted-foreground">{t("editor.attrEffects.hint")}</p>
-      <ul className="grid grid-cols-2 gap-1.5">
-        {ATTR_EFFECTS.map((id) => {
-          const Icon = ATTR_ICONS[id];
-          const app = caps.length > 0 ? applicability(caps, attrEffectNeeds(id)) : null;
-          const badgeId = `${baseId}-${id}`;
-          return (
-            <li key={id}>
-              <button
-                type="button"
-                onClick={() => insert(id)}
-                title={t(`editor.attrEffects.${id}Hint`)}
-                aria-label={t(`editor.attrEffects.${id}`)}
-                aria-describedby={app && app.level !== "full" ? badgeId : undefined}
-                className={cn(
-                  "flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2 text-left text-sm hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  app?.level === "none" && "opacity-50",
-                )}
-              >
-                <Icon className="size-4 shrink-0 text-clip-light" aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{t(`editor.attrEffects.${id}`)}</span>
-                <ApplyBadge app={app} id={badgeId} />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
-/**
- * 素材库的“特效”标签：属性特效（外观片段，可叠加、按拍）+ 8 种经典 RGB 特效。
+ * 素材库的“特效”标签：属性特效库（配置文件加载的外观片段，可叠加、按拍）+ 8 种经典 RGB 特效。
  *
  * 拖到轨道上放下，或点击把它加到所选轨道（没有选中轨道时用第一条未锁定的轨道）的播放头处；
  * 放在分组轨道上时，特效会沿分组里灯具的顺序推进。
@@ -232,7 +126,7 @@ export function EffectsTab() {
 
   return (
     <div className="flex flex-col gap-4 p-2">
-      <AttrEffects caps={caps} />
+      <EffectLibrarySection caps={caps} />
       <section aria-label={t("editor.effects.classic")} className="flex flex-col gap-2">
         <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.effects.classic")}</h3>
         <p className="px-1 text-xs text-muted-foreground">{t("editor.effects.hint")}</p>

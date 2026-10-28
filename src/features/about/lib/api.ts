@@ -25,3 +25,12 @@ export interface AppInfo {
 export function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("app_info");
 }
+
+/**
+ * 在系统文件管理器里打开日志文件夹（不存在时先创建）。
+ *
+ * @returns 日志文件夹路径。
+ */
+export function revealLogs(): Promise<string> {
+  return invoke<string>("logs_reveal");
+}

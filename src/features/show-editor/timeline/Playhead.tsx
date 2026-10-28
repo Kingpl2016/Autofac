@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { OUTPUT_FPS } from "../lib/project";
 import { collectSnapTargets } from "../lib/snap";
 import { clamp, formatTimecode, snapToFrame } from "../lib/time";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { PLAYHEAD_HIT_PX, playheadDropMs } from "./playheadMath";
@@ -76,7 +77,7 @@ export function Playhead({ top, bottom = 0 }: { top: number; bottom?: number }) 
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const project = useProjectStore.getState().project;
     // 吸附目标不含播放头自己（传一个节目外的时刻）
-    drag.current = { targets: collectSnapTargets(project, -1).filter((ms) => ms >= 0) };
+    drag.current = { targets: collectSnapTargets(project, -1, new Set(), useEditorPrefsStore.getState().snapKinds).filter((ms) => ms >= 0) };
     setDragging(true);
     seek(e);
   };

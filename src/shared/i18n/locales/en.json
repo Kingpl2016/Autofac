@@ -1438,7 +1438,8 @@
         "objectWidth": "W",
         "objectHeight": "H",
         "removeObject": "Delete object"
-      }
+      },
+      "dropHint": "Release to place the fixture here"
     },
     "inspector": {
       "title": "Properties",
@@ -2130,7 +2131,21 @@
       "skipped": "{{count}} fixtures will not output because of a missing model or out-of-range address",
       "routedHint": "Output follows the project's universe routing table (each universe can go to a different node).",
       "openRouting": "Universes & routing…",
-      "routedBadge": "Routed · {{count}}"
+      "routedBadge": "Routed · {{count}}",
+      "advanced": "Advanced",
+      "listSep": ", ",
+      "gammaShort": "gamma {{value}}",
+      "latencyShort": "latency {{value}} ms",
+      "syncShort": "sync on",
+      "parkShort": "{{count}} parked",
+      "park": "Parked channels",
+      "parkHint": "A parked channel always outputs a fixed value, ignoring the show and the programmer (e.g. a hazer or work light).",
+      "parkList": "Parked channels",
+      "unpark": "Unpark U{{universe}}.{{channel}}",
+      "parkUniverse": "Universe to park",
+      "parkChannel": "Channel to park",
+      "parkValue": "Parked value (0–255)",
+      "parkAdd": "Park"
     },
     "bake": {
       "running": "Generating playback file… {{percent}}%",
@@ -2593,7 +2608,8 @@
       "expand": "Expand {{name}}",
       "fixtures": "{{count}} fixtures",
       "port": "{{protocol}} {{target}} → {{remote}}",
-      "noPorts": "No output ports"
+      "noPorts": "No output ports",
+      "dropHint": "Drop to patch from this address"
     },
     "swatches": {
       "groupBy": "Group swatches by",
@@ -2636,7 +2652,7 @@
         },
         "library": {
           "title": "Library",
-          "body": "The icons on the left switch sections: media, fixtures, cue templates, effects, presets, groups and history.\nAdd fixtures first; drag templates and effects onto the timeline, or click to add them to the selected track."
+          "body": "The icons on the left switch sections: media, fixtures, cue templates, effects, presets, groups and history.\nAdd fixtures first: + adds one, the arrow opens batch add, or drag a card onto Patch, the stage or the timeline. Drag templates and effects onto the timeline, or click to add them to the selected track."
         },
         "preview": {
           "title": "Preview",
@@ -2656,7 +2672,7 @@
         },
         "shortcuts": {
           "title": "Handy shortcuts",
-          "body": "Ctrl+K command palette (every action is searchable)\nSpace play / pause, J / K / L back one frame / pause / play\nShift+Q radial menu, Shift+F10 context menu\nThe ? menu (F1) has the shortcut list, the tour and page tips."
+          "body": "Ctrl+K command palette (every action is searchable)\nSpace play / pause, J / K / L back one frame / pause / play\nShift+Q radial menu, Shift+F10 context menu\nThe ? menu (F1) has the shortcut cheat sheet, what's new, feedback, the tour and page tips."
         }
       },
       "hints": {
@@ -2687,6 +2703,14 @@
         "templates": {
           "title": "Templates come from a config file",
           "body": "Templates are grouped; right-click to copy, rename, move or delete. The toolbar imports / exports template files, shows the file in its folder, and reloads it after you edit it."
+        },
+        "fixtureAdd": {
+          "title": "Three ways to add fixtures",
+          "body": "+ adds one; the arrow opens batch add with quantity, start address, gap and name, previewing the channels it will use; or hold the handle and drag a fixture onto a Patch universe card, the stage or the timeline."
+        },
+        "effects": {
+          "title": "Tune, then insert",
+          "body": "Clicking an effect opens its parameters: speed, size, phase spread, wings, direction and order; then press Insert. Double-click inserts right away. Effects come from config files; right-click to copy one into your own effects."
         }
       },
       "help": "Help",
@@ -2694,7 +2718,7 @@
       "hideHints": "Hide tips on this page",
       "hintsShown": "Showing all tips on this page; click a dot to read it",
       "hintsHidden": "Tips hidden",
-      "shortcuts": "Keyboard shortcuts"
+      "shortcuts": "Customize shortcuts…"
     },
     "undoAction": "Undo",
     "loop": {
@@ -2706,6 +2730,204 @@
       "cleared": "Turned {{count}} keyframed layers into fixed values",
       "none": "No keyframe here",
       "hint": "Keyframe {{time}}: click to move the playhead here, right-click to delete"
+    },
+    "fixtureAdd": {
+      "search": "Search fixtures: name, ID, maker",
+      "clearSearch": "Clear search",
+      "typeFilter": "Filter by type",
+      "all": "All",
+      "noMatch": "No fixtures match",
+      "clearFilters": "Clear filters",
+      "list": "Fixture models",
+      "modes": "{{count}} modes",
+      "drag": "Drag {{name}} to Patch, the stage or the timeline",
+      "batch": "Add several {{name}}…",
+      "panel": "Add several {{name}}",
+      "less": "One fewer",
+      "more": "One more",
+      "quickCounts": "Common quantities",
+      "mode": "Mode",
+      "start": "Start",
+      "auto": "Auto",
+      "manual": "Set",
+      "universe": "Start universe",
+      "address": "Start address",
+      "gap": "Gap",
+      "gapUnit": "channels",
+      "name": "Name",
+      "nameHint": "{n} is the number. First: {{first}}",
+      "group": "Group them after adding",
+      "submit": "Add {{count}}",
+      "range": "U{{universe}} {{start}}–{{end}}",
+      "listSep": ", ",
+      "sep": " · ",
+      "preview": "Uses {{ranges}}",
+      "previewNone": "Doesn't fit: not enough free channels",
+      "noConflict": "no conflicts",
+      "partial": "{{count}} won't fit",
+      "shifted": "start was taken, moved to U{{universe}}.{{address}}",
+      "grouped": "grouped",
+      "noRoom": "Not enough free channels for {{name}}",
+      "submitAria": "Add {{count}} {{name}} with these settings"
+    },
+    "effectLib": {
+      "hint": "Click to select and tune, then Insert to add it at the playhead on the selected track; double-click inserts right away. On a group track it is offset across members (fan, wave, chase).",
+      "tools": "Effect library tools",
+      "import": "Import effects…",
+      "export": "Export all effects…",
+      "reveal": "Show the user effects file",
+      "reload": "Reload effects file",
+      "fileType": "Effects file",
+      "importEmpty": "The file has no usable effects",
+      "imported": "Imported: {{added}} added, {{replaced}} replaced, {{skipped}} skipped",
+      "exported": "Exported {{count}} effects",
+      "reloaded": "Reloaded, {{count}} user effects",
+      "loadFailed": "Could not read the user effects file ({{reason}}); only built-in effects for now",
+      "issuesTitle": "{{count}} problems in the user effects file were skipped",
+      "fileHint": "Effects come from config files: built-ins ship with the app, your own live in effects.json in the data folder and can be edited by hand or imported; a user effect with the same id overrides the built-in one. Files hold parameters only, no scripts.",
+      "groupList": "{{name}} effects",
+      "groups": {
+        "position": "Position",
+        "intensity": "Intensity",
+        "color": "Color",
+        "beam": "Beam",
+        "custom": "Mine"
+      },
+      "menu": "Actions for {{name}}",
+      "insert": "Insert on selected track",
+      "copyToMine": "Copy to my effects",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "copied": "Copied as {{name}}",
+      "deleted": "Deleted effect {{name}}",
+      "params": "Parameters for {{name}}",
+      "speed": "Speed",
+      "speedValue": "Length of one cycle",
+      "speedUnit": "Cycle unit",
+      "beats": "Beats",
+      "ms": "ms",
+      "size": "Size",
+      "sizeValue": "Size percent",
+      "spread": "Phase spread",
+      "spreadValue": "Phase spread percent",
+      "wings": "Wings",
+      "direction": "Direction",
+      "forward": "Forward",
+      "reverse": "Reverse",
+      "order": "Order",
+      "orders": {
+        "members": "Members",
+        "stageX": "Left–right",
+        "stageY": "Front–back"
+      },
+      "reset": "Reset",
+      "insertSelected": "Insert"
+    },
+    "help": {
+      "cheatSheet": "Shortcut cheat sheet",
+      "whatsNew": "What's new",
+      "feedback": "Feedback",
+      "copyDiagnostics": "Copy diagnostics",
+      "openLogs": "Open log folder",
+      "about": "About Art-Net Studio",
+      "diagShow": "Current show: {{fixtures}} fixtures, {{tracks}} tracks, {{cues}} clips, {{universes}} universe routes",
+      "diagCopied": "Diagnostics copied; paste them into your report",
+      "diagFailed": "Could not copy diagnostics",
+      "logsFailed": "Could not open the log folder"
+    },
+    "shortcutSheet": {
+      "title": "Shortcut cheat sheet",
+      "description": "Every shortcut by category, including your custom ones. Most shortcuts are ignored while typing in a field.",
+      "search": "Search commands or categories",
+      "customize": "Customize shortcuts…"
+    },
+    "whatsNew": {
+      "title": "What's new",
+      "description": "The main changes in this version.",
+      "areas": {
+        "fixtures": "Fixtures",
+        "effects": "Effects",
+        "timeline": "Timeline",
+        "file": "File",
+        "output": "Output",
+        "help": "Help"
+      },
+      "items": {
+        "fixtureAdd": {
+          "title": "Easier batch add",
+          "body": "Search and filter fixtures by type; the add panel sets quantity, mode, start address, gap and a name template, previews the channels it will use, and can group the new fixtures."
+        },
+        "fixtureDrag": {
+          "title": "Drag to add fixtures",
+          "body": "Drag a fixture card onto a Patch universe card (patched from the drop address), the stage monitor (placed at the drop point) or the timeline."
+        },
+        "fixtureLibrary": {
+          "title": "Redesigned fixture library",
+          "body": "Type icons and filters in the list; the detail view shows capability badges, key parameters and a channel strip colored by attribute group with a legend; add to the current show in one click."
+        },
+        "effectLibrary": {
+          "title": "Effect library from config files",
+          "body": "24 built-in attribute effects (position, intensity, color, beam) with speed, size, phase spread, wings, direction and order set before inserting; your own effects live in effects.json and can be imported and exported."
+        },
+        "timelineTools": {
+          "title": "Timeline tools",
+          "body": "Zoom slider and fit, follow playhead, snap options, ripple edit, expand or collapse all tracks, and a ruler that switches between timecode and bars·beats."
+        },
+        "recentFiles": {
+          "title": "Recent files",
+          "body": "The File menu lists the last 10 shows you opened; an empty show's preview shows the latest 5."
+        },
+        "outputAdvanced": {
+          "title": "Basic and advanced output settings",
+          "body": "Output target and routing stay visible; gamma, latency compensation, sync and parked channels move under Advanced."
+        },
+        "helpMenu": {
+          "title": "Help menu",
+          "body": "Adds a shortcut cheat sheet, what's new, feedback (copy diagnostics, open log folder) and About."
+        }
+      }
+    },
+    "recent": {
+      "title": "Recent files",
+      "clear": "Clear list",
+      "library": "Show library",
+      "removeOne": "Remove {{name}} from recent files",
+      "missing": "Can't find “{{name}}”; it may have been moved or deleted",
+      "remove": "Remove from list"
+    },
+    "timelineTools": {
+      "label": "Timeline tools",
+      "snapOptions": "Snap options",
+      "snapTo": "Snap to",
+      "snapKinds": {
+        "beats": "Beats",
+        "markers": "Markers",
+        "edges": "Clip edges",
+        "playhead": "Playhead"
+      },
+      "snapHint": "Show start and end always snap; hold Alt while dragging to bypass snapping.",
+      "ripple": "Ripple edit: deleting clips closes the gap",
+      "rippleOn": "Ripple edit on",
+      "rippleOff": "Ripple edit off",
+      "follow": "Follow playhead during playback",
+      "trackHeight": "Track height",
+      "allTracks": "All tracks",
+      "heights": {
+        "compact": "Compact",
+        "normal": "Normal",
+        "tall": "Tall"
+      },
+      "collapseAll": "Collapse all",
+      "expandAll": "Expand all",
+      "ruler": "Ruler units",
+      "timecode": "Timecode",
+      "timecodeHint": "Minutes:seconds and frames",
+      "bars": "Bars",
+      "barsHint": "Bars and beats from the tempo",
+      "needTempo": "Set a tempo (BPM) to show bars",
+      "zoom": "Timeline zoom",
+      "zoomValue": "{{value}} pixels per second",
+      "fit": "Fit to window (Shift+Z)"
     }
   },
   "fixtures": {
@@ -2717,7 +2939,12 @@
       "noMatch": "No matching models",
       "builtin": "Built-in standards",
       "custom": "Custom models",
-      "channels": "{{count}} ch"
+      "channels": "{{count}} ch",
+      "source": "Source",
+      "all": "All",
+      "typeFilter": "Filter by type",
+      "clearFilters": "Clear filters",
+      "modes": "{{count}} modes"
     },
     "detail": {
       "builtin": "Built-in",
@@ -2734,7 +2961,15 @@
       "deleteTitle": "Delete model \"{{name}}\"?",
       "deleteDescription": "Fixtures already used in shows are not affected, but this model can no longer be added from the library. This cannot be undone.",
       "deleted": "Deleted model \"{{name}}\"",
-      "none": "No models to show"
+      "none": "No models to show",
+      "addToShow": "Add to current show",
+      "capabilities": "Capabilities",
+      "modeCount": "Modes",
+      "heads": "Pixels",
+      "pan": "Pan range",
+      "tilt": "Tilt range",
+      "beam": "Beam angle",
+      "legend": "Channel group legend"
     },
     "table": {
       "channel": "Channel",
@@ -2909,6 +3144,23 @@
         "unsupportedFeature": "Model {{model}} ({{sheet}}) uses an unsupported feature ({{detail}}); those channels were skipped.",
         "invalidModelOfl": "Model {{model}} failed validation ({{detail}}) and was skipped."
       }
+    },
+    "type": {
+      "dimmer": "Dimmer",
+      "white": "Tunable white",
+      "mixing": "Color mixing",
+      "mover": "Moving head",
+      "other": "Other"
+    },
+    "cap": {
+      "intensity": "Dimming",
+      "mixing": "Color mixing",
+      "colorTemp": "Color temperature",
+      "colorWheel": "Color wheel",
+      "position": "Pan / tilt",
+      "beam": "Beam effects",
+      "focus": "Focus / zoom",
+      "strobe": "Strobe"
     }
   },
   "placeholder": {

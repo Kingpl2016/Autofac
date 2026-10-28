@@ -1,83 +1,32 @@
-import { isEmitter, layoutOf, type ChannelFunction, type FixtureModel } from "@/features/fixtures";
+import {
+  FIXTURE_CAPABILITIES,
+  modelProfile,
+  type FixtureCapability,
+  type FixtureModel,
+  type FixtureProfile,
+  type FixtureType,
+} from "@/features/fixtures";
 import { ATTR_KEYS, attrGroup, availableAttrs, type AttrInfo } from "./layers";
 import { trackFixtureIds } from "./ops";
 import type { AttrKey, Look, ShowProject, Track } from "./project";
 
 /**
- * 灯具能力画像：由模型（某个模式）的通道功能推断这台灯“能做什么”，
- * 时间线据此按灯具类型显示 / 过滤片段、给出默认外观，检查器只显示支持的属性组。
+ * 节目编辑器的能力汇总：单台灯具的画像来自灯具库（`modelProfile`），
+ * 这里按轨道 / 一组灯具汇总，时间线据此显示 / 过滤片段，检查器只显示支持的属性组。
  */
 
-/** 一项能力。 */
-export type FixtureCapability =
-  /** 能调亮度（有调光、开关或任何发光体） */
-  | "intensity"
-  /** 能连续混色（RGB 发光体或 CMY） */
-  | "mixing"
-  /** 能调色温（色温通道、冷暖白，或可混色近似） */
-  | "colorTemp"
-  /** 有颜色轮 */
-  | "colorWheel"
-  /** 能动（Pan / Tilt） */
-  | "position"
-  /** 有光束类功能（图案、棱镜、雾化、光圈） */
-  | "beam"
-  /** 有聚焦 / 变焦 */
-  | "focus"
-  /** 有频闪（快门） */
-  | "strobe";
-
-/** 全部能力（显示顺序）。 */
-export const FIXTURE_CAPABILITIES: readonly FixtureCapability[] = [
-  "intensity",
-  "mixing",
-  "colorTemp",
-  "colorWheel",
-  "position",
-  "beam",
-  "focus",
-  "strobe",
-];
-
-/** 灯具类型（时间线轨道头的图标、默认外观用）。 */
-export type FixtureType = "dimmer" | "white" | "mixing" | "mover" | "other";
-
-/** 一台灯具的能力画像。 */
-export interface FixtureProfile {
-  type: FixtureType;
-  caps: ReadonlySet<FixtureCapability>;
-}
-
-const BEAM: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>(["gobo", "goboRotate", "goboShake", "prism", "prismRotate", "frost", "iris"]);
+export { FIXTURE_CAPABILITIES };
+export type { FixtureCapability, FixtureProfile, FixtureType };
 
 /**
- * 推断一台灯具（模型的某个模式）的能力。
+ * 推断一台灯具（模型的某个模式）的能力（委托给灯具库的 `modelProfile`）。
  *
  * @param model 模型；缺失时视为没有能力。
  * @param modeId 模式。
  * @returns 类型与能力。
  */
 export function fixtureProfile(model: FixtureModel | undefined, modeId?: string): FixtureProfile {
-  const fns = new Set<ChannelFunction>((model ? (layoutOf(model, modeId) ?? []) : []).map((p) => p.function));
-  const caps = new Set<FixtureCapability>();
-  const has = (...list: ChannelFunction[]) => list.some((f) => fns.has(f));
-  const anyEmitter = [...fns].some(isEmitter);
-  if (anyEmitter || has("dimmer", "switch")) caps.add("intensity");
-  const mixing = has("red", "green", "blue") || has("cyan", "magenta", "yellow");
-  if (mixing) caps.add("mixing");
-  if (mixing || has("colorTemp") || (has("coolWhite") && has("warmWhite"))) caps.add("colorTemp");
-  if (has("colorWheel")) caps.add("colorWheel");
-  if (has("pan", "tilt")) caps.add("position");
-  if ([...fns].some((f) => BEAM.has(f))) caps.add("beam");
-  if (has("focus", "zoom")) caps.add("focus");
-  if (has("shutter")) caps.add("strobe");
-
-  let type: FixtureType = "other";
-  if (caps.has("position")) type = "mover";
-  else if (mixing || caps.has("colorWheel")) type = "mixing";
-  else if (caps.has("colorTemp")) type = "white";
-  else if (caps.has("intensity")) type = "dimmer";
-  return { type, caps };
+  return modelProfile(model, modeId);
 }
 
 /** 一条轨道（其上全部灯具）的能力汇总。 */

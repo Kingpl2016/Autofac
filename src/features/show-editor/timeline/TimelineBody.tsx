@@ -22,6 +22,7 @@ import type { Cue, ShowProject, Track } from "../lib/project";
 import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX } from "../lib/snap";
 import { snapToFrame } from "../lib/time";
 import { zoomPxPerSec } from "../lib/zoom";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -196,6 +197,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       useEditorUiStore.subscribe((s, prev) => {
         if (s.playheadMs === prev.playheadMs) return;
         if (usePlaybackStore.getState().state?.transport !== "playing") return;
+        if (!useEditorPrefsStore.getState().followPlayhead) return;
         const el = scrollRef.current;
         if (!el) return;
         const x = START_LEFT + (s.playheadMs / 1000) * s.pxPerSec;
@@ -381,7 +383,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
         startX: p.x,
         startRow: rowAt(layout, p.y),
         project: current,
-        targets: collectSnapTargets(current, ui.playheadMs, new Set(ids)),
+        targets: collectSnapTargets(current, ui.playheadMs, new Set(ids), useEditorPrefsStore.getState().snapKinds),
         active: false,
         result: null,
       };

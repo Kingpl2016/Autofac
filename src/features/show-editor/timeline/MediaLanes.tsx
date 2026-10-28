@@ -9,6 +9,7 @@ import {
 } from "../lib/mediaClips";
 import type { ShowProject } from "../lib/project";
 import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX } from "../lib/snap";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useMediaStore } from "../stores/useMediaStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -106,7 +107,7 @@ export function MediaLanes() {
       startX: p.x,
       startRow: mediaRowAt(layout, p.y),
       project: current,
-      targets: collectSnapTargets(current, ui.playheadMs, new Set(ids)),
+      targets: collectSnapTargets(current, ui.playheadMs, new Set(ids), useEditorPrefsStore.getState().snapKinds),
       active: false,
       result: null,
     };

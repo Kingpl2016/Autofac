@@ -8,6 +8,7 @@ import { pickArtshowFile, pickArtshowSavePath } from "@/shared/tauri/pickers";
 import { showSetDirty } from "../lib/playbackApi";
 import { showAutosaveClear, showAutosaveRead, showAutosaveWrite, showErrorText, serializeProject } from "../lib/showFile";
 import { selectDirty, useProjectStore } from "../stores/useProjectStore";
+import { useRecentFilesStore, type RecentFile } from "../stores/useRecentFilesStore";
 import {
   newProject,
   openFromFile,
@@ -55,6 +56,12 @@ export interface ShowFileController {
    * @param path 节目的 `.artrec` 路径。
    */
   requestOpenPath: (path: string) => void;
+  /**
+   * 打开最近文件里的一项（有未保存修改时先确认）。文件已不存在时提示，并可从列表移除。
+   *
+   * @param item 最近文件。
+   */
+  requestOpenRecent: (item: RecentFile) => void;
   /**
    * 提交“保存到节目库”对话框。
    *
@@ -201,6 +208,22 @@ export function useShowFile(): ShowFileController {
     [guard],
   );
 
+  const requestOpenRecent = useCallback(
+    (item: RecentFile) =>
+      guard(async () => {
+        try {
+          await (item.kind === "library" ? openFromLibrary(item.path) : openFromFile(item.path));
+        } catch (e) {
+          if (e !== "not_found" && e !== "outside_library") throw e;
+          toast.error(t("editor.recent.missing", { name: item.name }), {
+            description: item.path,
+            action: { label: t("editor.recent.remove"), onClick: () => useRecentFilesStore.getState().remove(item.path) },
+          });
+        }
+      }),
+    [guard, t],
+  );
+
   const chooseLibraryEntry = useCallback(
     (path: string) => {
       setDialog(null);
@@ -312,6 +335,7 @@ export function useShowFile(): ShowFileController {
     requestOpenLibrary,
     requestOpenFile,
     requestOpenPath,
+    requestOpenRecent,
     submitSave,
     chooseLibraryEntry,
     answerUnsaved,

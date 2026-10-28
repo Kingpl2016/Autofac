@@ -78,6 +78,7 @@ export function fakeFile(over: Partial<ShowFileController> = {}): ShowFileContro
     requestOpenLibrary: vi.fn(),
     requestOpenFile: vi.fn(),
     requestOpenPath: vi.fn(),
+    requestOpenRecent: vi.fn(),
     submitSave: vi.fn(),
     chooseLibraryEntry: vi.fn(),
     answerUnsaved: vi.fn(),
