@@ -10,6 +10,7 @@ import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProgrammerStore } from "../../stores/useProgrammerStore";
 import { useProjectStore } from "../../stores/useProjectStore";
@@ -41,7 +42,8 @@ beforeEach(async () => {
       d.output.gamma = 1;
     }),
   );
-  useEditorUiStore.setState({ selectedFixtureIds: [], playheadMs: 0, selectedTrackId: null, centerView: "swatches" });
+  useEditorUiStore.setState({ selectedFixtureIds: [], playheadMs: 0, selectedTrackId: null });
+  useEditorPrefsStore.setState({ centerView: "swatches" });
   useAnnouncerStore.setState({ message: "", seq: 0 });
 });
 
@@ -140,7 +142,9 @@ describe("预览区与编程器", () => {
 
 describe("灯具表", () => {
   it("切换到灯具表；点行选灯；编辑单元格写入编程器（选中的灯一起改），已编程的值高亮", () => {
-    act(() => useEditorUiStore.setState({ centerView: "swatches" }));
+    act(() => {
+      useEditorPrefsStore.setState({ centerView: "swatches" });
+    });
     render(<PreviewPanel />);
     fireEvent.click(screen.getByRole("radio", { name: "灯具表" }));
     const table = screen.getByRole("table", { name: "灯具表" });

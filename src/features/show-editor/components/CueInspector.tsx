@@ -17,6 +17,7 @@ import {
   type CuePatch,
   type EffectPatch,
 } from "../lib/cueOps";
+import { setCueLengths } from "../lib/editOps";
 import { trackFixtureIds, trackName } from "../lib/ops";
 import type { Cue, Easing, EffectCue, LookClip } from "../lib/project";
 import { formatTimecode, parseTimecode } from "../lib/time";
@@ -89,6 +90,29 @@ export function CueInspector() {
             : t("editor.cue.selectedCount", { count: selected.length })}
         </h3>
         {locked && <p className="mt-1 text-xs text-warning">{t("editor.cue.locked")}</p>}
+        {!single && !locked && (
+          <label className="mt-2 flex items-center justify-between gap-2 text-sm">
+            <span>{t("editor.cue.sameLength")}</span>
+            <CommitInput
+              label={t("editor.cue.sameLength")}
+              value={(() => {
+                const len = common(selected, (c) => formatTimecode(c.endMs - c.startMs));
+                return len.mixed ? "" : len.value;
+              })()}
+              inputMode="numeric"
+              className="num h-7 w-24 px-1.5 text-xs"
+              onCommit={(text) => {
+                const ms = parseTimecode(text);
+                if (ms === null) return;
+                let n = 0;
+                update((d) => {
+                  n = setCueLengths(d, ids, ms);
+                });
+                announce(t("editor.cue.lengthSet", { count: n, time: formatTimecode(ms) }));
+              }}
+            />
+          </label>
+        )}
       </header>
 
       {looks.length > 0 && <LookInspector cues={looks} />}

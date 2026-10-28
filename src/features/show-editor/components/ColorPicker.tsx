@@ -7,11 +7,23 @@ import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
 import { isEmitter, layoutOf, type FixtureModel } from "@/features/fixtures";
 import { useEngine } from "../engine/useEngine";
-import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
+import {
+  hexToRgb,
+  hslToRgb,
+  hsToWheel,
+  hsvToRgb,
+  rgbToHex,
+  rgbToHsl,
+  rgbToHsv,
+  wheelToHs,
+  type Hsl,
+  type Hsv,
+} from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
 import { mixPreview } from "../lib/mixPreview";
 import type { ColorValue, EmitterKey, Rgb, WhiteStrategy } from "../lib/project";
 import { clamp } from "../lib/time";
+import { COLOR_INPUTS, useColorInputStore, type ColorInput } from "../stores/useColorInputStore";
 import { useRecentColorsStore } from "../stores/useRecentColorsStore";
 import { CommitInput } from "./CommitInput";
 
@@ -58,6 +70,24 @@ const KELVIN_BACKGROUND = `linear-gradient(to right, ${[1800, 2700, 3200, 4300, 
   })
   .join(", ")})`;
 
+/** HSL 的 CSS 写法（滑杆底色）。 */
+const hslCss = (h: number, s: number, l: number) => `hsl(${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
+/** 色相滑杆：满饱和、中等亮度的一圈色相（灰色时也看得清）。 */
+const HUE_GRADIENT = `linear-gradient(to right, ${[0, 60, 120, 180, 240, 300, 360].map((h) => hslCss(h, 1, 0.5)).join(", ")})`;
+/** 饱和度滑杆：当前色相与亮度下由灰到饱和。 */
+const satGradient = ({ h, l }: Hsl) => `linear-gradient(to right, ${hslCss(h, 0, l)}, ${hslCss(h, 1, l)})`;
+/** 亮度滑杆：黑 → 当前色 → 白。 */
+const lightGradient = ({ h, s }: Hsl) => `linear-gradient(to right, ${hslCss(h, s, 0)}, ${hslCss(h, s, 0.5)}, ${hslCss(h, s, 1)})`;
+/** RGB 某一通道的滑杆：其它通道不变，该通道 0 → 255。 */
+const channelGradient = (rgb: Rgb, i: number) => {
+  const at = (v: number) => {
+    const c: Rgb = [...rgb];
+    c[i] = v;
+    return `rgb(${c[0]} ${c[1]} ${c[2]})`;
+  };
+  return `linear-gradient(to right, ${at(0)}, ${at(255)})`;
+};
+
 /** 只做颜色显示的 `rgb()`。 */
 const css = ([r, g, b]: Rgb) => `rgb(${r} ${g} ${b})`;
 
@@ -82,7 +112,8 @@ interface ColorPickerProps {
 /**
  * 专业色盘：
  *
- * - **RGB**：色轮（色相 + 饱和度）+ 明度、十六进制 / RGB 数值、白光策略（RGBW / RGBCW 灯怎样用白光）；
+ * - **RGB**：三种输入方式（记住上次的选择）——色轮（色相 + 饱和度）+ 明度、HSL 渐变滑杆、RGB 数值滑杆；
+ *   都可输入十六进制；白光策略决定 RGBW / RGBCW 灯怎样用白光；
  * - **色温**：1800K~10000K 滑杆与常用色温（RGB 灯按色温近似，冷暖白灯按 mired 分配）；
  * - **发光体**：按目标灯具的发光体逐路直给（手动覆盖混色）；
  * - 常用色、最近使用、屏幕取色；
@@ -125,6 +156,17 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
   const white: WhiteStrategy = shown.kind === "rgb" ? (shown.white ?? "preserve") : "preserve";
   const hsv: Hsv = rgbToHsv(shown.kind === "rgb" ? shown.rgb : rgb);
   const asRgb = (next: Rgb): ColorValue => ({ kind: "rgb", rgb: next, ...(white !== "preserve" ? { white } : {}) });
+
+  // ---- 输入方式（色轮 / HSL / RGB 数值，记住上次的选择） ----
+  const input = useColorInputStore((s) => s.input);
+  const setInput = useColorInputStore((s) => s.setInput);
+  // 拖到灰色时 RGB 里没有色相：保留滑杆上的 HSL，颜色没被外部改动时继续用它
+  const [hslHold, setHslHold] = useState<Hsl | null>(null);
+  const hsl: Hsl = hslHold && same(asRgb(hslToRgb(hslHold)), shown) ? hslHold : rgbToHsl(rgb);
+  const fromHsl = (next: Hsl): ColorValue => {
+    setHslHold(next);
+    return asRgb(hslToRgb(next));
+  };
 
   // ---- 目标灯具的发光体 ----
   const emitters = (() => {
@@ -200,6 +242,65 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
     />
   );
 
+  /** 带渐变底色的滑杆 + 数值框：拖动只改草稿，松手 / 回车提交。 */
+  const gradientSlider = (
+    label: string,
+    short: string,
+    value: number,
+    min: number,
+    max: number,
+    unit: string,
+    background: string,
+    toColor: (v: number) => ColorValue,
+  ) => (
+    <div key={short} className="grid grid-cols-[1rem_1fr_3.5rem] items-center gap-2">
+      <span aria-hidden className="text-[11px] text-muted-foreground">
+        {short}
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        aria-label={label}
+        aria-valuetext={`${value}${unit}`}
+        className="h-3 w-full cursor-pointer appearance-none rounded-full border border-border accent-foreground"
+        style={{ background }}
+        onChange={(e) => {
+          dragging.current = true;
+          setDraft(toColor(Number(e.target.value)));
+        }}
+        onKeyUp={() => draft && commit(draft)}
+      />
+      <CommitInput
+        className="num h-7 px-1.5 text-xs"
+        inputMode="numeric"
+        label={t("editor.color.valueOf", { name: label })}
+        value={value}
+        onCommit={(text) => {
+          const n = Number(text);
+          if (Number.isFinite(n)) commit(toColor(clamp(n, min, max)));
+        }}
+      />
+    </div>
+  );
+
+  const hexField = (
+    <label className="grid gap-0.5 text-[11px] text-muted-foreground">
+      {t("editor.color.hex")}
+      <CommitInput
+        className="num h-7 px-1.5 text-xs"
+        label={t("editor.color.hex")}
+        value={rgbToHex(rgb)}
+        onCommit={(text) => {
+          const parsed = hexToRgb(text);
+          if (parsed) commit(asRgb(parsed));
+        }}
+      />
+    </label>
+  );
+
   const EyeDropperCtor = typeof window !== "undefined" ? (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper : undefined;
 
   return (
@@ -220,7 +321,14 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
       </div>
 
       {mode === "rgb" && shown.kind === "rgb" && (
-        <div className="grid gap-2">
+        <div data-tour="color-input" className="grid gap-2">
+          <Segmented<ColorInput>
+            ariaLabel={t("editor.color.input")}
+            value={input}
+            options={COLOR_INPUTS.map((m) => ({ value: m, label: t(`editor.color.inputs.${m}`) }))}
+            onChange={setInput}
+          />
+          {input === "wheel" ? (
           <div className="flex items-start gap-3">
             <div
               ref={wheelRef}
@@ -287,6 +395,25 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
               </label>
             </div>
           </div>
+          ) : input === "hsl" ? (
+            <div className="grid gap-1.5">
+              {gradientSlider(t("editor.color.hue"), "H", Math.round(hsl.h), 0, 360, "°", HUE_GRADIENT, (v) => fromHsl({ ...hsl, h: v }))}
+              {gradientSlider(t("editor.color.saturation"), "S", Math.round(hsl.s * 100), 0, 100, "%", satGradient(hsl), (v) => fromHsl({ ...hsl, s: v / 100 }))}
+              {gradientSlider(t("editor.color.lightness"), "L", Math.round(hsl.l * 100), 0, 100, "%", lightGradient(hsl), (v) => fromHsl({ ...hsl, l: v / 100 }))}
+              {hexField}
+            </div>
+          ) : (
+            <div className="grid gap-1.5">
+              {(["r", "g", "b"] as const).map((ch, i) =>
+                gradientSlider(t(`editor.color.${ch}`), ch.toUpperCase(), shown.rgb[i], 0, 255, "", channelGradient(shown.rgb, i), (v) => {
+                  const next: Rgb = [...shown.rgb];
+                  next[i] = clamp(Math.round(v), 0, 255);
+                  return asRgb(next);
+                }),
+              )}
+              {hexField}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-muted-foreground">{t("editor.color.white")}</span>
             <Segmented<WhiteStrategy>

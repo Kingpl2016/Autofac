@@ -274,7 +274,29 @@ export interface CueBase {
   fadeInMs: number;
   fadeOutMs: number;
   easing: Easing;
+  /** 禁用：保留在时间线上但不输出（与后端 `CueBase::disabled` 一致），省略为启用 */
+  disabled?: boolean;
+  /** 颜色标签（只用于在时间线上分类、筛选，不影响输出） */
+  tag?: CueTag;
 }
+
+/** 片段颜色标签。 */
+export const CUE_TAGS = ["red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink"] as const;
+
+/** 片段颜色标签。 */
+export type CueTag = (typeof CUE_TAGS)[number];
+
+/** 各颜色标签的显示色（数据色，不随主题变化）。 */
+export const CUE_TAG_COLORS: Record<CueTag, Rgb> = {
+  red: [239, 68, 68],
+  orange: [249, 115, 22],
+  yellow: [234, 179, 8],
+  green: [34, 197, 94],
+  cyan: [6, 182, 212],
+  blue: [59, 130, 246],
+  purple: [168, 85, 247],
+  pink: [236, 72, 153],
+};
 
 /** 静态 Cue：固定颜色。 */
 export interface StaticCue extends CueBase {

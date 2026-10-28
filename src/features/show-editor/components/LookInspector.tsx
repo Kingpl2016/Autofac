@@ -12,7 +12,8 @@ import { announce } from "@/shared/stores/announcerStore";
 import { flashRateHz, unsafeFlash } from "../lib/attrEffects";
 import { setSpread, updateLooks } from "../lib/cueOps";
 import { MAX_SAFE_STROBE_HZ } from "../lib/effects";
-import { availableAttrs, layerGroupsOf, mergeLayers, pickLayers, type LayerGroup } from "../lib/layers";
+import { availableAttrsOf, colorSupportCount, fixtureProfile, layerSupport, supportsColor } from "../lib/fixtureProfile";
+import { layerGroupsOf, mergeLayers, pickLayers, type LayerGroup } from "../lib/layers";
 import {
   adjacentKey,
   hasKeyAt,
@@ -107,19 +108,28 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
   })();
   const colorAt = heldValueAt(look.color, uClamped);
   const rgbAt: Rgb = colorAt ? colorValueRgb(colorAt) : [255, 255, 255];
+  // 轨道上的全部灯具：属性层取并集（任一台有的功能都能编辑），并标出支持的台数
+  const trackFixtures = useMemo(() => {
+    const track = project.tracks.find((tr) => tr.id === first.trackId);
+    return track ? trackFixtureIds(project, track) : [];
+  }, [project, first.trackId]);
+  const support = useMemo(() => layerSupport(project, trackFixtures), [project, trackFixtures]);
+  // 颜色预览用第一台能表现颜色的灯（都不能时用第一台）
   const target = useMemo(() => {
-    const track = project.tracks.find((tr) => tr.id === first.trackId);
-    const fixtureId = track ? trackFixtureIds(project, track)[0] : undefined;
-    const fixture = project.fixtures.find((f) => f.id === fixtureId);
-    const model = fixture ? project.fixtureModels.find((m) => m.id === fixture.modelId) : undefined;
-    return model ? { model, modeId: fixture?.modeId } : null;
-  }, [project, first.trackId]);
+    const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
+    const list = trackFixtures.flatMap((id) => {
+      const f = project.fixtures.find((x) => x.id === id);
+      const model = f ? models.get(f.modelId) : undefined;
+      return f && model ? [{ model, modeId: f.modeId }] : [];
+    });
+    return list.find((x) => supportsColor({ any: fixtureProfile(x.model, x.modeId).caps })) ?? list[0] ?? null;
+  }, [project, trackFixtures]);
   const gamma = project.output.gamma;
-  const available = useMemo(() => availableAttrs(target?.model, target?.modeId), [target]);
-  const members = useMemo(() => {
-    const track = project.tracks.find((tr) => tr.id === first.trackId);
-    return track ? trackFixtureIds(project, track).length : 0;
-  }, [project, first.trackId]);
+  const available = useMemo(() => availableAttrsOf(project, trackFixtures), [project, trackFixtures]);
+  const members = trackFixtures.length;
+  const colorCount = colorSupportCount(support.caps);
+  // 没有一台灯能表现颜色：不显示色盘（已有颜色层时提示并可移除）
+  const colorUsable = members === 0 || colorCount > 0;
   const keyTimes = lookKeyTimes(look);
   const outsideHint = inside ? undefined : t("editor.look.outside");
 
@@ -307,7 +317,31 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
       </div>
 
       {/* 颜色 */}
+      {!colorUsable ? (
+        <div className="grid gap-1.5 rounded-md border border-dashed border-border p-2">
+          <p className={cn("flex items-center gap-1.5 text-xs", look.color ? "text-warning" : "text-muted-foreground")}>
+            {look.color && <TriangleAlert className="size-3.5 shrink-0" aria-hidden />}
+            {t(look.color ? "editor.look.colorUnsupported" : "editor.look.noColor")}
+          </p>
+          {look.color && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 justify-self-start"
+              onClick={() => edit((l) => void delete l.color)}
+            >
+              {t("editor.look.removeColor")}
+            </Button>
+          )}
+        </div>
+      ) : (
       <div className="grid gap-2">
+        {colorCount > 0 && colorCount < members && (
+          <p className="text-[11px] text-muted-foreground">
+            {t("editor.look.colorPartial", { supported: colorCount, total: members })}
+          </p>
+        )}
         <div className="flex items-center justify-end">
           <KeyButton
             label={t("editor.look.keyOf", { name: t("editor.look.color") })}
@@ -327,10 +361,12 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
         />
         {look.color?.kind === "keys" && segmentSelect(look.color, "color")}
       </div>
+      )}
 
       <AttributeLayers
         look={look}
         available={available}
+        total={members > 1 ? members : undefined}
         uMs={uClamped}
         lengthMs={length}
         inside={inside}

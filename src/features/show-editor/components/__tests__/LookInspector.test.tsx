@@ -5,10 +5,11 @@ import { produce } from "immer";
 
 import i18n from "@/shared/i18n";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
-import { addStaticCue } from "../../lib/cueOps";
-import { addFixtures } from "../../lib/ops";
+import { addLookCue, addStaticCue } from "../../lib/cueOps";
+import { fixed } from "../../lib/looks";
+import { addFixtures, createGroup } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
-import { RGBW } from "../../lib/__tests__/testkit";
+import { DIMMER, RGBW } from "../../lib/__tests__/testkit";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { CueInspector } from "../CueInspector";
@@ -96,5 +97,35 @@ describe("外观片段的关键帧", () => {
     act(() => ui().setPlayhead(8000));
     expect(screen.getByText(/播放头不在这个片段内/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "在播放头处添加 / 删除颜色关键帧" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("外观检查器按灯具类型显示", () => {
+  it("调光灯轨道不显示色盘；已有颜色层时提示并可移除；分组里部分支持时标出台数", () => {
+    let groupCue = "";
+    act(() =>
+      useProjectStore.getState().load(
+        produce(createEmptyProject("t"), (d) => {
+          const dim = addFixtures(d, DIMMER, 1);
+          const rgb = addFixtures(d, RGBW, 1);
+          createGroup(d, "混合", [...dim, ...rgb]);
+          d.durationMs = 10_000;
+          id = addLookCue(d, d.tracks[0].id, 1000, { intensity: fixed(100), color: fixed({ kind: "rgb", rgb: [255, 0, 0] }) }, 2000) ?? "";
+          groupCue = addLookCue(d, d.tracks[2].id, 1000, { intensity: fixed(100) }, 2000) ?? "";
+        }),
+      ),
+    );
+    act(() => useEditorUiStore.setState({ selectedCueIds: [id], playheadMs: 1500 }));
+    render(<CueInspector />);
+    expect(screen.queryByRole("slider", { name: /^色轮/ })).toBeNull();
+    expect(screen.getByText("这条轨道上的灯不能调颜色，颜色层不起作用")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "移除颜色层" }));
+    const after = cue();
+    expect(after.kind === "look" && after.look.color).toBeUndefined();
+    expect(screen.getByText("这条轨道上的灯不能调颜色（只调亮度）")).toBeTruthy();
+
+    act(() => ui().selectCues([groupCue]));
+    expect(screen.getByText("1/2 台支持颜色，其余只跟随亮度")).toBeTruthy();
+    expect(screen.getByRole("slider", { name: /^色轮/ })).toBeTruthy();
   });
 });

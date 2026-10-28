@@ -58,7 +58,7 @@ export function ModeSwitch() {
   ];
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-tour="app-mode">
       {appMode === "live" && receivers === "failed" && (
         <>
           <StatusPill tone="warning">{t("mode.receiversBadge")}</StatusPill>

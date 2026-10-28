@@ -1,7 +1,9 @@
 import i18n from "@/shared/i18n";
 import { announce } from "@/shared/stores/announcerStore";
+import { contentEndMs, hasOverflow, normalizeDuration, overflowAt, setShowDuration } from "../lib/duration";
 import { addMarker, setTempo } from "../lib/ops";
 import { tapTempo } from "../lib/tempo";
+import { formatTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 
@@ -57,4 +59,54 @@ export function alignBeatToPlayhead(): void {
   useProjectStore.getState().update((d) => {
     setTempo(d, { bpm: d.tempo?.bpm ?? 120, offsetMs: playheadMs, beatsPerBar: d.tempo?.beatsPerBar ?? 4 });
   });
+}
+
+/**
+ * 请求把节目时长设为 `ms`。不影响任何内容时直接设置；缩短会裁掉片段 / 媒体 / 段落 / 标记点时，
+ * 先打开确认对话框（见 `DurationConfirmDialog`），确认后才裁剪。
+ *
+ * @param ms 新时长（毫秒，会对齐到帧并夹在 1 秒 ~ 24 小时）。
+ * @returns 已直接设置为 `true`；需要确认或时长没变为 `false`。
+ */
+export function requestShowDuration(ms: number): boolean {
+  const project = useProjectStore.getState().project;
+  const next = normalizeDuration(ms);
+  if (next === project.durationMs) return false;
+  if (next < project.durationMs && hasOverflow(overflowAt(project, next))) {
+    useEditorUiStore.getState().setDurationRequest(next);
+    return false;
+  }
+  applyShowDuration(next);
+  return true;
+}
+
+/**
+ * 设置节目时长（裁掉超出部分，一步撤销）并播报。
+ *
+ * @param ms 新时长。
+ */
+export function applyShowDuration(ms: number): void {
+  let end = ms;
+  useProjectStore.getState().update((d) => {
+    end = setShowDuration(d, ms);
+  });
+  const ui = useEditorUiStore.getState();
+  if (ui.playheadMs > end) ui.setPlayhead(end);
+  ui.setDurationRequest(null);
+  announce(i18n.t("editor.duration.set", { time: formatTimecode(end) }));
+}
+
+/**
+ * 把节目时长设为正好覆盖全部内容（最后一个片段 / 媒体 / 段落 / 标记点的结尾）。
+ *
+ * @returns 是否有内容可以适配。
+ */
+export function fitShowDuration(): boolean {
+  const end = contentEndMs(useProjectStore.getState().project);
+  if (end <= 0) {
+    announce(i18n.t("editor.duration.noContent"));
+    return false;
+  }
+  applyShowDuration(Math.ceil(end));
+  return true;
 }

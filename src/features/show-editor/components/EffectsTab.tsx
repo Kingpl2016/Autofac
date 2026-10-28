@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { useDraggable } from "@dnd-kit/core";
 import {
@@ -20,13 +21,17 @@ import {
 import { cn } from "@/lib/utils";
 import { announce } from "@/shared/stores/announcerStore";
 import { useCueActions } from "../hooks/useCueActions";
+import { supportedTargets, useTargetCapabilities } from "../hooks/useTargetCapabilities";
 import { ATTR_EFFECT_DEFAULTS, ATTR_EFFECTS, buildAttrEffect, type AttrEffectId } from "../lib/attrEffects";
-import { addLookCue } from "../lib/cueOps";
+import { applicability, attrEffectNeeds, effectNeeds, type Applicability } from "../lib/cueDefaults";
+import { addEffectCue, addLookCue } from "../lib/cueOps";
 import { EFFECT_PRESETS, type EffectPreset } from "../lib/effectPresets";
+import type { TrackCapabilities } from "../lib/fixtureProfile";
 import { trackFixtureIds } from "../lib/ops";
 import type { EffectId } from "../lib/project";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { ApplyBadge } from "./ApplyBadge";
 
 /** 拖拽数据：标明被拖的是特效预设。 */
 export interface EffectDragData {
@@ -46,8 +51,18 @@ const ICONS: Record<EffectId, LucideIcon> = {
   strobe: Zap,
 };
 
-/** 特效芯片：图标 + 名称。 */
-export function EffectChip({ preset, overlay }: { preset: EffectPreset; overlay?: boolean }) {
+/** 特效芯片：图标 + 名称（+ 适用提示）。 */
+export function EffectChip({
+  preset,
+  overlay,
+  app,
+  badgeId,
+}: {
+  preset: EffectPreset;
+  overlay?: boolean;
+  app?: Applicability | null;
+  badgeId?: string;
+}) {
   const { t } = useTranslation();
   const Icon = ICONS[preset.effect];
   return (
@@ -55,17 +70,28 @@ export function EffectChip({ preset, overlay }: { preset: EffectPreset; overlay?
       className={cn(
         "flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2 text-sm",
         overlay && "border-primary shadow-lg",
+        app?.level === "none" && "opacity-50",
       )}
     >
       <Icon className="size-4 shrink-0 text-primary" aria-hidden />
-      <span className="truncate">{t(`editor.effects.${preset.effect}`)}</span>
+      <span className="min-w-0 flex-1 truncate">{t(`editor.effects.${preset.effect}`)}</span>
+      <ApplyBadge app={app ?? null} id={badgeId} />
     </span>
   );
 }
 
 /** 一个特效：可以用指针拖到轨道上，也可以点击（键盘 Enter / 空格）加到所选轨道的播放头处。 */
-function DraggableEffect({ preset, onActivate }: { preset: EffectPreset; onActivate: () => void }) {
+function DraggableEffect({
+  preset,
+  app,
+  onActivate,
+}: {
+  preset: EffectPreset;
+  app: Applicability | null;
+  onActivate: () => void;
+}) {
   const { t } = useTranslation();
+  const badgeId = useId();
   const data: EffectDragData = { kind: "effect", preset };
   const { setNodeRef, listeners, isDragging } = useDraggable({ id: `effect:${preset.effect}`, data });
   return (
@@ -75,12 +101,14 @@ function DraggableEffect({ preset, onActivate }: { preset: EffectPreset; onActiv
       {...listeners}
       onClick={onActivate}
       title={t(`editor.effects.${preset.effect}Hint`)}
+      aria-label={t(`editor.effects.${preset.effect}`)}
+      aria-describedby={app && app.level !== "full" ? badgeId : undefined}
       className={cn(
-        "cursor-grab rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "w-full cursor-grab rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isDragging && "opacity-40",
       )}
     >
-      <EffectChip preset={preset} />
+      <EffectChip preset={preset} app={app} badgeId={badgeId} />
     </button>
   );
 }
@@ -104,35 +132,40 @@ const ATTR_EFFECT_LENGTH_MS = 8000;
  * 属性特效（新引擎）：点击在所选轨道的播放头处新建一个外观片段。
  * 放在分组轨道上时按成员错开相位（扇形画圆、波浪、追逐、彩虹）。
  */
-function AttrEffects() {
+function AttrEffects({ caps }: { caps: TrackCapabilities[] }) {
   const { t } = useTranslation();
-  const update = useProjectStore((s) => s.update);
+  const baseId = useId();
+  const actions = useCueActions();
 
   const insert = (id: AttrEffectId) => {
     const project = useProjectStore.getState().project;
-    const { selectedTrackId, playheadMs } = useEditorUiStore.getState();
-    const track =
-      project.tracks.find((tr) => tr.id === selectedTrackId && !tr.lock && tr.target.kind !== "scene") ??
-      project.tracks.find((tr) => !tr.lock && tr.target.kind !== "scene");
-    if (!track) {
+    const { playheadMs } = useEditorUiStore.getState();
+    // 多选了轨道时加到每条支持的轨道；每条轨道按自己的成员数展开
+    const needs = attrEffectNeeds(id);
+    const { all, supported: trackIds } = supportedTargets(project, useEditorUiStore.getState(), needs);
+    if (all.length === 0) {
       announce(t("editor.templates.noTrack"));
       return;
     }
-    const members = trackFixtureIds(project, track).length;
-    const { look, spread } = buildAttrEffect(
-      id,
-      { ...ATTR_EFFECT_DEFAULTS[id], lengthMs: ATTR_EFFECT_LENGTH_MS, members },
-      project.tempo,
-    );
-    let cueId: string | null = null;
-    update((d) => {
-      cueId = addLookCue(d, track.id, playheadMs, look, ATTR_EFFECT_LENGTH_MS, spread);
-    });
-    if (cueId) {
-      useEditorUiStore.getState().selectCues([cueId]);
-      useEditorUiStore.getState().setInspectorTab("cue");
+    if (trackIds.length === 0) {
+      announce(t("editor.apply.rejected", { reason: t(`editor.apply.needs.${needs}`) }));
+      return;
     }
-    announce(cueId ? t("editor.attrEffects.added", { name: t(`editor.attrEffects.${id}`) }) : t("editor.templates.noRoom"));
+    const created = actions.insertOnTracks(trackIds, (d, trackId) => {
+      const track = d.tracks.find((tr) => tr.id === trackId);
+      if (!track) return null;
+      const members = trackFixtureIds(d, track).length;
+      const { look, spread } = buildAttrEffect(
+        id,
+        { ...ATTR_EFFECT_DEFAULTS[id], lengthMs: ATTR_EFFECT_LENGTH_MS, members },
+        project.tempo,
+      );
+      return addLookCue(d, trackId, playheadMs, look, ATTR_EFFECT_LENGTH_MS, spread);
+    });
+    if (created.length > 0) useEditorUiStore.getState().setInspectorTab("cue");
+    if (trackIds.length === 1) {
+      announce(created.length > 0 ? t("editor.attrEffects.added", { name: t(`editor.attrEffects.${id}`) }) : t("editor.templates.noRoom"));
+    }
   };
 
   return (
@@ -142,16 +175,24 @@ function AttrEffects() {
       <ul className="grid grid-cols-2 gap-1.5">
         {ATTR_EFFECTS.map((id) => {
           const Icon = ATTR_ICONS[id];
+          const app = caps.length > 0 ? applicability(caps, attrEffectNeeds(id)) : null;
+          const badgeId = `${baseId}-${id}`;
           return (
             <li key={id}>
               <button
                 type="button"
                 onClick={() => insert(id)}
                 title={t(`editor.attrEffects.${id}Hint`)}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2 text-left text-sm hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={t(`editor.attrEffects.${id}`)}
+                aria-describedby={app && app.level !== "full" ? badgeId : undefined}
+                className={cn(
+                  "flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2 text-left text-sm hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  app?.level === "none" && "opacity-50",
+                )}
               >
                 <Icon className="size-4 shrink-0 text-clip-light" aria-hidden />
-                <span className="truncate">{t(`editor.attrEffects.${id}`)}</span>
+                <span className="min-w-0 flex-1 truncate">{t(`editor.attrEffects.${id}`)}</span>
+                <ApplyBadge app={app} id={badgeId} />
               </button>
             </li>
           );
@@ -170,31 +211,39 @@ function AttrEffects() {
 export function EffectsTab() {
   const { t } = useTranslation();
   const actions = useCueActions();
+  const caps = useTargetCapabilities();
 
   const addToSelectedTrack = (preset: EffectPreset) => {
-    const { tracks } = useProjectStore.getState().project;
-    const { selectedTrackId, playheadMs } = useEditorUiStore.getState();
-    const track =
-      tracks.find((tr) => tr.id === selectedTrackId && !tr.lock) ?? tracks.find((tr) => !tr.lock);
-    if (!track) {
+    const needs = effectNeeds(preset);
+    const { all, supported: trackIds } = supportedTargets(useProjectStore.getState().project, useEditorUiStore.getState(), needs);
+    if (all.length === 0) {
       announce(t("editor.templates.noTrack"));
       return;
     }
-    const id = actions.addEffectAt(track.id, playheadMs, preset);
-    if (id) useEditorUiStore.getState().setInspectorTab("cue");
-    announce(id ? t("editor.effects.added") : t("editor.templates.noRoom"));
+    if (trackIds.length === 0) {
+      announce(t("editor.apply.rejected", { reason: t(`editor.apply.needs.${needs}`) }));
+      return;
+    }
+    const { playheadMs } = useEditorUiStore.getState();
+    const created = actions.insertOnTracks(trackIds, (d, trackId) => addEffectCue(d, trackId, playheadMs, preset));
+    if (created.length > 0) useEditorUiStore.getState().setInspectorTab("cue");
+    if (trackIds.length === 1) announce(created.length > 0 ? t("editor.effects.added") : t("editor.templates.noRoom"));
   };
 
   return (
     <div className="flex flex-col gap-4 p-2">
-      <AttrEffects />
+      <AttrEffects caps={caps} />
       <section aria-label={t("editor.effects.classic")} className="flex flex-col gap-2">
         <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.effects.classic")}</h3>
         <p className="px-1 text-xs text-muted-foreground">{t("editor.effects.hint")}</p>
         <ul className="grid grid-cols-2 gap-1.5">
           {EFFECT_PRESETS.map((preset) => (
             <li key={preset.effect}>
-              <DraggableEffect preset={preset} onActivate={() => addToSelectedTrack(preset)} />
+              <DraggableEffect
+                preset={preset}
+                app={caps.length > 0 ? applicability(caps, effectNeeds(preset)) : null}
+                onActivate={() => addToSelectedTrack(preset)}
+              />
             </li>
           ))}
         </ul>

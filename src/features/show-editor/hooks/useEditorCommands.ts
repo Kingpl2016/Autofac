@@ -5,20 +5,25 @@ import { announce } from "@/shared/stores/announcerStore";
 import type { Command } from "../lib/commands";
 import { cuesAfter, cuesAt, rippleDeleteCues, splitCues } from "../lib/cueOps";
 import { applyPattern, invertSelection, stepSelection } from "../lib/fixtureSelection";
+import { adjacentCue, adjacentEditPoint, editPoints, toggleCuesDisabled, trimCuesAt, trimMediaAt } from "../lib/editOps";
 import { removeMediaClips, splitMediaClips } from "../lib/mediaClips";
+import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { addSection, sectionAt } from "../lib/sections";
 import { hasProgrammerValues, recordScene } from "../lib/programmer";
 import { setLoopEdge, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
 import { clamp } from "../lib/time";
 import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, zoomPxPerSec } from "../lib/zoom";
-import { CENTER_VIEWS, LIBRARY_TABS, useEditorUiStore } from "../stores/useEditorUiStore";
+import { CENTER_VIEWS, useEditorPrefsStore } from "../stores/useEditorPrefsStore";
+import { LIBRARY_TABS, useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProgrammerStore } from "../stores/useProgrammerStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { readTimelineViewport } from "../timeline/timelineView";
-import { addMarkerAtPlayhead, tapTempoNow } from "./editorActions";
+import { addMarkerAtPlayhead, fitShowDuration, requestShowDuration, tapTempoNow } from "./editorActions";
 import { seekTo, stopPlayback, togglePlay } from "./transportActions";
 import { useCueActions } from "./useCueActions";
+import { runTour } from "../onboarding/runTour";
+import { useOnboardingStore } from "../stores/useOnboardingStore";
 
 /** 一帧的毫秒数（逐帧移动播放头 / 微调片段用）。 */
 const FRAME = Math.round(1000 / OUTPUT_FPS);
@@ -54,6 +59,17 @@ export function useEditorCommands(onSave?: () => void): Command[] {
       { id: "file.save", titleKey: "editor.commands.save", category: "file", keys: ["mod+s"], global: true, run: () => onSave?.() },
       { id: "edit.undo", titleKey: "editor.commands.undo", category: "edit", keys: ["mod+z"], enabled: () => temporal().pastStates.length > 0, run: () => temporal().undo() },
       { id: "edit.redo", titleKey: "editor.commands.redo", category: "edit", keys: ["mod+shift+z", "mod+y"], enabled: () => temporal().futureStates.length > 0, run: () => temporal().redo() },
+      {
+        id: "edit.cut",
+        titleKey: "editor.commands.cut",
+        category: "edit",
+        keys: ["mod+x"],
+        enabled: hasSelection,
+        run: () => {
+          actions.copySelected();
+          actions.removeSelected();
+        },
+      },
       { id: "edit.copy", titleKey: "editor.commands.copy", category: "edit", keys: ["mod+c"], enabled: hasSelection, run: actions.copySelected },
       { id: "edit.paste", titleKey: "editor.commands.paste", category: "edit", keys: ["mod+v"], enabled: () => ui().clipboard.length > 0, run: actions.pasteAtPlayhead },
       { id: "edit.duplicate", titleKey: "editor.commands.duplicate", category: "edit", keys: ["mod+d"], enabled: hasSelection, run: actions.duplicateSelected },
@@ -87,6 +103,104 @@ export function useEditorCommands(onSave?: () => void): Command[] {
           });
           ui().selectCues([]);
           if (removed > 0) announce(t("editor.timeline.removedCues", { count: removed }));
+        },
+      },
+      {
+        id: "edit.toggleDisabled",
+        titleKey: "editor.commands.toggleDisabled",
+        category: "edit",
+        keys: ["shift+e"],
+        enabled: hasSelection,
+        run: () => {
+          let disabled: boolean | null = null;
+          update((d) => {
+            disabled = toggleCuesDisabled(d, alive());
+          });
+          if (disabled !== null) announce(t(disabled ? "editor.edit.disabled" : "editor.edit.enabled", { count: alive().length }));
+        },
+      },
+      ...(["start", "end"] as const).map(
+        (side): Command => ({
+          id: side === "start" ? "timeline.trimStart" : "timeline.trimEnd",
+          titleKey: side === "start" ? "editor.commands.trimStart" : "editor.commands.trimEnd",
+          category: "timeline",
+          keys: [side === "start" ? "q" : "w"],
+          run: () => {
+            const at = ui().playheadMs;
+            const media = aliveMedia();
+            let n = 0;
+            update((d) => {
+              if (media.length > 0) {
+                n = trimMediaAt(d, media, at, side);
+                return;
+              }
+              // 有选中的片段时只修剪它们，否则修剪选中轨道（没有选中轨道时为全部轨道）上跨过播放头的片段
+              const selected = alive();
+              const tracks = ui().selectedTrackIds;
+              const ids =
+                selected.length > 0
+                  ? selected
+                  : tracks.length > 0
+                    ? tracks.flatMap((tr) => cuesAt(d, at, tr))
+                    : cuesAt(d, at, null);
+              n = trimCuesAt(d, ids, at, side);
+            });
+            announce(n > 0 ? t("editor.edit.trimmed", { count: n }) : t("editor.edit.nothingToTrim"));
+          },
+        }),
+      ),
+      ...([-1, 1] as const).map(
+        (dir): Command => ({
+          id: dir < 0 ? "transport.prevEdit" : "transport.nextEdit",
+          titleKey: dir < 0 ? "editor.commands.prevEdit" : "editor.commands.nextEdit",
+          category: "transport",
+          keys: [dir < 0 ? "arrowup" : "arrowdown"],
+          run: () => {
+            const next = adjacentEditPoint(editPoints(project()), ui().playheadMs, dir);
+            if (next !== null) void seekTo(next);
+          },
+        }),
+      ),
+      ...([-1, 1] as const).map(
+        (dir): Command => ({
+          id: dir < 0 ? "select.prevCue" : "select.nextCue",
+          titleKey: dir < 0 ? "editor.commands.prevCue" : "editor.commands.nextCue",
+          category: "select",
+          keys: [dir < 0 ? "[" : "]"],
+          run: () => {
+            const current = alive().at(-1) ?? null;
+            const trackId = (current && project().cues.find((c) => c.id === current)?.trackId) ?? ui().selectedTrackId ?? project().tracks[0]?.id;
+            if (!trackId) return;
+            const id = adjacentCue(project(), trackId, current, ui().playheadMs, dir);
+            if (!id) return;
+            ui().selectCues([id]);
+            ui().selectTrack(trackId);
+          },
+        }),
+      ),
+      {
+        id: "transport.backFrame",
+        titleKey: "editor.commands.backFrame",
+        category: "transport",
+        keys: ["j"],
+        run: () => void seekTo(Math.max(0, ui().playheadMs - FRAME)),
+      },
+      {
+        id: "transport.pause",
+        titleKey: "editor.commands.pause",
+        category: "transport",
+        keys: ["k"],
+        run: () => {
+          if (usePlaybackStore.getState().state?.transport === "playing") void togglePlay();
+        },
+      },
+      {
+        id: "transport.play",
+        titleKey: "editor.commands.play",
+        category: "transport",
+        keys: ["l"],
+        run: () => {
+          if (usePlaybackStore.getState().state?.transport !== "playing") void togglePlay();
         },
       },
       { id: "transport.toggle", titleKey: "editor.commands.playPause", category: "transport", keys: ["space"], run: () => void togglePlay() },
@@ -159,6 +273,14 @@ export function useEditorCommands(onSave?: () => void): Command[] {
           announce(t("editor.sections.looped", { name: s.name }));
         },
       },
+      { id: "timeline.fitDuration", titleKey: "editor.commands.fitDuration", category: "timeline", run: () => void fitShowDuration() },
+      {
+        id: "timeline.endAtPlayhead",
+        titleKey: "editor.commands.endAtPlayhead",
+        category: "timeline",
+        enabled: () => ui().playheadMs > 0,
+        run: () => void requestShowDuration(ui().playheadMs),
+      },
       { id: "timeline.loopClear", titleKey: "editor.commands.loopClear", category: "timeline", keys: ["alt+x"], enabled: () => project().loopRange !== null, run: () => update((d) => setLoopRange(d, null)) },
       { id: "select.all", titleKey: "editor.commands.selectAll", category: "select", keys: ["mod+a"], run: () => ui().selectCues(project().cues.map((c) => c.id)) },
       {
@@ -187,7 +309,7 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         id: "view.radial",
         titleKey: "editor.commands.radial",
         category: "view",
-        keys: ["q"],
+        keys: ["shift+q"],
         run: () => {
           // 键盘打开时放在时间线中间（没有时间线时放在窗口中间）
           const vp = readTimelineViewport();
@@ -267,7 +389,43 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         run: () => programmer().setLive(!programmer().live),
       },
       { id: "draft.open", titleKey: "editor.draft.title", category: "edit", run: () => ui().setDraftOpen(true) },
+      {
+        id: "view.contextMenu",
+        titleKey: "editor.commands.contextMenu",
+        category: "view",
+        keys: ["shift+f10", "contextmenu"],
+        run: () => {
+          // 在选中的片段（或选中的轨道头）上模拟一次右键，打开对应的右键菜单
+          const cueId = alive().at(-1);
+          const trackId = ui().selectedTrackId;
+          const el =
+            (cueId && document.querySelector<HTMLElement>(`[data-cue-id="${CSS.escape(cueId)}"]`)) ||
+            (trackId && document.querySelector<HTMLElement>(`[data-track-header-id="${CSS.escape(trackId)}"]`)) ||
+            null;
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          el.dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + Math.min(24, r.width / 2), clientY: r.top + r.height / 2 }),
+          );
+        },
+      },
       { id: "view.keymap", titleKey: "editor.keymap.open", category: "view", run: () => ui().setKeymapOpen(true) },
+      {
+        id: "help.tour",
+        titleKey: "editor.guide.replay",
+        category: "view",
+        // 等命令面板关闭后再开始，避免导览落在面板下面
+        run: () => void window.setTimeout(() => void runTour(t), 150),
+      },
+      {
+        id: "help.resetGuide",
+        titleKey: "editor.guide.reset",
+        category: "view",
+        run: () => {
+          useOnboardingStore.getState().reset();
+          announce(t("editor.guide.resetDone"));
+        },
+      },
       {
         id: "output.blackout",
         titleKey: "editor.commands.blackout",
@@ -285,7 +443,7 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         id: `view.center.${view}`,
         titleKey: `editor.commands.center.${view}`,
         category: "view",
-        run: () => ui().setCenterView(view),
+        run: () => useEditorPrefsStore.getState().setCenterView(view),
       });
     }
     for (const tab of LIBRARY_TABS) {

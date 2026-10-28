@@ -29,6 +29,7 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
     <div
       role="toolbar"
       aria-label={t("editor.toolbar")}
+      data-tour="toolbar"
       className="flex h-10 shrink-0 items-center gap-3 border-b border-border bg-surface-2 px-3"
     >
       <Clapperboard className="size-4 text-primary" aria-hidden />

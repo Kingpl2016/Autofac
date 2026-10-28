@@ -1,4 +1,5 @@
 import {
+  Bug,
   Disc3,
   Film,
   GitMerge,
@@ -17,7 +18,8 @@ export type SettingsSectionId =
   | "merge"
   | "recording"
   | "player"
-  | "shortcuts";
+  | "shortcuts"
+  | "developer";
 
 export interface SettingsSectionMeta {
   /** 分区标识，同时作为 DOM 锚点 id */
@@ -87,5 +89,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     descKey: "settings.descShortcuts",
     icon: Keyboard,
     tileClass: "bg-secondary text-secondary-foreground",
+  },
+  // 只在开发构建里渲染（见 `SettingsForm`）
+  {
+    id: "developer",
+    titleKey: "settings.sectionDeveloper",
+    descKey: "settings.descDeveloper",
+    icon: Bug,
+    tileClass: "bg-muted text-muted-foreground",
   },
 ] as const;

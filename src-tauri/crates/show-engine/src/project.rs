@@ -186,6 +186,9 @@ pub struct CueBase {
     pub fade_out_ms: i64,
     /// 缓动曲线。
     pub easing: Easing,
+    /// 禁用：保留在时间线上但不输出（编辑器里变灰）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disabled: bool,
 }
 
 /// 静态 Cue：固定颜色。

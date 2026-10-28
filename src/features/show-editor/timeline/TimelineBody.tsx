@@ -12,7 +12,11 @@ import {
 import { compileCached } from "../engine/compiledCache";
 import { useEngine } from "../engine/useEngine";
 import { sampleLanes, stripGradient } from "../lib/colorLanes";
+import i18n from "@/shared/i18n";
+import { announce } from "@/shared/stores/announcerStore";
 import { placeCues } from "../lib/cueOps";
+import { duplicateCuesTo } from "../lib/editOps";
+import { layerSupport, lookBadges, unsupportedLayers, type LayerBadge, type LayerSupport } from "../lib/fixtureProfile";
 import { trackFixtureIds } from "../lib/ops";
 import type { Cue, ShowProject, Track } from "../lib/project";
 import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX } from "../lib/snap";
@@ -100,7 +104,7 @@ interface MarqueeState {
  * 自研时间线的轨道区（替代 `@xzdarcy/react-timeline-editor`）：
  *
  * - 纵向按行虚拟化、横向只渲染可见时间范围内的片段，长节目 / 大量灯具也流畅；
- * - 拖动片段：多选整体移动、上下换轨（目标轨道锁定或类型不符时不换轨），左右边缘裁剪；
+ * - 拖动片段：多选整体移动、上下换轨（目标轨道锁定或类型不符时不换轨），左右边缘裁剪；松手时按住 Ctrl 复制；
  *   拖动中实时吸附（播放头、标记点、其它片段边缘、节拍）并画黄色吸附线，按住 Alt 临时关闭；
  * - 空白处拖动框选（Ctrl / Shift 追加），单击空白选中轨道并清空选择，双击新建片段；
  * - Ctrl+滚轮以指针为中心缩放；播放时播放头出界自动翻页；拖动中按 Esc 取消。
@@ -123,6 +127,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   const [preview, setPreview] = useState<DragResult | null>(null);
   const [marquee, setMarquee] = useState<MarqueeState | null>(null);
   const marqueeRef = useRef<MarqueeState | null>(null);
+  /** Ctrl 按下时推迟的取消选择（松手且没有拖动时才执行） */
+  const pendingToggle = useRef<string | null>(null);
 
   const layout: RowLayout = useMemo(() => rowLayout(tracks), [tracks]);
   const selected = useMemo(() => new Set(selectedCueIds), [selectedCueIds]);
@@ -272,6 +278,22 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     () => new Map(tracks.map((t) => [t.id, trackFixtureIds(project, t)])),
     [tracks, project],
   );
+  // 每个外观片段的属性徽标与“没有灯支持的层”（按所在轨道的灯具）
+  const { fixtures: projectFixtures, fixtureModels } = project;
+  const clipLayers = useMemo(() => {
+    const support = new Map<string, LayerSupport>();
+    const out = new Map<string, { badges: LayerBadge[]; unsupported: string[] }>();
+    for (const c of project.cues) {
+      if (c.kind !== "look") continue;
+      let s = support.get(c.trackId);
+      if (!s) {
+        s = layerSupport({ fixtures: projectFixtures, fixtureModels }, trackFixtures.get(c.trackId) ?? []);
+        support.set(c.trackId, s);
+      }
+      out.set(c.id, { badges: lookBadges(c.look), unsupported: unsupportedLayers(c.look, s) });
+    }
+    return out;
+  }, [project.cues, projectFixtures, fixtureModels, trackFixtures]);
 
   /** 可见片段的矩形（框选用，也用于渲染）。 */
   const clips: {
@@ -332,8 +354,11 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       if (!cue) return;
       ui.selectTrack(cue.trackId);
       const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-      if (additive) ui.toggleCue(id);
-      else if (!ui.selectedCueIds.includes(id)) ui.selectCues([id]);
+      // Ctrl 按在已选中的片段上：可能是要 Ctrl 拖动复制，取消选择推迟到松手（没拖动时）再做
+      const deferToggle = (e.ctrlKey || e.metaKey) && ui.selectedCueIds.includes(id);
+      if (additive && !deferToggle) ui.toggleCue(id);
+      else if (!additive && !ui.selectedCueIds.includes(id)) ui.selectCues([id]);
+      pendingToggle.current = deferToggle ? id : null;
       onPickCue();
       const track = current.tracks.find((t) => t.id === cue.trackId);
       if (!track || track.lock) return;
@@ -420,14 +445,27 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e?: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     const m = marqueeRef.current;
     drag.current = null;
     marqueeRef.current = null;
+    const toggle = pendingToggle.current;
+    pendingToggle.current = null;
+    if (toggle && !d?.active) useEditorUiStore.getState().toggleCue(toggle);
     if (d?.active) {
       const result = d.result;
       setPreview(null);
+      // 松手时按住 Ctrl / ⌘：复制到新位置（原片段不动）
+      if (d.kind === "move" && (e?.ctrlKey || e?.metaKey) && result && result.placements.length > 0) {
+        let created: string[] = [];
+        update((draft) => {
+          created = duplicateCuesTo(draft, result.placements);
+        });
+        if (created.length > 0) useEditorUiStore.getState().selectCues(created);
+        else announce(i18n.t("editor.templates.noRoom"));
+        return;
+      }
       if (result?.valid && result.placements.length > 0) {
         const changed = result.placements.some((pl) => {
           const before = d.project.cues.find((c) => c.id === pl.id);
@@ -441,7 +479,10 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       setMarquee(null);
       if (!m.active) {
         const ui = useEditorUiStore.getState();
-        if (m.row >= 0 && tracks[m.row]) ui.selectTrack(tracks[m.row].id);
+        const rowTrack = m.row >= 0 ? tracks[m.row] : undefined;
+        // 点在多选轨道中的一条上：保留多选（双击可在全部选中的轨道上新建）
+        const inMulti = rowTrack && ui.selectedTrackIds.length > 1 && ui.selectedTrackIds.includes(rowTrack.id);
+        if (rowTrack && !inMulti) ui.selectTrack(rowTrack.id);
         if (!m.additive) ui.selectCues([]);
       }
     }
@@ -483,14 +524,6 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onDoubleClick={onDoubleClick}
-        onContextMenu={(e) => {
-          // 右键：选中片段（还没选中时）并在指针处打开径向轮盘
-          e.preventDefault();
-          const ui = useEditorUiStore.getState();
-          const id = (e.target as HTMLElement).closest<HTMLElement>("[data-cue-id]")?.dataset.cueId;
-          if (id && !ui.selectedCueIds.includes(id)) ui.selectCues([id]);
-          ui.setRadial({ x: e.clientX, y: e.clientY });
-        }}
       >
         {/* 轨道底纹（只画可见行） */}
         {tracks.slice(rowFrom, rowTo).map((track, k) => {
@@ -528,6 +561,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
               dragging={c.dragging}
               invalid={c.dragging && preview !== null && !preview.valid}
               presets={presets}
+              badges={clipLayers.get(c.cue.id)?.badges}
+              unsupported={clipLayers.get(c.cue.id)?.unsupported}
               strip={
                 c.dragging || !track
                   ? null

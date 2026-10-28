@@ -20,7 +20,12 @@ import { Playhead } from "../timeline/Playhead";
 import { Ruler } from "../timeline/Ruler";
 import { TimelineBody, type TimelineBodyHandle } from "../timeline/TimelineBody";
 import { TrackHeaders, type TrackFlag } from "../timeline/TrackHeaders";
+import { announce } from "@/shared/stores/announcerStore";
+import type { Command } from "../lib/commands";
+import { trackCapabilities } from "../lib/fixtureProfile";
+import { removeTracks } from "../lib/trackOps";
 import { EmptyHint } from "./EmptyHint";
+import { TimelineContextMenu } from "./TimelineContextMenu";
 import { PanelFrame } from "./PanelFrame";
 import { PlayheadTimecode } from "./PlayheadTimecode";
 
@@ -36,11 +41,12 @@ export const TIMELINE_DROP_ID = "timeline";
  * - 点击 / 拖动标尺定位；`Ctrl+滚轮` 以指针为中心缩放。
  * - 可以把素材库里的 Cue 模板 / 特效拖到轨道上。
  */
-export function TimelinePanel() {
+export function TimelinePanel({ commands = [] }: { commands?: readonly Command[] }) {
   const { t } = useTranslation();
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const selectedTrackId = useEditorUiStore((s) => s.selectedTrackId);
+  const selectedTrackIds = useEditorUiStore((s) => s.selectedTrackIds);
   const pxPerSec = useEditorUiStore((s) => s.pxPerSec);
   const snapEnabled = useEditorUiStore((s) => s.snapEnabled);
   const setPxPerSec = useEditorUiStore((s) => s.setPxPerSec);
@@ -60,6 +66,16 @@ export function TimelinePanel() {
     () => tracks.map((tr) => trackName({ fixtures: project.fixtures, groups: project.groups }, tr)),
     [tracks, project.fixtures, project.groups],
   );
+  // 灯具轨道按灯具类型显示图标（分组 / 场景轨道用各自的图标）
+  const fixtureTypes = useMemo(
+    () =>
+      tracks.map((tr) =>
+        tr.target.kind === "fixture"
+          ? (trackCapabilities({ fixtures: project.fixtures, fixtureModels: project.fixtureModels, groups: project.groups, cues: [] }, tr).types[0] ?? null)
+          : null,
+      ),
+    [tracks, project.fixtures, project.fixtureModels, project.groups],
+  );
   const hasTracks = tracks.length > 0;
   const hasAnyTrack = hasTracks || project.mediaTracks.length > 0;
   // 播放头从标尺顶边贯穿媒体轨道与灯光轨道
@@ -77,6 +93,16 @@ export function TimelinePanel() {
 
   const onCreate = useCallback(
     (trackId: string, timeMs: number) => {
+      const ui = useEditorUiStore.getState();
+      // 双击多选轨道中的一条：在每条选中的轨道上各建一个（一步撤销）
+      if (ui.selectedTrackIds.length > 1 && ui.selectedTrackIds.includes(trackId)) {
+        const ids = useProjectStore
+          .getState()
+          .project.tracks.filter((tr) => ui.selectedTrackIds.includes(tr.id))
+          .map((tr) => tr.id);
+        if (actions.addAtTracks(ids, timeMs).length > 0) setInspectorTab("cue");
+        return;
+      }
       selectTrack(trackId);
       const id = actions.addAt(trackId, timeMs);
       if (id) {
@@ -88,6 +114,37 @@ export function TimelinePanel() {
   );
 
   const onPickCue = useCallback(() => setInspectorTab("cue"), [setInspectorTab]);
+
+  /** 点选轨道头：单选、Ctrl 追加 / 取消、Shift 从上次点选的轨道连选。 */
+  const onSelectTrack = (trackId: string, mode: "single" | "toggle" | "range" = "single") => {
+    const ui = useEditorUiStore.getState();
+    if (mode === "single") {
+      ui.selectTrack(trackId);
+      return;
+    }
+    if (mode === "toggle") {
+      const has = ui.selectedTrackIds.includes(trackId);
+      ui.selectTracks(has ? ui.selectedTrackIds.filter((x) => x !== trackId) : [...ui.selectedTrackIds, trackId], has ? undefined : trackId);
+      return;
+    }
+    const ids = tracks.map((tr) => tr.id);
+    const from = ids.indexOf(ui.selectedTrackId ?? trackId);
+    const to = ids.indexOf(trackId);
+    const [a, b] = [Math.min(from, to), Math.max(from, to)];
+    ui.selectTracks(ids.slice(Math.max(0, a), b + 1), ui.selectedTrackId ?? trackId);
+  };
+
+  /** 删除轨道（多选时删除全部选中的）；灯具轨道连同灯具，分组轨道只删分组。一步撤销。 */
+  const onDeleteTrack = (trackId: string) => {
+    const ui = useEditorUiStore.getState();
+    const ids = ui.selectedTrackIds.includes(trackId) && ui.selectedTrackIds.length > 1 ? ui.selectedTrackIds : [trackId];
+    let r = { fixtures: 0, groups: 0, tracks: 0, cues: 0 };
+    update((d) => {
+      r = removeTracks(d, ids);
+    });
+    ui.selectTracks([], null);
+    announce(t("editor.context.deleted", { fixtures: r.fixtures, tracks: r.tracks, cues: r.cues }));
+  };
 
   const iconButton = (
     label: string,
@@ -113,6 +170,7 @@ export function TimelinePanel() {
   return (
     <PanelFrame
       title={t("editor.timeline.title")}
+      tourId="timeline"
       noScroll
       actions={
         <>
@@ -137,6 +195,7 @@ export function TimelinePanel() {
       {!hasAnyTrack ? (
         <EmptyHint>{t("editor.timeline.empty")}</EmptyHint>
       ) : (
+        <TimelineContextMenu commands={commands}>
         <div
           ref={setDropRef}
           tabIndex={0}
@@ -149,7 +208,10 @@ export function TimelinePanel() {
             tracks={tracks}
             names={names}
             selectedTrackId={selectedTrackId}
-            onSelect={selectTrack}
+            selectedTrackIds={selectedTrackIds}
+            fixtureTypes={fixtureTypes}
+            onSelect={onSelectTrack}
+            onDelete={onDeleteTrack}
             onToggle={toggleFlag}
             onCollapse={(trackId, collapsed) => update((d) => setTrackView(d, trackId, { collapsed }))}
             onCycleHeight={(trackId) => {
@@ -184,6 +246,7 @@ export function TimelinePanel() {
             <Playhead top={rulerTop} bottom={OVERVIEW_HEIGHT} />
           </div>
         </div>
+        </TimelineContextMenu>
       )}
     </PanelFrame>
   );

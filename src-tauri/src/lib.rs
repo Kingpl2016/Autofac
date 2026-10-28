@@ -6,6 +6,7 @@
 
 mod about_commands;
 mod data_dir;
+mod devtools_commands;
 mod app_mode_commands;
 mod fixture_commands;
 mod library_commands;
@@ -167,6 +168,8 @@ pub fn run() {
             app_version,
             data_dir::data_dir_info,
             about_commands::app_info,
+            devtools_commands::devtools_state,
+            devtools_commands::devtools_set,
             host_core::commands::get_settings,
             host_core::commands::save_settings,
             host_core::commands::import_settings,

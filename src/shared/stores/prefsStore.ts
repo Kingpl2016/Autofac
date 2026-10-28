@@ -32,6 +32,10 @@ interface PrefsState {
   recordHotkeys: RecordHotkeys;
   /** 录制时窗口四周是否显示录制色光晕（默认开） */
   recordingGlow: boolean;
+  /** 开发版：保留浏览器默认右键菜单（便于“检查元素”），默认关 */
+  nativeContextMenu: boolean;
+  /** 设置是否保留浏览器默认右键菜单 */
+  setNativeContextMenu: (on: boolean) => void;
   /** 设置录制光晕开关 */
   setRecordingGlow: (on: boolean) => void;
   /** 设置界面语言 */
@@ -64,6 +68,7 @@ interface PrefsData {
   sidebarCollapsed: boolean;
   recordHotkeys: RecordHotkeys;
   recordingGlow: boolean;
+  nativeContextMenu: boolean;
 }
 
 /** 校验一个加速键字符串：非空字符串才有效。 */
@@ -106,6 +111,8 @@ function sanitizePrefs(raw: unknown, current: PrefsData): PrefsData {
     },
     recordingGlow:
       typeof r.recordingGlow === "boolean" ? r.recordingGlow : current.recordingGlow,
+    nativeContextMenu:
+      typeof r.nativeContextMenu === "boolean" ? r.nativeContextMenu : current.nativeContextMenu,
   };
 }
 
@@ -119,6 +126,8 @@ export const usePrefsStore = create<PrefsState>()(
       sidebarCollapsed: false,
       recordHotkeys: { ...DEFAULT_RECORD_HOTKEYS },
       recordingGlow: true,
+      nativeContextMenu: false,
+      setNativeContextMenu: (nativeContextMenu) => set({ nativeContextMenu }),
       setRecordingGlow: (recordingGlow) => set({ recordingGlow }),
       setLanguage: (language) => set({ language }),
       toggleSidebar: () =>
@@ -135,11 +144,12 @@ export const usePrefsStore = create<PrefsState>()(
       name: "prefs",
       version: 1,
       storage: createTauriPersistStorage<PrefsData>(),
-      partialize: ({ language, sidebarCollapsed, recordHotkeys, recordingGlow }) => ({
+      partialize: ({ language, sidebarCollapsed, recordHotkeys, recordingGlow, nativeContextMenu }) => ({
         language,
         sidebarCollapsed,
         recordHotkeys,
         recordingGlow,
+        nativeContextMenu,
       }),
       // 没有已保存数据（首次运行 / 读取失败）时保持当前值，不被默认值覆盖
       merge: (persisted, current) =>

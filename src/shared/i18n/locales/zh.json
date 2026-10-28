@@ -907,6 +907,13 @@
     "recordingZstdLevel": "Zstd 压缩等级 (1-9)",
     "recordingSplitMinutes": "自动分段时长（分钟，0 为不分段）",
     "sectionShortcuts": "快捷键",
+    "sectionDeveloper": "开发者",
+    "descDeveloper": "调试用，只在开发版里显示",
+    "devtools": "开发者工具",
+    "devtoolsHint": "打开 WebView 检查器（也可以按 Ctrl+Shift+I）",
+    "devtoolsFailed": "无法切换开发者工具",
+    "nativeContextMenu": "保留浏览器右键菜单",
+    "nativeContextMenuHint": "临时恢复 WebView 自带的右键菜单（检查元素等），只影响开发版",
     "hotkeyStartRecord": "开始录制",
     "hotkeyStopRecord": "停止录制",
     "hotkeyReset": "恢复默认",
@@ -1354,7 +1361,7 @@
     "untitled": "未命名节目",
     "library": {
       "title": "素材库",
-      "media": "音视频",
+      "media": "媒体",
       "fixtures": "灯具",
       "cues": "Cue 模板",
       "effects": "特效",
@@ -1453,7 +1460,9 @@
       "paste": "粘贴所选层",
       "pasteWhich": "粘贴哪些层",
       "copied": "已复制外观",
-      "pasted": "已粘贴 {{count}} 组层"
+      "pasted": "已粘贴 {{count}} 组层",
+      "partial": "{{supported}}/{{total}} 台支持",
+      "unsupported": "这条轨道上没有灯支持“{{name}}”，这一层不起作用"
     },
     "spread": {
       "title": "多灯分布",
@@ -1541,7 +1550,17 @@
         "neutral": "中性白 4300K",
         "daylight": "日光 5600K",
         "white": "RGB 全白"
-      }
+      },
+      "input": "输入方式",
+      "inputs": {
+        "wheel": "色轮",
+        "hsl": "HSL",
+        "rgb": "RGB 数值"
+      },
+      "hue": "色相",
+      "saturation": "饱和度",
+      "lightness": "亮度（HSL）",
+      "valueOf": "{{name}}数值"
     },
     "look": {
       "title": "外观与关键帧",
@@ -1586,7 +1605,11 @@
       "unsafeFlash": "闪烁约 {{hz}} 次/秒，超过建议的 {{max}} 次/秒，可能引起不适或光敏性癫痫。请降低次数或加长片段。",
       "convert": "转换为外观片段（{{count}}）",
       "convertHint": "转换后可以给强度、颜色打关键帧，并叠加属性层",
-      "converted": "已转换 {{count}} 个片段"
+      "converted": "已转换 {{count}} 个片段",
+      "noColor": "这条轨道上的灯不能调颜色（只调亮度）",
+      "colorUnsupported": "这条轨道上的灯不能调颜色，颜色层不起作用",
+      "removeColor": "移除颜色层",
+      "colorPartial": "{{supported}}/{{total}} 台支持颜色，其余只跟随亮度"
     },
     "sheet": {
       "title": "灯具表",
@@ -1648,6 +1671,7 @@
       "zoomOut": "缩小时间线",
       "tracksLabel": "轨道与 Cue",
       "playhead": "播放头位置",
+      "playheadHandle": "播放头（拖动定位）",
       "missingTarget": "（已删除）",
       "selectTrack": "选择轨道 {{name}}",
       "mute": "静音 {{name}}",
@@ -1665,7 +1689,12 @@
       "collapse": "折叠 {{name}}",
       "expand": "展开 {{name}}",
       "cycleHeight": "切换 {{name}} 的轨道高度",
-      "overview": "全片概览（拖动方框跳转，方向键翻页）"
+      "overview": "全片概览（拖动方框跳转，方向键翻页）",
+      "deleteTrack": "删除轨道 {{name}}",
+      "clipDisabled": "已禁用",
+      "addedSkipped": "已在 {{count}} 条轨道新建片段，{{skipped}} 条轨道放不下",
+      "addedOnTracks": "已在 {{count}} 条轨道新建片段",
+      "clipUnsupported": "没有灯支持：{{layers}}"
     },
     "ruler": {
       "label": "时间标尺",
@@ -1779,6 +1808,8 @@
       "blackout": "开关黑场",
       "blackoutOff": "已取消黑场",
       "addSection": "在播放头处新建段落",
+      "fitDuration": "节目时长适配内容",
+      "endAtPlayhead": "把节目结尾设在播放头处",
       "loopSection": "循环播放头所在的段落",
       "center": {
         "stage": "预览：舞台",
@@ -1789,7 +1820,19 @@
       "paletteSearch": "搜索命令…",
       "paletteEmpty": "没有匹配的命令",
       "paletteHint": "↑↓ 选择 · Enter 执行 · Esc 关闭",
-      "disabled": "当前不可用"
+      "disabled": "当前不可用",
+      "cut": "剪切",
+      "toggleDisabled": "禁用 / 启用片段",
+      "trimStart": "删除播放头左侧",
+      "trimEnd": "删除播放头右侧",
+      "prevEdit": "跳到上一个剪辑点",
+      "nextEdit": "跳到下一个剪辑点",
+      "prevCue": "选中上一个片段",
+      "nextCue": "选中下一个片段",
+      "backFrame": "后退一帧",
+      "pause": "暂停",
+      "play": "播放",
+      "contextMenu": "打开右键菜单"
     },
     "unsaved": "有未保存的修改",
     "toolbarUndo": "撤销",
@@ -1947,7 +1990,9 @@
       "end": "终点",
       "duration": "长度",
       "dragFadeIn": "拖动调整淡入时长",
-      "dragFadeOut": "拖动调整淡出时长"
+      "dragFadeOut": "拖动调整淡出时长",
+      "sameLength": "统一长度",
+      "lengthSet": "已把 {{count}} 个片段设为 {{time}}"
     },
     "markers": {
       "defaultName": "标记 {{n}}",
@@ -2123,13 +2168,13 @@
       "seedHint": "相同的种子得到相同的闪烁图案；预览、播放和导出的结果一致。"
     },
     "media": {
-      "fileType": "音视频文件",
-      "import": "导入音视频…",
+      "fileType": "媒体文件",
+      "import": "导入媒体文件…",
       "hint": "素材只被引用，不会复制进工程。导入后自动放到时间线 0 点的媒体轨道上；拖动图标可再放一次，也可以直接把文件拖进窗口。",
       "drag": "拖到时间线上放置 {{name}}",
       "placeAtPlayhead": "把 {{name}} 放到播放头处",
       "usage": "时间线上 {{count}} 处",
-      "listLabel": "已导入的音视频",
+      "listLabel": "已导入的媒体",
       "remove": "移除 {{name}}（不会删除文件）",
       "loading": "正在准备…",
       "missing": "文件找不到了",
@@ -2137,11 +2182,11 @@
       "relink": "重新链接…",
       "recheck": "重新检查",
       "noAudio": "没有音轨，无波形",
-      "skipped": "{{count}} 个文件不是支持的音视频格式，已跳过",
+      "skipped": "{{count}} 个文件不是支持的媒体格式，已跳过",
       "extended": "{{name}} 比节目更长，已把节目时长延长到能放下它",
       "added": "已导入 {{count}} 个素材",
       "waveform": "{{name}} 的波形",
-      "dropHint": "松开鼠标，导入音视频",
+      "dropHint": "松开鼠标，导入媒体文件",
       "errors": {
         "notFound": "找不到文件：{{name}}",
         "unsupported": "不支持的格式：{{name}}",
@@ -2171,21 +2216,79 @@
         "high": "高潮"
       }
     },
+    "duration": {
+      "edit": "节目总时长（输入新时长，例如 2:30）",
+      "invalid": "无法识别的时长，请输入 分:秒 或 分:秒.帧",
+      "set": "节目时长已设为 {{time}}",
+      "noContent": "时间线上还没有内容",
+      "handle": "节目结尾 {{time}}（拖动改时长）",
+      "confirmTitle": "把节目缩短到 {{time}}？",
+      "confirmDescription": "超出新结尾的内容会被裁掉。可以一步撤销。",
+      "overflow": {
+        "trimmedCues": "裁短 {{count}} 个片段",
+        "removedCues": "删除 {{count}} 个片段",
+        "mediaClips": "裁短或删除 {{count}} 个媒体片段",
+        "sections": "裁短或删除 {{count}} 个段落",
+        "markers": "删除 {{count}} 个标记点"
+      },
+      "trim": "裁掉超出部分",
+      "cancel": "取消"
+    },
     "history": {
       "hint": "点击任一步回到那一步之后；最多保留 {{limit}} 步。已撤销的步骤在做新修改后丢弃。",
       "list": "撤销历史",
       "start": "打开工程",
       "current": "当前",
-      "cues": { "added": "新建 {{count}} 个片段", "removed": "删除 {{count}} 个片段", "changed": "修改 {{count}} 个片段" },
-      "mediaClips": { "added": "放置 {{count}} 个媒体片段", "removed": "删除 {{count}} 个媒体片段", "changed": "修改 {{count}} 个媒体片段" },
-      "fixtures": { "added": "添加 {{count}} 台灯具", "removed": "删除 {{count}} 台灯具", "changed": "修改 {{count}} 台灯具" },
-      "groups": { "added": "新建分组", "removed": "删除分组", "changed": "修改分组" },
-      "sections": { "added": "新建 {{count}} 个段落", "removed": "删除段落", "changed": "修改段落" },
-      "markers": { "added": "添加标记点", "removed": "删除标记点", "changed": "修改标记点" },
-      "presets": { "added": "新建预设", "removed": "删除预设", "changed": "修改预设" },
-      "media": { "added": "导入 {{count}} 个素材", "removed": "移除素材", "changed": "修改素材" },
-      "mediaTracks": { "added": "新建媒体轨道", "removed": "删除媒体轨道", "changed": "修改媒体轨道" },
-      "tracks": { "added": "新建轨道", "removed": "删除轨道", "changed": "修改轨道" },
+      "cues": {
+        "added": "新建 {{count}} 个片段",
+        "removed": "删除 {{count}} 个片段",
+        "changed": "修改 {{count}} 个片段"
+      },
+      "mediaClips": {
+        "added": "放置 {{count}} 个媒体片段",
+        "removed": "删除 {{count}} 个媒体片段",
+        "changed": "修改 {{count}} 个媒体片段"
+      },
+      "fixtures": {
+        "added": "添加 {{count}} 台灯具",
+        "removed": "删除 {{count}} 台灯具",
+        "changed": "修改 {{count}} 台灯具"
+      },
+      "groups": {
+        "added": "新建分组",
+        "removed": "删除分组",
+        "changed": "修改分组"
+      },
+      "sections": {
+        "added": "新建 {{count}} 个段落",
+        "removed": "删除段落",
+        "changed": "修改段落"
+      },
+      "markers": {
+        "added": "添加标记点",
+        "removed": "删除标记点",
+        "changed": "修改标记点"
+      },
+      "presets": {
+        "added": "新建预设",
+        "removed": "删除预设",
+        "changed": "修改预设"
+      },
+      "media": {
+        "added": "导入 {{count}} 个素材",
+        "removed": "移除素材",
+        "changed": "修改素材"
+      },
+      "mediaTracks": {
+        "added": "新建媒体轨道",
+        "removed": "删除媒体轨道",
+        "changed": "修改媒体轨道"
+      },
+      "tracks": {
+        "added": "新建轨道",
+        "removed": "删除轨道",
+        "changed": "修改轨道"
+      },
       "tempo": "修改节拍",
       "stage": "修改舞台布置",
       "output": "修改输出设置",
@@ -2311,6 +2414,210 @@
       "trackVolume": "轨道音量（{{name}}）",
       "trackVolumeValue": "轨道音量百分比",
       "invalidPlace": "放不下：与同轨片段重叠或超出素材长度"
+    },
+    "context": {
+      "title": "右键菜单",
+      "tag": "颜色标签",
+      "clearTag": "清除标签",
+      "convertToLook": "转为外观片段",
+      "saveAsPreset": "存为预设",
+      "selectTrackCues": "选中本轨全部片段",
+      "clipMute": "片段静音",
+      "pixelMap": "像素映射…",
+      "addCueTrack": "在播放头处新建片段",
+      "addCueTracks": "在 {{count}} 条轨道的播放头处各新建片段",
+      "pasteAtPlayhead": "粘贴到播放头",
+      "mute": "静音",
+      "solo": "独奏",
+      "lock": "锁定",
+      "collapse": "折叠",
+      "cycleHeight": "切换轨道高度",
+      "deleteTracks": "删除 {{count}} 条轨道（灯具轨道连同灯具）",
+      "deleteFixture": "删除灯具及其轨道",
+      "deleteGroup": "删除分组（保留灯具）",
+      "deleteScene": "删除场景轨道",
+      "deleteGroupWithMembers": "删除分组及其全部灯具",
+      "deleteMediaTrack": "删除媒体轨道",
+      "addCueHere": "在这里新建片段",
+      "pasteHere": "粘贴到这里",
+      "markerHere": "在这里加标记点",
+      "playheadHere": "播放头移到这里",
+      "sectionHere": "在这里新建段落",
+      "loopIn": "设为循环入点",
+      "loopOut": "设为循环出点",
+      "endHere": "把节目结尾设在这里",
+      "converted": "已转换 {{count}} 个片段",
+      "presetName": "预设 {{n}}",
+      "presetSaved": "已存为预设",
+      "deleted": "已删除 {{fixtures}} 台灯具、{{tracks}} 条轨道、{{cues}} 个片段（可撤销）",
+      "selectSameModel": "选中同型号灯具的轨道",
+      "groupTracks": "把 {{count}} 台灯具编为一组",
+      "syncTracks": "以第一台为准同步 {{count}} 台灯具（模式 / 高度 / 朝向 / 倒装）"
+    },
+    "tags": {
+      "red": "红",
+      "orange": "橙",
+      "yellow": "黄",
+      "green": "绿",
+      "cyan": "青",
+      "blue": "蓝",
+      "purple": "紫",
+      "pink": "粉"
+    },
+    "edit": {
+      "disabled": "已禁用 {{count}} 个片段",
+      "enabled": "已启用 {{count}} 个片段",
+      "trimmed": "已修剪 {{count}} 个片段",
+      "nothingToTrim": "播放头不在可修剪的片段内"
+    },
+    "batch": {
+      "title": "批量设置所选 {{count}} 台灯具",
+      "field": {
+        "mode": "通道模式",
+        "height": "安装高度",
+        "rotation": "朝向",
+        "hanging": "倒装",
+        "mirrors": "镜像（相对地址）"
+      },
+      "sync": "以“{{name}}”为准同步",
+      "synced": "已同步 {{count}} 台灯具",
+      "syncedSkipped": "已同步 {{count}} 台灯具；{{skipped}} 台型号不同，未同步通道模式",
+      "pattern": "名称模板",
+      "patternPlaceholder": "例如 前排 {n}",
+      "start": "起始序号",
+      "rename": "重命名 {{count}} 台",
+      "renamed": "已重命名 {{count}} 台灯具",
+      "selectSame": "选中同型号",
+      "selectedSame": "已选中 {{count}} 台同型号灯具",
+      "hint": "以 Patch 列表里的第一台为准；{n} 为序号，{name} 为原名。通道模式只同步到同型号的灯具。",
+      "createTracks": "补建 {{count}} 条缺少的轨道",
+      "tracksCreated": "已补建 {{count}} 条轨道"
+    },
+    "apply": {
+      "none": "不适用",
+      "partial": "部分 {{supported}}/{{total}}",
+      "rejected": "没有放上去：{{reason}}",
+      "needs": {
+        "intensity": "需要能调亮度的灯",
+        "mixing": "需要能混色的灯（RGB / CMY）",
+        "colorTemp": "需要能调色温的灯",
+        "colorWheel": "需要带颜色轮的灯",
+        "position": "需要能动的灯（Pan / Tilt）",
+        "beam": "需要带图案 / 棱镜等光束功能的灯",
+        "focus": "需要能聚焦 / 变焦的灯",
+        "strobe": "需要带频闪的灯"
+      }
+    },
+    "fixtureType": {
+      "dimmer": "调光灯",
+      "white": "白光灯（可调色温）",
+      "mixing": "混色灯",
+      "mover": "摇头灯",
+      "other": "其它灯具"
+    },
+    "universe": {
+      "view": "Universe 视图",
+      "cards": "卡片",
+      "strip": "通道格",
+      "count": "{{count}} 个 Universe",
+      "fixtureList": "Universe {{universe}} 的灯具（按地址）",
+      "mirror": "镜像",
+      "conflict": "冲突",
+      "conflicts": "{{count}} 处冲突",
+      "cell": "通道 {{channel}} · {{name}}",
+      "cellEmpty": "通道 {{channel}} · 空",
+      "collapse": "收起 {{name}}",
+      "expand": "展开 {{name}}",
+      "fixtures": "{{count}} 台灯具",
+      "port": "{{protocol}} {{target}} → {{remote}}",
+      "noPorts": "未配置输出端口"
+    },
+    "swatches": {
+      "groupBy": "色块分区方式",
+      "by": {
+        "universe": "按 Universe",
+        "group": "按分组",
+        "model": "按型号"
+      },
+      "density": "色块大小",
+      "densities": {
+        "comfortable": "大色块（显示名称与地址）",
+        "compact": "紧凑（灯多时一屏看全）"
+      },
+      "legend": "图例",
+      "legendProgrammed": "编程器中",
+      "legendConflict": "地址冲突",
+      "legendMirror": "有镜像地址",
+      "legendLevel": "亮度",
+      "ungrouped": "未分组",
+      "address": "Universe {{universe}} 地址 {{address}}",
+      "conflict": "地址冲突",
+      "mirrorTo": "镜像到 {{targets}}",
+      "usage": "已用 {{used}} / {{total}} 个通道",
+      "selectSection": "选中 {{name}} 里的全部灯具"
+    },
+    "guide": {
+      "next": "下一步",
+      "prev": "上一步",
+      "done": "开始使用",
+      "skip": "跳过引导",
+      "gotIt": "知道了",
+      "progress": "{{current}} / {{total}}",
+      "replay": "重新播放上手引导",
+      "reset": "重置上手引导与提示",
+      "resetDone": "已重置：下次进入编辑器会重新播放引导，各面板的提示也会重新出现",
+      "tour": {
+        "welcome": {
+          "title": "欢迎使用节目编辑器",
+          "body": "用一分钟认识这几个区域。随时可以按 Esc 跳过；之后在命令面板（Ctrl+K）里搜“引导”可以重新播放。"
+        },
+        "library": {
+          "title": "素材库",
+          "body": "左侧图标切换分区：媒体、灯具、Cue 模板、特效、预设、分组、历史。\n先到“灯具”添加灯具；模板和特效可以拖到时间线上，也可以点一下加到所选轨道。"
+        },
+        "preview": {
+          "title": "预览",
+          "body": "看播放头处每台灯的颜色。默认是色块视图，按 Universe 分区、区内按地址排；也可以切到舞台或灯具表，选择会被记住。\n点色块选灯，Ctrl 追加，Shift 连选。"
+        },
+        "inspector": {
+          "title": "属性",
+          "body": "灯具与 Patch（地址、Universe、批量同步）、编程器（给选中的灯直接设值）、Cue 属性（颜色、关键帧、分布）。\n检查器只显示这条轨道上的灯真正支持的属性。"
+        },
+        "timeline": {
+          "title": "时间线",
+          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选，一次在多条轨道上操作。"
+        },
+        "mode": {
+          "title": "实时模式 / 播放模式",
+          "body": "实时模式接收并转发外部信号；播放模式由本软件输出节目。切换前会确认。"
+        },
+        "shortcuts": {
+          "title": "常用快捷操作",
+          "body": "Ctrl+K 命令面板（所有操作都能搜到）\n空格 播放 / 暂停，J / K / L 后退一帧 / 暂停 / 播放\nShift+Q 快捷轮盘，Shift+F10 右键菜单\n快捷键可在命令面板里搜“快捷键”自定义。"
+        }
+      },
+      "hints": {
+        "swatches": {
+          "title": "色块分区与图例",
+          "body": "可按 Universe、分组或型号分区，区头可折叠、可一键选中本区。\n圆点 = 编程器里有值，红框 = 地址冲突，斜纹 = 有镜像地址，底部细条 = 亮度。"
+        },
+        "trackHeaders": {
+          "title": "多选轨道",
+          "body": "Ctrl 点轨道头追加，Shift 连选。多选后双击、点模板或粘贴会作用到每条选中的轨道；右键还有同步、编组、删除。"
+        },
+        "patchBatch": {
+          "title": "批量设置灯具",
+          "body": "以列表里的第一台为准，把模式、安装高度、朝向、倒装同步到其它灯；也可以按“前排 {n}”这样的模板批量重命名。"
+        },
+        "universeView": {
+          "title": "Universe 卡片与通道格",
+          "body": "卡片按地址排出每台灯（同型号同色），通道格逐通道显示 512 个地址。悬停时舞台上对应的灯会一起高亮。"
+        },
+        "colorInput": {
+          "title": "三种调色方式",
+          "body": "色轮、HSL 滑杆、RGB 数值可以随时切换，会记住你上次用的方式。"
+        }
+      }
     }
   },
   "fixtures": {
@@ -2521,8 +2828,8 @@
   },
   "mode": {
     "switchLabel": "运行模式",
-    "live": "实时",
-    "player": "播放器",
+    "live": "实时模式",
+    "player": "播放模式",
     "liveHint": "接收、合并、转发与录制",
     "playerHint": "停止实时接收，只播放节目",
     "enteredPlayer": "已进入播放器模式",

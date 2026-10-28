@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { FixtureModel } from "@/features/fixtures";
 import type { Engine } from "../../engine/engine";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
-import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs } from "../colorMath";
+import { hexToRgb, hslToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsl, rgbToHsv, wheelToHs } from "../colorMath";
 import { mixPreview } from "../mixPreview";
 import { RGBW } from "./testkit";
 
@@ -78,5 +78,19 @@ describe("实际输出（引擎混色）", () => {
     expect(warm && warm.emitters[1].level > warm.emitters[0].level).toBe(true);
     expect(cool && cool.emitters[0].level > cool.emitters[1].level).toBe(true);
     expect(mixPreview(null, RGBW, undefined, { kind: "rgb", rgb: [1, 2, 3] }, 1)).toBeNull();
+  });
+});
+
+describe("HSL 换算", () => {
+  it("基本色与灰色；往返误差不超过 1", () => {
+    expect(rgbToHsl([255, 0, 0])).toEqual({ h: 0, s: 1, l: 0.5 });
+    expect(rgbToHsl([128, 128, 128])).toMatchObject({ h: 0, s: 0 });
+    expect(hslToRgb({ h: 240, s: 1, l: 0.5 })).toEqual([0, 0, 255]);
+    expect(hslToRgb({ h: 120, s: 1, l: 0.25 })).toEqual([0, 128, 0]);
+    expect(hslToRgb({ h: -120, s: 2, l: 1.5 })).toEqual([255, 255, 255]);
+    for (const rgb of [[12, 200, 77], [250, 128, 3], [90, 0, 255], [1, 2, 3]] as const) {
+      const back = hslToRgb(rgbToHsl([...rgb]));
+      back.forEach((v, i) => expect(Math.abs(v - rgb[i])).toBeLessThanOrEqual(1));
+    }
   });
 });

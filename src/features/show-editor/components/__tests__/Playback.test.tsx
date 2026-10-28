@@ -28,6 +28,7 @@ import { addStaticCue } from "../../lib/cueOps";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { usePlaybackStore } from "../../stores/usePlaybackStore";
 import { useProjectStore } from "../../stores/useProjectStore";
@@ -117,7 +118,8 @@ beforeEach(async () => {
   bus.fail = false;
   bus.unlisten.mockReset();
   useProjectStore.getState().load(createEmptyProject("t"));
-  useEditorUiStore.setState({ playheadMs: 0, selectedCueIds: [], centerView: "swatches" });
+  useEditorUiStore.setState({ playheadMs: 0, selectedCueIds: [] });
+  useEditorPrefsStore.setState({ centerView: "swatches" });
   usePlaybackStore.getState().reset();
 });
 

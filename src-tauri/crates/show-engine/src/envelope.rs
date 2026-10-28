@@ -115,6 +115,7 @@ mod tests {
             fade_in_ms: fade_in,
             fade_out_ms: fade_out,
             easing,
+            disabled: false,
         }
     }
 

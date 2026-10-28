@@ -20,6 +20,8 @@ import { RGBW } from "../../lib/__tests__/testkit";
 import { AUTOSAVE_INTERVAL_MS, resetRecoveryCheck } from "../../hooks/useShowFile";
 import { useDocumentStore } from "../../stores/useDocumentStore";
 import { selectDirty, useProjectStore } from "../../stores/useProjectStore";
+import { HINTS } from "../../onboarding/guideContent";
+import { TOUR_VERSION, useOnboardingStore } from "../../stores/useOnboardingStore";
 import { ShowEditorView } from "../ShowEditorView";
 
 beforeAll(() => {
@@ -104,6 +106,8 @@ const toolbar = () => screen.getByRole("toolbar", { name: "编辑工具条" });
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
+  // 这里测编辑器本身：引导视为已看过，局部提示全部关闭
+  useOnboardingStore.setState({ tourVersion: TOUR_VERSION, dismissedHints: HINTS.map((h) => h.id) });
   invoke.mockReset();
   toast.success.mockReset();
   toast.error.mockReset();

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
-import { setLoopRange } from "../lib/ops";
+import { requestShowDuration } from "../hooks/editorActions";
+import { normalizeDuration } from "../lib/duration";
+import { MAX_DURATION_MS, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
 import { clamp, formatTimecode, snapToFrame } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -31,6 +33,11 @@ export function Ruler() {
   const seeking = useRef(false);
   /** 拖动循环端点时的预览（松手才写入工程，一次手势一步撤销） */
   const [edgeDrag, setEdgeDrag] = useState<{ edge: "in" | "out"; ms: number } | null>(null);
+  /** 指针悬停处的时刻：画一条“幽灵线”，预示点下去播放头落在哪 */
+  const [hoverMs, setHoverMs] = useState<number | null>(null);
+  /** 拖动节目结尾把手时的预览 */
+  const [endDrag, setEndDrag] = useState<number | null>(null);
+  const endMs = endDrag ?? durationMs;
 
   useEffect(() => {
     const el = ref.current;
@@ -61,7 +68,9 @@ export function Ruler() {
     setPlayhead(msAt(e.clientX));
   };
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (seeking.current) setPlayhead(msAt(e.clientX));
+    const ms = msAt(e.clientX);
+    if (seeking.current) setPlayhead(ms);
+    setHoverMs(ms);
   };
   const onUp = () => {
     seeking.current = false;
@@ -130,6 +139,7 @@ export function Ruler() {
     <div
       ref={ref}
       role="group"
+      data-timeline-ruler
       aria-label={t("editor.ruler.label")}
       className="relative shrink-0 cursor-pointer select-none overflow-hidden border-b border-border bg-surface-2"
       style={{ height: RULER_HEIGHT }}
@@ -137,7 +147,16 @@ export function Ruler() {
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={onUp}
+      onPointerLeave={() => setHoverMs(null)}
     >
+      {hoverMs !== null && (
+        <div aria-hidden data-testid="ruler-ghost" className="pointer-events-none absolute inset-y-0 z-[5]" style={{ left: xOf(hoverMs) }}>
+          <span className="absolute inset-y-0 w-px bg-playhead/50" />
+          <span className="num absolute bottom-0.5 left-1 whitespace-nowrap rounded bg-popover/90 px-1 text-[10px] leading-tight text-foreground shadow-sm">
+            {formatTimecode(hoverMs)}
+          </span>
+        </div>
+      )}
       {range && (
         <div
           aria-hidden
@@ -165,6 +184,47 @@ export function Ruler() {
       ))}
       {edgeHandle("in")}
       {edgeHandle("out")}
+      {/* 节目结尾把手：拖动改节目时长（缩短会裁掉内容时先确认） */}
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label={t("editor.duration.handle", { time: formatTimecode(endMs) })}
+        aria-valuemin={0}
+        aria-valuemax={MAX_DURATION_MS}
+        aria-valuenow={endMs}
+        aria-valuetext={formatTimecode(endMs)}
+        title={t("editor.duration.handle", { time: formatTimecode(endMs) })}
+        data-testid="duration-handle"
+        className="absolute top-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-ew-resize items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        style={{ left: xOf(endMs) }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          setEndDrag(durationMs);
+        }}
+        onPointerMove={(e) => {
+          if (endDrag === null) return;
+          const left = ref.current?.getBoundingClientRect().left ?? 0;
+          setEndDrag(normalizeDuration(((e.clientX - left + scrollLeft - START_LEFT) / pxPerSec) * 1000));
+        }}
+        onPointerUp={() => {
+          if (endDrag !== null && endDrag !== durationMs) requestShowDuration(endDrag);
+          setEndDrag(null);
+        }}
+        onPointerCancel={() => setEndDrag(null)}
+        onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+          const step = e.shiftKey ? 1000 : FRAME;
+          if (e.key === "ArrowLeft") requestShowDuration(durationMs - step);
+          else if (e.key === "ArrowRight") requestShowDuration(durationMs + step);
+          else return;
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        <span aria-hidden className="h-full w-0.5 rounded-full bg-foreground/70" />
+        <span aria-hidden className="absolute top-0.5 h-2 w-2.5 rounded-sm bg-foreground/70" />
+      </div>
     </div>
   );
 }

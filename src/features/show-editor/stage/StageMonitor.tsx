@@ -84,6 +84,9 @@ export function StageMonitor() {
   const rendererRef = useRef<StageRenderer | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [hover, setHover] = useState<string | null>(null);
+  // 别处（Universe 视图、通道格）悬停的灯具：在舞台上一并高亮
+  const sharedHover = useEditorUiStore((s) => s.hoverFixtureId);
+  const setSharedHover = useEditorUiStore((s) => s.setHoverFixture);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [bloom, setBloom] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -197,7 +200,7 @@ export function StageMonitor() {
       view,
       fixtures,
       theme: readTheme(wrap),
-      hover,
+      hover: hover ?? sharedHover,
       lasso: gesture?.kind === "lasso" && gesture.active ? gesture : null,
       bloom: bloom ? 1 : 0,
       editing,
@@ -255,7 +258,9 @@ export function StageMonitor() {
   const onMove = (e: PointerEvent<HTMLCanvasElement>) => {
     const p = local(e);
     if (!gesture) {
-      setHover(hitAt(p));
+      const hit = hitAt(p);
+      setHover(hit);
+      setSharedHover(hit);
       return;
     }
     if (gesture.kind === "lasso") {
@@ -362,7 +367,10 @@ export function StageMonitor() {
           onPointerMove={onMove}
           onPointerUp={onUp}
           onPointerCancel={() => setGesture(null)}
-          onPointerLeave={() => setHover(null)}
+          onPointerLeave={() => {
+          setHover(null);
+          setSharedHover(null);
+        }}
           onKeyDown={onKeyDown}
           onDoubleClick={(e) => {
             const hit = hitAt(local(e));

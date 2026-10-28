@@ -82,12 +82,12 @@ beforeEach(async () => {
 
 afterEach(() => cleanup());
 
-describe("导入音视频", () => {
+describe("导入媒体文件", () => {
   it("选择文件后探测并加入素材库，同时放到 0 点的新音频轨道上；比节目长的素材会延长节目", async () => {
     installBackend({ "D:\\music\\歌.mp3": { durationMs: 300_000 } });
     pickers.pickMediaFiles.mockResolvedValue(["D:\\music\\歌.mp3"]);
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "导入音视频…" }));
+    fireEvent.click(screen.getByRole("button", { name: "导入媒体文件…" }));
     await waitFor(() => expect(project().media).toHaveLength(1));
     expect(project().media[0]).toMatchObject({
       kind: "audio",
@@ -103,7 +103,7 @@ describe("导入音视频", () => {
     expect(useAnnouncerStore.getState().message).toBe("已导入 1 个素材");
     // 取消选择不做任何事
     pickers.pickMediaFiles.mockResolvedValue([]);
-    fireEvent.click(screen.getByRole("button", { name: "导入音视频…" }));
+    fireEvent.click(screen.getByRole("button", { name: "导入媒体文件…" }));
     await act(async () => void (await Promise.resolve()));
     expect(project().media).toHaveLength(1);
   });
@@ -126,7 +126,7 @@ describe("导入音视频", () => {
   it("不支持的扩展名被跳过并提示；同一路径不会重复导入；单个失败不影响其他", async () => {
     installBackend({ "a.mp3": {}, "b.wav": {} });
     await importMediaPaths(["notes.txt", "a.mp3", "ghost.mp3", "b.wav"]);
-    expect(toast.warning).toHaveBeenCalledWith("1 个文件不是支持的音视频格式，已跳过");
+    expect(toast.warning).toHaveBeenCalledWith("1 个文件不是支持的媒体格式，已跳过");
     expect(toast.error).toHaveBeenCalledTimes(1);
     expect(String(toast.error.mock.calls[0][0])).toContain("找不到文件：ghost.mp3");
     expect(project().media.map((m) => m.name)).toEqual(["a.mp3", "b.wav"]);

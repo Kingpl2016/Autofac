@@ -1,21 +1,23 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Group, Trash2 } from "lucide-react";
+import { Group, ListPlus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { footprint } from "@/features/fixtures";
 import { announce } from "@/shared/stores/announcerStore";
+import { ensureFixtureTracks } from "../lib/fixtureBatch";
 import { createGroup, removeFixtures, renameFixture, setFixtureAddress } from "../lib/ops";
 import { analyzePatch } from "../lib/patch";
 import { addMirror, removeMirror, setFixtureMode, setMirror } from "../lib/universeOps";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { EmptyHint } from "./EmptyHint";
+import { FixtureBatchBar } from "./FixtureBatchBar";
 import { FixtureRow } from "./FixtureRow";
 import { DmxChannelView } from "./DmxChannelView";
 import { GroupList } from "./GroupList";
 import { RepatchForm } from "./RepatchForm";
-import { UniverseMap } from "./UniverseMap";
+import { UniverseOverview } from "./UniverseOverview";
 
 /**
  * “灯具与 Patch”面板：取代旧的“回路配置”页。
@@ -54,6 +56,17 @@ export function PatchPanel() {
     () => selectedRaw.filter((id) => fixtures.some((f) => f.id === id)),
     [selectedRaw, fixtures],
   );
+  // 没有轨道的灯具（旧工程或删了轨道后），可一键补建
+  const tracks = project.tracks;
+  const missingTracks = useMemo(() => {
+    const has = new Set(tracks.flatMap((tr) => (tr.target.kind === "fixture" ? [tr.target.id] : [])));
+    return fixtures.filter((f) => !has.has(f.id)).length;
+  }, [fixtures, tracks]);
+  // 批量操作按 Patch 列表顺序（第一台作为同步的基准）
+  const selectedInOrder = useMemo(
+    () => fixtures.filter((f) => selected.includes(f.id)).map((f) => f.id),
+    [fixtures, selected],
+  );
   const conflictCount = useMemo(
     () => [...status.values()].filter((s) => s.conflictsWith.length > 0 || s.overflow).length,
     [status],
@@ -86,11 +99,7 @@ export function PatchPanel() {
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {t("editor.patch.universes")}
         </h3>
-        <UniverseMap
-          project={{ fixtures, fixtureModels, output: project.output }}
-          selectedIds={selected}
-          onPickUniverse={setDmxUniverse}
-        />
+        <UniverseOverview selectedIds={selected} onPickUniverse={setDmxUniverse} />
         {conflictCount > 0 && (
           <p role="status" className="text-xs font-medium text-destructive">
             {t("editor.patch.conflictSummary", { count: conflictCount })}
@@ -129,12 +138,30 @@ export function PatchPanel() {
             <Trash2 aria-hidden />
             {t("editor.patch.deleteSelected", { count: selected.length })}
           </Button>
+          {missingTracks > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => {
+                let n = 0;
+                update((d) => {
+                  n = ensureFixtureTracks(d);
+                });
+                announce(t("editor.batch.tracksCreated", { count: n }));
+              }}
+            >
+              <ListPlus aria-hidden />
+              {t("editor.batch.createTracks", { count: missingTracks })}
+            </Button>
+          )}
         </div>
         {selected.length > 0 && (
-          <RepatchForm
-            key={selected.join(",")}
-            fixtureIds={fixtures.filter((f) => selected.includes(f.id)).map((f) => f.id)}
-          />
+          <>
+            <RepatchForm key={selected.join(",")} fixtureIds={selectedInOrder} />
+            <FixtureBatchBar fixtureIds={selectedInOrder} />
+          </>
         )}
         <ul className="flex flex-col gap-1.5">
           {fixtures.map((f) => (

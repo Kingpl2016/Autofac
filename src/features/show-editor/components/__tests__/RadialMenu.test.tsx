@@ -52,9 +52,9 @@ beforeEach(async () => {
 afterEach(() => cleanup());
 
 describe("径向轮盘", () => {
-  it("Q 打开；数字键执行命令（分割）后关闭；Esc 关闭", () => {
+  it("Shift+Q 打开；数字键执行命令（分割）后关闭；Esc 关闭", () => {
     render(<Harness />);
-    fireEvent.keyDown(window, { key: "q" });
+    fireEvent.keyDown(window, { key: "Q", shiftKey: true });
     const menu = screen.getByRole("menu", { name: "快捷轮盘" });
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(8);
     expect(document.activeElement?.getAttribute("role")).toBe("menuitem");

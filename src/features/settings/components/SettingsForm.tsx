@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DeveloperSection } from "./DeveloperSection";
 import { RecordingDirField } from "./RecordingDirField";
 import { SettingsSectionById } from "./SettingsSection";
 import { SettingRow } from "./SettingRow";
@@ -464,6 +465,9 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
 
       {/* 快捷键 */}
       <ShortcutsSection />
+
+      {/* 开发者（只在开发构建里显示） */}
+      {import.meta.env.DEV && <DeveloperSection />}
     </div>
   );
 }

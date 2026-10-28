@@ -6,6 +6,7 @@ import i18n from "@/shared/i18n";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import type { ColorValue } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useColorInputStore } from "../../stores/useColorInputStore";
 import { useRecentColorsStore } from "../../stores/useRecentColorsStore";
 import { ColorPicker } from "../ColorPicker";
 
@@ -72,5 +73,43 @@ describe("ColorPicker", () => {
     setup({ kind: "rgb", rgb: [255, 255, 255] });
     const meters = within(screen.getByLabelText("实际输出")).getAllByRole("meter");
     expect(meters.map((m) => m.getAttribute("aria-valuenow"))).toEqual(["0", "0", "0", "100"]);
+  });
+});
+
+describe("ColorPicker 输入方式", () => {
+  beforeEach(() => useColorInputStore.setState({ input: "wheel" }));
+
+  it("切到 HSL：滑杆读出当前色，改饱和度提交；拖到灰色再拉回时保留色相；选择被记住", () => {
+    const { onCommit, rerender } = setup({ kind: "rgb", rgb: [0, 0, 255] });
+    fireEvent.click(screen.getByRole("radio", { name: "HSL" }));
+    expect(useColorInputStore.getState().input).toBe("hsl");
+    const hue = screen.getByRole("slider", { name: "色相" });
+    expect(hue.getAttribute("aria-valuetext")).toBe("240°");
+
+    const sat = screen.getByRole("textbox", { name: "饱和度数值" });
+    fireEvent.change(sat, { target: { value: "0" } });
+    fireEvent.blur(sat);
+    const gray = onCommit.mock.lastCall?.[0] as ColorValue;
+    expect(gray).toEqual({ kind: "rgb", rgb: [128, 128, 128] });
+
+    rerender(<ColorPicker value={gray} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
+    // 灰色本身没有色相，但滑杆仍停在 240°
+    expect(screen.getByRole("slider", { name: "色相" }).getAttribute("aria-valuetext")).toBe("240°");
+    const sat2 = screen.getByRole("textbox", { name: "饱和度数值" });
+    fireEvent.change(sat2, { target: { value: "100" } });
+    fireEvent.blur(sat2);
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [0, 0, 255] });
+  });
+
+  it("RGB 数值：通道滑杆与数值框", () => {
+    useColorInputStore.setState({ input: "rgb" });
+    const { onCommit } = setup({ kind: "rgb", rgb: [10, 20, 30] });
+    expect(screen.queryByRole("slider", { name: /色轮/ })).toBeNull();
+    const green = screen.getByRole("slider", { name: "绿" });
+    expect(green.getAttribute("aria-valuetext")).toBe("20");
+    const blue = screen.getByRole("textbox", { name: "蓝数值" });
+    fireEvent.change(blue, { target: { value: "300" } });
+    fireEvent.blur(blue);
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [10, 20, 255] });
   });
 });

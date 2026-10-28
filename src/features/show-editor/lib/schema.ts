@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { CHANNEL_FUNCTIONS } from "@/features/fixtures";
 import {
+  CUE_TAGS,
   DMX_CHANNELS,
   MAX_UNIVERSE,
   PROJECT_VERSION,
@@ -169,6 +170,8 @@ const cueBase = {
   fadeInMs: finiteMs,
   fadeOutMs: finiteMs,
   easing: z.enum(["linear", "easeInOut", "sCurve"]),
+  disabled: z.boolean().optional(),
+  tag: z.enum(CUE_TAGS).optional(),
 };
 
 const staticCue = z.object({ ...cueBase, kind: z.literal("static"), rgb });

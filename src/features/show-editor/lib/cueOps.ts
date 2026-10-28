@@ -348,6 +348,34 @@ export function pasteCues(draft: ShowProject, clip: readonly ClipCue[], atMs: nu
   return created;
 }
 
+/**
+ * 把来自同一条轨道的剪贴板内容分别粘贴到多条轨道上（多轨编辑）。剪贴板跨多条轨道时退回 [`pasteCues`]
+ * （保持原来的轨道）。轨道类型不接受该片段（场景片段 ↔ 灯具 / 分组轨道）时跳过。
+ *
+ * @param draft 工程草稿。
+ * @param clip 剪贴板内容。
+ * @param atMs 粘贴起点。
+ * @param trackIds 目标轨道。
+ * @returns 新建片段的 id。
+ */
+export function pasteCuesToTracks(
+  draft: ShowProject,
+  clip: readonly ClipCue[],
+  atMs: number,
+  trackIds: readonly string[],
+): string[] {
+  const sources = new Set(clip.map((c) => c.trackId));
+  if (sources.size !== 1 || trackIds.length === 0) return pasteCues(draft, clip, atMs);
+  const created: string[] = [];
+  for (const trackId of trackIds) {
+    const track = draft.tracks.find((t) => t.id === trackId);
+    if (!track) continue;
+    const items = clip.filter((c) => trackAccepts(track, c.cue)).map((c) => ({ ...c, trackId }));
+    created.push(...pasteCues(draft, items, atMs));
+  }
+  return created;
+}
+
 /** 对一批 Cue 统一修改的属性；省略的字段保持不变。 */
 export interface CuePatch {
   /** 颜色，仅对静态 Cue 生效 */

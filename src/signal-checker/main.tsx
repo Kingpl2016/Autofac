@@ -6,6 +6,7 @@ import "@/styles/globals.css";
 import { loadAppearance, rehydrateOnFocus, startAppearanceSync } from "@/features/appearance";
 import { loadLanguage, rehydrateLanguageOnFocus, startLanguageSync } from "@/features/i18n";
 import { SignalCheckerRoot } from "@/features/signal-checker";
+import { installNativeGuards } from "@/shared/lib/nativeGuards";
 
 /**
  * 启动信号检测器窗口。
@@ -14,6 +15,8 @@ import { SignalCheckerRoot } from "@/features/signal-checker";
  * 先读回外观与语言并应用，之后每次窗口获得焦点再重读，主窗口里切换主题或语言后回到这里即可同步。
  */
 async function bootstrap(): Promise<void> {
+  // 与主窗口一致：不弹出 WebView 的默认右键菜单，发布版屏蔽浏览器快捷键
+  installNativeGuards(window, { dev: import.meta.env.DEV, allowNativeMenu: () => false });
   await Promise.all([loadAppearance(), loadLanguage()]);
   startAppearanceSync();
   startLanguageSync();

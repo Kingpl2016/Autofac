@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Diamond, X } from "lucide-react";
+import { Diamond, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,8 +13,10 @@ import { SliderField } from "./SliderField";
 
 interface AttributeLayersProps {
   look: Look;
-  /** 目标灯具能编辑的属性 */
-  available: readonly AttrInfo[];
+  /** 目标灯具能编辑的属性（多台灯时为并集，`supported` 为支持的台数） */
+  available: readonly (AttrInfo & { supported?: number })[];
+  /** 轨道上的灯具数（显示“n/m 台支持”用；省略时不显示） */
+  total?: number;
   /** 片段内时刻（已夹在片段范围内） */
   uMs: number;
   /** 片段时长 */
@@ -34,12 +36,17 @@ interface AttributeLayersProps {
  * 外观的属性层（位置 / 光束 / 聚焦 / 控制 / 颜色类属性）：按属性组分区列出已有的层，
  * 每层一个推子（有能力区间时可以直接选槽位 / 图案）、◆ 关键帧、× 删除；下方“添加属性层”列出目标灯具还没用到的功能。
  */
-export function AttributeLayers({ look, available, uMs, lengthMs, inside, engine, edit }: AttributeLayersProps) {
+export function AttributeLayers({ look, available, total, uMs, lengthMs, inside, engine, edit }: AttributeLayersProps) {
   const { t } = useTranslation();
   const present = (Object.keys(look.attrs ?? {}) as AttrKey[]).filter((k) => look.attrs?.[k]);
   const infoOf = (key: AttrKey) => available.find((a) => a.key === key);
   const addable = available.filter((a) => !present.includes(a.key));
   const groups = [...new Set(present.map((k) => infoOf(k)?.group ?? "control"))];
+  /** 部分支持时的台数说明。 */
+  const partOf = (info: { supported?: number } | undefined) =>
+    info?.supported !== undefined && total !== undefined && info.supported < total
+      ? t("editor.layers.partial", { supported: info.supported, total })
+      : null;
 
   const valueAt = (key: AttrKey): number => {
     const p = look.attrs?.[key];
@@ -68,6 +75,13 @@ export function AttributeLayers({ look, available, uMs, lengthMs, inside, engine
               const capIndex = info ? capabilityAt(caps, value, info.max) : -1;
               return (
                 <div key={key} className="grid gap-1">
+                  {!info && total !== undefined && total > 0 && (
+                    <p className="flex items-center gap-1 text-[11px] text-warning">
+                      <TriangleAlert className="size-3 shrink-0" aria-hidden />
+                      {t("editor.layers.unsupported", { name })}
+                    </p>
+                  )}
+                  {partOf(info) && <p className="text-[11px] text-muted-foreground">{partOf(info)}</p>}
                   <div className="flex items-center gap-1">
                     <div className="min-w-0 flex-1">
                       <SliderField
@@ -165,6 +179,7 @@ export function AttributeLayers({ look, available, uMs, lengthMs, inside, engine
             {addable.map((a) => (
               <SelectItem key={a.key} value={a.key}>
                 {t(`fixtures.groups.${a.group}`)} · {t(`fixtures.functions.${a.key}`)}
+                {partOf(a) ? ` · ${partOf(a)}` : ""}
               </SelectItem>
             ))}
           </SelectContent>

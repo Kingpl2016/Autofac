@@ -67,6 +67,14 @@ export function useEditorHotkeys(onSave?: () => void): Command[] {
       ) {
         return;
       }
+      // 方向键留给自带方向键操作的控件（滑杆、单选组、标签页、列表、菜单）
+      if (
+        e.key.startsWith("Arrow") &&
+        e.target instanceof HTMLElement &&
+        e.target.closest("input, select, [role=slider], [role=radio], [role=tab], [role=option], [role=menuitem], [role=treeitem]")
+      ) {
+        return;
+      }
       e.preventDefault();
       if (command.id === "file.save" && e.target instanceof HTMLElement && inText) e.target.blur();
       command.run();

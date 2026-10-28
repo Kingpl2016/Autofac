@@ -111,12 +111,12 @@ describe("命令快捷键", () => {
 
   it("I / O 设置入出点，自定义快捷键覆盖默认", () => {
     seed();
-    useKeymapStore.getState().setKeys("timeline.loopIn", ["j"]);
+    useKeymapStore.getState().setKeys("timeline.loopIn", ["y"]);
     render(<Harness />);
     act(() => ui().setPlayhead(1000));
     fireEvent.keyDown(window, { key: "i" });
     expect(project().loopRange).toBeNull();
-    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "y" });
     act(() => ui().setPlayhead(4000));
     fireEvent.keyDown(window, { key: "o" });
     expect(project().loopRange).toEqual({ startMs: 1000, endMs: 4000 });

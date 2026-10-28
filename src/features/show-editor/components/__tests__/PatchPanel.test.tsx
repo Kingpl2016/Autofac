@@ -246,6 +246,57 @@ describe("多 Universe 配接", () => {
     ]);
   });
 
+  it("批量操作：以第一台为准同步倒装、按模板重命名（一步撤销）、补建缺少的轨道", () => {
+    seed();
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        d.fixtures[0].stage = { x: 0, y: 0, z: 3, hanging: true };
+        d.tracks = d.tracks.slice(0, 2);
+      }),
+    );
+    act(() => useEditorUiStore.getState().setSelectedFixtures(["f3", "f1", "f2"]));
+    render(<InspectorPanel />);
+    const bar = screen.getByRole("group", { name: "批量设置所选 3 台灯具" });
+    // 基准是 Patch 列表里的第一台，与勾选顺序无关
+    fireEvent.click(within(bar).getByRole("button", { name: "以“灯1”为准同步" }));
+    const fixtures = () => useProjectStore.getState().project.fixtures;
+    expect(fixtures().map((f) => f.stage?.hanging)).toEqual([true, true, true]);
+    expect(fixtures()[2].stage?.z).toBe(3);
+
+    const steps = useProjectStore.temporal.getState().pastStates.length;
+    fireEvent.change(within(bar).getByRole("textbox", { name: "名称模板" }), { target: { value: "前排 {n}" } });
+    fireEvent.click(within(bar).getByRole("button", { name: "重命名 3 台" }));
+    expect(fixtures().map((f) => f.name)).toEqual(["前排 1", "前排 2", "前排 3"]);
+    expect(useProjectStore.temporal.getState().pastStates.length).toBe(steps + 1);
+
+    fireEvent.click(screen.getByRole("button", { name: "补建 1 条缺少的轨道" }));
+    expect(useProjectStore.getState().project.tracks).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /补建/ })).toBeNull();
+  });
+
+  it("Universe 卡片：悬停色块与舞台互相高亮；切到通道格显示 512 格；可收起灯具清单", () => {
+    seed();
+    render(<InspectorPanel />);
+    const card = screen.getByRole("region", { name: "U0" });
+    const list = within(card).getByRole("list", { name: "Universe 0 的灯具（按地址）" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1–4灯1", "5–8灯2", "9–12灯3"]);
+    const block = card.querySelector('[data-owner="f2"]') as HTMLElement;
+    fireEvent.pointerMove(block);
+    expect(useEditorUiStore.getState().hoverFixtureId).toBe("f2");
+    expect(within(list).getAllByRole("listitem")[1].className).toContain("bg-accent");
+    fireEvent.pointerLeave(card.closest("ul") as HTMLElement);
+    expect(useEditorUiStore.getState().hoverFixtureId).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: "通道格" }));
+    const grid = within(screen.getByRole("region", { name: "U0" })).getByRole("img", { name: /Universe 0：占用 12/ });
+    expect(grid.children).toHaveLength(512);
+    expect(grid.children[4].getAttribute("title")).toBe("通道 5 · 灯2");
+
+    fireEvent.click(screen.getByRole("button", { name: "收起 U0" }));
+    expect(screen.queryByRole("list", { name: "Universe 0 的灯具（按地址）" })).toBeNull();
+    act(() => useEditorUiStore.getState().setUniverseView("cards"));
+  });
+
   it("DMX 通道视图：输入通道号说明归属", () => {
     seed();
     render(<InspectorPanel />);

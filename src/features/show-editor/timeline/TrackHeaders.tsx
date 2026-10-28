@@ -8,13 +8,20 @@ import {
   Clapperboard,
   Headphones,
   Lamp,
+  Lightbulb,
   Lock,
   LockOpen,
+  Move,
+  Palette,
+  Sun,
+  Trash2,
   Volume2,
   VolumeX,
+  type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import type { FixtureType } from "../lib/fixtureProfile";
 import type { Track } from "../lib/project";
 import { MARKER_STRIP_HEIGHT } from "./MarkerStrip";
 import { RULER_HEIGHT } from "./timelineData";
@@ -26,17 +33,33 @@ const SCROLLBAR_ALLOWANCE = 16;
 /** 轨道头的三个开关。 */
 export type TrackFlag = "mute" | "solo" | "lock";
 
-/** 轨道类型图标（灯具 / 分组 / 场景），颜色与片段类型色一致。 */
-function TrackKindIcon({ kind }: { kind: Track["target"]["kind"] }) {
-  const Icon = kind === "group" ? Boxes : kind === "scene" ? Clapperboard : Lamp;
+/** 灯具类型的图标。 */
+const TYPE_ICONS: Record<FixtureType, LucideIcon> = {
+  dimmer: Lightbulb,
+  white: Sun,
+  mixing: Palette,
+  mover: Move,
+  other: Lamp,
+};
+
+/**
+ * 轨道类型图标：灯具轨道按灯具类型（调光 / 白光 / 混色 / 摇头），分组与场景用各自的图标；
+ * 颜色与片段类型色一致。灯具类型以 `role="img"` 的名称读出。
+ */
+function TrackKindIcon({ kind, type }: { kind: Track["target"]["kind"]; type?: FixtureType | null }) {
+  const { t } = useTranslation();
+  const Icon = kind === "group" ? Boxes : kind === "scene" ? Clapperboard : type ? TYPE_ICONS[type] : Lamp;
+  const label = type ? t(`editor.fixtureType.${type}`) : undefined;
   return (
-    <Icon
-      aria-hidden
-      className={cn(
-        "size-3.5 shrink-0",
-        kind === "scene" ? "text-clip-scene" : kind === "group" ? "text-primary" : "text-clip-light",
-      )}
-    />
+    <span role={label ? "img" : undefined} aria-label={label} title={label} aria-hidden={label ? undefined : true} className="flex shrink-0">
+      <Icon
+        aria-hidden
+        className={cn(
+          "size-3.5 shrink-0",
+          kind === "scene" ? "text-clip-scene" : kind === "group" ? "text-primary" : "text-clip-light",
+        )}
+      />
+    </span>
   );
 }
 
@@ -45,7 +68,19 @@ interface TrackHeadersProps {
   /** 轨道显示名（取自绑定的灯具 / 分组），与 `tracks` 一一对应 */
   names: readonly string[];
   selectedTrackId: string | null;
-  onSelect: (trackId: string) => void;
+  /** 选中的全部轨道（多选） */
+  selectedTrackIds?: readonly string[];
+  /** 每条轨道上最多的灯具类型（与 `tracks` 一一对应；省略时不区分） */
+  fixtureTypes?: readonly (FixtureType | null)[];
+  /**
+   * 点选轨道。
+   *
+   * @param trackId 轨道。
+   * @param mode `single` 单选，`toggle` Ctrl / ⌘ 追加或取消，`range` Shift 连选。
+   */
+  onSelect: (trackId: string, mode?: "single" | "toggle" | "range") => void;
+  /** 删除轨道（灯具轨道连同灯具；分组轨道只删分组）；多选时删除全部选中的轨道 */
+  onDelete?: (trackId: string) => void;
   onToggle: (trackId: string, flag: TrackFlag) => void;
   /** 折叠 / 展开轨道 */
   onCollapse?: (trackId: string, collapsed: boolean) => void;
@@ -64,12 +99,12 @@ interface TrackHeadersProps {
  * 纵向滚动位置由时间线同步（见 ref）。
  */
 export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(function TrackHeaders(
-  { tracks, names, selectedTrackId, onSelect, onToggle, onCollapse, onCycleHeight, onWheelScroll, topSlot },
+  { tracks, names, selectedTrackId, selectedTrackIds, fixtureTypes, onSelect, onDelete, onToggle, onCollapse, onCycleHeight, onWheelScroll, topSlot },
   ref,
 ) {
   const { t } = useTranslation();
   return (
-    <div className="flex w-52 shrink-0 flex-col border-r border-border bg-surface-2">
+    <div data-tour="track-headers" className="flex w-52 shrink-0 flex-col border-r border-border bg-surface-2">
       <div style={{ height: MARKER_STRIP_HEIGHT + RULER_HEIGHT }} className="shrink-0 border-b border-border" aria-hidden />
       {topSlot}
       <div ref={ref} className="min-h-0 flex-1 overflow-hidden" onWheel={(e) => onWheelScroll(e.deltaY)}>
@@ -101,10 +136,12 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
           return (
             <li
               key={track.id}
+              data-track-header-id={track.id}
               style={{ height: trackHeight(track) }}
               className={cn(
                 "group/track flex items-center gap-1 border-b border-border px-1",
-                track.id === selectedTrackId && "bg-accent",
+                (selectedTrackIds ?? (selectedTrackId ? [selectedTrackId] : [])).includes(track.id) && "bg-accent",
+                track.id === selectedTrackId && "shadow-[inset_2px_0_0_var(--primary)]",
               )}
             >
               {onCollapse && (
@@ -119,11 +156,18 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
                   {collapsed ? <ChevronRight aria-hidden /> : <ChevronDown aria-hidden />}
                 </button>
               )}
-              <TrackKindIcon kind={track.target.kind} />
+              <TrackKindIcon kind={track.target.kind} type={fixtureTypes?.[i]} />
               <button
                 type="button"
-                onClick={() => onSelect(track.id)}
-                aria-pressed={track.id === selectedTrackId}
+                onClick={(e) => onSelect(track.id, e.shiftKey ? "range" : e.ctrlKey || e.metaKey ? "toggle" : "single")}
+                onKeyDown={(e) => {
+                  if ((e.key === "Delete" || e.key === "Backspace") && onDelete) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDelete(track.id);
+                  }
+                }}
+                aria-pressed={(selectedTrackIds ?? (selectedTrackId ? [selectedTrackId] : [])).includes(track.id)}
                 aria-label={t("editor.timeline.selectTrack", { name })}
                 className={cn(
                   "min-w-0 flex-1 truncate rounded-sm px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -160,6 +204,20 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
                   {f.icon}
                 </button>
               ))}
+              {!collapsed && onDelete && (
+                <button
+                  type="button"
+                  aria-label={t("editor.timeline.deleteTrack", { name })}
+                  title={t("editor.timeline.deleteTrack", { name })}
+                  onClick={() => onDelete(track.id)}
+                  className={cn(
+                    small,
+                    "size-6 opacity-0 hover:text-destructive group-hover/track:opacity-100 focus-visible:opacity-100 [&_svg]:size-3.5",
+                  )}
+                >
+                  <Trash2 aria-hidden />
+                </button>
+              )}
             </li>
           );
         })}

@@ -71,20 +71,20 @@ describe("ModeSwitch", () => {
   it("是带名称的 radiogroup，当前模式被选中，只有当前项在 Tab 序列里", () => {
     renderSwitch();
     expect(screen.getByRole("radiogroup", { name: "运行模式" })).toBeTruthy();
-    expect(radio("实时").getAttribute("aria-checked")).toBe("true");
-    expect(radio("播放器").getAttribute("aria-checked")).toBe("false");
-    expect([radio("实时").tabIndex, radio("播放器").tabIndex]).toEqual([0, -1]);
+    expect(radio("实时模式").getAttribute("aria-checked")).toBe("true");
+    expect(radio("播放模式").getAttribute("aria-checked")).toBe("false");
+    expect([radio("实时模式").tabIndex, radio("播放模式").tabIndex]).toEqual([0, -1]);
   });
 
   it("键盘：方向键只移动焦点，不会触发切换；点击 / Enter 才打开确认", () => {
     renderSwitch();
-    radio("实时").focus();
-    fireEvent.keyDown(radio("实时"), { key: "ArrowRight" });
-    expect(document.activeElement).toBe(radio("播放器"));
+    radio("实时模式").focus();
+    fireEvent.keyDown(radio("实时模式"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(radio("播放模式"));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.appModeSet).not.toHaveBeenCalled();
 
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(api.appModeSet).not.toHaveBeenCalled();
   });
@@ -100,7 +100,7 @@ describe("ModeSwitch", () => {
     useEngineStatusStore.setState({ packetRate: 88 });
     renderSwitch();
 
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("进入播放器模式？");
     expect(dialog.textContent).toContain("当前正在接收 2 个 Universe（88 包/秒），这些实时信号会被清空。");
@@ -110,11 +110,11 @@ describe("ModeSwitch", () => {
 
   it("取消或按 Esc 都不会切换", async () => {
     renderSwitch();
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     fireEvent.click(await screen.findByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     const dialog = await screen.findByRole("dialog");
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -123,7 +123,7 @@ describe("ModeSwitch", () => {
 
   it("确认后切换到播放器模式：跳转到播放器页、提示并向读屏播报", async () => {
     renderSwitch("/forwarding");
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     fireEvent.click(await screen.findByRole("button", { name: "进入播放器模式" }));
 
     await waitFor(() => expect(api.appModeSet).toHaveBeenCalledWith("player"));
@@ -137,8 +137,8 @@ describe("ModeSwitch", () => {
     useEngineStatusStore.setState({ appMode: "player", receivers: "suspended" });
     renderSwitch("/forwarding");
 
-    expect(radio("播放器").getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(radio("播放器"));
+    expect(radio("播放模式").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(radio("播放模式"));
     expect(path()).toBe("/player");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.appModeSet).not.toHaveBeenCalled();
@@ -154,7 +154,7 @@ describe("ModeSwitch", () => {
     });
     renderSwitch();
 
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("正在进行的录制会先停止并保存。");
     // 停止并保存录制不是销毁数据：主按钮用默认（主色）而不是危险色
@@ -168,21 +168,21 @@ describe("ModeSwitch", () => {
     let resolve!: (v: unknown) => void;
     api.appModeSet.mockReturnValue(new Promise((r) => (resolve = r)));
     renderSwitch();
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     fireEvent.click(await screen.findByRole("button", { name: "进入播放器模式" }));
 
     await waitFor(() => expect(screen.getByRole("radiogroup").getAttribute("aria-busy")).toBe("true"));
-    expect(radio("实时").disabled && radio("播放器").disabled).toBe(true);
+    expect(radio("实时模式").disabled && radio("播放模式").disabled).toBe(true);
 
     await act(async () => resolve({ mode: "player", receivers: "suspended", sender: "ready" }));
     await waitFor(() => expect(screen.getByRole("radiogroup").getAttribute("aria-busy")).toBeNull());
-    expect(radio("实时").disabled).toBe(false);
+    expect(radio("实时模式").disabled).toBe(false);
   });
 
   it("失败时给出可读错误，且不跳转", async () => {
     api.appModeSet.mockRejectedValue(new Error("recording_active"));
     renderSwitch("/forwarding");
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     fireEvent.click(await screen.findByRole("button", { name: "进入播放器模式" }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("录制进行中，请先停止录制再切换。"));
@@ -195,7 +195,7 @@ describe("ModeSwitch", () => {
     api.appModeSet.mockResolvedValue({ mode: "live", receivers: "bound", sender: "ready" });
     renderSwitch("/player");
 
-    fireEvent.click(radio("实时"));
+    fireEvent.click(radio("实时模式"));
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(api.appModeSet).toHaveBeenCalledWith("live"));
     await waitFor(() => expect(path()).toBe("/"));
@@ -207,7 +207,7 @@ describe("ModeSwitch", () => {
     api.appModeSet.mockResolvedValue({ mode: "live", receivers: "bound", sender: "ready" });
     renderSwitch("/forwarding");
 
-    fireEvent.click(radio("实时"));
+    fireEvent.click(radio("实时模式"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("退出播放器模式？");
     expect(dialog.textContent).toContain("停止输出、关闭节目");
@@ -233,7 +233,7 @@ describe("ModeSwitch", () => {
     let resolve!: (v: unknown) => void;
     api.appModeSet.mockReturnValue(new Promise((r) => (resolve = r)));
     renderSwitch();
-    fireEvent.click(radio("播放器"));
+    fireEvent.click(radio("播放模式"));
     fireEvent.click(await screen.findByRole("button", { name: "进入播放器模式" }));
     await waitFor(() => expect(useAppModeStore.getState().transitioning).toBe(true));
 

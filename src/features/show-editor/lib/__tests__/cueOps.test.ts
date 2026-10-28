@@ -12,6 +12,7 @@ import {
   normalizeFades,
   nudgeCues,
   pasteCues,
+  pasteCuesToTracks,
   removeCues,
   rippleDeleteCues,
   setCueTimes,
@@ -534,5 +535,26 @@ describe("cuesAt / cuesAfter", () => {
     expect(cuesAt(second.project, 1500, a)).toEqual([first.ids[0]]);
     expect(cuesAfter(second.project, 1000, null).sort()).toEqual([first.ids[1], second.ids[0]].sort());
     expect(cuesAfter(second.project, 1000, a)).toEqual([first.ids[1]]);
+  });
+});
+
+describe("多轨粘贴", () => {
+  it("单轨剪贴板粘贴到每条目标轨道；跨轨剪贴板保持原轨道；场景轨道不接受灯具片段", () => {
+    const { project, a, b } = base();
+    const p = edit(project, (d) => {
+      addStaticCue(d, a, 0, { lengthMs: 1000 });
+      d.tracks.push({ id: "sc", target: { kind: "scene" }, mute: false, solo: false, lock: false, name: "场景" });
+    });
+    const clip = copyCues(p, [p.cues[0].id]);
+    const q = edit(p, (d) => void pasteCuesToTracks(d, clip, 5000, [a, b, "sc"]));
+    expect(q.cues.filter((c) => c.startMs === 5000).map((c) => c.trackId)).toEqual([a, b]);
+
+    const two = edit(p, (d) => void addStaticCue(d, b, 2000, { lengthMs: 1000 }));
+    const both = copyCues(two, two.cues.map((c) => c.id));
+    const r = edit(two, (d) => void pasteCuesToTracks(d, both, 10_000, [b]));
+    expect(r.cues.filter((c) => c.startMs >= 10_000).map((c) => [c.trackId, c.startMs])).toEqual([
+      [a, 10_000],
+      [b, 12_000],
+    ]);
   });
 });

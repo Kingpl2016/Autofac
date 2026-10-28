@@ -10,6 +10,8 @@ const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { resetRecoveryCheck } from "../../hooks/useShowFile";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
+import { HINTS } from "../../onboarding/guideContent";
+import { TOUR_VERSION, useOnboardingStore } from "../../stores/useOnboardingStore";
 import { ShowEditorView } from "../ShowEditorView";
 
 /** 编辑器依赖路由（?open= 参数）和查询客户端（节目库刷新）。 */
@@ -38,6 +40,8 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
+  // 这里测编辑器本身：引导视为已看过，局部提示全部关闭
+  useOnboardingStore.setState({ tourVersion: TOUR_VERSION, dismissedHints: HINTS.map((h) => h.id) });
   invoke.mockReset();
   invoke.mockResolvedValue(null);
   resetRecoveryCheck();
@@ -64,10 +68,10 @@ describe("ShowEditorView 外壳", () => {
     renderView();
     const rail = screen.getByRole("tablist", { name: "素材库" });
     const tabs = within(rail).getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["音视频", "灯具", "Cue 模板", "特效", "预设", "分组", "历史"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["媒体", "灯具", "Cue 模板", "特效", "预设", "分组", "历史"]);
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     const library = screen.getByRole("region", { name: "素材库" });
-    expect(within(library).getByRole("heading", { name: "音视频" })).toBeTruthy();
+    expect(within(library).getByRole("heading", { name: "媒体" })).toBeTruthy();
 
     fireEvent.click(tabs[4]);
     expect(within(library).getByRole("heading", { name: "预设" })).toBeTruthy();
@@ -79,7 +83,7 @@ describe("ShowEditorView 外壳", () => {
     fireEvent.keyDown(document.activeElement as Element, { key: "End" });
     expect(within(library).getByRole("list", { name: "撤销历史" })).toBeTruthy();
     fireEvent.keyDown(document.activeElement as Element, { key: "Home" });
-    expect(within(library).getByRole("heading", { name: "音视频" })).toBeTruthy();
+    expect(within(library).getByRole("heading", { name: "媒体" })).toBeTruthy();
   });
 
   it("工具条按钮打开命令面板", () => {

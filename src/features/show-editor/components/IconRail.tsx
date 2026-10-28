@@ -50,6 +50,7 @@ export function IconRail() {
       role="tablist"
       aria-orientation="vertical"
       aria-label={t("editor.library.title")}
+      data-tour="library"
       className="flex h-full w-14 shrink-0 flex-col items-stretch gap-1 border-r border-border bg-surface-1 py-2"
       onKeyDown={onKeyDown}
     >

@@ -9,6 +9,7 @@ import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProgrammerStore } from "../../stores/useProgrammerStore";
 import { useProjectStore } from "../../stores/useProjectStore";
@@ -65,7 +66,8 @@ beforeEach(async () => {
       d.output.gamma = 1;
     }),
   );
-  useEditorUiStore.setState({ selectedFixtureIds: [], playheadMs: 0, blackout: false, centerView: "stage" });
+  useEditorUiStore.setState({ selectedFixtureIds: [], playheadMs: 0, blackout: false });
+  useEditorPrefsStore.setState({ centerView: "stage" });
   useProgrammerStore.setState({ values: {}, live: false });
 });
 

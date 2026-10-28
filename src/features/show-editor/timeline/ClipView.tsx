@@ -1,11 +1,13 @@
 import { memo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { Aperture, Focus, Move, Palette, Settings2, TriangleAlert, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { cssColor } from "../lib/cueTemplates";
+import type { LayerBadge } from "../lib/fixtureProfile";
 import { lookKeyTimes } from "../lib/keyframes";
 import { clipColor } from "../lib/looks";
-import type { Cue, Preset } from "../lib/project";
+import { CUE_TAG_COLORS, type Cue, type Preset } from "../lib/project";
 import { formatTimecode } from "../lib/time";
 import { CueBlock } from "./CueBlock";
 
@@ -32,7 +34,23 @@ interface ClipViewProps {
   presets: readonly Preset[];
   /** 实际输出色带（CSS 渐变，引擎采样）；尚未采样时为 `null` */
   strip: string | null;
+  /** 外观片段用到的属性组（徽标） */
+  badges?: readonly LayerBadge[];
+  /** 外观里没有任何一台灯支持的层（警告） */
+  unsupported?: readonly string[];
 }
+
+/** 属性徽标的图标。 */
+const BADGE_ICONS: Record<LayerBadge, LucideIcon> = {
+  color: Palette,
+  position: Move,
+  beam: Aperture,
+  focus: Focus,
+  control: Settings2,
+};
+
+/** 宽度不小于这个值时才画属性徽标。 */
+const MIN_BADGE_WIDTH_PX = 44;
 
 /** 片段类型的强调色（顶部细条），区分灯光 / 场景 / 特效。 */
 const KIND_ACCENT: Record<Cue["kind"], string> = {
@@ -66,6 +84,8 @@ export const ClipView = memo(function ClipView({
   invalid,
   presets,
   strip,
+  badges,
+  unsupported,
 }: ClipViewProps) {
   const { t } = useTranslation();
   const label = t("editor.timeline.clipLabel", {
@@ -74,6 +94,18 @@ export const ClipView = memo(function ClipView({
     end: formatTimecode(cue.endMs),
     brightness: Math.round(cue.brightness),
   });
+  const layerName = (k: string) =>
+    k === "intensity" ? t("editor.look.intensity") : k === "color" ? t("editor.look.color") : t(`fixtures.functions.${k}`);
+  const warn = unsupported && unsupported.length > 0 ? t("editor.timeline.clipUnsupported", { layers: unsupported.map(layerName).join("、") }) : null;
+  const fullLabel = [
+    label,
+    cue.tag ? t(`editor.tags.${cue.tag}`) : null,
+    cue.disabled ? t("editor.timeline.clipDisabled") : null,
+    warn,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const tagColor = cue.tag ? CUE_TAG_COLORS[cue.tag] : null;
   const handles = !locked && !collapsed && width >= MIN_HANDLE_WIDTH_PX;
   const length = Math.max(1, cue.endMs - cue.startMs);
   // 外观片段的关键帧画成 ◆（宽度太窄时不画）
@@ -83,11 +115,13 @@ export const ClipView = memo(function ClipView({
     <div
       role="button"
       tabIndex={-1}
-      aria-label={label}
+      aria-label={fullLabel}
       aria-pressed={selected}
       data-cue-id={cue.id}
+      data-disabled={cue.disabled ? "" : undefined}
       className={cn(
         "group absolute overflow-hidden rounded-[5px] border bg-surface-1/60",
+        cue.disabled && "opacity-45 grayscale",
         locked ? "cursor-default" : "cursor-grab",
         selected ? "border-foreground ring-1 ring-foreground/70" : "border-border/70",
         dragging && "z-10 cursor-grabbing shadow-lg",
@@ -126,6 +160,28 @@ export const ClipView = memo(function ClipView({
           )}
         </>
       )}
+      {tagColor && (
+        <span
+          aria-hidden
+          data-testid="clip-tag"
+          className="pointer-events-none absolute inset-y-0 left-0 z-[3] w-1 bg-(--tag-color)"
+          style={{ "--tag-color": `rgb(${tagColor[0]} ${tagColor[1]} ${tagColor[2]})` } as CSSProperties}
+        />
+      )}
+      {!collapsed && width >= MIN_BADGE_WIDTH_PX && (badges?.length || warn) && (
+        <span aria-hidden data-testid="clip-badges" className="pointer-events-none absolute right-1 top-1 z-[3] flex items-center gap-0.5">
+          {warn && (
+            <span title={warn} data-testid="clip-warning" className="pointer-events-auto text-warning">
+              <TriangleAlert className="size-3" />
+            </span>
+          )}
+          {badges?.map((b) => {
+            const Icon = BADGE_ICONS[b];
+            return <Icon key={b} data-badge={b} className="size-3 text-foreground/70" />;
+          })}
+        </span>
+      )}
+      {cue.disabled && <span aria-hidden className="hatch-removed pointer-events-none absolute inset-0 z-[3] opacity-60" />}
       {handles && (
         <>
           <span

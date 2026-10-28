@@ -24,15 +24,19 @@ import { useMediaDrop } from "../hooks/useMediaDrop";
 import { useMediaRuntime } from "../hooks/useMediaRuntime";
 import { useShowFile } from "../hooks/useShowFile";
 import { useShowPlayback } from "../hooks/useShowPlayback";
-import { dropOnTimeline, dropTemplate } from "../timeline/dropTemplate";
+import { OnboardingRuntime } from "../onboarding/useOnboarding";
+import { dropOnTimeline, templateStyle } from "../timeline/dropTemplate";
 import { readTimelineViewport } from "../timeline/timelineView";
 import { START_LEFT } from "../timeline/timelineData";
 import { placeMediaOnTimeline } from "../hooks/mediaActions";
+import { effectNeeds, templateNeeds, trackSupports } from "../lib/cueDefaults";
 import { addLookCue } from "../lib/cueOps";
+import type { FixtureCapability } from "../lib/fixtureProfile";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { AutoDraftDialog } from "./AutoDraftDialog";
 import { CommandPalette } from "./CommandPalette";
+import { DurationConfirmDialog } from "./DurationConfirmDialog";
 import { EditorToolbar } from "./EditorToolbar";
 import { EffectChip, type EffectDragData } from "./EffectsTab";
 import { FileDialogs } from "./FileDialogs";
@@ -100,10 +104,31 @@ export function ShowEditorView() {
     const { tracks } = useProjectStore.getState().project;
     const viewport = readTimelineViewport();
     let result;
+    // 素材需要的能力：轨道上没有一台灯支持时拒绝放下并说明原因
+    let rejected: FixtureCapability | null = null;
+    const guard =
+      (needs: FixtureCapability, add: (trackId: string, timeMs: number) => string | null) =>
+      (trackId: string, timeMs: number) => {
+        if (!trackSupports(useProjectStore.getState().project, trackId, needs)) {
+          rejected = needs;
+          return null;
+        }
+        return add(trackId, timeMs);
+      };
     if (data.kind === "template") {
-      result = dropTemplate(viewport, pointer, tracks, data.template, actions.addAt);
+      result = dropOnTimeline(
+        viewport,
+        pointer,
+        tracks,
+        guard(templateNeeds(data.template), (trackId, timeMs) => actions.addAt(trackId, timeMs, templateStyle(data.template))),
+      );
     } else if (data.kind === "effect") {
-      result = dropOnTimeline(viewport, pointer, tracks, (trackId, timeMs) => actions.addEffectAt(trackId, timeMs, data.preset));
+      result = dropOnTimeline(
+        viewport,
+        pointer,
+        tracks,
+        guard(effectNeeds(data.preset), (trackId, timeMs) => actions.addEffectAt(trackId, timeMs, data.preset)),
+      );
     } else if (data.kind === "media") {
       // 素材拖到时间线：放在指针处的时间；指针下是同类媒体轨道时优先放进那条
       if (!viewport) return;
@@ -133,7 +158,10 @@ export function ShowEditorView() {
     } else {
       return;
     }
-    if (result.kind === "noRoom") announce(t("editor.templates.noRoom"));
+    if (result.kind !== "noRoom") return;
+    // 在闭包里赋值，TS 的控制流分析看不到，需显式标注
+    const reason = rejected as FixtureCapability | null;
+    announce(reason ? t("editor.apply.rejected", { reason: t(`editor.apply.needs.${reason}`) }) : t("editor.templates.noRoom"));
   };
 
   return (
@@ -166,7 +194,7 @@ export function ShowEditorView() {
           </ResizablePanel>
           <ResizableHandle axis="y" />
           <ResizablePanel defaultSize="38%" minSize="18%">
-            <TimelinePanel />
+            <TimelinePanel commands={commands} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
@@ -182,7 +210,9 @@ export function ShowEditorView() {
       <CommandPalette commands={commands} />
       <RadialMenu commands={commands} />
       <AutoDraftDialog />
+      <DurationConfirmDialog />
       <KeymapDialog commands={commands} />
+      <OnboardingRuntime />
       <DragOverlay dropAnimation={null}>
         {dragging?.kind === "template" && <TemplateChip template={dragging.template} overlay />}
         {dragging?.kind === "effect" && <EffectChip preset={dragging.preset} overlay />}

@@ -20,7 +20,7 @@ export function InspectorPanel() {
   // 选中的 id 可能已被删除（撤销等），按工程过滤
   const mediaClips = useMemo(() => allClips.filter((c) => selectedMedia.includes(c.id)), [allClips, selectedMedia]);
   return (
-    <PanelFrame title={t("editor.inspector.title")} noScroll>
+    <PanelFrame title={t("editor.inspector.title")} tourId="inspector" noScroll>
       <Tabs
         value={tab}
         onValueChange={(v) => setTab((INSPECTOR_TABS as readonly string[]).includes(v) ? (v as InspectorTab) : "patch")}

@@ -1,0 +1,111 @@
+/*
+ * 上手引导（driver.js 导览与局部提示）的外观：覆盖库的默认浅色样式，改用应用的语义色，随主题切换。
+ * 只改颜色、字体、圆角与按钮；定位与动画沿用库的实现。
+ */
+
+.driver-popover.ans-guide {
+  font-family: inherit;
+  color: var(--popover-foreground);
+  background-color: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.35);
+  max-width: 340px;
+  padding: 14px 16px;
+}
+
+.driver-popover.ans-guide .driver-popover-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding-right: 24px;
+}
+
+.driver-popover.ans-guide .driver-popover-description {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  white-space: pre-line;
+}
+
+.driver-popover.ans-guide .driver-popover-progress-text {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.ans-guide .driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+
+.driver-popover.ans-guide .driver-popover-close-btn:hover,
+.driver-popover.ans-guide .driver-popover-close-btn:focus-visible {
+  color: var(--popover-foreground);
+}
+
+.driver-popover.ans-guide .driver-popover-footer-btn {
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--popover-foreground);
+  background-color: transparent;
+  border: 1px solid var(--border);
+  text-shadow: none;
+}
+
+.driver-popover.ans-guide .driver-popover-footer-btn:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* 主按钮（下一步 / 完成 / 知道了）用主色 */
+.driver-popover.ans-guide .driver-popover-next-btn {
+  color: var(--primary-foreground);
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.driver-popover.ans-guide .driver-popover-next-btn:hover {
+  color: var(--primary-foreground);
+  background-color: var(--primary);
+  filter: brightness(1.1);
+}
+
+/* 只在键盘操作时显示焦点环 */
+.driver-popover.ans-guide .driver-popover-footer-btn:focus {
+  outline: none;
+}
+
+.driver-popover.ans-guide .driver-popover-footer-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* 箭头与弹层同色 */
+.driver-popover.ans-guide .driver-popover-arrow {
+  border-color: var(--popover);
+}
+.driver-popover.ans-guide .driver-popover-arrow-side-left {
+  border-color: transparent transparent transparent var(--popover);
+}
+.driver-popover.ans-guide .driver-popover-arrow-side-right {
+  border-color: transparent var(--popover) transparent transparent;
+}
+.driver-popover.ans-guide .driver-popover-arrow-side-top {
+  border-color: var(--popover) transparent transparent transparent;
+}
+.driver-popover.ans-guide .driver-popover-arrow-side-bottom {
+  border-color: transparent transparent var(--popover) transparent;
+}
+
+/* 局部提示的闪烁小点：主色 */
+.driver-hint.ans-guide-beacon {
+  --driver-hint-color: var(--primary);
+  --driver-hint-size: 22px;
+}
+
+.driver-hint.ans-guide-beacon:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 50%;
+}

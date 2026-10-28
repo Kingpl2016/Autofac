@@ -612,7 +612,8 @@ fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<Comp
         let mut cues: Vec<CompiledCue> = project
             .cues
             .iter()
-            .filter(|c| c.base().track_id == t.id && c.base().end_ms > c.base().start_ms)
+            // 禁用的片段不输出
+            .filter(|c| c.base().track_id == t.id && c.base().end_ms > c.base().start_ms && !c.base().disabled)
             .filter_map(|c| match c {
                 // 场景片段只在场景轨道上有效，其它片段只在灯具 / 分组轨道上有效
                 Cue::Scene(s) if scene => Some(CompiledCue::Scene {

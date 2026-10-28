@@ -7,7 +7,8 @@ import { produce } from "immer";
 import i18n from "@/shared/i18n";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { useEditorHotkeys } from "../../hooks/useEditorHotkeys";
-import { addStaticCue } from "../../lib/cueOps";
+import { addLookCue, addStaticCue } from "../../lib/cueOps";
+import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject, type ShowProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
@@ -218,7 +219,32 @@ describe("TimelinePanel（自研时间线）", () => {
     fireEvent.pointerMove(ruler, { clientX: x(20_000), pointerId: 1 });
     fireEvent.pointerUp(ruler, { clientX: x(20_000), pointerId: 1 });
     expect(ui().playheadMs).toBe(20_000);
-    expect(screen.getByTestId("playhead").style.transform).toBe(`translateX(${x(20_000)}px)`);
+    // 抓取带比线宽：中心对准时刻
+    expect(screen.getByTestId("playhead").style.transform).toBe(`translateX(${x(20_000) - 4.5}px)`);
+    // 标尺悬停显示幽灵线，离开后消失
+    fireEvent.pointerMove(ruler, { clientX: x(30_000) });
+    expect(screen.getByTestId("ruler-ghost").textContent).toBe("00:30.00");
+    fireEvent.pointerLeave(ruler);
+    expect(screen.queryByTestId("ruler-ghost")).toBeNull();
+  });
+
+  it("直接拖动播放头：吸附到标记点，按住 Alt 不吸附；方向键逐帧移动", () => {
+    loadSample();
+    act(() =>
+      useProjectStore.getState().update((d) => void d.markers.push({ id: "m", timeMs: 10_000, label: "副歌" })),
+    );
+    act(() => useEditorUiStore.setState({ snapEnabled: true }));
+    renderPanel();
+    const head = screen.getByRole("slider", { name: "播放头（拖动定位）" });
+    fireEvent.pointerDown(head, { button: 0, clientX: x(0), pointerId: 2 });
+    fireEvent.pointerMove(head, { clientX: x(9_950), pointerId: 2 });
+    expect(ui().playheadMs).toBe(10_000);
+    fireEvent.pointerMove(head, { clientX: x(9_950), pointerId: 2, altKey: true });
+    expect(ui().playheadMs).toBe(9_967);
+    fireEvent.pointerUp(head, { pointerId: 2 });
+    expect(head.getAttribute("aria-valuetext")).toBe("00:09.29");
+    fireEvent.keyDown(head, { key: "ArrowRight", shiftKey: true });
+    expect(ui().playheadMs).toBe(10_300);
   });
 
   it("A-B 循环区间：标尺上显示入点出点，方向键逐帧调整", () => {
@@ -362,5 +388,105 @@ describe("TimelinePanel 键盘", () => {
     const headers = screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 1" }).closest("ul")?.parentElement as HTMLElement;
     fireEvent.wheel(headers, { deltaY: 40 });
     expect(screen.getByTestId("timeline-body").scrollTop).toBe(40);
+  });
+});
+
+/** 带命令表的时间线（右键菜单的命令项来自命令表）。 */
+function WithCommands() {
+  const commands = useEditorHotkeys();
+  return <TimelinePanel commands={commands} />;
+}
+
+describe("TimelinePanel 右键菜单与轨道多选", () => {
+  const renderFull = () =>
+    render(
+      <DndContext>
+        <WithCommands />
+      </DndContext>,
+    );
+  const menu = () => screen.getByRole("menu", { name: "右键菜单" });
+
+  it("右键片段：先选中它，菜单里执行“删除播放头左侧”", () => {
+    const { cueA } = loadSample();
+    act(() => ui().setPlayhead(2000));
+    renderFull();
+    fireEvent.contextMenu(clip(), { clientX: x(1500), clientY: y(0) });
+    expect(ui().selectedCueIds).toEqual([cueA]);
+    expect(within(menu()).getByRole("menuitem", { name: /剪切/ })).toBeTruthy();
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: /删除播放头左侧/ }));
+    expect(project().cues.map((c) => [c.startMs, c.endMs])).toEqual([[2000, 3000]]);
+  });
+
+  it("右键轨道头删除灯具；轨道头 Ctrl / Shift 多选后按 Delete 一次删除全部（可撤销）", () => {
+    const { b } = loadSample();
+    act(() => useProjectStore.getState().update((d) => void addFixtures(d, RGBW, 1)));
+    renderFull();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 1" }));
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: "删除灯具及其轨道" }));
+    expect(project().fixtures.map((f) => f.name)).toEqual(["RGBW全彩灯 2", "RGBW全彩灯 3"]);
+    expect(project().cues).toHaveLength(0);
+
+    const h2 = screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 2" });
+    fireEvent.click(h2);
+    fireEvent.click(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 3" }), { shiftKey: true });
+    expect(ui().selectedTrackIds).toHaveLength(2);
+    expect(ui().selectedTrackIds).toContain(b);
+    fireEvent.keyDown(h2, { key: "Delete" });
+    expect(project().fixtures).toEqual([]);
+    act(() => useProjectStore.temporal.getState().undo());
+    expect(project().fixtures).toHaveLength(2);
+  });
+
+  it("多轨编辑：多选轨道后双击空白处，在每条轨道上各建一个（一步撤销）；粘贴到全部选中轨道", () => {
+    const { a, b, cueA } = loadSample();
+    renderFull();
+    fireEvent.click(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 2" }), { ctrlKey: true });
+    const steps = useProjectStore.temporal.getState().pastStates.length;
+    // 第一下单击不应把多选收成单选
+    fireEvent.pointerDown(body(), { button: 0, clientX: x(10_000), clientY: y(1) });
+    fireEvent.pointerUp(body(), { clientX: x(10_000), clientY: y(1) });
+    expect(ui().selectedTrackIds).toEqual([a, b]);
+    fireEvent.doubleClick(body(), { clientX: x(10_000), clientY: y(1) });
+    const added = project().cues.filter((c) => c.startMs === 10_000);
+    expect(added.map((c) => c.trackId).sort()).toEqual([a, b].sort());
+    expect(useProjectStore.temporal.getState().pastStates.length).toBe(steps + 1);
+
+    act(() => {
+      ui().selectCues([cueA]);
+      ui().setPlayhead(20_000);
+    });
+    fireEvent.keyDown(window, { key: "c", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "v", ctrlKey: true });
+    expect(project().cues.filter((c) => c.startMs === 20_000).map((c) => c.trackId).sort()).toEqual([a, b].sort());
+  });
+
+  it("按灯具类型：轨道头显示类型图标；外观片段显示属性徽标，没有灯支持的层给出警告", () => {
+    const { a } = loadSample();
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        addLookCue(d, a, 5000, { intensity: fixed(100), color: fixed({ kind: "rgb", rgb: [0, 0, 255] }), attrs: { pan: fixed(0.5) } }, 2000);
+      }),
+    );
+    renderFull();
+    expect(screen.getAllByRole("img", { name: "混色灯" })).toHaveLength(2);
+    const look = screen.getByRole("button", { name: /00:05\.00/ });
+    expect(look.getAttribute("aria-label")).toContain("没有灯支持：水平 Pan");
+    expect(within(look).getByTestId("clip-warning")).toBeTruthy();
+    expect([...look.querySelectorAll("[data-badge]")].map((el) => el.getAttribute("data-badge"))).toEqual(["color", "position"]);
+  });
+
+  it("按住 Ctrl 松手：复制到新位置，原片段不动并选中副本", () => {
+    const { cueA, b } = loadSample();
+    renderFull();
+    // 拖动预览时片段的无障碍名称会随轨道变化，先拿住元素
+    const el = clip();
+    fireEvent.pointerDown(el, { button: 0, clientX: x(1500), clientY: y(0), pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: x(5500), clientY: y(1), pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: x(5500), clientY: y(1), pointerId: 1, ctrlKey: true });
+    expect(project().cues.find((c) => c.id === cueA)).toMatchObject({ startMs: 1000, endMs: 3000 });
+    const copy = project().cues.find((c) => c.id !== cueA);
+    expect(copy).toMatchObject({ trackId: b, startMs: 5000, endMs: 7000 });
+    expect(ui().selectedCueIds).toEqual([copy?.id]);
   });
 });

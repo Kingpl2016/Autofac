@@ -907,6 +907,13 @@
     "recordingZstdLevel": "Zstd level (1-9)",
     "recordingSplitMinutes": "Auto-split length (minutes, 0 = off)",
     "sectionShortcuts": "Shortcuts",
+    "sectionDeveloper": "Developer",
+    "descDeveloper": "For debugging, shown only in development builds",
+    "devtools": "Developer tools",
+    "devtoolsHint": "Open the WebView inspector (or press Ctrl+Shift+I)",
+    "devtoolsFailed": "Could not toggle developer tools",
+    "nativeContextMenu": "Keep the browser context menu",
+    "nativeContextMenuHint": "Temporarily restore the WebView's own context menu (Inspect Element etc.). Development builds only",
     "hotkeyStartRecord": "Start recording",
     "hotkeyStopRecord": "Stop recording",
     "hotkeyReset": "Reset to default",
@@ -1354,7 +1361,7 @@
     "untitled": "Untitled show",
     "library": {
       "title": "Library",
-      "media": "Audio / Video",
+      "media": "Media",
       "fixtures": "Fixtures",
       "cues": "Cue templates",
       "effects": "Effects",
@@ -1453,7 +1460,9 @@
       "paste": "Paste selected layers",
       "pasteWhich": "Which layers to paste",
       "copied": "Look copied",
-      "pasted": "Pasted {{count}} layer groups"
+      "pasted": "Pasted {{count}} layer groups",
+      "partial": "{{supported}}/{{total}} fixtures support this",
+      "unsupported": "No fixture on this track supports “{{name}}”; this layer has no effect"
     },
     "spread": {
       "title": "Spread across fixtures",
@@ -1541,7 +1550,17 @@
         "neutral": "Neutral white 4300K",
         "daylight": "Daylight 5600K",
         "white": "RGB full white"
-      }
+      },
+      "input": "Input method",
+      "inputs": {
+        "wheel": "Wheel",
+        "hsl": "HSL",
+        "rgb": "RGB values"
+      },
+      "hue": "Hue",
+      "saturation": "Saturation",
+      "lightness": "Lightness",
+      "valueOf": "{{name}} value"
     },
     "look": {
       "title": "Look & keyframes",
@@ -1586,7 +1605,11 @@
       "unsafeFlash": "Flashes about {{hz}} times per second, above the recommended {{max}}. This can cause discomfort or photosensitive seizures. Lower the cycles or lengthen the clip.",
       "convert": "Convert to look clip ({{count}})",
       "convertHint": "After converting you can keyframe intensity and color and add attribute layers",
-      "converted": "Converted {{count}} clips"
+      "converted": "Converted {{count}} clips",
+      "noColor": "Fixtures on this track have no color (intensity only)",
+      "colorUnsupported": "Fixtures on this track have no color; the color layer has no effect",
+      "removeColor": "Remove color layer",
+      "colorPartial": "{{supported}}/{{total}} fixtures support color; the rest follow intensity only"
     },
     "sheet": {
       "title": "Fixture sheet",
@@ -1648,6 +1671,7 @@
       "zoomOut": "Zoom out timeline",
       "tracksLabel": "Tracks and cues",
       "playhead": "Playhead position",
+      "playheadHandle": "Playhead (drag to move)",
       "missingTarget": "(deleted)",
       "selectTrack": "Select track {{name}}",
       "mute": "Mute {{name}}",
@@ -1665,7 +1689,12 @@
       "collapse": "Collapse {{name}}",
       "expand": "Expand {{name}}",
       "cycleHeight": "Change track height of {{name}}",
-      "overview": "Show overview (drag the box to jump, arrow keys page)"
+      "overview": "Show overview (drag the box to jump, arrow keys page)",
+      "deleteTrack": "Delete track {{name}}",
+      "clipDisabled": "Disabled",
+      "addedSkipped": "Added clips on {{count}} tracks; {{skipped}} tracks had no room",
+      "addedOnTracks": "Added clips on {{count}} tracks",
+      "clipUnsupported": "Not supported by any fixture: {{layers}}"
     },
     "ruler": {
       "label": "Time ruler",
@@ -1779,6 +1808,8 @@
       "blackout": "Toggle blackout",
       "blackoutOff": "Blackout released",
       "addSection": "New section at playhead",
+      "fitDuration": "Fit show length to content",
+      "endAtPlayhead": "End the show at the playhead",
       "loopSection": "Loop the section at the playhead",
       "center": {
         "stage": "Preview: stage",
@@ -1789,7 +1820,19 @@
       "paletteSearch": "Search commands…",
       "paletteEmpty": "No matching commands",
       "paletteHint": "↑↓ to move · Enter to run · Esc to close",
-      "disabled": "Not available right now"
+      "disabled": "Not available right now",
+      "cut": "Cut",
+      "toggleDisabled": "Disable / enable clips",
+      "trimStart": "Delete left of playhead",
+      "trimEnd": "Delete right of playhead",
+      "prevEdit": "Go to previous edit point",
+      "nextEdit": "Go to next edit point",
+      "prevCue": "Select previous clip",
+      "nextCue": "Select next clip",
+      "backFrame": "Back one frame",
+      "pause": "Pause",
+      "play": "Play",
+      "contextMenu": "Open context menu"
     },
     "unsaved": "Unsaved changes",
     "toolbarUndo": "Undo",
@@ -1947,7 +1990,9 @@
       "end": "End",
       "duration": "Length",
       "dragFadeIn": "Drag to set the fade-in length",
-      "dragFadeOut": "Drag to set the fade-out length"
+      "dragFadeOut": "Drag to set the fade-out length",
+      "sameLength": "Same length",
+      "lengthSet": "Set {{count}} clip(s) to {{time}}"
     },
     "markers": {
       "defaultName": "Marker {{n}}",
@@ -2123,8 +2168,8 @@
       "seedHint": "The same seed gives the same sparkle pattern. Preview, playback and export match."
     },
     "media": {
-      "fileType": "Audio and video files",
-      "import": "Import audio/video…",
+      "fileType": "Media files",
+      "import": "Import media files…",
       "hint": "Media is referenced, not copied into the project. Imported files are placed on a media track at 0:00; drag the icon to place them again, or drop files onto the window.",
       "drag": "Drag onto the timeline to place {{name}}",
       "placeAtPlayhead": "Place {{name}} at the playhead",
@@ -2137,11 +2182,11 @@
       "relink": "Relink…",
       "recheck": "Check again",
       "noAudio": "No audio track, no waveform",
-      "skipped": "{{count}} files are not supported audio/video formats and were skipped",
+      "skipped": "{{count}} files are not supported media formats and were skipped",
       "extended": "{{name}} is longer than the show, so the show was extended to fit it",
       "added": "Imported {{count}} media files",
       "waveform": "Waveform of {{name}}",
-      "dropHint": "Release to import audio/video",
+      "dropHint": "Release to import media files",
       "errors": {
         "notFound": "File not found: {{name}}",
         "unsupported": "Unsupported format: {{name}}",
@@ -2171,21 +2216,79 @@
         "high": "Peak"
       }
     },
+    "duration": {
+      "edit": "Show length (type a new length, e.g. 2:30)",
+      "invalid": "Unrecognized length. Use min:sec or min:sec.frames",
+      "set": "Show length set to {{time}}",
+      "noContent": "The timeline has no content yet",
+      "handle": "End of show {{time}} (drag to change the length)",
+      "confirmTitle": "Shorten the show to {{time}}?",
+      "confirmDescription": "Content past the new end will be cut. You can undo this in one step.",
+      "overflow": {
+        "trimmedCues": "Shorten {{count}} clip(s)",
+        "removedCues": "Delete {{count}} clip(s)",
+        "mediaClips": "Shorten or delete {{count}} media clip(s)",
+        "sections": "Shorten or delete {{count}} section(s)",
+        "markers": "Delete {{count}} marker(s)"
+      },
+      "trim": "Cut the overflow",
+      "cancel": "Cancel"
+    },
     "history": {
       "hint": "Click a step to go back to just after it. Up to {{limit}} steps are kept. Undone steps are dropped once you make a new change.",
       "list": "Undo history",
       "start": "Opened project",
       "current": "Current",
-      "cues": { "added": "Added {{count}} clip(s)", "removed": "Deleted {{count}} clip(s)", "changed": "Edited {{count}} clip(s)" },
-      "mediaClips": { "added": "Placed {{count}} media clip(s)", "removed": "Deleted {{count}} media clip(s)", "changed": "Edited {{count}} media clip(s)" },
-      "fixtures": { "added": "Added {{count}} fixture(s)", "removed": "Deleted {{count}} fixture(s)", "changed": "Edited {{count}} fixture(s)" },
-      "groups": { "added": "Created a group", "removed": "Deleted a group", "changed": "Edited a group" },
-      "sections": { "added": "Created {{count}} section(s)", "removed": "Deleted a section", "changed": "Edited a section" },
-      "markers": { "added": "Added a marker", "removed": "Deleted a marker", "changed": "Edited a marker" },
-      "presets": { "added": "Created a preset", "removed": "Deleted a preset", "changed": "Edited a preset" },
-      "media": { "added": "Imported {{count}} media file(s)", "removed": "Removed media", "changed": "Edited media" },
-      "mediaTracks": { "added": "Created a media track", "removed": "Deleted a media track", "changed": "Edited a media track" },
-      "tracks": { "added": "Created a track", "removed": "Deleted a track", "changed": "Edited a track" },
+      "cues": {
+        "added": "Added {{count}} clip(s)",
+        "removed": "Deleted {{count}} clip(s)",
+        "changed": "Edited {{count}} clip(s)"
+      },
+      "mediaClips": {
+        "added": "Placed {{count}} media clip(s)",
+        "removed": "Deleted {{count}} media clip(s)",
+        "changed": "Edited {{count}} media clip(s)"
+      },
+      "fixtures": {
+        "added": "Added {{count}} fixture(s)",
+        "removed": "Deleted {{count}} fixture(s)",
+        "changed": "Edited {{count}} fixture(s)"
+      },
+      "groups": {
+        "added": "Created a group",
+        "removed": "Deleted a group",
+        "changed": "Edited a group"
+      },
+      "sections": {
+        "added": "Created {{count}} section(s)",
+        "removed": "Deleted a section",
+        "changed": "Edited a section"
+      },
+      "markers": {
+        "added": "Added a marker",
+        "removed": "Deleted a marker",
+        "changed": "Edited a marker"
+      },
+      "presets": {
+        "added": "Created a preset",
+        "removed": "Deleted a preset",
+        "changed": "Edited a preset"
+      },
+      "media": {
+        "added": "Imported {{count}} media file(s)",
+        "removed": "Removed media",
+        "changed": "Edited media"
+      },
+      "mediaTracks": {
+        "added": "Created a media track",
+        "removed": "Deleted a media track",
+        "changed": "Edited a media track"
+      },
+      "tracks": {
+        "added": "Created a track",
+        "removed": "Deleted a track",
+        "changed": "Edited a track"
+      },
       "tempo": "Changed the tempo",
       "stage": "Changed the stage layout",
       "output": "Changed output settings",
@@ -2311,6 +2414,210 @@
       "trackVolume": "Track volume ({{name}})",
       "trackVolumeValue": "Track volume percentage",
       "invalidPlace": "Does not fit: overlaps a clip on the same track or runs past the end of the source"
+    },
+    "context": {
+      "title": "Context menu",
+      "tag": "Color label",
+      "clearTag": "Clear label",
+      "convertToLook": "Convert to look clip",
+      "saveAsPreset": "Save as preset",
+      "selectTrackCues": "Select all clips on this track",
+      "clipMute": "Mute clip",
+      "pixelMap": "Pixel map…",
+      "addCueTrack": "New clip at playhead",
+      "addCueTracks": "New clip at playhead on {{count}} tracks",
+      "pasteAtPlayhead": "Paste at playhead",
+      "mute": "Mute",
+      "solo": "Solo",
+      "lock": "Lock",
+      "collapse": "Collapse",
+      "cycleHeight": "Change track height",
+      "deleteTracks": "Delete {{count}} tracks (fixture tracks with their fixtures)",
+      "deleteFixture": "Delete fixture and its track",
+      "deleteGroup": "Delete group (keep fixtures)",
+      "deleteScene": "Delete scene track",
+      "deleteGroupWithMembers": "Delete group and all its fixtures",
+      "deleteMediaTrack": "Delete media track",
+      "addCueHere": "New clip here",
+      "pasteHere": "Paste here",
+      "markerHere": "Add marker here",
+      "playheadHere": "Move playhead here",
+      "sectionHere": "New section here",
+      "loopIn": "Set loop in point",
+      "loopOut": "Set loop out point",
+      "endHere": "End the show here",
+      "converted": "Converted {{count}} clip(s)",
+      "presetName": "Preset {{n}}",
+      "presetSaved": "Saved as a preset",
+      "deleted": "Deleted {{fixtures}} fixture(s), {{tracks}} track(s) and {{cues}} clip(s) (undoable)",
+      "selectSameModel": "Select tracks of the same model",
+      "groupTracks": "Group {{count}} fixtures",
+      "syncTracks": "Sync {{count}} fixtures to the first (mode / height / rotation / hanging)"
+    },
+    "tags": {
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "cyan": "Cyan",
+      "blue": "Blue",
+      "purple": "Purple",
+      "pink": "Pink"
+    },
+    "edit": {
+      "disabled": "Disabled {{count}} clip(s)",
+      "enabled": "Enabled {{count}} clip(s)",
+      "trimmed": "Trimmed {{count}} clip(s)",
+      "nothingToTrim": "The playhead is not inside a clip that can be trimmed"
+    },
+    "batch": {
+      "title": "Batch edit {{count}} selected fixtures",
+      "field": {
+        "mode": "DMX mode",
+        "height": "Mount height",
+        "rotation": "Rotation",
+        "hanging": "Hanging",
+        "mirrors": "Mirrors (relative)"
+      },
+      "sync": "Sync to “{{name}}”",
+      "synced": "Synced {{count}} fixtures",
+      "syncedSkipped": "Synced {{count}} fixtures; {{skipped}} of a different model kept their DMX mode",
+      "pattern": "Name pattern",
+      "patternPlaceholder": "e.g. Front {n}",
+      "start": "Start at",
+      "rename": "Rename {{count}}",
+      "renamed": "Renamed {{count}} fixtures",
+      "selectSame": "Select same model",
+      "selectedSame": "Selected {{count}} fixtures of the same model",
+      "hint": "The first fixture in the Patch list is the reference; {n} is the number, {name} the old name. DMX mode only syncs to the same model.",
+      "createTracks": "Create {{count}} missing tracks",
+      "tracksCreated": "Created {{count}} tracks"
+    },
+    "apply": {
+      "none": "N/A",
+      "partial": "{{supported}}/{{total}}",
+      "rejected": "Not added: {{reason}}",
+      "needs": {
+        "intensity": "needs fixtures with intensity",
+        "mixing": "needs color-mixing fixtures (RGB / CMY)",
+        "colorTemp": "needs fixtures with color temperature",
+        "colorWheel": "needs fixtures with a color wheel",
+        "position": "needs moving fixtures (Pan / Tilt)",
+        "beam": "needs fixtures with beam functions (gobo, prism…)",
+        "focus": "needs fixtures with focus / zoom",
+        "strobe": "needs fixtures with a shutter"
+      }
+    },
+    "fixtureType": {
+      "dimmer": "Dimmer",
+      "white": "Tunable white",
+      "mixing": "Color mixing",
+      "mover": "Moving head",
+      "other": "Other fixture"
+    },
+    "universe": {
+      "view": "Universe view",
+      "cards": "Cards",
+      "strip": "Channels",
+      "count": "{{count}} universes",
+      "fixtureList": "Fixtures in universe {{universe}} (by address)",
+      "mirror": "mirror",
+      "conflict": "conflict",
+      "conflicts": "{{count}} conflicts",
+      "cell": "Channel {{channel}} · {{name}}",
+      "cellEmpty": "Channel {{channel}} · empty",
+      "collapse": "Collapse {{name}}",
+      "expand": "Expand {{name}}",
+      "fixtures": "{{count}} fixtures",
+      "port": "{{protocol}} {{target}} → {{remote}}",
+      "noPorts": "No output ports"
+    },
+    "swatches": {
+      "groupBy": "Group swatches by",
+      "by": {
+        "universe": "Universe",
+        "group": "Group",
+        "model": "Model"
+      },
+      "density": "Swatch size",
+      "densities": {
+        "comfortable": "Large (name and address)",
+        "compact": "Compact (fit many fixtures)"
+      },
+      "legend": "Legend",
+      "legendProgrammed": "In programmer",
+      "legendConflict": "Address conflict",
+      "legendMirror": "Has mirror addresses",
+      "legendLevel": "Level",
+      "ungrouped": "Ungrouped",
+      "address": "universe {{universe}} address {{address}}",
+      "conflict": "address conflict",
+      "mirrorTo": "mirrored to {{targets}}",
+      "usage": "{{used}} / {{total}} channels used",
+      "selectSection": "Select all fixtures in {{name}}"
+    },
+    "guide": {
+      "next": "Next",
+      "prev": "Back",
+      "done": "Get started",
+      "skip": "Skip tour",
+      "gotIt": "Got it",
+      "progress": "{{current}} / {{total}}",
+      "replay": "Replay getting-started tour",
+      "reset": "Reset tour and tips",
+      "resetDone": "Reset: the tour plays again next time you open the editor, and panel tips come back",
+      "tour": {
+        "welcome": {
+          "title": "Welcome to the show editor",
+          "body": "Take a minute to meet the main areas. Press Esc to skip any time; search “tour” in the command palette (Ctrl+K) to replay it."
+        },
+        "library": {
+          "title": "Library",
+          "body": "The icons on the left switch sections: media, fixtures, cue templates, effects, presets, groups and history.\nAdd fixtures first; drag templates and effects onto the timeline, or click to add them to the selected track."
+        },
+        "preview": {
+          "title": "Preview",
+          "body": "Shows each fixture's color at the playhead. Swatches are the default, grouped by universe and sorted by address; switch to Stage or Sheet any time — your choice is remembered.\nClick swatches to select fixtures, Ctrl to add, Shift for a range."
+        },
+        "inspector": {
+          "title": "Inspector",
+          "body": "Fixtures & Patch (address, universe, batch sync), Programmer (set values on selected fixtures), and Cue properties (color, keyframes, spread).\nIt only shows attributes the fixtures on that track actually support."
+        },
+        "timeline": {
+          "title": "Timeline",
+          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks."
+        },
+        "mode": {
+          "title": "Live mode / Playback mode",
+          "body": "Live mode receives and forwards external signals; Playback mode outputs your show. You'll be asked to confirm before switching."
+        },
+        "shortcuts": {
+          "title": "Handy shortcuts",
+          "body": "Ctrl+K command palette (every action is searchable)\nSpace play / pause, J / K / L back one frame / pause / play\nShift+Q radial menu, Shift+F10 context menu\nSearch “shortcuts” in the palette to customize keys."
+        }
+      },
+      "hints": {
+        "swatches": {
+          "title": "Swatch groups and legend",
+          "body": "Group by universe, group or model; collapse a section or select it all at once.\nDot = in programmer, red border = address conflict, stripes = mirror addresses, bottom bar = level."
+        },
+        "trackHeaders": {
+          "title": "Select several tracks",
+          "body": "Ctrl-click a track header to add it, Shift-click for a range. Double-click, templates and paste then apply to every selected track; right-click for sync, group and delete."
+        },
+        "patchBatch": {
+          "title": "Batch fixture settings",
+          "body": "Sync mode, mount height, rotation and hanging from the first fixture in the list to the others, or rename them with a pattern like “Front {n}”."
+        },
+        "universeView": {
+          "title": "Universe cards and channel grid",
+          "body": "Cards lay out every fixture by address (same model, same color); the grid shows all 512 channels. Hovering highlights the fixture on the stage too."
+        },
+        "colorInput": {
+          "title": "Three ways to pick a color",
+          "body": "Switch between the wheel, HSL sliders and RGB values; the editor remembers the one you used last."
+        }
+      }
     }
   },
   "fixtures": {
@@ -2521,8 +2828,8 @@
   },
   "mode": {
     "switchLabel": "Run mode",
-    "live": "Live",
-    "player": "Player",
+    "live": "Live mode",
+    "player": "Playback mode",
     "liveHint": "Receive, merge, forward and record",
     "playerHint": "Stop live input and only play programs",
     "enteredPlayer": "Entered Player mode",

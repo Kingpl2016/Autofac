@@ -109,6 +109,9 @@ function install(project: ShowProject, origin: DocumentOrigin): void {
     selectedGroupId: null,
     selectedCueIds: [],
     selectedTrackId: null,
+    selectedTrackIds: [],
+    contextTarget: null,
+    hoverFixtureId: null,
     playheadMs: 0,
     clipboard: [],
   });

@@ -54,6 +54,7 @@ export function MediaTrackHeaders() {
         return (
           <li
             key={track.id}
+            data-media-track-header-id={track.id}
             style={{ height: mediaTrackHeight(track) }}
             className="group/track flex items-center gap-1 border-b border-border/60 px-1"
           >

@@ -4,6 +4,16 @@ import type { ClipCue } from "../lib/cueOps";
 import type { Look } from "../lib/project";
 import { DEFAULT_PX_PER_SEC } from "../lib/zoom";
 
+/** 时间线右键菜单的目标。 */
+export type ContextTarget =
+  | { kind: "cue"; id: string }
+  | { kind: "mediaClip"; id: string }
+  | { kind: "track"; id: string }
+  | { kind: "mediaTrack"; id: string }
+  /** 轨道区空白处：所在轨道（在所有轨道之下时为 `null`）与时刻 */
+  | { kind: "empty"; trackId: string | null; timeMs: number }
+  | { kind: "ruler"; timeMs: number };
+
 /** 左侧图标栏的素材分区。 */
 export const LIBRARY_TABS = ["media", "fixtures", "cues", "effects", "presets", "groups", "history"] as const;
 
@@ -16,12 +26,6 @@ export const INSPECTOR_TABS = ["patch", "program", "cue"] as const;
 /** 右侧属性区的标签页。 */
 export type InspectorTab = (typeof INSPECTOR_TABS)[number];
 
-/** 中间区域的视图：舞台监视器、色块预览、灯具表。 */
-export const CENTER_VIEWS = ["stage", "swatches", "sheet"] as const;
-
-/** 中间区域的视图。 */
-export type CenterView = (typeof CENTER_VIEWS)[number];
-
 interface EditorUiState {
   /** 在 Patch 面板里勾选的灯具 */
   selectedFixtureIds: string[];
@@ -29,8 +33,25 @@ interface EditorUiState {
   selectedGroupId: string | null;
   /** 在时间线上选中的 Cue */
   selectedCueIds: string[];
-  /** 选中的轨道（点轨道头选中；模板“点击添加”会加到这条轨道） */
+  /** 选中的轨道（点轨道头选中；模板“点击添加”会加到这条轨道）；多选时为最后点选的那条 */
   selectedTrackId: string | null;
+  /** 选中的全部轨道（Ctrl / Shift 点击轨道头多选）；单选时只含 `selectedTrackId` */
+  selectedTrackIds: string[];
+  /**
+   * 设置选中的多条轨道（第一条之外的顺序保持；`primary` 省略时取最后一条）。
+   *
+   * @param ids 轨道 id。
+   * @param primary 主轨道。
+   */
+  selectTracks: (ids: string[], primary?: string | null) => void;
+  /** 右键菜单的目标（打开菜单时由事件位置决定） */
+  contextTarget: ContextTarget | null;
+  /**
+   * 设置右键菜单的目标。
+   *
+   * @param target 目标；`null` 清除。
+   */
+  setContextTarget: (target: ContextTarget | null) => void;
   /** 播放头位置（毫秒）；播放引擎接入后由后端状态驱动 */
   playheadMs: number;
   /** 剪贴板里复制的 Cue */
@@ -47,8 +68,6 @@ interface EditorUiState {
   paletteOpen: boolean;
   /** 左侧图标栏选中的素材分区 */
   libraryTab: LibraryTab;
-  /** 中间区域的视图 */
-  centerView: CenterView;
   /** 输出黑场：推给后端的工程全部轨道静音（编程器也不输出），预览同样全黑 */
   blackout: boolean;
   /**
@@ -74,12 +93,6 @@ interface EditorUiState {
    */
   setLookClipboard: (look: Look | null) => void;
   /**
-   * 切换中间区域的视图。
-   *
-   * @param view 视图。
-   */
-  setCenterView: (view: CenterView) => void;
-  /**
    * 打开 / 关闭命令面板。
    *
    * @param open 是否打开。
@@ -98,6 +111,22 @@ interface EditorUiState {
    * @param on `true` 勾选，`false` 取消。
    */
   setFixtureSelected: (id: string, on: boolean) => void;
+  /** 指针悬停的灯具（Universe 视图、通道条与舞台监视器互相高亮） */
+  hoverFixtureId: string | null;
+  /**
+   * 设置悬停的灯具。
+   *
+   * @param id 灯具；`null` 清除。
+   */
+  setHoverFixture: (id: string | null) => void;
+  /** Universe 视图：按灯具色块的卡片，或 512 格通道条 */
+  universeView: "cards" | "strip";
+  /**
+   * 切换 Universe 视图。
+   *
+   * @param view 视图。
+   */
+  setUniverseView: (view: "cards" | "strip") => void;
   /**
    * 整体替换勾选的灯具。
    *
@@ -166,6 +195,14 @@ interface EditorUiState {
    * @param open 是否打开。
    */
   setKeymapOpen: (open: boolean) => void;
+  /** 等待确认的节目时长（缩短会裁掉内容时）；`null` 为没有 */
+  durationRequest: number | null;
+  /**
+   * 设置 / 清除等待确认的节目时长。
+   *
+   * @param ms 新时长；`null` 清除。
+   */
+  setDurationRequest: (ms: number | null) => void;
   /** 一键草稿对话框是否打开 */
   draftOpen: boolean;
   /**
@@ -202,8 +239,6 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   mediaMuted: false,
   paletteOpen: false,
   libraryTab: "media",
-  centerView: "stage",
-  setCenterView: (view) => set({ centerView: view }),
   lookClipboard: null,
   setLookClipboard: (look) => set({ lookClipboard: look }),
   radial: null,
@@ -212,6 +247,10 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   setBlackout: (on) => set({ blackout: on }),
   setPaletteOpen: (open) => set({ paletteOpen: open }),
   setLibraryTab: (tab) => set({ libraryTab: tab }),
+  hoverFixtureId: null,
+  setHoverFixture: (id) => set((s) => (s.hoverFixtureId === id ? s : { hoverFixtureId: id })),
+  universeView: "cards",
+  setUniverseView: (universeView) => set({ universeView }),
   setFixtureSelected: (id, on) =>
     set((s) => ({
       selectedFixtureIds: on
@@ -225,6 +264,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   selectCues: (ids) => set(ids.length > 0 ? { selectedCueIds: ids, selectedMediaClipIds: [] } : { selectedCueIds: ids }),
   keymapOpen: false,
   setKeymapOpen: (keymapOpen) => set({ keymapOpen }),
+  durationRequest: null,
+  setDurationRequest: (durationRequest) => set({ durationRequest }),
   draftOpen: false,
   setDraftOpen: (draftOpen) => set({ draftOpen }),
   selectedMediaClipIds: [],
@@ -235,7 +276,14 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
         ? s.selectedCueIds.filter((x) => x !== id)
         : [...s.selectedCueIds, id],
     })),
-  selectTrack: (id) => set({ selectedTrackId: id }),
+  selectTrack: (id) => set({ selectedTrackId: id, selectedTrackIds: id ? [id] : [] }),
+  selectedTrackIds: [],
+  selectTracks: (ids, primary) => {
+    const unique = [...new Set(ids)];
+    set({ selectedTrackIds: unique, selectedTrackId: primary !== undefined ? primary : (unique.at(-1) ?? null) });
+  },
+  contextTarget: null,
+  setContextTarget: (contextTarget) => set({ contextTarget }),
   setPlayhead: (ms) => set({ playheadMs: Math.max(0, Math.round(ms)) }),
   setClipboard: (clip) => set({ clipboard: clip }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
@@ -243,5 +291,12 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
   toggleMuted: () => set((s) => ({ mediaMuted: !s.mediaMuted })),
   clearSelection: () =>
-    set({ selectedFixtureIds: [], selectedGroupId: null, selectedCueIds: [], selectedTrackId: null, selectedMediaClipIds: [] }),
+    set({
+      selectedFixtureIds: [],
+      selectedGroupId: null,
+      selectedCueIds: [],
+      selectedTrackId: null,
+      selectedTrackIds: [],
+      selectedMediaClipIds: [],
+    }),
 }));

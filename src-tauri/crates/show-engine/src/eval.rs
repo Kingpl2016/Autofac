@@ -473,6 +473,7 @@ mod tests {
                 fade_in_ms: 0,
                 fade_out_ms: 0,
                 easing: Easing::Linear,
+                disabled: false,
             },
             rgb,
         })
@@ -524,6 +525,27 @@ mod tests {
         assert_eq!(&frame_at(&set, 2)[9..12], &[0, 0, 0]);
         c.evaluate_into(2000, &mut set);
         assert_eq!(&frame_at(&set, 0)[0..3], &[0, 0, 0]);
+    }
+
+    #[test]
+    fn 禁用的片段不输出_也能从前端形态解析() {
+        let mut p = rig();
+        p.cues.push(cue("t0", 1000, 2000, [255, 128, 0], 100.0));
+        if let Cue::Static(s) = &mut p.cues[0] {
+            s.base.disabled = true;
+        }
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(1500, &mut set);
+        assert_eq!(&frame_at(&set, 0)[0..3], &[0, 0, 0]);
+        // 序列化时 `disabled: false` 省略，`true` 写出；缺省为启用
+        let json = serde_json::to_value(&p.cues[0]).unwrap();
+        assert_eq!(json["disabled"], serde_json::json!(true));
+        let parsed: Cue = serde_json::from_str(
+            r#"{"kind":"static","id":"c","trackId":"t0","startMs":0,"endMs":10,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","rgb":[1,2,3]}"#,
+        )
+        .unwrap();
+        assert!(!parsed.base().disabled);
     }
 
     #[test]

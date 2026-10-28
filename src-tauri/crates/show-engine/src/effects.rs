@@ -235,6 +235,7 @@ mod tests {
                 fade_in_ms: 0,
                 fade_out_ms: 0,
                 easing: Easing::Linear,
+                disabled: false,
             },
             effect,
             colors,

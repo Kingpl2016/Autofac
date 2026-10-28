@@ -2,9 +2,12 @@ import { useTranslation } from "react-i18next";
 import { Pause, Play, Repeat, Square, Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { announce } from "@/shared/stores/announcerStore";
+import { requestShowDuration } from "../hooks/editorActions";
 import { stopPlayback, togglePlay } from "../hooks/transportActions";
 import { setOutput } from "../lib/ops";
-import { formatTimecode } from "../lib/time";
+import { formatTimecode, parseTimecode } from "../lib/time";
+import { CommitInput } from "./CommitInput";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -82,7 +85,17 @@ export function TransportBar() {
       <span className="num ml-1 flex items-baseline gap-1 text-xs text-muted-foreground">
         <PlayheadTimecode label={t("editor.timeline.playhead")} className="text-foreground" />
         <span aria-hidden>/</span>
-        <span aria-label={t("editor.playback.duration")}>{formatTimecode(durationMs)}</span>
+        <CommitInput
+          label={t("editor.duration.edit")}
+          value={formatTimecode(durationMs)}
+          inputMode="numeric"
+          className="num h-6 w-[4.75rem] border-transparent bg-transparent px-1 text-xs text-muted-foreground shadow-none hover:border-border focus-visible:border-border"
+          onCommit={(text) => {
+            const ms = parseTimecode(text);
+            if (ms === null) announce(t("editor.duration.invalid"));
+            else requestShowDuration(ms);
+          }}
+        />
       </span>
       <OutputPopover />
     </div>
