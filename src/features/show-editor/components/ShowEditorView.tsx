@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { toast } from "sonner";
 
 import {
   ResizableHandle,
@@ -32,13 +33,14 @@ import { START_LEFT } from "../timeline/timelineData";
 import { placeMediaOnTimeline } from "../hooks/mediaActions";
 import { effectNeeds, templateNeeds, trackSupports } from "../lib/cueDefaults";
 import { addLookCue } from "../lib/cueOps";
-import { addEffectDefCue, effectDefNeeds } from "../lib/effectLibrary";
+import { addEffectDefCue, effectDefNeeds, effectName } from "../lib/effectLibrary";
 import type { FixtureCapability } from "../lib/fixtureProfile";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { AutoDraftDialog } from "./AutoDraftDialog";
 import { CommandPalette } from "./CommandPalette";
 import { DurationConfirmDialog } from "./DurationConfirmDialog";
+import { EditorColumns } from "./EditorColumns";
 import { EditorToolbar } from "./EditorToolbar";
 import { EffectDefChip, type EffectDefDragData } from "./EffectLibrarySection";
 import { EffectChip, type EffectDragData } from "./EffectsTab";
@@ -74,7 +76,7 @@ const PRESET_CLIP_MS = 4000;
  * webview 内的 HTML5 拖放不可靠）。
  */
 export function ShowEditorView() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const file = useShowFile();
   const commands = useEditorHotkeys(file.save);
   useShowPlayback();
@@ -105,6 +107,17 @@ export function ShowEditorView() {
   // 移动 6px 后才算开始拖拽，避免点击模板被误判为拖拽
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
+  // 放下的位置取指针的真实位置：dnd-kit 的 `delta` 会把拖拽途中滚动容器的滚动量算进去，
+  // 从可滚动的素材库拖出来时按 `activatorEvent + delta` 推出的位置会偏（落点算错、放不下）
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      pointerRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener("pointermove", onMove, { capture: true, passive: true });
+    return () => window.removeEventListener("pointermove", onMove, { capture: true });
+  }, []);
+
   const onDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as DragData | undefined;
     setDragging(data && DRAG_KINDS.has(data.kind) ? data : null);
@@ -115,7 +128,7 @@ export function ShowEditorView() {
     setDragging(null);
     if (!data) return;
     const start = e.activatorEvent as PointerEvent;
-    const pointer = { x: start.clientX + e.delta.x, y: start.clientY + e.delta.y };
+    const pointer = pointerRef.current ?? { x: start.clientX + e.delta.x, y: start.clientY + e.delta.y };
     // 灯具模型：可放到 Patch 的 Universe 卡片、舞台监视器或时间线
     if (data.kind === "fixtureModel") {
       const target = resolveFixtureDrop(e.over ? { id: e.over.id, rect: e.over.rect, data: e.over.data } : null, pointer, TIMELINE_DROP_ID);
@@ -160,7 +173,7 @@ export function ShowEditorView() {
         guard(effectDefNeeds(data.def), (trackId, timeMs) => {
           let id: string | null = null;
           useProjectStore.getState().update((d) => {
-            id = addEffectDefCue(d, trackId, timeMs, data.def, data.params);
+            id = addEffectDefCue(d, trackId, timeMs, data.def, data.params, effectName(data.def, i18n.language));
           });
           if (id) {
             useEditorUiStore.getState().selectCues([id]);
@@ -198,15 +211,27 @@ export function ShowEditorView() {
     } else {
       return;
     }
+    if (result.kind === "miss") {
+      // 放在时间线上但不在任何轨道行里（例如最后一条轨道下面）
+      const text = t("editor.templates.dropMiss");
+      announce(text);
+      toast.info(text);
+      return;
+    }
     if (result.kind !== "noRoom") return;
     // 在闭包里赋值，TS 的控制流分析看不到，需显式标注
     const reason = rejected as FixtureCapability | null;
-    announce(reason ? t("editor.apply.rejected", { reason: t(`editor.apply.needs.${reason}`) }) : t("editor.templates.noRoom"));
+    // 放不下要看得见：读屏播报之外再弹提示（否则看起来像“拖了没反应”）
+    const text = reason ? t("editor.apply.rejected", { reason: t(`editor.apply.needs.${reason}`) }) : t("editor.templates.noRoom");
+    announce(text);
+    toast.warning(text);
   };
 
   return (
     <DndContext
       sensors={sensors}
+      // 从素材库拖到时间线 / Patch / 舞台时不要让素材库跟着自动滚动（目标都在素材库之外）
+      autoScroll={false}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragging(null)}
@@ -217,19 +242,11 @@ export function ShowEditorView() {
           <ResizablePanel defaultSize="62%" minSize="30%">
             <div className="flex h-full min-h-0">
               <IconRail />
-              <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
-                <ResizablePanel defaultSize={280} minSize={200} maxSize="40%">
-                  <LibraryPanel />
-                </ResizablePanel>
-                <ResizableHandle axis="x" />
-                <ResizablePanel minSize="25%">
-                  <PreviewPanel onOpenRecent={file.requestOpenRecent} />
-                </ResizablePanel>
-                <ResizableHandle axis="x" />
-                <ResizablePanel defaultSize={340} minSize={260} maxSize="40%">
-                  <InspectorPanel />
-                </ResizablePanel>
-              </ResizablePanelGroup>
+              <EditorColumns
+                library={<LibraryPanel />}
+                preview={<PreviewPanel onOpenRecent={file.requestOpenRecent} />}
+                inspector={<InspectorPanel />}
+              />
             </div>
           </ResizablePanel>
           <ResizableHandle axis="y" />

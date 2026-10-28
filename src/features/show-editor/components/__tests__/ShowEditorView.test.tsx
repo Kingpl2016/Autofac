@@ -55,7 +55,7 @@ describe("ShowEditorView 外壳", () => {
   it("包含工具条和素材库 / 预览 / 属性 / 时间线四个带名称的区域", () => {
     renderView();
     expect(screen.getByRole("toolbar", { name: "编辑工具条" })).toBeTruthy();
-    for (const name of ["素材库", "预览", "属性", "时间线"]) {
+    for (const name of ["素材库", "预览", "属性", "时间轴"]) {
       expect(screen.getByRole("region", { name })).toBeTruthy();
     }
   });
@@ -100,6 +100,42 @@ describe("ShowEditorView 外壳", () => {
     expect(within(library).getByRole("heading", { name: "媒体" })).toBeTruthy();
   });
 
+  it("左侧：再点一次当前分区收起素材库，收起时点别的分区先展开；Ctrl+Shift+B 切换", () => {
+    useEditorUiStore.setState({ libraryCollapsed: false, inspectorCollapsed: false });
+    renderView();
+    const rail = screen.getByRole("tablist", { name: "素材库" });
+    const fixturesTab = within(rail).getByRole("tab", { name: "灯具" });
+    expect(fixturesTab.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(fixturesTab);
+    expect(useEditorUiStore.getState().libraryCollapsed).toBe(true);
+    expect(within(rail).getByRole("tab", { name: "灯具" }).getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(within(rail).getByRole("tab", { name: "特效" }));
+    expect(useEditorUiStore.getState().libraryCollapsed).toBe(false);
+    expect(useEditorUiStore.getState().libraryTab).toBe("effects");
+    fireEvent.keyDown(document.body, { key: "B", ctrlKey: true, shiftKey: true });
+    expect(useEditorUiStore.getState().libraryCollapsed).toBe(true);
+    fireEvent.keyDown(document.body, { key: "B", ctrlKey: true, shiftKey: true });
+    expect(useEditorUiStore.getState().libraryCollapsed).toBe(false);
+  });
+
+  it("右侧：标题栏按钮收起成窄边，点窄边上的标签展开到那一页；Ctrl+Alt+B 切换", () => {
+    useEditorUiStore.setState({ libraryCollapsed: false, inspectorCollapsed: false, inspectorTab: "patch" });
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: "收起属性面板（Ctrl+Alt+B）" }));
+    expect(useEditorUiStore.getState().inspectorCollapsed).toBe(true);
+    const strip = screen.getByRole("navigation", { name: "属性面板（已收起）" });
+    expect(within(strip).getByRole("button", { name: "展开属性面板：灯具与 Patch" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("tablist", { name: /属性|Patch/ })).toBeNull();
+    fireEvent.click(within(strip).getByRole("button", { name: "展开属性面板：编程器" }));
+    expect(useEditorUiStore.getState().inspectorCollapsed).toBe(false);
+    expect(useEditorUiStore.getState().inspectorTab).toBe("program");
+    expect(screen.queryByRole("navigation", { name: "属性面板（已收起）" })).toBeNull();
+    fireEvent.keyDown(document.body, { key: "b", ctrlKey: true, altKey: true });
+    expect(useEditorUiStore.getState().inspectorCollapsed).toBe(true);
+    fireEvent.keyDown(document.body, { key: "b", ctrlKey: true, altKey: true });
+    expect(useEditorUiStore.getState().inspectorCollapsed).toBe(false);
+  });
+
   it("工具条按钮打开命令面板", () => {
     renderView();
     fireEvent.click(screen.getByRole("button", { name: "打开命令面板" }));
@@ -108,7 +144,7 @@ describe("ShowEditorView 外壳", () => {
 
   it("时间线提供放大 / 缩小按钮", () => {
     renderView();
-    expect(screen.getByRole("button", { name: "放大时间线" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "缩小时间线" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "放大时间轴" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "缩小时间轴" })).toBeTruthy();
   });
 });

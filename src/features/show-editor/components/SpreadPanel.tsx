@@ -65,8 +65,8 @@ export function SpreadPanel({ look, spread, members, onChange }: SpreadPanelProp
   );
 
   return (
-    <section aria-label={t("editor.spread.title")} className="grid gap-2">
-      <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.spread.title")}</h4>
+    // 外层的分区（“多灯分布”）提供标题
+    <div className="grid gap-2">
       {members < 2 ? (
         <p className="text-xs text-muted-foreground">{t("editor.spread.needGroup")}</p>
       ) : (
@@ -170,6 +170,6 @@ export function SpreadPanel({ look, spread, members, onChange }: SpreadPanelProp
           )}
         </>
       )}
-    </section>
+    </div>
   );
 }

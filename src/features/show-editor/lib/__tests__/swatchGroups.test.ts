@@ -82,7 +82,17 @@ describe("预览色块分区", () => {
       snapKinds: DEFAULT_EDITOR_PREFS.snapKinds,
       rippleEdit: false,
       rulerFormat: "timecode",
+      patchSections: {},
+      programSections: {},
+      cueSections: {},
     });
+    // 属性面板各页的分区展开状态：只保留本页认识的分区和布尔值；不是对象时保持当前值
+    const current = { ...DEFAULT_EDITOR_PREFS, patchSections: { sync: true }, cueSections: { time: false } };
+    expect(sanitizeEditorPrefs({ patchSections: { placement: false, sync: "yes", nope: true } }, current).patchSections).toEqual({ placement: false });
+    expect(sanitizeEditorPrefs({ patchSections: [true] }, current).patchSections).toEqual({ sync: true });
+    expect(sanitizeEditorPrefs({ programSections: { record: false, basic: true } }, current).programSections).toEqual({ record: false });
+    expect(sanitizeEditorPrefs({ cueSections: "x" }, current).cueSections).toEqual({ time: false });
+    expect(sanitizeEditorPrefs({ cueSections: { layers: true, clipboard: 1 } }, current).cueSections).toEqual({ layers: true });
     expect(sanitizeEditorPrefs({ snapKinds: { beats: false, edges: "x" }, rulerFormat: "bars", rippleEdit: true }, DEFAULT_EDITOR_PREFS)).toMatchObject({
       snapKinds: { beats: false, markers: true, edges: true, playhead: true },
       rulerFormat: "bars",

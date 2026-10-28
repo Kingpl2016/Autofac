@@ -43,7 +43,8 @@ beforeEach(async () => {
     }),
   );
   useEditorUiStore.setState({ selectedFixtureIds: [], playheadMs: 0, selectedTrackId: null });
-  useEditorPrefsStore.setState({ centerView: "swatches" });
+  useEditorPrefsStore.setState({ centerView: "swatches", programSections: {} });
+  useProgrammerStore.setState({ live: false });
   useAnnouncerStore.setState({ message: "", seq: 0 });
 });
 
@@ -115,6 +116,33 @@ describe("编程器面板", () => {
     act(() => programmer().setValues({ x: { intensity: fixed(1) } }));
     act(() => useProjectStore.getState().load(createEmptyProject("新")));
     expect(programmer().values).toEqual({});
+  });
+
+  it("分区布局：顶部摘要（已选 / 有值、实时输出）；没选灯具时没有强度与颜色分区；收起状态记住", () => {
+    act(() => programmer().setValues({ [ids()[0]]: { intensity: fixed(40) } }));
+    const { unmount } = render(<ProgrammerPanel />);
+    expect(screen.getByText("已选 0 / 4")).toBeTruthy();
+    expect(screen.getByText(/1 台灯具有值/)).toBeTruthy();
+    for (const name of ["灯具选择", "记录"]) expect(screen.getByRole("region", { name })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "强度" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "颜色" })).toBeNull();
+
+    // 实时输出开关在摘要里，与舞台监视器的“盲改”共用同一个状态
+    fireEvent.click(screen.getByRole("switch", { name: "实时输出" }));
+    expect(programmer().live).toBe(true);
+
+    act(() => ui().setSelectedFixtures([ids()[0], ids()[1]]));
+    expect(screen.getByRole("region", { name: "强度" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "颜色" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "灯具选择" }));
+    expect(useEditorPrefsStore.getState().programSections.select).toBe(false);
+    expect(screen.queryByRole("toolbar", { name: "选择工具" })).toBeNull();
+    unmount();
+    render(<ProgrammerPanel />);
+    expect(screen.queryByRole("toolbar", { name: "选择工具" })).toBeNull();
+    // 去掉强度在强度分区里；移出所选在摘要里
+    fireEvent.click(within(screen.getByRole("region", { name: "强度" })).getByRole("button", { name: "去掉强度" }));
+    expect(programmer().values[ids()[0]]).toBeUndefined();
   });
 });
 

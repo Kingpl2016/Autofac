@@ -291,7 +291,8 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
   const EyeDropperCtor = typeof window !== "undefined" ? (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper : undefined;
 
   return (
-    <section aria-label={t("editor.color.title")} className="grid gap-3">
+    // 取色器是一组控件（不是页面区域）：外层分区（“颜色”）才是区域，避免两个同名区域嵌套
+    <div role="group" aria-label={t("editor.color.title")} className="grid gap-3">
       <div className="flex items-center justify-between gap-2">
         <Segmented<Mode>
           ariaLabel={t("editor.color.mode")}
@@ -535,6 +536,6 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }

@@ -46,13 +46,9 @@ export function SceneInspector({ cue }: { cue: SceneClip }) {
     announce(t("editor.scene.updated", { count: entries.length }));
   };
 
+  // 外层的分区（“场景条目”）提供标题与条目数
   return (
-    <section aria-label={t("editor.scene.title")} className="grid gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {t("editor.scene.title")} · {cue.entries.length}
-        </h4>
-      </div>
+    <div className="grid gap-2">
       <div className="flex flex-wrap gap-1.5">
         <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={loadIntoProgrammer}>
           <Download aria-hidden />
@@ -109,6 +105,6 @@ export function SceneInspector({ cue }: { cue: SceneClip }) {
           })}
         </ul>
       )}
-    </section>
+    </div>
   );
 }

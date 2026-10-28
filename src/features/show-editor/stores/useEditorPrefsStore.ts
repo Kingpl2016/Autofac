@@ -86,9 +86,42 @@ export interface EditorPrefsData {
   rippleEdit: boolean;
   /** 标尺刻度 */
   rulerFormat: RulerFormat;
+  /** “灯具与 Patch”详情区各分区的展开状态（没记过的分区按各自的默认值） */
+  patchSections: SectionStates<"patch">;
+  /** 编程器页各分区的展开状态 */
+  programSections: SectionStates<"program">;
+  /** Cue 属性页各分区的展开状态（同名分区在各片段类型之间共用） */
+  cueSections: SectionStates<"cue">;
 }
 
+/** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
+export const INSPECTOR_SECTIONS = {
+  patch: ["basic", "dmx", "placement", "sync", "groupsOf", "universes", "channels", "groups"],
+  program: ["select", "intensity", "color", "record"],
+  cue: ["color", "effect", "effectColors", "intensity", "layers", "spread", "clipboard", "scene", "fades", "time"],
+} as const;
+
+/** 分区所在的页。 */
+export type SectionScope = keyof typeof INSPECTOR_SECTIONS;
+
+/** 某一页的分区。 */
+export type SectionId<S extends SectionScope> = (typeof INSPECTOR_SECTIONS)[S][number];
+
+/** 某一页各分区是否展开。 */
+export type SectionStates<S extends SectionScope> = Partial<Record<SectionId<S>, boolean>>;
+
+/** 每页分区状态在偏好里的字段。 */
+const SECTION_FIELDS = { patch: "patchSections", program: "programSections", cue: "cueSections" } as const;
+
 interface EditorPrefsState extends EditorPrefsData {
+  /**
+   * 展开 / 收起属性面板某一页的一个分区。
+   *
+   * @param scope 页。
+   * @param section 分区。
+   * @param open 是否展开。
+   */
+  setSection: <S extends SectionScope>(scope: S, section: SectionId<S>, open: boolean) => void;
   /**
    * 切换中间区域的视图（记住选择）。
    *
@@ -185,7 +218,29 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   snapKinds: { beats: true, markers: true, edges: true, playhead: true },
   rippleEdit: false,
   rulerFormat: "timecode",
+  patchSections: {},
+  programSections: {},
+  cueSections: {},
 };
+
+/**
+ * 规整某一页的分区展开状态：只保留认识的分区、布尔值。
+ *
+ * @param scope 页。
+ * @param raw 未知数据。
+ * @param fallback 兜底值（不是对象时用）。
+ * @returns 合法的展开状态。
+ */
+export function sanitizeSections<S extends SectionScope>(scope: S, raw: unknown, fallback: SectionStates<S>): SectionStates<S> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return fallback;
+  const r = raw as Record<string, unknown>;
+  const out: Record<string, boolean> = {};
+  for (const k of INSPECTOR_SECTIONS[scope] as readonly string[]) {
+    const v = r[k];
+    if (typeof v === "boolean") out[k] = v;
+  }
+  return out as SectionStates<S>;
+}
 
 /**
  * 校验从磁盘读回的偏好：每个字段单独兜底，非法值保持当前值。
@@ -214,6 +269,9 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     ) as SnapKinds,
     rippleEdit: typeof r.rippleEdit === "boolean" ? r.rippleEdit : current.rippleEdit,
     rulerFormat: pick(RULER_FORMATS, r.rulerFormat, current.rulerFormat),
+    patchSections: sanitizeSections("patch", r.patchSections, current.patchSections),
+    programSections: sanitizeSections("program", r.programSections, current.programSections),
+    cueSections: sanitizeSections("cue", r.cueSections, current.cueSections),
   };
 }
 
@@ -234,6 +292,11 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setSnapKind: (kind, on) => set((st) => ({ snapKinds: { ...st.snapKinds, [kind]: on } })),
       setRippleEdit: (rippleEdit) => set({ rippleEdit }),
       setRulerFormat: (rulerFormat) => set({ rulerFormat }),
+      setSection: (scope, section, open) =>
+        set((st) => {
+          const field = SECTION_FIELDS[scope];
+          return { [field]: { ...st[field], [section]: open } } as Partial<EditorPrefsData>;
+        }),
     }),
     {
       name: "editor-prefs",
@@ -250,6 +313,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         snapKinds,
         rippleEdit,
         rulerFormat,
+        patchSections,
+        programSections,
+        cueSections,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -261,6 +327,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         snapKinds,
         rippleEdit,
         rulerFormat,
+        patchSections,
+        programSections,
+        cueSections,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },

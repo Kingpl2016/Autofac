@@ -30,8 +30,8 @@ export interface Applicability {
 /** 饱和度低于这个值的 RGB 模板算作白光（调光灯也能用）。 */
 const WHITE_SATURATION = 0.15;
 
-/** 新建片段的样式：模板给的颜色（RGB 或色温）、亮度、淡入淡出与长度。 */
-export type TemplateStyle = Partial<CueStyle> & { lengthMs?: number; color?: ColorValue };
+/** 新建片段的样式：模板给的颜色（RGB 或色温）、亮度、淡入淡出、长度与名称（时间线上显示）。 */
+export type TemplateStyle = Partial<CueStyle> & { lengthMs?: number; color?: ColorValue; label?: string };
 
 /** 只用强度就能表现的经典特效（颜色只是点缀）。 */
 const INTENSITY_EFFECTS: ReadonlySet<EffectId> = new Set<EffectId>(["breathe", "chase", "pulse", "sparkle", "strobe"]);
@@ -162,6 +162,7 @@ export function addDefaultLook(
     if (style.fadeInMs !== undefined) cue.fadeInMs = style.fadeInMs;
     if (style.fadeOutMs !== undefined) cue.fadeOutMs = style.fadeOutMs;
     if (style.easing !== undefined) cue.easing = style.easing;
+    if (cue.kind === "look" && style.label?.trim()) cue.label = style.label.trim();
     normalizeFades(cue);
   }
   return id;

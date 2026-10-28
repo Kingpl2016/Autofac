@@ -10,6 +10,7 @@ import { fixed } from "../../lib/looks";
 import { addFixtures, createGroup } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { DIMMER, RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { CueInspector } from "../CueInspector";
@@ -41,6 +42,7 @@ beforeEach(async () => {
     }),
   );
   useEditorUiStore.setState({ selectedCueIds: [id], playheadMs: 2000 });
+  useEditorPrefsStore.setState({ cueSections: {} });
 });
 
 afterEach(() => cleanup());

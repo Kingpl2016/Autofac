@@ -73,7 +73,7 @@ UART DMX512 输出与网络输出在所有模式下**并存**：无论回放还�
 
 `GET /api/status` 返回版本、IP、链路、SD 容量与播放摘要；`GET /api/logs` 返回最近日志文本。
 
-`GET /api/diag` 返回运行期诊断（只读）：`heap{free,minFree,largestBlock,psramFree}`、`tasks[{name,prio,core,stackMin,runtime,cpuPermille}]`（`stackMin` 为该任务运行以来最小剩余栈字节，越小越危险；`cpuPermille` 为 CPU 占比千分数）、`dmxUart{ports,txTimeouts}`（`txTimeouts` 为 TX 发送超时累计，正常恒 0，非 0 提示 DMX 帧中欠载）、`player{state,badFrames}`。用于核验栈余量、core 负载、长跑堆碎片与 DMX 输出健康。
+`GET /api/diag` 返回运行期诊断（只读）：`heap{free,minFree,largestBlock,psramFree}`、`tasks[{name,prio,core,stackMin,runtime,cpuPermille}]`（`stackMin` 为该任务运行以来最小剩余栈字节，越小越危险；`cpuPermille` 为 CPU 占比千分数）、`dmxUart{ports,txTimeouts}`（`txTimeouts` 为 TX 发送超时累计，正常恒 0，非 0 提示 DMX 帧中欠载）、`player{state,badFrames}`、`forward{running,uniStart,uniCount,sacn,rxDatagrams,artnetParsed,sacnParsed,droppedOutOfRange,lastUniverse,lastSrcIp,sources}`（实时转发接收计数，用于定位转发收不到包的环节，见第 9.1 节）。用于核验栈余量、core 负载、长跑堆碎片、DMX 输出健康与转发接收状态。
 
 ## 4. 节目映射（按编号）
 
@@ -143,6 +143,16 @@ UART DMX512 输出与网络输出在所有模式下**并存**：无论回放还�
 - **来源超时**：某来源 3 秒无更新则剔除并对该 universe 重算下发；某 universe 全部来源超时后停止该 universe（接收端按各自逻辑保持最后值，UART 口持续刷新最后一帧）。
 
 > 实时转发与 ArtPoll 设备发现共用 6454 端口（均设 `SO_REUSEADDR`）。广播 / 组播能正常分发给各监听 socket；**单播** ArtDmx 在同端口多 socket 下的投递需实机核对。
+
+### 9.1 转发收不到包的排查
+
+设备在模式 1 下绑定 `0.0.0.0:6454` 并设 `SO_BROADCAST`，受限广播（`255.255.255.255`）与子网定向广播（如 `192.168.1.255`）**都能收**，收包侧无需改动。实测"收不到"时，用 `GET /api/diag` 的 `forward` 对象按下面三步定位：
+
+1. **确认进入转发模式**：`GET /api/status` 的 `workMode` 须为 `1`；`diag.forward.running` 须为 `true`。否则先 `PUT /api/workmode {"mode":1}`（模式 0/4 只回放，不接收转发流）。
+2. **确认包到没到设备**：持续刷新 `diag.forward.rxDatagrams`。
+   - **不增长** → 包根本没到网卡。最常见原因是**发送端多网卡**：操作系统把 `255.255.255.255` 受限广播**只从默认路由那一块网卡**发出，到不了灯光网所在网卡。**改用灯光网子网的定向广播（如 `192.168.1.255`）或直接单播设备 IP**；逐个子网发送才能覆盖目标网卡（本项目上位机已按此实现，见 `netif::broadcast_targets`）。
+   - **增长但无输出** → 进入第 3 步。
+3. **确认 universe 落在订阅范围**：看 `diag.forward.droppedOutOfRange` 是否随之跳动、`lastUniverse` 是否为你发送的 universe。若在跳，说明发送的 universe 不在 `[forwardUniStart, forwardUniStart+forwardUniCount)` 内被丢弃——用 `PUT /api/config` 调整 `forwardUniStart` / `forwardUniCount` 覆盖目标（默认 `[0,4)` 即 universe 0~3）。`lastSrcIp` 可用于核对来源网卡 / 子网，`sources` 为当前活跃来源数。
 
 ## 10. UART DMX512 输出
 

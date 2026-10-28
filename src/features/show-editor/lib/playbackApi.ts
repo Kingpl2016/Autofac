@@ -25,8 +25,12 @@ export interface ShowState {
   /** 参与输出的 Universe */
   universes: number[];
   warnings: CompileWarning[];
-  /** 是否有输出会话在运行（此时实时帧被丢弃） */
+  /** 是否有输出会话在运行（播放 / 暂停 / 定位期间；输出关闭时也为真） */
   outputting: boolean;
+  /** “输出到网络”开关是否打开 */
+  outputEnabled: boolean;
+  /** 是否真的在向网络发送（会话在运行且输出打开；此时实时帧被丢弃） */
+  sending: boolean;
   /** 输出目标为转发表时启用的目的地个数；`null` 表示目标不是转发表 */
   destinations: number | null;
   /** 因发送队列满而丢弃的帧数 */
@@ -88,6 +92,16 @@ export function showSeek(positionMs: number): Promise<ShowState> {
  */
 export function showLocate(fixtureId: string | null): Promise<ShowState> {
   return invoke<ShowState>("show_locate", { fixtureId });
+}
+
+/**
+ * 打开 / 关闭“输出到网络”。关闭时照常播放、只在本机预览，不向网络发包，也不占用输出。
+ *
+ * @param enabled 是否向网络发送。
+ * @throws 播放中打开、而录制 / 回放进行中时抛出 `recording_active` / `playback_active`。
+ */
+export function showSetOutputEnabled(enabled: boolean): Promise<ShowState> {
+  return invoke<ShowState>("show_set_output_enabled", { enabled });
 }
 
 /** 读取当前状态。 */

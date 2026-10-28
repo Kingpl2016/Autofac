@@ -11,6 +11,7 @@ import {
   invertSelection,
   modelSelection,
   ordered,
+  selectionOfTracks,
   stepSelection,
   trackSelection,
 } from "../fixtureSelection";
@@ -77,6 +78,34 @@ describe("选择工具", () => {
     expect(modelSelection(p, DIMMER.id)).toEqual([p.fixtures[4].id]);
     expect(trackSelection(p, p.tracks[2].id)).toEqual([p.fixtures[2].id]);
     expect(trackSelection(p, "ghost")).toEqual([]);
+  });
+
+  it("轨道选择换算成灯具选择：灯具 / 分组 / 场景轨道，去重；只选一条分组轨道时带上分组", () => {
+    const base = rig();
+    const p = produce(base, (d) => {
+      d.tracks.push({ id: "sc", target: { kind: "scene" }, mute: false, solo: false, lock: false, name: "场景" });
+      d.cues.push({
+        id: "c",
+        kind: "scene",
+        trackId: "sc",
+        startMs: 0,
+        endMs: 1000,
+        brightness: 100,
+        fadeInMs: 0,
+        fadeOutMs: 0,
+        easing: "linear",
+        entries: [{ fixtureId: d.fixtures[3].id, look: {} }, { fixtureId: d.fixtures[0].id, look: {} }],
+      });
+    });
+    const f = p.fixtures.map((x) => x.id);
+    const groupTrack = p.tracks.find((t) => t.target.kind === "group")?.id ?? "";
+    expect(groupTrack).not.toBe("");
+    expect(selectionOfTracks(p, [p.tracks[2].id])).toEqual({ fixtureIds: [f[2]], groupId: null });
+    expect(selectionOfTracks(p, [groupTrack])).toEqual({ fixtureIds: [f[1], f[0]], groupId: p.groups[0].id });
+    expect(selectionOfTracks(p, ["sc"])).toEqual({ fixtureIds: [f[3], f[0]], groupId: null });
+    // 多条：按轨道顺序去重，不再带分组；已删除的轨道忽略
+    expect(selectionOfTracks(p, [groupTrack, p.tracks[0].id, "ghost", "sc"])).toEqual({ fixtureIds: [f[1], f[0], f[3]], groupId: null });
+    expect(selectionOfTracks(p, [])).toEqual({ fixtureIds: [], groupId: null });
   });
 });
 

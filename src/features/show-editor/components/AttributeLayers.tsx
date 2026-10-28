@@ -59,8 +59,8 @@ export function AttributeLayers({ look, available, total, uMs, lengthMs, inside,
   };
 
   return (
-    <section aria-label={t("editor.layers.title")} className="grid gap-2">
-      <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.layers.title")}</h4>
+    // 外层的分区（“属性层”）提供标题
+    <div className="grid gap-2">
       {present.length === 0 && <p className="text-xs text-muted-foreground">{t("editor.layers.empty")}</p>}
       {groups.map((group) => (
         <div key={group} className="grid gap-2 rounded-md border border-border p-2">
@@ -185,6 +185,6 @@ export function AttributeLayers({ look, available, total, uMs, lengthMs, inside,
           </SelectContent>
         </Select>
       )}
-    </section>
+    </div>
   );
 }

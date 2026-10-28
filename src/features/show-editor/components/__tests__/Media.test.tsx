@@ -175,7 +175,7 @@ describe("素材行", () => {
 
   it("放到播放头（同一素材放多次，另起一条轨道或放进空位）、显示使用次数、移除", async () => {
     await withMedia({ "a.mp3": { durationMs: 10_000 } }, ["a.mp3"]);
-    expect(screen.getByText("时间线上 1 处")).toBeTruthy();
+    expect(screen.getByText("时间轴上 1 处")).toBeTruthy();
     // 播放头在 5 秒：与 0 点的片段重叠 → 新建一条轨道
     act(() => useEditorUiStore.getState().setPlayhead(5000));
     fireEvent.click(screen.getByRole("button", { name: "把 a.mp3 放到播放头处" }));
@@ -186,7 +186,7 @@ describe("素材行", () => {
     act(() => useEditorUiStore.getState().setPlayhead(20_000));
     fireEvent.click(screen.getByRole("button", { name: "把 a.mp3 放到播放头处" }));
     expect(project().mediaClips[2]).toMatchObject({ trackId: project().mediaTracks[0].id, startMs: 20_000 });
-    expect(screen.getByText("时间线上 3 处")).toBeTruthy();
+    expect(screen.getByText("时间轴上 3 处")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "移除 a.mp3（不会删除文件）" }));
     expect(project().media).toHaveLength(0);

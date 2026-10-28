@@ -15,6 +15,14 @@
 //! （`recording_active` / `playback_active` / `show_active`）。会话期间实时帧被丢弃，
 //! 避免实时转发与编辑器输出叠加。
 //!
+//! # 输出开关
+//!
+//! 编辑器可以关闭“输出到网络”（[`show_set_output_enabled`]，默认开启，不存进工程）。
+//! 关闭时会话线程照常走播放时钟（前端预览跟随 `show:state`），但不持有 [`ShowOutput`]：
+//! 不发包、不置位 `show` 标志，实时转发、录制、回放都不受影响。播放中关闭时先补发两帧黑场
+//! 再释放输出；播放中打开时由命令先 [`ShowOutput::begin`]（失败则报错、开关保持关闭），
+//! 再交给会话线程接管。
+//!
 //! # 灯光延迟补偿
 //!
 //! `output.latencyCompMs` 为正表示灯光相对播放头**延后**输出（用于对齐有延迟的音频设备），
@@ -97,8 +105,12 @@ pub struct ShowState {
     pub universes: Vec<u16>,
     /// 编译警告（被跳过的灯具）。
     pub warnings: Vec<CompileWarning>,
-    /// 是否有输出会话在运行。
+    /// 是否有输出会话在运行（播放 / 暂停 / 定位期间；输出关闭时也为 `true`）。
     pub outputting: bool,
+    /// “输出到网络”开关是否打开。
+    pub output_enabled: bool,
+    /// 是否真的在向网络发送（会话在运行且持有输出）。
+    pub sending: bool,
     /// 输出目标为转发表时启用的目的地个数（`None` 表示目标不是转发表）。
     pub destinations: Option<usize>,
     /// 因发送队列满而丢弃的帧数（本次会话累计）。
@@ -124,6 +136,12 @@ struct Control {
     next_session: u64,
     /// A-B 循环区间 `(起点, 终点)`（毫秒，终点大于起点且在节目内）。
     loop_range: Option<(i64, i64)>,
+    /// “输出到网络”开关（默认开启）。
+    send_enabled: bool,
+    /// 会话持有（或即将接管）输出；会话线程释放输出时清除。
+    sending: bool,
+    /// 播放中重新打开输出时，命令开好的输出会话，等会话线程接管。
+    pending_out: Option<ShowOutput>,
 }
 
 impl Control {
@@ -141,6 +159,9 @@ impl Control {
             session: None,
             next_session: 1,
             loop_range: None,
+            send_enabled: true,
+            sending: false,
+            pending_out: None,
         }
     }
 
@@ -259,9 +280,47 @@ impl Control {
             universes: self.show.as_ref().map(|s| s.universes().to_vec()).unwrap_or_default(),
             warnings: self.show.as_ref().map(|s| s.warnings().to_vec()).unwrap_or_default(),
             outputting: self.session.is_some(),
+            output_enabled: self.send_enabled,
+            sending: self.session.is_some() && self.sending,
             destinations,
             dropped,
         }
+    }
+
+    /// 打开 / 关闭“输出到网络”。
+    ///
+    /// 没有会话时只记下开关；会话运行中关闭时由会话线程补发黑场并释放输出，
+    /// 打开时先开好输出会话交给线程接管。
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - 是否向网络发送。
+    /// * `begin` - 开始输出会话（生产环境是 [`ShowOutput::begin`]）。
+    ///
+    /// # Errors
+    ///
+    /// 会话运行中打开、而 `begin` 失败（录制 / 回放进行中等）时返回其错误码，开关保持关闭。
+    fn set_send_enabled(
+        &mut self,
+        enabled: bool,
+        begin: impl FnOnce() -> Result<ShowOutput, String>,
+    ) -> Result<(), String> {
+        if enabled == self.send_enabled {
+            return Ok(());
+        }
+        if enabled {
+            // 线程还没来得及释放上一次的输出时（`sending` 仍为真）直接沿用
+            if self.session.is_some() && !self.sending {
+                self.pending_out = Some(begin()?);
+                self.sending = true;
+            }
+        } else if self.pending_out.take().is_some() {
+            // 线程尚未接管：在这里直接释放
+            self.sending = false;
+        }
+        self.send_enabled = enabled;
+        self.dirty = true;
+        Ok(())
     }
 }
 
@@ -351,7 +410,7 @@ fn app_publisher(app: &AppHandle) -> Publisher {
     Arc::new(move |state| publish(&app, state))
 }
 
-/// 若没有输出会话，则开始一个并启动计时线程。
+/// 若没有输出会话，则开始一个并启动计时线程；输出关闭时线程只走时钟、不持有输出。
 ///
 /// # Arguments
 ///
@@ -362,7 +421,7 @@ fn app_publisher(app: &AppHandle) -> Publisher {
 ///
 /// # Errors
 ///
-/// 录制 / 回放进行中，或线程创建失败时返回错误码 / 描述。
+/// 输出打开且录制 / 回放进行中，或线程创建失败时返回错误码 / 描述。
 fn ensure_session(
     rt: &ShowRuntime,
     ctl: &mut Control,
@@ -372,7 +431,8 @@ fn ensure_session(
     if ctl.session.is_some() {
         return Ok(());
     }
-    let out = ShowOutput::begin(handle)?;
+    let out = if ctl.send_enabled { Some(ShowOutput::begin(handle)?) } else { None };
+    ctl.sending = out.is_some();
     let generation = ctl.next_session;
     ctl.next_session += 1;
     ctl.session = Some(generation);
@@ -385,6 +445,7 @@ fn ensure_session(
         .map(|_| ())
         .map_err(|e| {
             ctl.session = None;
+            ctl.sending = false;
             e.to_string()
         })
 }
@@ -402,16 +463,26 @@ impl Drop for SessionGuard {
             c.session = None;
             c.transport = Transport::Stopped;
             c.origin = None;
+            c.sending = false;
+            c.pending_out = None;
         }
     }
 }
 
 /// 输出会话线程主体。
+///
+/// # Arguments
+///
+/// * `shared` - 共享的状态机。
+/// * `publisher` - 状态推送回调。
+/// * `handle` - 运行时输出句柄（统计目的地个数）。
+/// * `out` - 输出会话；输出关闭时为 `None`（只走时钟、推送状态）。
+/// * `generation` - 本会话的代号。
 fn run_session(
     shared: &Arc<Mutex<Control>>,
     publisher: &Publisher,
     handle: &OutputHandle,
-    out: ShowOutput,
+    out: Option<ShowOutput>,
     generation: u64,
 ) {
     let _guard = SessionGuard {
@@ -420,7 +491,7 @@ fn run_session(
     };
     let sleeper = SpinSleeper::default();
     let t0 = Instant::now();
-    let mut out = Some(out);
+    let mut out = out;
     let mut frames: Option<(Arc<CompiledShow>, FrameSet)> = None;
     let mut last_sent: Option<Instant> = None;
     let mut last_emit: Option<Instant> = None;
@@ -445,7 +516,9 @@ fn run_session(
             if ctl.is_idle() {
                 // 在锁内释放输出会话，保证新会话看到的 `show` 标志已复位。
                 drop(out.take());
+                drop(ctl.pending_out.take());
                 ctl.session = None;
+                ctl.sending = false;
                 let state = ctl.snapshot(Instant::now(), None, 0);
                 drop(ctl);
                 publisher(&state);
@@ -454,11 +527,30 @@ fn run_session(
             continue;
         }
 
+        if !ctl.send_enabled && out.is_some() {
+            // 输出被关闭：先在锁外补发两帧黑场，再在锁内释放输出（之后命令能重新开始输出）。
+            let show = ctl.show.clone();
+            let target = ctl.target.clone();
+            drop(ctl);
+            if let (Some(show), Some(o)) = (show, out.as_ref()) {
+                send_blackout(o, &target, &show, &sleeper);
+            }
+            let mut ctl = lock(shared);
+            if !ctl.send_enabled {
+                drop(out.take());
+                ctl.sending = false;
+            }
+            ctl.dirty = true;
+            continue;
+        }
+        if let Some(o) = ctl.pending_out.take() {
+            // 输出被重新打开：接管命令开好的输出会话，立即补发当前画面。
+            out = Some(o);
+            last_sent = None;
+        }
+
         let Some(show) = ctl.show.clone() else {
             continue;
-        };
-        let Some(o) = out.as_ref() else {
-            return;
         };
         // 工程被替换后重建帧缓冲（形状可能变化）。
         let reuse = matches!(&frames, Some((cached, _)) if Arc::ptr_eq(cached, &show));
@@ -481,7 +573,7 @@ fn run_session(
         let playing = ctl.transport == Transport::Playing;
         let due_keepalive = last_sent.is_none_or(|t| now.saturating_duration_since(t) >= KEEPALIVE);
         let send = playing || ctl.dirty || due_keepalive;
-        if send {
+        if let (true, Some(o)) = (send, out.as_ref()) {
             o.submit(&ctl.target, fs.frames().iter().map(|f| (f.universe, &f.data[..])));
             last_sent = Some(now);
         }
@@ -489,9 +581,8 @@ fn run_session(
             || ctl.dirty
             || last_emit.is_none_or(|t| now.saturating_duration_since(t) >= IDLE_EMIT);
         ctl.dirty = false;
-        let state = emit.then(|| {
-            ctl.snapshot(now, destinations_of(&ctl.target, handle), o.dropped())
-        });
+        let dropped = out.as_ref().map_or(0, ShowOutput::dropped);
+        let state = emit.then(|| ctl.snapshot(now, destinations_of(&ctl.target, handle), dropped));
         drop(ctl);
         if let Some(state) = state {
             last_emit = Some(now);
@@ -721,6 +812,39 @@ pub fn show_locate(
         }
         ctl.locate = fixture_id;
         ctl.dirty = true;
+        ctl.snapshot(Instant::now(), destinations_of(&ctl.target, &handle), 0)
+    };
+    publish(&app, &snapshot);
+    Ok(snapshot)
+}
+
+/// 打开 / 关闭“输出到网络”（默认开启）。关闭时编辑器照常播放、只在本机预览，
+/// 不向网络发包，也不占用输出（实时转发、录制、回放不受影响）。
+///
+/// # Arguments
+///
+/// * `app` - 应用句柄。
+/// * `state` - 引擎状态。
+/// * `enabled` - 是否向网络发送。
+///
+/// # Returns
+///
+/// 切换后的状态。
+///
+/// # Errors
+///
+/// 播放 / 暂停 / 定位期间打开输出、而录制或回放进行中时返回
+/// `recording_active` / `playback_active`（开关保持关闭）。
+#[tauri::command]
+pub fn show_set_output_enabled(
+    app: AppHandle,
+    state: State<'_, ShowRuntime>,
+    enabled: bool,
+) -> Result<ShowState, String> {
+    let handle = app.artnet_core().show_output_handle();
+    let snapshot = {
+        let mut ctl = state.lock();
+        ctl.set_send_enabled(enabled, || ShowOutput::begin(&handle))?;
         ctl.snapshot(Instant::now(), destinations_of(&ctl.target, &handle), 0)
     };
     publish(&app, &snapshot);
@@ -974,6 +1098,86 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(!mode.is_show());
+    }
+
+    /// 测试用的输出句柄与运行模式。
+    fn test_handle() -> (OutputHandle, Arc<host_core::mode::RuntimeMode>) {
+        use host_core::mode::RuntimeMode;
+        use host_core::{Dispatcher, SenderSlot};
+
+        let mode = Arc::new(RuntimeMode::new());
+        let handle = OutputHandle::new(
+            Dispatcher::with_table(Default::default(), SenderSlot::default()),
+            mode.clone(),
+            Instant::now(),
+        );
+        (handle, mode)
+    }
+
+    /// 等到 `cond` 成立（最多 3 秒）。
+    fn wait_until(cond: impl Fn() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !cond() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        cond()
+    }
+
+    #[test]
+    fn 没有会话时切换输出开关只记下状态() {
+        let mut c = control(1000);
+        assert!(c.send_enabled, "默认开启");
+        c.set_send_enabled(false, || panic!("关闭不需要开始输出")).unwrap();
+        let s = c.snapshot(Instant::now(), None, 0);
+        assert!(!s.output_enabled && !s.sending);
+        c.set_send_enabled(true, || panic!("没有会话时不开始输出")).unwrap();
+        assert!(c.send_enabled && c.pending_out.is_none());
+    }
+
+    #[test]
+    fn 输出关闭时播放不占用输出_录制中也能播放() {
+        let (handle, mode) = test_handle();
+        let states = Arc::new(Mutex::new(Vec::<ShowState>::new()));
+        let publisher: Publisher = {
+            let states = states.clone();
+            Arc::new(move |s| states.lock().unwrap().push(s.clone()))
+        };
+        let rt = ShowRuntime::new();
+        mode.set_recording(true);
+        {
+            let mut ctl = rt.lock();
+            ctl.show = Some(project(1_000_000));
+            ctl.set_send_enabled(false, || unreachable!()).unwrap();
+            ensure_session(&rt, &mut ctl, &publisher, &handle).expect("输出关闭时录制中也能播放");
+            ctl.play(Instant::now());
+        }
+        assert!(wait_until(|| states.lock().unwrap().iter().any(|s| s.transport == Transport::Playing)));
+        assert!(!mode.is_show(), "输出关闭时不置位 show 标志");
+        let last = states.lock().unwrap().last().cloned().unwrap();
+        assert!(last.outputting && !last.sending && !last.output_enabled);
+
+        // 录制中打开输出：失败，开关保持关闭
+        let err = rt.lock().set_send_enabled(true, || ShowOutput::begin(&handle)).unwrap_err();
+        assert_eq!(err, "recording_active");
+        assert!(!rt.lock().send_enabled);
+
+        // 录制结束后打开：会话线程接管输出
+        mode.set_recording(false);
+        rt.lock().set_send_enabled(true, || ShowOutput::begin(&handle)).unwrap();
+        assert!(mode.is_show());
+        assert!(wait_until(|| rt.lock().pending_out.is_none()), "线程应接管输出");
+        assert!(rt.lock().snapshot(Instant::now(), None, 0).sending);
+
+        // 播放中关闭：线程补发黑场后释放输出，播放继续
+        rt.lock().set_send_enabled(false, || unreachable!()).unwrap();
+        assert!(wait_until(|| !mode.is_show()), "关闭后应释放 show 标志");
+        let ctl = rt.lock();
+        assert_eq!(ctl.transport, Transport::Playing);
+        assert!(ctl.session.is_some() && !ctl.sending);
+        drop(ctl);
+
+        rt.lock().stop();
+        assert!(wait_until(|| rt.lock().session.is_none()));
     }
 
     #[test]

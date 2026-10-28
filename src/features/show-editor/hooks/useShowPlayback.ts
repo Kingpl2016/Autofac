@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { onShowState, showLoad, showSeek, showStop } from "../lib/playbackApi";
+import { onShowState, showLoad, showSeek, showSetOutputEnabled, showStop } from "../lib/playbackApi";
 import { blackoutProject, withProgrammer } from "../lib/programmer";
 import { createSyncer, throttle } from "../lib/syncer";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -22,6 +22,7 @@ const SEEK_INTERVAL_MS = 40;
  * - 工程每次变化（防抖后）整体推给后端，使 Locate / 播放总是用最新的灯光数据；
  * - 订阅 `show:state`，把后端的位置写入播放头 —— 播放期间播放头完全由后端驱动；
  * - 用户拖动播放头（不是后端驱动的变化）时，把位置发给后端；
+ * - 挂载时把“输出到网络”重置为开启；
  * - 卸载时停止输出，避免离开页面后灯还亮着。
  */
 export function useShowPlayback(): void {
@@ -71,6 +72,8 @@ export function useShowPlayback(): void {
       // 订阅失败（例如没有 Tauri 运行时）时，播放状态保持为“未知”，编辑功能不受影响
       .catch(() => undefined);
 
+    // 每次打开编辑器，“输出到网络”都从开启开始（开关不存进工程，避免关着输出却找不到原因）
+    void showSetOutputEnabled(true).catch(() => undefined);
     // 首次：先把工程交给后端，再把后端位置对齐到当前播放头
     syncer.push(outgoing());
     void syncer

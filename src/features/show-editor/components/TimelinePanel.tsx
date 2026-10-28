@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCueActions } from "../hooks/useCueActions";
 import { nextMediaTrackName } from "../hooks/mediaActions";
+import { selectTracksWithFixtures } from "../hooks/selectionActions";
 import { addMediaTrack } from "../lib/mediaClips";
 import { setTrackFlag, setTrackView, TRACK_HEIGHT_ORDER, trackName } from "../lib/ops";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -114,22 +115,28 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
   const onPickCue = useCallback(() => setInspectorTab("cue"), [setInspectorTab]);
 
   /** 点选轨道头：单选、Ctrl 追加 / 取消、Shift 从上次点选的轨道连选。 */
+  // 灯具选择跟着轨道走，右侧切到“灯具与 Patch”并定位
   const onSelectTrack = (trackId: string, mode: "single" | "toggle" | "range" = "single") => {
     const ui = useEditorUiStore.getState();
+    const open = { openPatch: true };
     if (mode === "single") {
-      ui.selectTrack(trackId);
+      selectTracksWithFixtures([trackId], trackId, open);
       return;
     }
     if (mode === "toggle") {
       const has = ui.selectedTrackIds.includes(trackId);
-      ui.selectTracks(has ? ui.selectedTrackIds.filter((x) => x !== trackId) : [...ui.selectedTrackIds, trackId], has ? undefined : trackId);
+      selectTracksWithFixtures(
+        has ? ui.selectedTrackIds.filter((x) => x !== trackId) : [...ui.selectedTrackIds, trackId],
+        has ? undefined : trackId,
+        open,
+      );
       return;
     }
     const ids = tracks.map((tr) => tr.id);
     const from = ids.indexOf(ui.selectedTrackId ?? trackId);
     const to = ids.indexOf(trackId);
     const [a, b] = [Math.min(from, to), Math.max(from, to)];
-    ui.selectTracks(ids.slice(Math.max(0, a), b + 1), ui.selectedTrackId ?? trackId);
+    selectTracksWithFixtures(ids.slice(Math.max(0, a), b + 1), ui.selectedTrackId ?? trackId, open);
   };
 
   /** 删除轨道（多选时删除全部选中的）；灯具轨道连同灯具，分组轨道只删分组。一步撤销。 */

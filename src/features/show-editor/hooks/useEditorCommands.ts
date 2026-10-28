@@ -25,6 +25,7 @@ import { useCueActions } from "./useCueActions";
 import { clearLoop, deleteSelectedObject } from "./timelineObjectActions";
 import { runTour } from "../onboarding/runTour";
 import { useOnboardingStore } from "../stores/useOnboardingStore";
+import { togglePanel } from "./panelControl";
 
 /** 一帧的毫秒数（逐帧移动播放头 / 微调片段用）。 */
 const FRAME = Math.round(1000 / OUTPUT_FPS);
@@ -460,6 +461,11 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         run: () => useEditorPrefsStore.getState().setCenterView(view),
       });
     }
+    // 收起 / 展开左右侧栏（Ctrl+B 已是“分割”，所以用 Ctrl+Shift+B / Ctrl+Alt+B）
+    commands.push(
+      { id: "view.toggleLibrary", titleKey: "editor.commands.toggleLibrary", category: "view", keys: ["mod+shift+b"], run: () => togglePanel("library") },
+      { id: "view.toggleInspector", titleKey: "editor.commands.toggleInspector", category: "view", keys: ["mod+alt+b"], run: () => togglePanel("inspector") },
+    );
     for (const tab of LIBRARY_TABS) {
       commands.push({
         id: `view.library.${tab}`,

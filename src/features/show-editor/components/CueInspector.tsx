@@ -1,23 +1,28 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Layers } from "lucide-react";
+import { Crosshair, Layers } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
 import { CONVERTIBLE_EFFECTS, lookFromLegacyEffect } from "../lib/attrEffects";
+import { cssColor } from "../lib/cueTemplates";
+import { clipName } from "../lib/clipVisual";
 import {
   convertToLook,
   replaceWithLook,
+  setCueLabel,
   setCueTimes,
   updateCues,
   updateEffectCues,
   type CuePatch,
   type EffectPatch,
 } from "../lib/cueOps";
+import { revealInPatch } from "../hooks/selectionActions";
 import { setCueLengths } from "../lib/editOps";
+import { selectionOfTracks } from "../lib/fixtureSelection";
 import { trackFixtureIds, trackName } from "../lib/ops";
 import type { Cue, Easing, EffectCue, LookClip } from "../lib/project";
 import { formatTimecode, parseTimecode } from "../lib/time";
@@ -27,7 +32,8 @@ import { CommitInput } from "./CommitInput";
 import { ColorSection } from "./ColorSection";
 import { EffectInspector } from "./EffectInspector";
 import { EmptyHint } from "./EmptyHint";
-import { LookInspector } from "./LookInspector";
+import { InspectorSection } from "./InspectorSection";
+import { LookInspector, LookKeyNav } from "./LookInspector";
 import { SceneInspector } from "./SceneInspector";
 import { SliderField } from "./SliderField";
 
@@ -51,6 +57,10 @@ function common<T>(cues: readonly Cue[], pick: (c: Cue) => T): { value: T; mixed
  *
  * 选中多个 Cue 时批量修改（时间字段隐藏）；各字段在“松手 / 失焦 / Enter”时提交一次，
  * 一次提交对应一步撤销。特效 Cue 没有固定颜色，颜色区不显示，改为显示特效参数（见 `EffectInspector`）。
+ *
+ * 布局与“灯具与 Patch”的详情一致：顶部是摘要（标题、所属灯具、锁定、外观片段的关键帧导航、转换操作），
+ * 下面先是片段特有的分区（静态：颜色；特效：特效参数、特效颜色；外观：强度、颜色、属性层、多灯分布、
+ * 复制粘贴；场景：场景条目），最后是共用的“亮度与淡入淡出”“时间”。分区展开状态记住，同名分区各类型共用。
  */
 export function CueInspector() {
   const { t } = useTranslation();
@@ -80,97 +90,126 @@ export function CueInspector() {
   const shortest = Math.min(...selected.map((c) => c.endMs - c.startMs));
   const mixedLabel = t("editor.cue.mixed");
   const ownerTrack = single ? project.tracks.find((tr) => tr.id === single.trackId) : undefined;
+  // 片段驱动的灯具：“在 Patch 中查看”直接跳过去
+  const owner = (() => {
+    const trackIds = [...new Set(selected.map((c) => c.trackId))];
+    const { fixtureIds } = selectionOfTracks(project, trackIds);
+    const target = trackIds.length === 1 ? project.tracks.find((tr) => tr.id === trackIds[0])?.target : undefined;
+    const label =
+      target?.kind === "fixture" && fixtureIds.length === 1
+        ? t("editor.cue.ownerFixture", { name: project.fixtures.find((f) => f.id === fixtureIds[0])?.name ?? "" })
+        : target?.kind === "group"
+          ? t("editor.cue.ownerGroup", { name: project.groups.find((g) => g.id === target.id)?.name ?? "", count: fixtureIds.length })
+          : t("editor.cue.ownerCount", { count: fixtureIds.length });
+    return { fixtureIds, label };
+  })();
+
+  const scene = single?.kind === "scene" ? single : null;
+  const convertible = effects.some((c) => CONVERTIBLE_EFFECTS.has(c.effect)) && !locked;
+  const firstStatic = statics[0]?.kind === "static" ? statics[0] : null;
 
   return (
-    <div className="flex flex-col gap-4 p-3">
-      <header>
+    <div className="flex flex-col">
+      {/* 摘要与操作：始终在顶部 */}
+      <header className="sticky top-0 z-10 flex flex-col gap-1 border-b border-border bg-surface-2 px-3 py-2">
         <h3 className="text-sm font-medium">
           {single
             ? (ownerTrack ? trackName(project, ownerTrack) : "") || t("editor.timeline.missingTarget")
             : t("editor.cue.selectedCount", { count: selected.length })}
         </h3>
-        {locked && <p className="mt-1 text-xs text-warning">{t("editor.cue.locked")}</p>}
-        {!single && !locked && (
-          <label className="mt-2 flex items-center justify-between gap-2 text-sm">
-            <span>{t("editor.cue.sameLength")}</span>
+        {owner.fixtureIds.length > 0 && (
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate">{owner.label}</span>
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center gap-1 rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => revealInPatch(owner.fixtureIds)}
+            >
+              <Crosshair aria-hidden className="size-3" />
+              {t("editor.cue.revealInPatch")}
+            </button>
+          </p>
+        )}
+        {single && (single.kind === "look" || single.kind === "scene") && !locked && (
+          // 片段名称：时间线上显示（模板 / 属性特效放下时自动填入）
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="shrink-0">{t("editor.cue.name")}</span>
             <CommitInput
-              label={t("editor.cue.sameLength")}
-              value={(() => {
-                const len = common(selected, (c) => formatTimecode(c.endMs - c.startMs));
-                return len.mixed ? "" : len.value;
-              })()}
-              inputMode="numeric"
-              className="num h-7 w-24 px-1.5 text-xs"
-              onCommit={(text) => {
-                const ms = parseTimecode(text);
-                if (ms === null) return;
-                let n = 0;
-                update((d) => {
-                  n = setCueLengths(d, ids, ms);
-                });
-                announce(t("editor.cue.lengthSet", { count: n, time: formatTimecode(ms) }));
-              }}
+              className="h-7 min-w-0 flex-1 px-2 text-xs"
+              label={t("editor.cue.name")}
+              value={single.label ?? ""}
+              placeholder={clipName(single, project.presets, (e) => t(`editor.effects.${e}`)) || t("editor.cue.namePlaceholder")}
+              onCommit={(text) => update((d) => void setCueLabel(d, single.id, text))}
             />
           </label>
         )}
+        {locked && <p className="text-xs text-warning">{t("editor.cue.locked")}</p>}
+        {looks.length > 0 && <LookKeyNav cues={looks} />}
+        {((statics.length > 0 && !locked) || convertible) && (
+          <div role="toolbar" aria-label={t("editor.cue.actions")} className="flex flex-wrap items-center gap-1">
+            {statics.length > 0 && !locked && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                title={t("editor.look.convertHint")}
+                onClick={() => {
+                  let n = 0;
+                  update((d) => {
+                    n = convertToLook(d, statics.map((c) => c.id));
+                  });
+                  announce(t("editor.look.converted", { count: n }));
+                }}
+              >
+                <Layers aria-hidden />
+                {t("editor.look.convert", { count: statics.length })}
+              </Button>
+            )}
+            {convertible && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                title={t("editor.attrEffects.convertHint")}
+                onClick={() => {
+                  let n = 0;
+                  update((d) => {
+                    for (const c of effects) {
+                      const track = d.tracks.find((tr) => tr.id === c.trackId);
+                      const members = track ? trackFixtureIds(d, track).length : 1;
+                      const converted = lookFromLegacyEffect(c, members, d.tempo);
+                      if (converted && replaceWithLook(d, c.id, converted.look, converted.spread)) n += 1;
+                    }
+                  });
+                  announce(t("editor.attrEffects.converted", { count: n }));
+                }}
+              >
+                <Layers aria-hidden />
+                {t("editor.attrEffects.convert")}
+              </Button>
+            )}
+          </div>
+        )}
       </header>
 
-      {looks.length > 0 && <LookInspector cues={looks} />}
-
-      {single?.kind === "scene" && <SceneInspector cue={single} />}
-
-      {statics.length > 0 && !locked && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 justify-start"
-          title={t("editor.look.convertHint")}
-          onClick={() => {
-            let n = 0;
-            update((d) => {
-              n = convertToLook(d, statics.map((c) => c.id));
-            });
-            announce(t("editor.look.converted", { count: n }));
-          }}
+      {/* 片段特有的分区（按类型），之后是所有类型共用的“亮度与淡入淡出”“时间” */}
+      {firstStatic && (
+        <InspectorSection
+          scope="cue"
+          id="color"
+          title={t("editor.cue.color")}
+          aside={<span aria-hidden className="size-3.5 rounded-sm border border-border" style={{ backgroundColor: cssColor(firstStatic.rgb) }} />}
         >
-          <Layers aria-hidden />
-          {t("editor.look.convert", { count: statics.length })}
-        </Button>
-      )}
-
-      {statics.length > 0 && (
-        <ColorSection
-          key={ids.join(",")}
-          rgb={statics[0].kind === "static" ? statics[0].rgb : [255, 255, 255]}
-          mixed={common(statics, (c) => (c.kind === "static" ? c.rgb : null)).mixed}
-          onCommit={(rgb) => patch({ rgb })}
-        />
-      )}
-
-      {effects.some((c) => CONVERTIBLE_EFFECTS.has(c.effect)) && !locked && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 justify-start"
-          title={t("editor.attrEffects.convertHint")}
-          onClick={() => {
-            let n = 0;
-            update((d) => {
-              for (const c of effects) {
-                const track = d.tracks.find((tr) => tr.id === c.trackId);
-                const members = track ? trackFixtureIds(d, track).length : 1;
-                const converted = lookFromLegacyEffect(c, members, d.tempo);
-                if (converted && replaceWithLook(d, c.id, converted.look, converted.spread)) n += 1;
-              }
-            });
-            announce(t("editor.attrEffects.converted", { count: n }));
-          }}
-        >
-          <Layers aria-hidden />
-          {t("editor.attrEffects.convert")}
-        </Button>
+          <ColorSection
+            key={ids.join(",")}
+            rgb={firstStatic.rgb}
+            mixed={common(statics, (c) => (c.kind === "static" ? c.rgb : null)).mixed}
+            onCommit={(rgb) => patch({ rgb })}
+          />
+        </InspectorSection>
       )}
 
       {effects.length > 0 && (
@@ -181,60 +220,92 @@ export function CueInspector() {
         />
       )}
 
-      <SliderField
-        label={t("editor.cue.brightness")}
-        numberLabel={t("editor.cue.numberOf", { field: t("editor.cue.brightness") })}
-        value={brightness.value}
-        min={0}
-        max={100}
-        unit="%"
-        mixed={brightness.mixed}
-        mixedLabel={mixedLabel}
-        onCommit={(v) => patch({ brightness: v })}
-      />
-      <SliderField
-        label={t("editor.cue.fadeIn")}
-        numberLabel={t("editor.cue.numberOf", { field: t("editor.cue.fadeIn") })}
-        value={fadeIn.value}
-        min={0}
-        max={Math.max(0, shortest)}
-        step={10}
-        unit="ms"
-        mixed={fadeIn.mixed}
-        mixedLabel={mixedLabel}
-        onCommit={(v) => patch({ fadeInMs: v })}
-      />
-      <SliderField
-        label={t("editor.cue.fadeOut")}
-        numberLabel={t("editor.cue.numberOf", { field: t("editor.cue.fadeOut") })}
-        value={fadeOut.value}
-        min={0}
-        max={Math.max(0, shortest)}
-        step={10}
-        unit="ms"
-        mixed={fadeOut.mixed}
-        mixedLabel={mixedLabel}
-        onCommit={(v) => patch({ fadeOutMs: v })}
-      />
+      {looks.length > 0 && <LookInspector cues={looks} />}
 
-      <div className="grid gap-1.5">
-        <Label className="text-xs">
-          {t("editor.cue.easing")}
-          {easing.mixed && <span className="ml-1.5 text-muted-foreground">{mixedLabel}</span>}
-        </Label>
-        <Segmented<Easing>
-          ariaLabel={t("editor.cue.easing")}
-          value={easing.value}
-          options={EASINGS.map((e) => ({ value: e, label: t(`editor.cue.easings.${e}`) }))}
-          onChange={(e) => patch({ easing: e })}
-        />
-      </div>
+      {scene && (
+        <InspectorSection scope="cue" id="scene" title={t("editor.scene.title")} aside={<span className="num">{scene.entries.length}</span>}>
+          <SceneInspector cue={scene} />
+        </InspectorSection>
+      )}
 
-      {single && (
-        <TimeSection
-          cue={single}
-          onSetTimes={(start, end) => update((d) => void setCueTimes(d, single.id, start, end))}
+      <InspectorSection scope="cue" id="fades" title={t("editor.cue.sections.fades")}>
+        <SliderField
+          label={t("editor.cue.brightness")}
+          numberLabel={t("editor.cue.numberOf", { field: t("editor.cue.brightness") })}
+          value={brightness.value}
+          min={0}
+          max={100}
+          unit="%"
+          mixed={brightness.mixed}
+          mixedLabel={mixedLabel}
+          onCommit={(v) => patch({ brightness: v })}
         />
+        <SliderField
+          label={t("editor.cue.fadeIn")}
+          numberLabel={t("editor.cue.numberOf", { field: t("editor.cue.fadeIn") })}
+          value={fadeIn.value}
+          min={0}
+          max={Math.max(0, shortest)}
+          step={10}
+          unit="ms"
+          mixed={fadeIn.mixed}
+          mixedLabel={mixedLabel}
+          onCommit={(v) => patch({ fadeInMs: v })}
+        />
+        <SliderField
+          label={t("editor.cue.fadeOut")}
+          numberLabel={t("editor.cue.numberOf", { field: t("editor.cue.fadeOut") })}
+          value={fadeOut.value}
+          min={0}
+          max={Math.max(0, shortest)}
+          step={10}
+          unit="ms"
+          mixed={fadeOut.mixed}
+          mixedLabel={mixedLabel}
+          onCommit={(v) => patch({ fadeOutMs: v })}
+        />
+        <div className="grid gap-1.5">
+          <Label className="text-xs">
+            {t("editor.cue.easing")}
+            {easing.mixed && <span className="ml-1.5 text-muted-foreground">{mixedLabel}</span>}
+          </Label>
+          <Segmented<Easing>
+            ariaLabel={t("editor.cue.easing")}
+            value={easing.value}
+            options={EASINGS.map((e) => ({ value: e, label: t(`editor.cue.easings.${e}`) }))}
+            onChange={(e) => patch({ easing: e })}
+          />
+        </div>
+      </InspectorSection>
+
+      {(single || !locked) && (
+        <InspectorSection scope="cue" id="time" title={t("editor.cue.time")}>
+          {single ? (
+            <TimeSection cue={single} onSetTimes={(start, end) => update((d) => void setCueTimes(d, single.id, start, end))} />
+          ) : (
+            <label className="flex items-center justify-between gap-2 text-sm">
+              <span>{t("editor.cue.sameLength")}</span>
+              <CommitInput
+                label={t("editor.cue.sameLength")}
+                value={(() => {
+                  const len = common(selected, (c) => formatTimecode(c.endMs - c.startMs));
+                  return len.mixed ? "" : len.value;
+                })()}
+                inputMode="numeric"
+                className="num h-7 w-24 px-1.5 text-xs"
+                onCommit={(text) => {
+                  const ms = parseTimecode(text);
+                  if (ms === null) return;
+                  let n = 0;
+                  update((d) => {
+                    n = setCueLengths(d, ids, ms);
+                  });
+                  announce(t("editor.cue.lengthSet", { count: n, time: formatTimecode(ms) }));
+                }}
+              />
+            </label>
+          )}
+        </InspectorSection>
       )}
     </div>
   );
@@ -254,7 +325,8 @@ function TimeSection({ cue, onSetTimes }: TimeSectionProps) {
   };
   const length = cue.endMs - cue.startMs;
   return (
-    <section aria-label={t("editor.cue.time")} className="grid grid-cols-3 gap-2">
+    // 外层的分区（“时间”）提供标题
+    <div className="grid grid-cols-3 gap-2">
       <label className="grid gap-1 text-xs text-muted-foreground">
         {t("editor.cue.start")}
         <CommitInput
@@ -282,6 +354,6 @@ function TimeSection({ cue, onSetTimes }: TimeSectionProps) {
           onCommit={commit((ms) => [cue.startMs, cue.startMs + ms])}
         />
       </label>
-    </section>
+    </div>
   );
 }

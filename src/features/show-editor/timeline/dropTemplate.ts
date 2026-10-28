@@ -1,5 +1,6 @@
+import i18n from "@/shared/i18n";
 import type { TemplateStyle } from "../lib/cueDefaults";
-import { templateRgb, type CueTemplate } from "../lib/cueTemplates";
+import { templateName, templateRgb, type CueTemplate } from "../lib/cueTemplates";
 import type { Track } from "../lib/project";
 import { pointToTimeRow, type TimelineViewport } from "./geometry";
 
@@ -15,15 +16,17 @@ export type DropResult =
  * 模板转成新建 Cue 的外观。
  *
  * @param template 素材库里的模板。
- * @returns 新建片段的样式（颜色保持模板原样：RGB 或色温；`rgb` 为显示用的近似色）。
+ * @param lang 界面语言（片段名称取模板在该语言下的名字）。
+ * @returns 新建片段的样式（颜色保持模板原样：RGB 或色温；`rgb` 为显示用的近似色；`label` 为模板名）。
  */
-export function templateStyle(template: CueTemplate): TemplateStyle {
+export function templateStyle(template: CueTemplate, lang: string = i18n.language): TemplateStyle {
   return {
     color: structuredClone(template.color),
     rgb: templateRgb(template),
     brightness: template.brightness,
     fadeInMs: template.fadeInMs,
     fadeOutMs: template.fadeOutMs,
+    label: templateName(template, lang),
   };
 }
 

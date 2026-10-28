@@ -24,6 +24,7 @@ import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, sliderToZoom, ZOOM_SLIDER_STEPS, zoomPx
 import { SNAP_KINDS, useEditorPrefsStore, type RulerFormat } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { TimelineLegend } from "./TimelineLegend";
 
 /** 工具条上的小图标按钮（按下态用 `aria-pressed`，不只靠颜色）。 */
 function ToolButton({
@@ -181,6 +182,7 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
       <ToolButton label={t("editor.timelineTools.fit")} onClick={zoomFit}>
         <Maximize2 aria-hidden />
       </ToolButton>
+      <TimelineLegend />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   showPause,
   showPlay,
   showSeek,
+  showSetOutputEnabled,
   showStop,
   type ShowState,
 } from "../lib/playbackApi";
@@ -92,6 +93,15 @@ export async function stopPlayback(): Promise<void> {
 export async function seekTo(ms: number): Promise<void> {
   useEditorUiStore.getState().setPlayhead(ms);
   await attempt(() => showSeek(ms));
+}
+
+/**
+ * 打开 / 关闭“输出到网络”。失败（播放中打开、而录制 / 回放进行中）时以 toast 报告，开关保持关闭。
+ *
+ * @param enabled 是否向网络发送。
+ */
+export async function setOutputEnabled(enabled: boolean): Promise<void> {
+  await attempt(() => showSetOutputEnabled(enabled));
 }
 
 /**

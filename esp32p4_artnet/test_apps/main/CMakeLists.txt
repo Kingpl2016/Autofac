@@ -12,12 +12,14 @@ idf_component_register(
         "test_config_validate.cpp"
         "test_htp_merge.cpp"
         "test_etronet_proto.cpp"
+        "test_forwarder.cpp"
     INCLUDE_DIRS "."
     REQUIRES
         catch2
         common
         artrec
         dmx_out
+        forwarder
         storage
         etronet
     WHOLE_ARCHIVE

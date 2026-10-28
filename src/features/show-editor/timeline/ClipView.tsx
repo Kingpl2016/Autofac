@@ -3,12 +3,14 @@ import { useTranslation } from "react-i18next";
 import { Aperture, Focus, Move, Palette, Settings2, TriangleAlert, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { cssColor } from "../lib/cueTemplates";
+import { clipCategory, clipFill, clipName } from "../lib/clipVisual";
 import type { LayerBadge } from "../lib/fixtureProfile";
 import { lookKeyTimes } from "../lib/keyframes";
-import { clipColor } from "../lib/looks";
+import { lookLayers, resolveLook } from "../lib/looks";
 import { CUE_TAG_COLORS, type Cue, type Preset } from "../lib/project";
 import { formatTimecode } from "../lib/time";
+import { useProjectStore } from "../stores/useProjectStore";
+import { CLIP_CATEGORY_ACCENT } from "./clipCategoryStyle";
 import { CueBlock } from "./CueBlock";
 
 /** 片段宽度小于这个值时不显示裁剪手柄（避免抓不到片段本身）。 */
@@ -54,19 +56,12 @@ const BADGE_ICONS: Record<LayerBadge, LucideIcon> = {
 /** 宽度不小于这个值时才画属性徽标。 */
 const MIN_BADGE_WIDTH_PX = 44;
 
-/** 片段类型的强调色（顶部细条），区分灯光 / 场景 / 特效。 */
-const KIND_ACCENT: Record<Cue["kind"], string> = {
-  static: "bg-clip-light",
-  look: "bg-clip-light",
-  scene: "bg-clip-scene",
-  effect: "bg-clip-effect",
-};
-
 /** 色带高度（像素）。 */
 const STRIP_HEIGHT = 6;
 
 /**
- * 时间线上的一个片段（剪映式）：顶部类型色条 + 强度包络（`CueBlock`）+ 底部实际输出色带 + 左右裁剪手柄。
+ * 时间线上的一个片段（剪映式）：顶部类别色条（颜色 / 特效 / 预设 / 场景）+ 强度包络（`CueBlock`，
+ * 含类型图标、名称、亮度）+ 底部实际输出色带 + 左右裁剪手柄。悬停提示类型、名称与用到的层。
  * 折叠的轨道只画一条色带。
  *
  * 指针交互由轨道区统一处理（事件委托），这里只用 `data-cue-id` / `data-edge` 标出命中区域。
@@ -91,6 +86,10 @@ export const ClipView = memo(function ClipView({
   unsupported,
 }: ClipViewProps) {
   const { t } = useTranslation();
+  const tempo = useProjectStore((s) => s.project.tempo);
+  const category = clipCategory(cue, presets);
+  const kindName = t(`editor.timeline.clipKinds.${category}`);
+  const name = clipName(cue, presets, (effect) => t(`editor.effects.${effect}`));
   const label = t("editor.timeline.clipLabel", {
     track: trackName,
     start: formatTimecode(cue.startMs),
@@ -100,7 +99,11 @@ export const ClipView = memo(function ClipView({
   const layerName = (k: string) =>
     k === "intensity" ? t("editor.look.intensity") : k === "color" ? t("editor.look.color") : t(`fixtures.functions.${k}`);
   const warn = unsupported && unsupported.length > 0 ? t("editor.timeline.clipUnsupported", { layers: unsupported.map(layerName).join("、") }) : null;
+  // 悬停提示：类型 · 名称 · 用到的层
+  const layers = cue.kind === "look" ? lookLayers(resolveLook(cue.look, presets)).map(layerName).join("、") : "";
+  const tooltip = [kindName, name, layers ? t("editor.timeline.clipLayers", { layers }) : null].filter(Boolean).join(" · ");
   const fullLabel = [
+    name ? t("editor.timeline.clipKindNamed", { kind: kindName, name }) : kindName,
     label,
     cue.tag ? t(`editor.tags.${cue.tag}`) : null,
     cue.disabled ? t("editor.timeline.clipDisabled") : null,
@@ -120,7 +123,9 @@ export const ClipView = memo(function ClipView({
       tabIndex={-1}
       aria-label={fullLabel}
       aria-pressed={selected}
+      title={tooltip}
       data-cue-id={cue.id}
+      data-category={category}
       data-disabled={cue.disabled ? "" : undefined}
       className={cn(
         "group absolute overflow-hidden rounded-[5px] border bg-surface-1/60",
@@ -133,14 +138,20 @@ export const ClipView = memo(function ClipView({
       style={{ left, top, width: Math.max(2, width), height }}
     >
       {collapsed ? (
-        <div
-          aria-hidden
-          className={cn("h-full w-full bg-(--clip-color) opacity-80", dimmed && "opacity-40")}
-          style={{ "--clip-color": strip ?? cssColor(clipColor(cue, presets, gamma)) } as CSSProperties}
-        />
+        (() => {
+          // 折叠：有实际输出色带时画色带，否则画设定颜色（没有颜色层时为中性斜纹）
+          const fill = strip ? null : clipFill(cue, presets, { tempo, members: 1, gamma });
+          return (
+            <div
+              aria-hidden
+              className={cn("h-full w-full opacity-80", dimmed && "opacity-40", fill?.neutral && "hatch-neutral")}
+              style={{ background: strip ?? fill?.background ?? undefined }}
+            />
+          );
+        })()
       ) : (
         <>
-          <span aria-hidden className={cn("absolute inset-x-0 top-0 z-[1] h-0.5", KIND_ACCENT[cue.kind])} />
+          <span aria-hidden data-testid="clip-accent" className={cn("absolute inset-x-0 top-0 z-[1] h-0.5", CLIP_CATEGORY_ACCENT[category])} />
           <div className="absolute inset-x-0 top-0" style={{ bottom: strip ? STRIP_HEIGHT : 0 }}>
             <CueBlock cue={cue} dimmed={dimmed} locked={locked} selected={selected && !dragging} />
           </div>

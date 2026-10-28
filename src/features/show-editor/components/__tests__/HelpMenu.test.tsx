@@ -13,7 +13,7 @@ vi.mock("sonner", () => ({ toast }));
 import type { Command } from "../../lib/commands";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useKeymapStore } from "../../stores/useKeymapStore";
-import { HelpMenu } from "../HelpMenu";
+import { HeaderHelpMenu, HelpMenu } from "../HelpMenu";
 import { ShortcutSheetDialog } from "../ShortcutSheetDialog";
 
 beforeAll(() => {
@@ -99,6 +99,49 @@ describe("帮助菜单的新增项", () => {
     openMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "关于 Art-Net Studio" }));
     expect(screen.getByTestId("location").textContent).toBe("/about");
+  });
+});
+
+describe("顶栏的帮助菜单", () => {
+  const renderHeader = (path: string) =>
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <HeaderHelpMenu />
+      </MemoryRouter>,
+    );
+
+  it("非编辑页：F1 打开，只有通用项；诊断信息不带节目规模", async () => {
+    invoke.mockImplementation(async () => ({
+      name: "Art-Net Studio",
+      version: "1.2.3",
+      identifier: "x",
+      tauriVersion: "2",
+      os: "windows",
+      arch: "x86_64",
+      profile: "release",
+    }));
+    renderHeader("/dashboard");
+    fireEvent.keyDown(window, { key: "F1" });
+    expect(useEditorUiStore.getState().helpOpen).toBe(true);
+    const menu = await screen.findByRole("menu", { name: "帮助" });
+    const items = within(menu).getAllByRole("menuitem").map((x) => x.textContent);
+    expect(items).toEqual(["新功能", "关于 Art-Net Studio", "复制诊断信息", "打开日志文件夹"]);
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "复制诊断信息" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const text = String((writeText.mock.calls[0] as unknown[])[0]);
+    expect(text).toContain("Art-Net Studio 1.2.3");
+    expect(text).not.toContain("台灯具");
+  });
+
+  it("编辑页：另有引导、提示与快捷键项；F1 交给编辑器命令表", async () => {
+    renderHeader("/editor");
+    fireEvent.keyDown(window, { key: "F1" });
+    expect(useEditorUiStore.getState().helpOpen).toBe(false);
+    openMenu();
+    expect(await screen.findByRole("menuitem", { name: "重新播放上手引导" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "快捷键速查" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "重置上手引导与提示" })).toBeTruthy();
   });
 });
 

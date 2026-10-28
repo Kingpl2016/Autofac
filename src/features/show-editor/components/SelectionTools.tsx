@@ -44,14 +44,9 @@ export function SelectionTools() {
     </Button>
   );
 
+  // 外层的分区（“灯具选择”）与已选计数由编程器页提供
   return (
-    <section aria-label={t("editor.select.title")} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.select.title")}</h3>
-        <span role="status" className="num text-xs text-muted-foreground">
-          {t("editor.select.count", { count: selected.length, total: all.length })}
-        </span>
-      </div>
+    <div className="flex flex-col gap-2">
       <div role="toolbar" aria-label={t("editor.select.toolbar")} className="flex flex-wrap gap-1">
         {button(t("editor.select.all"), () => setSelected(all), all.length === 0)}
         {button(t("editor.select.none"), () => setSelected([]), selected.length === 0)}
@@ -145,6 +140,6 @@ export function SelectionTools() {
           !selectedTrackId,
         )}
       </div>
-    </section>
+    </div>
   );
 }

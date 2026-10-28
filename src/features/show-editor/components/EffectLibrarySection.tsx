@@ -47,6 +47,7 @@ import { announce } from "@/shared/stores/announcerStore";
 import { pickJsonFile, pickSavePath } from "@/shared/tauri/pickers";
 import { useCueActions } from "../hooks/useCueActions";
 import { supportedTargets } from "../hooks/useTargetCapabilities";
+import { effectDefSwatch } from "../lib/clipVisual";
 import { applicability, type Applicability } from "../lib/cueDefaults";
 import { templateErrorCode } from "../lib/cueTemplateApi";
 import { exportEffectFile, importEffectFile, revealUserEffects } from "../lib/effectApi";
@@ -137,7 +138,7 @@ function insertEffect(
     announce(t("editor.apply.rejected", { reason: t(`editor.apply.needs.${needs}`) }));
     return;
   }
-  const created = actions.insertOnTracks(trackIds, (d, trackId) => addEffectDefCue(d, trackId, playheadMs, def, params));
+  const created = actions.insertOnTracks(trackIds, (d, trackId) => addEffectDefCue(d, trackId, playheadMs, def, params, effectName(def, lang)));
   if (created.length > 0) useEditorUiStore.getState().setInspectorTab("cue");
   if (trackIds.length === 1) {
     announce(created.length > 0 ? t("editor.attrEffects.added", { name: effectName(def, lang) }) : t("editor.templates.noRoom"));
@@ -317,7 +318,6 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
           </div>
         );
       })}
-      <p className="px-1 text-[11px] text-muted-foreground">{t("editor.effectLib.fileHint")}</p>
     </section>
   );
 }
@@ -328,9 +328,24 @@ export function EffectDefChip({ def }: { def: EffectDef }) {
   const Icon = ICONS[def.icon ?? ""] ?? Sparkles;
   return (
     <span className="flex items-center gap-2 rounded-md border border-primary bg-card px-2.5 py-2 text-sm shadow-lg">
-      <Icon className="size-4 shrink-0 text-clip-light" aria-hidden />
+      <Icon className="size-4 shrink-0 text-clip-effect" aria-hidden />
       <span className="min-w-0 flex-1 truncate">{effectName(def, i18n.language)}</span>
+      <EffectSwatch def={def} />
     </span>
+  );
+}
+
+/** 特效的色块（与放到时间线后的片段主体同一画法；不改颜色的特效为斜纹）。 */
+function EffectSwatch({ def }: { def: EffectDef }) {
+  const fill = effectDefSwatch(def);
+  return (
+    <span
+      aria-hidden
+      data-testid="effect-swatch"
+      data-neutral={fill.neutral ? "" : undefined}
+      className={cn("h-3 w-6 shrink-0 rounded-sm border border-border", fill.neutral && "hatch-neutral")}
+      style={fill.background ? { background: fill.background } : undefined}
+    />
   );
 }
 
@@ -383,8 +398,9 @@ function EffectItem({
             isDragging && "opacity-40",
           )}
         >
-          <Icon className="size-4 shrink-0 text-clip-light" aria-hidden />
+          <Icon className="size-4 shrink-0 text-clip-effect" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{name}</span>
+          <EffectSwatch def={def} />
           <ApplyBadge app={app} id={badgeId} />
         </button>
       </ContextMenuTrigger>

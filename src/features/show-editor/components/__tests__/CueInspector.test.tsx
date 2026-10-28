@@ -4,10 +4,11 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { produce } from "immer";
 
 import i18n from "@/shared/i18n";
-import { addStaticCue } from "../../lib/cueOps";
+import { addLookCue, addStaticCue } from "../../lib/cueOps";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { CueInspector } from "../CueInspector";
@@ -47,11 +48,26 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   useProjectStore.getState().load(createEmptyProject("t"));
   useEditorUiStore.setState({ selectedCueIds: [], selectedTrackId: null });
+  useEditorPrefsStore.setState({ cueSections: {} });
 });
 
 afterEach(() => cleanup());
 
 describe("CueInspector", () => {
+  it("分区：静态片段显示颜色、亮度与淡入淡出、时间；收起“时间”后切到另一个片段仍收起", () => {
+    const { c1, c3 } = load();
+    act(() => useEditorUiStore.getState().selectCues([c1]));
+    render(<CueInspector />);
+    for (const name of ["颜色", "亮度与淡入淡出", "时间"]) expect(screen.getByRole("region", { name })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "时间" }));
+    expect(useEditorPrefsStore.getState().cueSections.time).toBe(false);
+    expect(screen.queryByLabelText("起点")).toBeNull();
+    act(() => useEditorUiStore.getState().selectCues([c3]));
+    expect(screen.queryByLabelText("起点")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "时间" }));
+    expect((screen.getByLabelText("起点") as HTMLInputElement).value).toBe("00:00.00");
+  });
+
   it("没有选中 Cue 时给出提示", () => {
     render(<CueInspector />);
     expect(screen.getByText("选中一个 Cue 或灯具以编辑属性")).toBeTruthy();
@@ -197,6 +213,29 @@ describe("CueInspector", () => {
     fireEvent.blur(box);
     expect(project().cues.map((c) => c.brightness)).toEqual([20, 20, 20]);
     expect(steps()).toBe(before + 1);
+  });
+
+  it("外观片段可以改名（时间线上显示），清空恢复按内容显示；一步撤销", () => {
+    let id: string | null = null;
+    useProjectStore.getState().load(
+      produce(createEmptyProject("t"), (d) => {
+        addFixtures(d, RGBW, 1);
+        d.durationMs = 60_000;
+        id = addLookCue(d, d.tracks[0].id, 0, { intensity: { kind: "value", value: 100 } }, 2000);
+      }),
+    );
+    act(() => useEditorUiStore.getState().selectCues([id as unknown as string]));
+    render(<CueInspector />);
+    const input = screen.getByRole("textbox", { name: "名称" });
+    const before = steps();
+    fireEvent.change(input, { target: { value: "  开场白光 " } });
+    fireEvent.blur(input);
+    const label = () => { const c = project().cues[0]; return c.kind === "look" ? c.label : "非外观"; };
+    expect(label()).toBe("开场白光");
+    expect(steps()).toBe(before + 1);
+    fireEvent.change(screen.getByRole("textbox", { name: "名称" }), { target: { value: "" } });
+    fireEvent.blur(screen.getByRole("textbox", { name: "名称" }));
+    expect(label()).toBeUndefined();
   });
 
   it("所在轨道被锁定时提示且修改无效", () => {

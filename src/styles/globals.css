@@ -401,6 +401,7 @@
   --clip-light: oklch(0.62 0.13 var(--accent-h));
   --clip-scene: oklch(0.6 0.13 300);
   --clip-effect: oklch(0.64 0.14 25);
+  --clip-preset: oklch(0.64 0.11 200);
   --clip-audio: oklch(0.62 0.12 165);
   --clip-video: oklch(0.6 0.12 235);
   --playhead: oklch(0.6 0.2 15);
@@ -417,6 +418,7 @@
   --clip-light: oklch(0.55 0.12 var(--accent-h));
   --clip-scene: oklch(0.52 0.12 300);
   --clip-effect: oklch(0.56 0.13 25);
+  --clip-preset: oklch(0.56 0.1 200);
   --clip-audio: oklch(0.54 0.11 165);
   --clip-video: oklch(0.52 0.11 235);
   --playhead: oklch(0.68 0.2 15);
@@ -430,6 +432,7 @@
   --color-clip-light: var(--clip-light);
   --color-clip-scene: var(--clip-scene);
   --color-clip-effect: var(--clip-effect);
+  --color-clip-preset: var(--clip-preset);
   --color-clip-audio: var(--clip-audio);
   --color-clip-video: var(--clip-video);
   --color-playhead: var(--playhead);
@@ -487,6 +490,16 @@
 @utility num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
+}
+
+/* 斜线纹理：时间线上“不改颜色”的片段（只有强度 / 位置 / 光束层）——中性底色加细斜纹 */
+@utility hatch-neutral {
+  background-color: color-mix(in oklab, var(--muted-foreground) 35%, var(--surface-2));
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--foreground) 14%, transparent) 0 2px,
+    transparent 2px 7px
+  );
 }
 
 /* 斜线纹理：时间轴上“不保留”的时段（用图案区分，不只靠颜色） */

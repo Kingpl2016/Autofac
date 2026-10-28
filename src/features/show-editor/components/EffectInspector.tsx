@@ -27,6 +27,7 @@ import { effectRateHz, FALLBACK_BPM, MAX_SAFE_STROBE_HZ, MIN_PERIOD_MS } from ".
 import type { EffectCue, EffectId, Rgb, Tempo } from "../lib/project";
 import { ColorSection } from "./ColorSection";
 import { CommitInput } from "./CommitInput";
+import { InspectorSection } from "./InspectorSection";
 import { SliderField } from "./SliderField";
 
 interface EffectInspectorProps {
@@ -55,6 +56,7 @@ function differs<T>(cues: readonly EffectCue[], pick: (c: EffectCue) => T): bool
  * 闪烁特效还有随机种子。频闪超过 10 Hz 会提醒（快速闪烁可能引发不适）。
  *
  * 各字段在“松手 / 失焦 / Enter”时提交一次，一次提交对应一步撤销。
+ * 输出 Cue 页的两个可折叠分区：“特效参数”与“特效颜色”。
  */
 export function EffectInspector({ cues, tempo, onPatch }: EffectInspectorProps) {
   const { t } = useTranslation();
@@ -90,37 +92,27 @@ export function EffectInspector({ cues, tempo, onPatch }: EffectInspectorProps) 
   const hz = effectRateHz(period, tempo);
   const risky = first.effect === "strobe" && hz > MAX_SAFE_STROBE_HZ;
 
-  return (
-    <section aria-label={t("editor.effect.title")} className="flex flex-col gap-4">
-      <div className="grid gap-1.5">
-        <Label className="text-xs" htmlFor="effect-type">
-          {t("editor.effect.type")}
-          {mixed(differs(cues, (c) => c.effect))}
-        </Label>
-        <Select value={first.effect} onValueChange={(v) => onPatch({ effect: v as EffectId })}>
-          <SelectTrigger id="effect-type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {EFFECT_PRESETS.map((p) => (
-              <SelectItem key={p.effect} value={p.effect}>
-                {t(`editor.effects.${p.effect}`)}
-              </SelectItem>
+  const colorsSection = (
+    <InspectorSection
+      scope="cue"
+      id="effectColors"
+      title={t("editor.effect.colorsTitle")}
+      aside={
+        COLORLESS.has(first.effect) ? null : (
+          <span className="flex gap-0.5" aria-hidden>
+            {first.colors.map((c, i) => (
+              <span key={i} className="size-3 rounded-sm border border-border" style={{ backgroundColor: cssColor(c) }} />
             ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{t(`editor.effects.${first.effect}Hint`)}</p>
-      </div>
-
+          </span>
+        )
+      }
+    >
       {COLORLESS.has(first.effect) ? (
         <p className="text-xs text-muted-foreground">{t("editor.effect.noColors")}</p>
       ) : (
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-medium">
-              {t("editor.effect.colors")}
-              {mixed(differs(cues, (c) => c.colors))}
-            </h4>
+            <span className="text-xs text-muted-foreground">{differs(cues, (c) => c.colors) ? mixedLabel : null}</span>
             <span className="flex gap-1">
               <Button
                 type="button"
@@ -172,6 +164,33 @@ export function EffectInspector({ cues, tempo, onPatch }: EffectInspectorProps) 
           />
         </div>
       )}
+    </InspectorSection>
+  );
+
+  // 两个分区：特效参数、特效颜色（选中第几个颜色的状态放在这里，收起颜色分区不会丢）
+  return (
+    <>
+    <InspectorSection scope="cue" id="effect" title={t("editor.effect.title")}>
+      <div className="flex flex-col gap-4">
+      <div className="grid gap-1.5">
+        <Label className="text-xs" htmlFor="effect-type">
+          {t("editor.effect.type")}
+          {mixed(differs(cues, (c) => c.effect))}
+        </Label>
+        <Select value={first.effect} onValueChange={(v) => onPatch({ effect: v as EffectId })}>
+          <SelectTrigger id="effect-type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {EFFECT_PRESETS.map((p) => (
+              <SelectItem key={p.effect} value={p.effect}>
+                {t(`editor.effects.${p.effect}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">{t(`editor.effects.${first.effect}Hint`)}</p>
+      </div>
 
       <div className="grid gap-1.5">
         <Label className="text-xs">
@@ -297,6 +316,9 @@ export function EffectInspector({ cues, tempo, onPatch }: EffectInspectorProps) 
           <p className="text-xs text-muted-foreground">{t("editor.effect.seedHint")}</p>
         </div>
       )}
-    </section>
+      </div>
+    </InspectorSection>
+    {colorsSection}
+    </>
   );
 }

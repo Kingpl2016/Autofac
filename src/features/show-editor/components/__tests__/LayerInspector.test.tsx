@@ -9,6 +9,7 @@ import { fixed } from "../../lib/looks";
 import { addFixtures, createGroup } from "../../lib/ops";
 import { createEmptyProject, type Cue, type LookClip } from "../../lib/project";
 import { HEAD16 } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProgrammerStore } from "../../stores/useProgrammerStore";
 import { useProjectStore } from "../../stores/useProjectStore";
@@ -76,6 +77,7 @@ beforeEach(async () => {
     }),
   );
   useEditorUiStore.setState({ selectedCueIds: ["a"], playheadMs: 1000, lookClipboard: null });
+  useEditorPrefsStore.setState({ cueSections: {} });
   useProgrammerStore.getState().clear();
 });
 
@@ -99,9 +101,30 @@ describe("属性层", () => {
   });
 });
 
+describe("外观片段的分区", () => {
+  it("强度、颜色、属性层、多灯分布、复制粘贴；关键帧导航在顶部摘要；颜色分区与静态片段共用展开状态", () => {
+    render(<CueInspector />);
+    for (const name of ["强度", "属性层", "多灯分布", "外观层复制粘贴", "亮度与淡入淡出", "时间"]) {
+      expect(screen.getByRole("region", { name })).toBeTruthy();
+    }
+    const nav = screen.getByRole("group", { name: "关键帧导航" });
+    expect(nav.closest("header")).toBeTruthy();
+    // 摇头灯没有颜色：颜色分区仍在（给出提示）
+    expect(screen.getByRole("region", { name: "颜色" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "颜色" }));
+    expect(useEditorPrefsStore.getState().cueSections.color).toBe(false);
+    // 标题右侧显示层数
+    fireEvent.click(screen.getByRole("button", { name: /^属性层\s*1$/ }));
+    expect(screen.queryByRole("textbox", { name: "水平 Pan 的数值" })).toBeNull();
+  });
+});
+
 describe("选择性复制粘贴", () => {
   it("复制外观，只勾选位置层粘贴到另一个片段", () => {
     render(<CueInspector />);
+    // “外观层复制粘贴”默认收起；展开状态与其它片段共用
+    expect(screen.queryByRole("button", { name: "复制外观" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "外观层复制粘贴" }));
     fireEvent.click(screen.getByRole("button", { name: "复制外观" }));
     expect(ui().lookClipboard).toEqual({ intensity: fixed(100), attrs: { pan: fixed(0.25) } });
     act(() => ui().selectCues(["b"]));

@@ -136,6 +136,17 @@ describe("演示预览播放引擎", () => {
     expect(() => pl.cmd("show_locate", { fixtureId: "f1" })).toThrow("playback_active");
   });
 
+  it("输出关闭：录制中也能播放、不占用输出；播放中重新打开要仲裁", () => {
+    const flags = { recording: true };
+    const { world, cmd } = setup(flags);
+    cmd("show_load", { project: project() });
+    expect(cmd("show_set_output_enabled", { enabled: false })).toMatchObject({ outputEnabled: false, sending: false });
+    expect(cmd("show_play")).toMatchObject({ transport: "playing", outputting: true, sending: false });
+    expect(world.hooks.showOutputting()).toBe(false);
+    expect(() => cmd("show_set_output_enabled", { enabled: true })).toThrow("recording_active");
+    expect(cmd("show_status")).toMatchObject({ outputEnabled: false });
+  });
+
   it("重新加载工程时，被删除的灯具不再保持定位", () => {
     const { cmd } = setup();
     cmd("show_load", { project: project() });

@@ -21,11 +21,12 @@ const invoke = vi.hoisted(() =>
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { useAnnouncerStore } from "@/shared/stores/announcerStore";
 import { addEffectCue } from "../../lib/cueOps";
-import { BUILTIN_EFFECTS } from "../../lib/effectLibrary";
+import { addEffectDefCue, BUILTIN_EFFECTS, defaultEffectParams } from "../../lib/effectLibrary";
 import { EFFECT_PRESETS, presetOf } from "../../lib/effectPresets";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject, type EffectCue } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useEffectLibraryStore } from "../../stores/useEffectLibraryStore";
 import { useProjectStore } from "../../stores/useProjectStore";
@@ -61,6 +62,7 @@ beforeEach(async () => {
     }),
   );
   useEditorUiStore.setState({ selectedCueIds: [], selectedTrackId: null, playheadMs: 0, inspectorTab: "patch" });
+  useEditorPrefsStore.setState({ cueSections: {} });
   useAnnouncerStore.setState({ message: "", seq: 0 });
   backend.file = null;
   backend.writes = [];
@@ -88,6 +90,11 @@ describe("EffectsTab", () => {
     }
     const lib = screen.getByRole("region", { name: "属性特效" });
     expect(lib.querySelectorAll("[data-effect-id]")).toHaveLength(BUILTIN_EFFECTS.length);
+    // 卡片上的色块与片段主体同一画法：彩虹为多色渐变，强度追逐（不改颜色）为斜纹
+    const swatchOf = (id: string) => lib.querySelector<HTMLElement>(`[data-effect-id="${id}"] [data-testid="effect-swatch"]`);
+    expect(swatchOf("rainbow")?.style.background).toContain("linear-gradient");
+    expect(swatchOf("intensityChase")?.hasAttribute("data-neutral")).toBe(true);
+    expect(within(classic()).getAllByTestId("effect-swatch")).toHaveLength(EFFECT_PRESETS.length);
     for (const name of ["位置特效", "强度特效", "颜色特效", "光束特效"]) expect(within(lib).getByRole("list", { name })).toBeTruthy();
   });
 
@@ -196,7 +203,9 @@ describe("特效属性面板", () => {
   it("显示特效参数而不是静态颜色区；颜色列表可增删", () => {
     const id = setup("gradient");
     expect(screen.getByRole("region", { name: "特效参数" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "颜色" })?.closest("[aria-label='特效参数']")).toBeTruthy();
+    // 颜色列表在单独的“特效颜色”分区里，没有静态片段的“颜色”分区
+    expect(within(screen.getByRole("region", { name: "特效颜色" })).getByRole("group", { name: "颜色" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "颜色" })).toBeNull();
     expect(effectCue(id).colors).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "添加颜色" }));
     expect(effectCue(id).colors).toHaveLength(3);
@@ -310,5 +319,29 @@ describe("CueBlock 上的特效外观", () => {
     expect(a.container.querySelector<HTMLElement>("[aria-hidden]")?.style.background).toContain("linear-gradient");
     const b = render(<CueBlock cue={effectCue(pulse)} dimmed={false} selected={false} locked={false} />);
     expect(b.container.querySelector<HTMLElement>("[aria-hidden]")?.style.background).not.toContain("linear-gradient");
+  });
+
+  it("属性特效：彩虹按颜色关键帧画渐变（不是第一帧的纯色），名称是特效名；强度追逐为中性斜纹", () => {
+    const def = (id: string) => BUILTIN_EFFECTS.find((e) => e.id === id)!;
+    let rainbow: string | null = null;
+    let chase: string | null = null;
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        rainbow = addEffectDefCue(d, d.tracks[0].id, 0, def("rainbow"), defaultEffectParams(def("rainbow")), "彩虹");
+        chase = addEffectDefCue(d, d.tracks[1].id, 0, def("intensityChase"), defaultEffectParams(def("intensityChase")), "强度追逐");
+      }),
+    );
+    const cueOf = (id: string | null) => project().cues.find((c) => c.id === id)!;
+    const a = render(<CueBlock cue={cueOf(rainbow)} dimmed={false} selected={false} locked={false} />);
+    const fillA = within(a.container).getByTestId("clip-fill");
+    expect(fillA.style.background).toContain("linear-gradient(90deg");
+    // 红 → 黄 → 绿 …：不止一种颜色
+    expect(new Set(fillA.style.background.match(/rgb\([^)]*\)/g)).size).toBeGreaterThan(3);
+    expect(within(a.container).getByText("彩虹 · 100%")).toBeTruthy();
+    const b = render(<CueBlock cue={cueOf(chase)} dimmed={false} selected={false} locked={false} />);
+    const fillB = within(b.container).getByTestId("clip-fill");
+    expect(fillB.hasAttribute("data-neutral")).toBe(true);
+    expect(fillB.className).toContain("hatch-neutral");
+    expect(within(b.container).getByText("强度追逐 · 100%")).toBeTruthy();
   });
 });

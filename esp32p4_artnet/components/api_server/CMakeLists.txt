@@ -9,6 +9,7 @@ idf_component_register(
         player
         program_store
         dmx_out
+        forwarder
         net
         storage
         control

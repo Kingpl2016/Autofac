@@ -1373,6 +1373,8 @@
       "history": "历史",
       "empty": "这里还没有内容",
       "quantity": "数量",
+      "collapse": "再点一次收起素材库（Ctrl+Shift+B）",
+      "expand": "展开素材库（Ctrl+Shift+B）",
       "addAria": "添加 {{count}} 个 {{name}}",
       "added": "已添加 {{count}} 个 {{name}}",
       "noFixtures": "灯具素材库里还没有模型",
@@ -1442,14 +1444,19 @@
         "objectHeight": "高",
         "removeObject": "删除物件"
       },
-      "dropHint": "松开：把灯具放在这里"
+      "dropHint": "松开：把灯具放在这里",
+      "previewOnly": "仅预览 · 输出已关闭"
     },
     "inspector": {
       "title": "属性",
       "empty": "选中一个 Cue 或灯具以编辑属性",
       "patch": "灯具与 Patch",
       "cue": "Cue 属性",
-      "program": "编程器"
+      "program": "编程器",
+      "collapse": "收起属性面板（Ctrl+Alt+B）",
+      "expand": "展开属性面板（Ctrl+Alt+B）",
+      "openTab": "展开属性面板：{{name}}",
+      "collapsedRail": "属性面板（已收起）"
     },
     "layers": {
       "title": "属性层",
@@ -1578,6 +1585,7 @@
       "prevKey": "跳到上一个关键帧",
       "nextKey": "跳到下一个关键帧",
       "keyCount": "{{count}} 帧",
+      "keyNav": "关键帧导航",
       "keyOf": "在播放头处添加 / 删除{{name}}关键帧",
       "intensity": "强度",
       "intensityValue": "强度数值",
@@ -1657,6 +1665,8 @@
       "selectFirst": "先选择灯具（上方工具、预览区点选或 Patch 列表勾选）",
       "intensity": "强度",
       "intensityValue": "强度数值",
+      "color": "颜色",
+      "actions": "编程器操作",
       "knockIntensity": "去掉强度",
       "knockColor": "去掉颜色",
       "knockSelected": "移出所选灯具",
@@ -1675,10 +1685,10 @@
       "sceneTrack": "场景"
     },
     "timeline": {
-      "title": "时间线",
+      "title": "时间轴",
       "empty": "把左侧的灯具拖到这里（或点灯具旁的“+”），每台灯具会在这里生成一条轨道",
-      "zoomIn": "放大时间线",
-      "zoomOut": "缩小时间线",
+      "zoomIn": "放大时间轴",
+      "zoomOut": "缩小时间轴",
       "tracksLabel": "轨道与 Cue",
       "playhead": "播放头位置",
       "playheadHandle": "播放头（拖动定位）",
@@ -1705,6 +1715,14 @@
       "addedSkipped": "已在 {{count}} 条轨道新建片段，{{skipped}} 条轨道放不下",
       "addedOnTracks": "已在 {{count}} 条轨道新建片段",
       "clipUnsupported": "没有灯支持：{{layers}}",
+      "clipKinds": {
+        "color": "颜色",
+        "effect": "特效",
+        "preset": "预设",
+        "scene": "场景"
+      },
+      "clipKindNamed": "{{kind}}「{{name}}」",
+      "clipLayers": "用到：{{layers}}",
       "headerWidth": "轨道名称列宽度",
       "headerWidthHint": "拖动调整轨道名称列的宽度，双击恢复默认；聚焦后可用 ←/→ 调整"
     },
@@ -1727,9 +1745,9 @@
       "applyProgrammer": "把 {{name}} 应用到编程器里选中的灯",
       "appliedProgrammer": "已把 {{name}} 应用到 {{count}} 台灯具（编程器）",
       "drag": "{{name}}：拖到轨道上新建引用该预设的片段",
-      "dragHint": "拖动色块到时间线，新建引用预设的外观片段；改预设时这些片段一起变化。",
+      "dragHint": "拖动色块到时间轴，新建引用预设的外观片段；改预设时这些片段一起变化。",
       "fromSelection": "从所选片段新建预设",
-      "needLook": "先在时间线上选中一个外观片段",
+      "needLook": "先在时间轴上选中一个外观片段",
       "defaultName": "预设 {{n}}",
       "created": "已新建预设",
       "filter": "按分类筛选",
@@ -1782,12 +1800,14 @@
       "selectAll": "全选 Cue",
       "selectAfter": "选中播放头之后的 Cue",
       "selectNone": "取消选择",
-      "zoomIn": "放大时间线",
-      "zoomOut": "缩小时间线",
-      "zoomFit": "时间线适应窗口",
+      "zoomIn": "放大时间轴",
+      "zoomOut": "缩小时间轴",
+      "zoomFit": "时间轴适应窗口",
       "palette": "打开命令面板",
       "radial": "打开径向轮盘",
       "muteMedia": "静音 / 取消静音媒体",
+      "toggleLibrary": "收起 / 展开素材库",
+      "toggleInspector": "收起 / 展开属性面板",
       "library": {
         "media": "素材：媒体",
         "fixtures": "素材：灯具",
@@ -1801,7 +1821,7 @@
         "file": "文件",
         "edit": "编辑",
         "transport": "播放",
-        "timeline": "时间线",
+        "timeline": "时间轴",
         "view": "视图",
         "insert": "插入",
         "output": "输出",
@@ -1892,7 +1912,40 @@
       "repatchTitle": "顺序配接所选灯具",
       "repatchGap": "间隔",
       "repatchApply": "配接 {{count}} 个",
-      "repatched": "已重新配接 {{count}} / {{total}} 个灯具"
+      "repatched": "已重新配接 {{count}} / {{total}} 个灯具",
+      "list": "灯具列表",
+      "search": "搜索名称、型号或地址",
+      "clearSearch": "清除搜索",
+      "filter": "列表筛选",
+      "filterAll": "全部 {{count}}",
+      "filterProblems": "有问题 {{count}}",
+      "noMatch": "没有匹配的灯具",
+      "clearFilter": "清除搜索与筛选",
+      "overview": "Patch 概况",
+      "overviewHint": "点列表里的灯具查看和修改属性；Ctrl 追加、Shift 连选。在时间轴点轨道头也会选中并定位到对应的灯。",
+      "selectedCount": "已选 {{count}} 台",
+      "modelCount": "{{name}} ×{{count}}",
+      "clearSelection": "取消选择",
+      "actions": "所选灯具的操作",
+      "sections": {
+        "basic": "基本",
+        "dmx": "DMX 地址",
+        "placement": "舞台位置",
+        "sync": "批量同步",
+        "groupsOf": "所属分组"
+      },
+      "name": "名称",
+      "model": "型号",
+      "mode": "模式",
+      "modesOf": "所选灯具的通道模式",
+      "modeMixedModels": "所选灯具型号不同，通道模式需要分别设置",
+      "address": "地址",
+      "addMirrorShort": "加镜像地址",
+      "posX": "X（左右）",
+      "posY": "Y（前后）",
+      "placementHint": "也可以在舞台监视器的“布置”模式里拖动摆位。",
+      "notInGroup": "不在任何分组里",
+      "groupChip": "选中分组 {{name}} 的 {{count}} 台灯具"
     },
     "dmx": {
       "title": "DMX 通道",
@@ -1965,6 +2018,7 @@
       "hint": "拖到轨道上，或点击加到所选轨道的播放头处",
       "noTrack": "没有可用的轨道。先添加灯具，或解锁轨道",
       "noRoom": "这个位置放不下新的 Cue",
+      "dropMiss": "没有放到轨道上：请松手在某条轨道的空白处",
       "added": "已添加 Cue",
       "groups": {
         "basic": "基础色",
@@ -2006,13 +2060,16 @@
       "delete": "删除模板",
       "deleted": "已删除模板 {{name}}",
       "builtinHint": "内置模板（只读，右键可复制为我的模板后修改）",
-      "fileHint": "用户模板保存在软件数据目录的 cue-templates.json，可以直接编辑后点“重新加载”。色纸名称只作参考，LED 颜色为近似值。",
       "customName": "我的模板 {{n}}",
       "savedFromCue": "已存为 Cue 模板 {{name}}（在素材库“Cue 模板”的“我的模板”分组里）",
       "cannotSave": "这个片段的颜色不能存为模板（发光体直给，或没有颜色）"
     },
     "cue": {
       "mixed": "（混合值）",
+      "ownerFixture": "灯具：{{name}}",
+      "ownerGroup": "分组：{{name}} · {{count}} 台",
+      "ownerCount": "涉及 {{count}} 台灯具",
+      "revealInPatch": "在 Patch 中查看",
       "selectedCount": "已选 {{count}} 个 Cue",
       "locked": "所在轨道已锁定，不能修改",
       "color": "颜色",
@@ -2036,6 +2093,12 @@
       "dragFadeIn": "拖动调整淡入时长",
       "dragFadeOut": "拖动调整淡出时长",
       "sameLength": "统一长度",
+      "name": "名称",
+      "namePlaceholder": "在时间轴上显示的名字",
+      "actions": "片段操作",
+      "sections": {
+        "fades": "亮度与淡入淡出"
+      },
       "lengthSet": "已把 {{count}} 个片段设为 {{time}}"
     },
     "markers": {
@@ -2059,7 +2122,7 @@
       "tap": "敲击节拍",
       "align": "第一拍对齐到播放头",
       "clear": "清除节拍",
-      "hint": "设置节拍后，时间线显示节拍网格，Cue 会吸附到拍点。播放时可以按 T 敲击节拍。",
+      "hint": "设置节拍后，时间轴显示节拍网格，Cue 会吸附到拍点。播放时可以按 T 敲击节拍。",
       "tapped": "节拍已更新为 {{bpm}} BPM",
       "cleared": "已清除节拍网格"
     },
@@ -2132,7 +2195,7 @@
       "gammaHint": "数值越大，低亮度越暗、渐变越平滑；LED 灯带常用 2.2。",
       "gammaOffHint": "关闭时按线性输出：DMX 值与所选颜色一致。LED 灯具低亮度渐变不自然时可以打开。",
       "latency": "灯光延迟补偿",
-      "latencyHint": "正数让灯光比播放头晚输出，用来对齐有延迟的音频设备；负数则提前。",
+      "latencyHint": "正数让灯光比播放头晚输出，用来对齐有延迟的音频设备；负数则提前。范围 ±{{max}} ms。",
       "skipped": "{{count}} 台灯具因模型缺失或地址越界不会输出",
       "routedHint": "当前按工程的 Universe 路由表输出（每个 Universe 可以发往不同的节点）。",
       "openRouting": "Universe 与路由表…",
@@ -2150,7 +2213,35 @@
       "parkUniverse": "锁定的 Universe",
       "parkChannel": "锁定的通道",
       "parkValue": "锁定的值（0~255）",
-      "parkAdd": "锁定"
+      "parkAdd": "锁定",
+      "enabled": "输出到网络",
+      "previewOnly": "仅预览",
+      "statusSending": "正在发送",
+      "statusIdle": "已开启 · 播放或定位时发送",
+      "statusIdleShort": "输出待机",
+      "statusOff": "已关闭 · 只在本机预览",
+      "offTitle": "已关闭：只在本机预览，不向网络发送灯光数据。",
+      "offBody": "这时实时转发、录制和回放都可以用；打开后立即恢复发送。",
+      "summaryForwarding": "转发表 · {{count}} 个目的地",
+      "summaryDirect": "{{protocol}} → {{ip}}:{{port}}",
+      "summaryRouted": "按路由表 · {{count}} 个 Universe",
+      "target": "发送到",
+      "targetForwarding": "转发表",
+      "targetDirect": "指定设备",
+      "targetRouted": "按路由表",
+      "descForwarding": "跟随“转发”页的目的地，当前启用 {{count}} 个。",
+      "descForwardingNone": "转发表里没有启用的目的地，灯光不会发出。",
+      "descDirect": "只发给这台设备；改完按回车或离开输入框即生效。",
+      "directPending": "填好 IP 后按回车生效，生效前仍按原来的目标发送。",
+      "ip": "IP 地址",
+      "ipInvalid": "请输入有效的 IPv4 地址",
+      "ipUnspecified": "0.0.0.0 不能作为发送目标",
+      "protocol": "协议",
+      "port": "端口",
+      "portInvalid": "端口范围是 1~65535",
+      "artSyncHint": "每帧发完后发一个同步包，支持的节点会同时刷新全部 Universe。",
+      "sacnSyncNone": "不使用",
+      "parkCount": "{{count}} 个"
     },
     "bake": {
       "running": "正在生成回放文件… {{percent}}%",
@@ -2209,6 +2300,7 @@
       "type": "特效类型",
       "noColors": "彩虹特效自带全色相，不使用颜色列表。",
       "colors": "颜色",
+      "colorsTitle": "特效颜色",
       "addColor": "添加颜色",
       "removeColor": "删除选中的颜色",
       "colorN": "第 {{n}} 个颜色",
@@ -2234,10 +2326,10 @@
     "media": {
       "fileType": "媒体文件",
       "import": "导入媒体文件…",
-      "hint": "素材只被引用，不会复制进工程。导入后自动放到时间线 0 点的媒体轨道上；拖动图标可再放一次，也可以直接把文件拖进窗口。",
-      "drag": "拖到时间线上放置 {{name}}",
+      "hint": "素材只被引用，不会复制进工程。导入后自动放到时间轴 0 点的媒体轨道上；拖动图标可再放一次，也可以直接把文件拖进窗口。",
+      "drag": "拖到时间轴上放置 {{name}}",
       "placeAtPlayhead": "把 {{name}} 放到播放头处",
-      "usage": "时间线上 {{count}} 处",
+      "usage": "时间轴上 {{count}} 处",
       "listLabel": "已导入的媒体",
       "remove": "移除 {{name}}（不会删除文件）",
       "loading": "正在准备…",
@@ -2284,7 +2376,7 @@
       "edit": "节目总时长（输入新时长，例如 2:30）",
       "invalid": "无法识别的时长，请输入 分:秒 或 分:秒.帧",
       "set": "节目时长已设为 {{time}}",
-      "noContent": "时间线上还没有内容",
+      "noContent": "时间轴上还没有内容",
       "handle": "节目结尾 {{time}}（拖动改时长）",
       "confirmTitle": "把节目缩短到 {{time}}？",
       "confirmDescription": "超出新结尾的内容会被裁掉。可以一步撤销。",
@@ -2425,7 +2517,7 @@
       "cancel": "取消像素映射",
       "cancelled": "已取消像素映射",
       "done": "已为 {{count}} 台灯生成像素映射场景片段",
-      "noRoom": "放不下：时间线上没有可用的位置",
+      "noRoom": "放不下：时间轴上没有可用的位置",
       "failed": "无法读取视频画面",
       "notReady": "视频还在准备，或当前系统无法播放这个格式",
       "trackName": "像素映射",
@@ -2459,7 +2551,7 @@
       "rename": "{{name}} 的轨道名",
       "remove": "删除媒体轨道 {{name}}（连同其上的片段）",
       "clipLabel": "{{name}}：{{start}} – {{end}}",
-      "placed": "已把 {{name}} 放到时间线上",
+      "placed": "已把 {{name}} 放到时间轴上",
       "inspector": "媒体片段属性",
       "selectedCount": "已选 {{count}} 个媒体片段",
       "split": "在播放头处分割",
@@ -2474,7 +2566,7 @@
       "fadeOut": "淡出",
       "fadeOutValue": "淡出毫秒数",
       "mute": "片段静音",
-      "start": "时间线起点",
+      "start": "时间轴起点",
       "in": "素材入点",
       "length": "长度",
       "span": "{{start}} – {{end}}（素材共 {{source}}）",
@@ -2657,7 +2749,7 @@
         },
         "library": {
           "title": "素材库",
-          "body": "左侧图标切换分区：媒体、灯具、Cue 模板、特效、预设、分组、历史。\n先到“灯具”添加灯具：点“+”加一台，展开可批量添加，也可以把卡片拖到 Patch、舞台或时间线上。模板和特效可以拖到时间线上，也可以点一下加到所选轨道。"
+          "body": "左侧图标切换分区：灯具、Cue 模板、媒体、特效、预设、分组、历史；再点一次当前图标收起素材库（Ctrl+Shift+B）。\n先到“灯具”添加灯具：点“+”加一台，展开可批量添加，也可以把卡片拖到 Patch、舞台或时间轴上。模板和特效可以拖到时间轴上，也可以点一下加到所选轨道。"
         },
         "preview": {
           "title": "预览",
@@ -2665,11 +2757,11 @@
         },
         "inspector": {
           "title": "属性",
-          "body": "灯具与 Patch（地址、Universe、批量同步）、编程器（给选中的灯直接设值）、Cue 属性（颜色、关键帧、分布）。\n检查器只显示这条轨道上的灯真正支持的属性。"
+          "body": "灯具与 Patch（上面是灯具列表，下面是所选灯具的属性与操作）、编程器（给选中的灯直接设值）、Cue 属性（颜色、关键帧、分布）。\n在时间轴点轨道头会选中并定位到对应的灯；标题栏右侧可收起面板（Ctrl+Alt+B）。"
         },
         "timeline": {
-          "title": "时间线",
-          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选。\n标记点、段落、循环区间：点选后按 Delete，或右键、悬停 × 删除，删除后可撤销。"
+          "title": "时间轴",
+          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。片段左上角的图标和顶部色条表示类别（颜色、特效、预设、场景），工具条右侧的 ? 是图例。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选。\n标记点、段落、循环区间：点选后按 Delete，或右键、悬停 × 删除，删除后可撤销。"
         },
         "mode": {
           "title": "实时模式 / 播放模式",
@@ -2691,7 +2783,7 @@
         },
         "patchBatch": {
           "title": "批量设置灯具",
-          "body": "以列表里的第一台为准，把模式、安装高度、朝向、倒装同步到其它灯；也可以按“前排 {n}”这样的模板批量重命名。"
+          "body": "这里是所选灯具的摘要与操作。多选时“基本”里可按“前排 {n}”这样的模板批量重命名，“DMX 地址”里顺序配接，“批量同步”以第一台为准同步模式、高度、朝向、倒装；值不同的字段显示“混合”。"
         },
         "universeView": {
           "title": "Universe 卡片与通道格",
@@ -2711,7 +2803,7 @@
         },
         "fixtureAdd": {
           "title": "添加灯具的三种方式",
-          "body": "点“+”快速加一台；点箭头展开批量添加，设好数量、起始地址、间隔和名称，下方会预览将占用的通道；也可以按住左侧把手把灯具拖到 Patch 的 Universe 卡片、舞台或时间线上。"
+          "body": "点“+”快速加一台；点箭头展开批量添加，设好数量、起始地址、间隔和名称，下方会预览将占用的通道；也可以按住左侧把手把灯具拖到 Patch 的 Universe 卡片、舞台或时间轴上。"
         },
         "effects": {
           "title": "先调参数再插入",
@@ -2745,7 +2837,7 @@
       "clearFilters": "清除筛选",
       "list": "灯具模型",
       "modes": "{{count}} 种模式",
-      "drag": "拖动 {{name}} 到 Patch、舞台或时间线",
+      "drag": "拖动 {{name}} 到 Patch、舞台或时间轴",
       "batch": "批量添加 {{name}}…",
       "panel": "批量添加 {{name}}",
       "less": "减少一台",
@@ -2776,7 +2868,7 @@
       "submitAria": "按以上设置添加 {{count}} 个 {{name}}"
     },
     "effectLib": {
-      "hint": "拖到时间线的轨道上放下；或点一下选中并调参数，再点“插入”加到所选轨道的播放头处；双击直接插入。放在分组轨道上会按成员错开（扇形、波浪、追逐）。",
+      "hint": "拖到时间轴的轨道上放下；或点一下选中并调参数，再点“插入”加到所选轨道的播放头处；双击直接插入。放在分组轨道上会按成员错开（扇形、波浪、追逐）。",
       "tools": "特效库工具",
       "import": "导入特效…",
       "export": "导出全部特效…",
@@ -2789,7 +2881,6 @@
       "reloaded": "已重新加载，用户特效 {{count}} 个",
       "loadFailed": "无法读取用户特效文件（{{reason}}），暂时只有内置特效",
       "issuesTitle": "用户特效文件里有 {{count}} 处问题，已跳过",
-      "fileHint": "特效来自配置文件：内置特效随软件发布，用户特效在数据目录的 effects.json，可手改或导入；同 id 的用户特效覆盖内置的。文件只含参数，不含脚本。",
       "groupList": "{{name}}特效",
       "groups": {
         "position": "位置",
@@ -2852,7 +2943,7 @@
       "areas": {
         "fixtures": "灯具",
         "effects": "特效",
-        "timeline": "时间线",
+        "timeline": "时间轴",
         "file": "文件",
         "output": "输出",
         "help": "帮助"
@@ -2864,7 +2955,7 @@
         },
         "fixtureDrag": {
           "title": "拖拽添加灯具",
-          "body": "把灯具卡片拖到 Patch 的 Universe 卡片（从落点地址配接）、舞台监视器（放在落点）或时间线上。"
+          "body": "把灯具卡片拖到 Patch 的 Universe 卡片（从落点地址配接）、舞台监视器（放在落点）或时间轴上。"
         },
         "fixtureLibrary": {
           "title": "灯具素材库改版",
@@ -2875,7 +2966,7 @@
           "body": "24 个内置属性特效（位置、强度、颜色、光束），插入前可调速度、大小、相位扩散、分翼、方向与顺序；用户特效保存在 effects.json，可导入导出。"
         },
         "timelineTools": {
-          "title": "时间线工具",
+          "title": "时间轴工具",
           "body": "缩放滑块与适应窗口、跟随播放头、吸附选项、波纹编辑、一键展开 / 收起轨道、标尺在时间码与小节·拍之间切换。"
         },
         "recentFiles": {
@@ -2900,8 +2991,24 @@
       "missing": "找不到“{{name}}”，文件可能已被移动或删除",
       "remove": "从列表移除"
     },
+    "legend": {
+      "open": "时间轴图例",
+      "title": "时间轴图例",
+      "kinds": "片段类别",
+      "kindHints": {
+        "color": "静态颜色、Cue 模板等固定的外观",
+        "effect": "经典特效与属性特效（会随时间变化）",
+        "preset": "引用预设：改预设，片段一起变",
+        "scene": "多台灯各自的外观（编程器记录）"
+      },
+      "marks": "片段上的标记",
+      "neutral": "斜纹：这个片段不改颜色（只改强度、位置或光束）",
+      "keyframe": "关键帧：点击把播放头移过去，右键删除",
+      "strip": "底部色带：引擎算出的实际输出（含亮度；多台灯取平均）",
+      "badges": "右上角徽标：片段用到的属性组；⚠ 表示轨道上没有灯支持"
+    },
     "timelineTools": {
-      "label": "时间线工具",
+      "label": "时间轴工具",
       "snapOptions": "吸附选项",
       "snapTo": "吸附到",
       "snapKinds": {
@@ -2930,7 +3037,7 @@
       "bars": "小节",
       "barsHint": "按小节·拍标注（来自节拍设置）",
       "needTempo": "先设置节拍（BPM）才能按小节显示",
-      "zoom": "时间线缩放",
+      "zoom": "时间轴缩放",
       "zoomValue": "每秒 {{value}} 像素",
       "fit": "适应窗口（Shift+Z）"
     }

@@ -104,6 +104,8 @@ function playback(over: Partial<ShowState> = {}): ShowState {
     universes: [],
     warnings: [],
     outputting: false,
+    outputEnabled: true,
+    sending: false,
     destinations: null,
     dropped: 0,
     ...over,

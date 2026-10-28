@@ -256,7 +256,7 @@ function IssueList({ issues }: { issues: readonly TemplateIssue[] }) {
  *   打开所在文件夹 / 重新加载；文件里格式不对的条目跳过并列出原因。
  */
 export function TemplatesTab() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const actions = useCueActions();
   const caps = useTargetCapabilities();
   const user = useCueTemplateStore((s) => s.user);
@@ -405,7 +405,6 @@ export function TemplatesTab() {
           </section>
         );
       })}
-      <p className="px-1 text-[11px] text-muted-foreground">{t("editor.templates.fileHint", { lang: i18n.language })}</p>
     </div>
   );
 }

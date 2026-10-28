@@ -1,17 +1,39 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import i18n from "@/shared/i18n";
 
-const invoke = vi.hoisted(() => vi.fn(async () => null));
+const invoke = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown> => null));
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+vi.mock("sonner", () => ({ toast }));
 
+import type { ShowState } from "../../lib/playbackApi";
 import { createEmptyProject } from "../../lib/project";
 import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
+import { usePlaybackStore } from "../../stores/usePlaybackStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { OutputPopover } from "../OutputPopover";
+
+/** 后端播放状态。 */
+const showState = (over: Partial<ShowState> = {}): ShowState => ({
+  loaded: true,
+  transport: "stopped",
+  positionMs: 0,
+  durationMs: 1000,
+  looping: false,
+  locate: null,
+  universes: [],
+  warnings: [],
+  outputting: false,
+  outputEnabled: true,
+  sending: false,
+  destinations: 2,
+  dropped: 0,
+  ...over,
+});
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -26,7 +48,11 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
+  invoke.mockReset();
+  invoke.mockImplementation(async () => null);
+  toast.error.mockReset();
   useProjectStore.getState().load(createEmptyProject("t"));
+  usePlaybackStore.getState().reset();
   await act(async () => {
     await useEditorPrefsStore.setState({ outputAdvancedOpen: false });
   });
@@ -106,5 +132,87 @@ describe("输出设置：基本与高级", () => {
     expect(useProjectStore.getState().project.output.park).toEqual([]);
     act(() => useProjectStore.temporal.getState().undo());
     expect(useProjectStore.getState().project.output.park).toHaveLength(1);
+  });
+});
+
+describe("输出到网络开关", () => {
+  beforeEach(() => useProjectStore.getState().load({ ...createEmptyProject("t"), output: { ...createEmptyProject("t").output, target: { kind: "forwarding" } } }));
+
+  it("默认开启；关闭后工具条显示“仅预览”并提示只在本机预览", async () => {
+    act(() => usePlaybackStore.getState().setState(showState({ transport: "playing", outputting: true, sending: true })));
+    invoke.mockImplementation(async (cmd: unknown, args: unknown) =>
+      cmd === "show_set_output_enabled"
+        ? showState({ transport: "playing", outputting: true, outputEnabled: (args as { enabled: boolean }).enabled, sending: false })
+        : null,
+    );
+    renderPopover();
+    expect(screen.getByRole("img", { name: "正在输出灯光" })).toBeTruthy();
+    open();
+    const toggle = screen.getByRole("switch", { name: "输出到网络" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText(/正在发送 · 转发表 · 2 个目的地/)).toBeTruthy();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByRole("switch", { name: "输出到网络" }).getAttribute("aria-checked")).toBe("false"));
+    expect(invoke).toHaveBeenCalledWith("show_set_output_enabled", { enabled: false });
+    expect(screen.getByText("已关闭：只在本机预览，不向网络发送灯光数据。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "输出设置" }).textContent).toContain("仅预览");
+  });
+
+  it("录制进行中打开失败：提示原因，开关保持关闭", async () => {
+    act(() => usePlaybackStore.getState().setState(showState({ transport: "playing", outputting: true, outputEnabled: false })));
+    invoke.mockImplementation(async (cmd: unknown) => {
+      if (cmd === "show_set_output_enabled") throw "recording_active";
+      return null;
+    });
+    renderPopover();
+    open();
+    fireEvent.click(screen.getByRole("switch", { name: "输出到网络" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(String(toast.error.mock.calls[0][0])).toContain("录制进行中");
+    expect(screen.getByRole("switch", { name: "输出到网络" }).getAttribute("aria-checked")).toBe("false");
+  });
+});
+
+describe("发送到", () => {
+  beforeEach(() => useProjectStore.getState().load({ ...createEmptyProject("t"), output: { ...createEmptyProject("t").output, target: { kind: "forwarding" } } }));
+  const radio = (name: string) => screen.getByRole("radio", { name });
+  const target = () => useProjectStore.getState().project.output.target;
+
+  it("转发表 / 按路由表直接切换；可撤销", () => {
+    renderPopover();
+    open();
+    expect(radio("转发表").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(radio("按路由表"));
+    expect(target()).toEqual({ kind: "routed" });
+    expect(screen.getByText(/当前按工程的 Universe 路由表输出/)).toBeTruthy();
+    fireEvent.click(radio("转发表"));
+    expect(target()).toEqual({ kind: "forwarding" });
+    act(() => useProjectStore.temporal.getState().undo());
+    expect(target()).toEqual({ kind: "routed" });
+  });
+
+  it("指定设备：填好 IP 回车才生效；不合法的 IP 不写入并提示", () => {
+    renderPopover();
+    open();
+    fireEvent.click(radio("指定设备"));
+    expect(target()).toEqual({ kind: "forwarding" });
+    expect(radio("指定设备").getAttribute("aria-checked")).toBe("true");
+
+    const ip = screen.getByLabelText("IP 地址");
+    fireEvent.change(ip, { target: { value: "0.0.0.0" } });
+    fireEvent.blur(ip);
+    expect(screen.getByRole("alert").textContent).toContain("0.0.0.0 不能作为发送目标");
+    expect(target()).toEqual({ kind: "forwarding" });
+
+    fireEvent.change(ip, { target: { value: "192.168.1.9" } });
+    fireEvent.keyDown(ip, { key: "Enter" });
+    fireEvent.blur(ip);
+    expect(target()).toEqual({ kind: "direct", ip: "192.168.1.9", protocol: "artNet", port: 6454 });
+
+    const port = screen.getByLabelText("端口");
+    fireEvent.change(port, { target: { value: "7000" } });
+    fireEvent.blur(port);
+    expect(target()).toMatchObject({ kind: "direct", port: 7000 });
   });
 });

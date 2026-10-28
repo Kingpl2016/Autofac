@@ -217,7 +217,7 @@ export interface LookClip extends CueBase {
   kind: "look";
   look: Look;
   spread?: Spread;
-  /** 片段在时间线上的显示颜色（用户自选，省略时按外观取色） */
+  /** 片段的名称（时间线上显示；Cue 模板 / 属性特效放下时写入，可在属性面板里改；不影响输出） */
   label?: string;
 }
 
@@ -231,6 +231,7 @@ export interface SceneEntry {
 export interface SceneClip extends CueBase {
   kind: "scene";
   entries: SceneEntry[];
+  /** 片段的名称（时间线上显示；不影响输出） */
   label?: string;
 }
 

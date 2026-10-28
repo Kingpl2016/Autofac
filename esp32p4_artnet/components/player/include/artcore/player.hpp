@@ -69,6 +69,25 @@ enum class RepeatMode : uint8_t {
     Playlist = 2,
 };
 
+/// 打开节目时的重复模式决策（纯函数，便于推理与测试）。
+///
+/// - 用户主动打开（`user_initiated=true`）：重置为 `Off`，再按文件 loop 推荐标志决定，
+///   使切换节目时行为可预期（新节目的循环性只由其文件头决定）。
+/// - 连播内部切歌（`user_initiated=false`）：保留当前模式，避免把 `Playlist` 打断成单曲。
+///
+/// # Arguments
+///
+/// * `user_initiated` - 是否用户主动打开（否则为连播推进内部打开）。
+/// * `loop_recommended` - 文件头是否建议循环。
+/// * `current` - 当前重复模式。
+[[nodiscard]] constexpr RepeatMode repeat_on_open(bool user_initiated, bool loop_recommended,
+                                                  RepeatMode current) noexcept {
+    if (!user_initiated) {
+        return current;
+    }
+    return loop_recommended ? RepeatMode::Loop : RepeatMode::Off;
+}
+
 /// 播放状态快照（供寄存器 0x0010 / HTTP `GET /api/player`）。
 struct PlayerStatus {
     /// 状态（见 [`PlayState`]）。
@@ -164,7 +183,7 @@ private:
     void post(Cmd c) noexcept;
 
     // 以下均在引擎线程内调用（无需额外加锁，除状态快照字段外）。
-    void handle_open(uint16_t no) noexcept;
+    void handle_open(uint16_t no, bool user_initiated) noexcept;
     void handle_play() noexcept;
     void handle_stop() noexcept;
     void handle_close() noexcept;
@@ -202,7 +221,11 @@ private:
     // 引擎线程私有。
     OutputRouter* out_ = nullptr;
     ProgramStore* store_ = nullptr;
-    OutputConfig out_cfg_{};
+    // 运行期可变的输出字段改用原子：引擎线程无锁读取，控制线程经 update_output_config
+    // 写入，消除此前对 out_cfg_ 的数据竞争。其余 OutputConfig 字段由 DmxOutput 持有。
+    std::atomic<uint32_t> keepalive_ms_{1000};
+    std::atomic<StopBehavior> stop_behavior_{StopBehavior::Hold};
+    std::atomic<bool> sacn_enabled_{false};
     artrec::ArtRecFile file_;
     ZstdDecoder decoder_;
     std::vector<uint8_t> chunk_scratch_;

@@ -22,6 +22,31 @@
 
 namespace artcore {
 
+/// universe 是否落在订阅范围 `[start, start+count)` 内。
+///
+/// 用 32 位累加避免 `start+count` 在 16 位上回绕；`count==0` 时恒为 false。
+/// 抽成纯函数便于单测——这是转发"范围外丢弃"判定的唯一分支。
+[[nodiscard]] constexpr bool universe_in_range(uint16_t universe, uint16_t start,
+                                               uint16_t count) noexcept {
+    return universe >= start &&
+           static_cast<uint32_t>(universe) < static_cast<uint32_t>(start) + count;
+}
+
+/// 转发器接收统计快照（供 `GET /api/diag` 定位"收不到包"卡在哪一环）。
+struct ForwarderStats {
+    bool running = false;        ///< 转发线程是否在跑（仅工作模式 1）
+    uint16_t uni_start = 0;      ///< 订阅起始 universe
+    uint16_t uni_count = 0;      ///< 订阅 universe 数
+    bool sacn = false;           ///< 是否同时接收 sACN
+    uint32_t rx_datagrams = 0;   ///< 6454/5568 上成功收到的 UDP 包数
+    uint32_t artnet_parsed = 0;  ///< 解析成功的 ArtDmx 帧数
+    uint32_t sacn_parsed = 0;    ///< 解析成功的 sACN 数据帧数
+    uint32_t dropped_range = 0;  ///< 解析成功但 universe 不在订阅范围被丢弃数
+    uint32_t last_src_ip = 0;    ///< 最近一包来源 IP（主机序）
+    uint16_t last_universe = 0;  ///< 最近一包的 universe
+    uint32_t sources = 0;        ///< 当前活跃来源总数（跨 universe）
+};
+
 /// Art-Net / sACN 实时转发器。
 class Forwarder {
 public:
@@ -53,6 +78,9 @@ public:
 
     /// 是否正在转发。
     [[nodiscard]] bool running() const noexcept { return running_.load(); }
+
+    /// 读取接收统计快照（线程安全，用于诊断）。
+    [[nodiscard]] ForwarderStats stats() const noexcept;
 
 private:
     /// 单个来源的影子缓冲。
@@ -92,6 +120,15 @@ private:
     bool sacn_ = false;
 
     std::unordered_map<uint16_t, UniverseState> universes_;
+
+    // ---- 接收统计（原子：转发线程写，HTTP 诊断线程只读快照）----
+    std::atomic<uint32_t> rx_datagrams_{0};
+    std::atomic<uint32_t> artnet_parsed_{0};
+    std::atomic<uint32_t> sacn_parsed_{0};
+    std::atomic<uint32_t> dropped_range_{0};
+    std::atomic<uint32_t> last_src_ip_{0};
+    std::atomic<uint32_t> last_universe_{0};
+    std::atomic<uint32_t> sources_{0};
 };
 
 }  // namespace artcore

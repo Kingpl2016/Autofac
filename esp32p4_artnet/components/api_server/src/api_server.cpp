@@ -390,6 +390,31 @@ esp_err_t h_diag(httpd_req_t* req) {
     cJSON_AddNumberToObject(pj, "state", ps.state);
     cJSON_AddNumberToObject(pj, "badFrames", ps.bad_frames);
 
+    // 实时转发接收诊断：把"收不到包"量化定位——
+    // running=false → 没进模式 1；rxDatagrams 不涨 → 包没到设备（多网卡下受限广播
+    // 只走默认路由网卡，应改子网定向广播/单播）；droppedOutOfRange 跳 → 订阅范围不匹配。
+    if (d.forwarder != nullptr) {
+        ForwarderStats fs = d.forwarder->stats();
+        cJSON* fj = cJSON_AddObjectToObject(o.get(), "forward");
+        cJSON_AddBoolToObject(fj, "running", fs.running);
+        cJSON_AddNumberToObject(fj, "uniStart", fs.uni_start);
+        cJSON_AddNumberToObject(fj, "uniCount", fs.uni_count);
+        cJSON_AddBoolToObject(fj, "sacn", fs.sacn);
+        cJSON_AddNumberToObject(fj, "rxDatagrams", static_cast<double>(fs.rx_datagrams));
+        cJSON_AddNumberToObject(fj, "artnetParsed", static_cast<double>(fs.artnet_parsed));
+        cJSON_AddNumberToObject(fj, "sacnParsed", static_cast<double>(fs.sacn_parsed));
+        cJSON_AddNumberToObject(fj, "droppedOutOfRange", static_cast<double>(fs.dropped_range));
+        cJSON_AddNumberToObject(fj, "lastUniverse", fs.last_universe);
+        cJSON_AddNumberToObject(fj, "sources", static_cast<double>(fs.sources));
+        char ipbuf[16];
+        std::snprintf(ipbuf, sizeof(ipbuf), "%u.%u.%u.%u",
+                      static_cast<unsigned>((fs.last_src_ip >> 24) & 0xFF),
+                      static_cast<unsigned>((fs.last_src_ip >> 16) & 0xFF),
+                      static_cast<unsigned>((fs.last_src_ip >> 8) & 0xFF),
+                      static_cast<unsigned>(fs.last_src_ip & 0xFF));
+        cJSON_AddStringToObject(fj, "lastSrcIp", ipbuf);
+    }
+
     return send_json(req, 200, o.get());
 }
 

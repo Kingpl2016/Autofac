@@ -1373,6 +1373,8 @@
       "history": "History",
       "empty": "Nothing here yet",
       "quantity": "Quantity",
+      "collapse": "Click again to hide the library (Ctrl+Shift+B)",
+      "expand": "Show the library (Ctrl+Shift+B)",
       "addAria": "Add {{count}} × {{name}}",
       "added": "Added {{count}} × {{name}}",
       "noFixtures": "The fixture library has no models yet",
@@ -1442,14 +1444,19 @@
         "objectHeight": "H",
         "removeObject": "Delete object"
       },
-      "dropHint": "Release to place the fixture here"
+      "dropHint": "Release to place the fixture here",
+      "previewOnly": "Preview only · output off"
     },
     "inspector": {
       "title": "Properties",
       "empty": "Select a cue or a fixture to edit its properties",
       "patch": "Fixtures & Patch",
       "cue": "Cue properties",
-      "program": "Programmer"
+      "program": "Programmer",
+      "collapse": "Hide inspector (Ctrl+Alt+B)",
+      "expand": "Show inspector (Ctrl+Alt+B)",
+      "openTab": "Show inspector: {{name}}",
+      "collapsedRail": "Inspector (hidden)"
     },
     "layers": {
       "title": "Attribute layers",
@@ -1578,6 +1585,7 @@
       "prevKey": "Go to previous keyframe",
       "nextKey": "Go to next keyframe",
       "keyCount": "{{count}} keys",
+      "keyNav": "Keyframe navigation",
       "keyOf": "Add / remove {{name}} keyframe at the playhead",
       "intensity": "Intensity",
       "intensityValue": "Intensity value",
@@ -1657,6 +1665,8 @@
       "selectFirst": "Select fixtures first (tools above, click in the preview, or check them in the patch list)",
       "intensity": "Intensity",
       "intensityValue": "Intensity value",
+      "color": "Color",
+      "actions": "Programmer actions",
       "knockIntensity": "Remove intensity",
       "knockColor": "Remove color",
       "knockSelected": "Remove selected fixtures",
@@ -1705,6 +1715,14 @@
       "addedSkipped": "Added clips on {{count}} tracks; {{skipped}} tracks had no room",
       "addedOnTracks": "Added clips on {{count}} tracks",
       "clipUnsupported": "Not supported by any fixture: {{layers}}",
+      "clipKinds": {
+        "color": "Color",
+        "effect": "Effect",
+        "preset": "Preset",
+        "scene": "Scene"
+      },
+      "clipKindNamed": "{{kind}} “{{name}}”",
+      "clipLayers": "Uses: {{layers}}",
       "headerWidth": "Track name column width",
       "headerWidthHint": "Drag to resize the track name column, double-click to reset; arrow keys adjust when focused"
     },
@@ -1788,6 +1806,8 @@
       "palette": "Open command palette",
       "radial": "Open radial menu",
       "muteMedia": "Mute / unmute media",
+      "toggleLibrary": "Hide / show library",
+      "toggleInspector": "Hide / show inspector",
       "library": {
         "media": "Library: media",
         "fixtures": "Library: fixtures",
@@ -1892,7 +1912,40 @@
       "repatchTitle": "Patch selected fixtures in sequence",
       "repatchGap": "Gap",
       "repatchApply": "Patch {{count}}",
-      "repatched": "Re-patched {{count}} of {{total}} fixtures"
+      "repatched": "Re-patched {{count}} of {{total}} fixtures",
+      "list": "Fixture list",
+      "search": "Search name, type or address",
+      "clearSearch": "Clear search",
+      "filter": "List filter",
+      "filterAll": "All {{count}}",
+      "filterProblems": "Issues {{count}}",
+      "noMatch": "No matching fixtures",
+      "clearFilter": "Clear search and filter",
+      "overview": "Patch overview",
+      "overviewHint": "Click a fixture in the list to view and edit it; Ctrl adds, Shift selects a range. Clicking a timeline track header also selects and reveals its fixtures.",
+      "selectedCount": "{{count}} selected",
+      "modelCount": "{{name}} ×{{count}}",
+      "clearSelection": "Clear selection",
+      "actions": "Actions for the selected fixtures",
+      "sections": {
+        "basic": "Basics",
+        "dmx": "DMX address",
+        "placement": "Stage position",
+        "sync": "Batch sync",
+        "groupsOf": "Groups"
+      },
+      "name": "Name",
+      "model": "Type",
+      "mode": "Mode",
+      "modesOf": "Channel mode of the selected fixtures",
+      "modeMixedModels": "The selected fixtures are different types; set their channel modes separately",
+      "address": "Address",
+      "addMirrorShort": "Add mirror address",
+      "posX": "X (left/right)",
+      "posY": "Y (front/back)",
+      "placementHint": "You can also drag fixtures in the stage monitor's Layout mode.",
+      "notInGroup": "Not in any group",
+      "groupChip": "Select the {{count}} fixtures in group {{name}}"
     },
     "dmx": {
       "title": "DMX channels",
@@ -1965,6 +2018,7 @@
       "hint": "Drag onto a track, or click to add at the playhead on the selected track",
       "noTrack": "No track available. Add fixtures first, or unlock a track",
       "noRoom": "There is no room for a new cue here",
+      "dropMiss": "Not dropped on a track: release over empty space on a track",
       "added": "Cue added",
       "groups": {
         "basic": "Basic colors",
@@ -2006,13 +2060,16 @@
       "delete": "Delete template",
       "deleted": "Deleted template {{name}}",
       "builtinHint": "Built-in template (read-only; right-click to copy it to your templates and edit)",
-      "fileHint": "User templates live in cue-templates.json in the data folder; edit it and click Reload. Gel names are references only — LED colors are approximations.",
       "customName": "My template {{n}}",
       "savedFromCue": "Saved as cue template {{name}} (under “My templates” in the Cue templates tab)",
       "cannotSave": "This clip's color can't be saved as a template (direct emitter values, or no color)"
     },
     "cue": {
       "mixed": "(mixed)",
+      "ownerFixture": "Fixture: {{name}}",
+      "ownerGroup": "Group: {{name}} · {{count}} fixtures",
+      "ownerCount": "{{count}} fixtures",
+      "revealInPatch": "Show in Patch",
       "selectedCount": "{{count}} cues selected",
       "locked": "The track is locked; changes are disabled",
       "color": "Color",
@@ -2036,6 +2093,12 @@
       "dragFadeIn": "Drag to set the fade-in length",
       "dragFadeOut": "Drag to set the fade-out length",
       "sameLength": "Same length",
+      "name": "Name",
+      "namePlaceholder": "Shown on the timeline",
+      "actions": "Clip actions",
+      "sections": {
+        "fades": "Brightness & fades"
+      },
       "lengthSet": "Set {{count}} clip(s) to {{time}}"
     },
     "markers": {
@@ -2132,7 +2195,7 @@
       "gammaHint": "Higher values make low levels darker and fades smoother. LED strips commonly use 2.2.",
       "gammaOffHint": "Off means linear output: DMX values match the picked colors. Turn it on if dim fades on LED fixtures look uneven.",
       "latency": "Light latency compensation",
-      "latencyHint": "Positive values output lights later than the playhead to match a delayed audio device; negative values output earlier.",
+      "latencyHint": "Positive values output lights later than the playhead to match a delayed audio device; negative values output earlier. Range ±{{max}} ms.",
       "skipped": "{{count}} fixtures will not output because of a missing model or out-of-range address",
       "routedHint": "Output follows the project's universe routing table (each universe can go to a different node).",
       "openRouting": "Universes & routing…",
@@ -2150,7 +2213,35 @@
       "parkUniverse": "Universe to park",
       "parkChannel": "Channel to park",
       "parkValue": "Parked value (0–255)",
-      "parkAdd": "Park"
+      "parkAdd": "Park",
+      "enabled": "Output to network",
+      "previewOnly": "Preview only",
+      "statusSending": "Sending",
+      "statusIdle": "On · sends while playing or locating",
+      "statusIdleShort": "Output standing by",
+      "statusOff": "Off · preview on this computer only",
+      "offTitle": "Off: preview only, no lighting data is sent to the network.",
+      "offBody": "Live forwarding, recording and playback are available meanwhile; turning it on resumes sending immediately.",
+      "summaryForwarding": "Forwarding table · {{count}} destinations",
+      "summaryDirect": "{{protocol}} → {{ip}}:{{port}}",
+      "summaryRouted": "Routing table · {{count}} universes",
+      "target": "Send to",
+      "targetForwarding": "Forwarding",
+      "targetDirect": "Device",
+      "targetRouted": "Routing table",
+      "descForwarding": "Follows the destinations on the Forwarding page; {{count}} enabled.",
+      "descForwardingNone": "No destinations are enabled in the forwarding table, so no lights will be sent.",
+      "descDirect": "Sends to this device only; changes apply on Enter or when the field loses focus.",
+      "directPending": "Enter an IP and press Enter to apply; until then the previous target is used.",
+      "ip": "IP address",
+      "ipInvalid": "Enter a valid IPv4 address",
+      "ipUnspecified": "0.0.0.0 cannot be used as a destination",
+      "protocol": "Protocol",
+      "port": "Port",
+      "portInvalid": "Port must be 1–65535",
+      "artSyncHint": "Sends a sync packet after each frame so supporting nodes refresh all universes at once.",
+      "sacnSyncNone": "None",
+      "parkCount": "{{count}}"
     },
     "bake": {
       "running": "Generating playback file… {{percent}}%",
@@ -2209,6 +2300,7 @@
       "type": "Effect type",
       "noColors": "Rainbow covers every hue by itself and does not use the color list.",
       "colors": "Colors",
+      "colorsTitle": "Effect colors",
       "addColor": "Add color",
       "removeColor": "Remove the selected color",
       "colorN": "Color {{n}}",
@@ -2657,7 +2749,7 @@
         },
         "library": {
           "title": "Library",
-          "body": "The icons on the left switch sections: media, fixtures, cue templates, effects, presets, groups and history.\nAdd fixtures first: + adds one, the arrow opens batch add, or drag a card onto Patch, the stage or the timeline. Drag templates and effects onto the timeline, or click to add them to the selected track."
+          "body": "The icons on the left switch sections: fixtures, cue templates, media, effects, presets, groups and history; click the current icon again to hide the library (Ctrl+Shift+B).\nAdd fixtures first: + adds one, the arrow opens batch add, or drag a card onto Patch, the stage or the timeline. Drag templates and effects onto the timeline, or click to add them to the selected track."
         },
         "preview": {
           "title": "Preview",
@@ -2665,11 +2757,11 @@
         },
         "inspector": {
           "title": "Inspector",
-          "body": "Fixtures & Patch (address, universe, batch sync), Programmer (set values on selected fixtures), and Cue properties (color, keyframes, spread).\nIt only shows attributes the fixtures on that track actually support."
+          "body": "Fixtures & Patch (the fixture list on top, properties and actions for the selection below), Programmer (set values on selected fixtures), and Cue properties (color, keyframes, spread).\nClicking a timeline track header selects and reveals its fixtures; the button at the right of the title hides the panel (Ctrl+Alt+B)."
         },
         "timeline": {
           "title": "Timeline",
-          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks.\nMarkers, sections and the loop range: select and press Delete, or right-click / hover × — you can undo."
+          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim. The icon at a clip's top-left and its top stripe show the type (color, effect, preset, scene); the ? at the right of the toolbar is the legend.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks.\nMarkers, sections and the loop range: select and press Delete, or right-click / hover × — you can undo."
         },
         "mode": {
           "title": "Live mode / Playback mode",
@@ -2691,7 +2783,7 @@
         },
         "patchBatch": {
           "title": "Batch fixture settings",
-          "body": "Sync mode, mount height, rotation and hanging from the first fixture in the list to the others, or rename them with a pattern like “Front {n}”."
+          "body": "Summary and actions for the selected fixtures. With several selected, Basics renames them with a pattern like “Front {n}”, DMX address patches them in sequence, and Batch sync copies mode, height, rotation and hanging from the first one; fields that differ show “mixed”."
         },
         "universeView": {
           "title": "Universe cards and channel grid",
@@ -2789,7 +2881,6 @@
       "reloaded": "Reloaded, {{count}} user effects",
       "loadFailed": "Could not read the user effects file ({{reason}}); only built-in effects for now",
       "issuesTitle": "{{count}} problems in the user effects file were skipped",
-      "fileHint": "Effects come from config files: built-ins ship with the app, your own live in effects.json in the data folder and can be edited by hand or imported; a user effect with the same id overrides the built-in one. Files hold parameters only, no scripts.",
       "groupList": "{{name}} effects",
       "groups": {
         "position": "Position",
@@ -2899,6 +2990,22 @@
       "removeOne": "Remove {{name}} from recent files",
       "missing": "Can't find “{{name}}”; it may have been moved or deleted",
       "remove": "Remove from list"
+    },
+    "legend": {
+      "open": "Timeline legend",
+      "title": "Timeline legend",
+      "kinds": "Clip types",
+      "kindHints": {
+        "color": "Fixed looks such as static colors and cue templates",
+        "effect": "Classic and attribute effects (change over time)",
+        "preset": "Uses a preset: edit the preset and the clip follows",
+        "scene": "A look per fixture (recorded from the programmer)"
+      },
+      "marks": "Marks on clips",
+      "neutral": "Stripes: the clip does not change color (only intensity, position or beam)",
+      "keyframe": "Keyframe: click to move the playhead there, right-click to delete",
+      "strip": "Bottom strip: the actual output computed by the engine (with intensity; averaged across fixtures)",
+      "badges": "Top-right badges: attribute groups the clip uses; ⚠ means no fixture on the track supports it"
     },
     "timelineTools": {
       "label": "Timeline tools",

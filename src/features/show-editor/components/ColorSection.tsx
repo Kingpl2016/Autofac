@@ -37,13 +37,11 @@ export function ColorSection({ rgb, mixed, onCommit }: ColorSectionProps) {
     { key: "b", index: 2, label: t("editor.cue.blue") },
   ];
 
+  // 外层的分区（“颜色”）提供标题；这里只放色板与数字框
   return (
-    <section aria-label={t("editor.cue.color")} className="grid gap-2">
-      <div className="flex items-center justify-between">
-        <h4 className="text-xs font-medium">
-          {t("editor.cue.color")}
-          {mixed && <span className="ml-1.5 font-normal text-muted-foreground">{t("editor.cue.mixed")}</span>}
-        </h4>
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{mixed ? t("editor.cue.mixed") : null}</span>
         <span
           aria-hidden
           className="size-5 rounded-sm border border-border bg-(--cue-color)"
@@ -75,6 +73,6 @@ export function ColorSection({ rgb, mixed, onCommit }: ColorSectionProps) {
           </label>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

@@ -277,3 +277,13 @@ export function channelOwners(
   }
   return out;
 }
+
+/**
+ * 灯具的地址是否有问题（冲突、越界、缺模型）。
+ *
+ * @param s Patch 状态。
+ * @returns 是否有问题。
+ */
+export function hasProblem(s: PatchStatus | undefined): boolean {
+  return !!s && (s.conflictsWith.length > 0 || s.overflow || s.missingModel);
+}

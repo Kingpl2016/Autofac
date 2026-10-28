@@ -15,6 +15,8 @@ interface CommitInputProps {
   label: string;
   className?: string;
   inputMode?: "numeric" | "text";
+  /** 值为空时的占位文字（多选时显示“混合”） */
+  placeholder?: string;
 }
 
 /**
@@ -23,7 +25,7 @@ interface CommitInputProps {
  * 编辑器里每次提交都会产生一步撤销历史，所以不能每敲一个字符就写进工程。
  * 草稿为 `null` 时直接显示外部的值，因此外部值变化（撤销、重命名）能立刻反映出来，不需要 effect 同步。
  */
-export function CommitInput({ value, onCommit, label, className, inputMode = "text" }: CommitInputProps) {
+export function CommitInput({ value, onCommit, label, className, inputMode = "text", placeholder }: CommitInputProps) {
   const [draft, setDraft] = useState<string | null>(null);
   // Esc 要放弃草稿：blur 事件处理时拿到的还是旧的 draft，所以用 ref 传达“已取消”
   const cancelled = useRef(false);
@@ -41,6 +43,7 @@ export function CommitInput({ value, onCommit, label, className, inputMode = "te
       aria-label={label}
       className={className}
       inputMode={inputMode}
+      placeholder={placeholder}
       value={shown}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}

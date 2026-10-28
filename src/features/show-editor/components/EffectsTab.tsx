@@ -9,6 +9,7 @@ import { useCueActions } from "../hooks/useCueActions";
 import { supportedTargets, useTargetCapabilities } from "../hooks/useTargetCapabilities";
 import { applicability, effectNeeds, type Applicability } from "../lib/cueDefaults";
 import { addEffectCue } from "../lib/cueOps";
+import { effectBackground } from "../lib/cueTemplates";
 import { EFFECT_PRESETS, type EffectPreset } from "../lib/effectPresets";
 import type { EffectId } from "../lib/project";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -48,6 +49,8 @@ export function EffectChip({
 }) {
   const { t } = useTranslation();
   const Icon = ICONS[preset.effect];
+  // 色块与放到时间线后的片段主体同一画法（彩虹 / 渐变按周期，取一个默认长度的缩略）
+  const swatch = effectBackground({ ...preset.params, startMs: 0, endMs: preset.lengthMs });
   return (
     <span
       className={cn(
@@ -56,8 +59,9 @@ export function EffectChip({
         app?.level === "none" && "opacity-50",
       )}
     >
-      <Icon className="size-4 shrink-0 text-primary" aria-hidden />
+      <Icon className="size-4 shrink-0 text-clip-effect" aria-hidden />
       <span className="min-w-0 flex-1 truncate">{t(`editor.effects.${preset.effect}`)}</span>
+      <span aria-hidden data-testid="effect-swatch" className="h-3 w-6 shrink-0 rounded-sm border border-border" style={{ background: swatch }} />
       <ApplyBadge app={app ?? null} id={badgeId} />
     </span>
   );

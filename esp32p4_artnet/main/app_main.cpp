@@ -121,6 +121,7 @@ extern "C" void app_main(void) {
     deps.control = &g.control;
     deps.output = &g.output;
     deps.uart = &g.uart;
+    deps.forwarder = &g.forwarder;
     deps.net = &g.net;
     deps.sd = &g.sd;
     deps.programs_dir = app::kProgramsDir;

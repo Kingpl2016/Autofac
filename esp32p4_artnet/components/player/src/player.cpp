@@ -31,7 +31,9 @@ void Player::start(OutputRouter* output, ProgramStore* store, const OutputConfig
     }
     out_ = output;
     store_ = store;
-    out_cfg_ = out_cfg;
+    keepalive_ms_.store(out_cfg.keepalive_ms, std::memory_order_relaxed);
+    stop_behavior_.store(out_cfg.stop_behavior, std::memory_order_relaxed);
+    sacn_enabled_.store(out_cfg.sacn_enabled, std::memory_order_relaxed);
     running_.store(true);
 
     // 引擎线程：固定 core 1、较高优先级、较大栈。
@@ -77,9 +79,11 @@ void Player::stop_engine() noexcept {
 }
 
 void Player::update_output_config(const OutputConfig& out_cfg) noexcept {
-    std::lock_guard<std::mutex> lock(mutex_);
-    out_cfg_.stop_behavior = out_cfg.stop_behavior;
-    out_cfg_.keepalive_ms = out_cfg.keepalive_ms;
+    // 原子写入，引擎线程无锁读取；三项即引擎实际用到的全部运行期字段（含 sACN 开关，
+    // 修复此前只同步两项导致运行期开关 sACN 后停流通知失效的问题）。
+    keepalive_ms_.store(out_cfg.keepalive_ms, std::memory_order_relaxed);
+    stop_behavior_.store(out_cfg.stop_behavior, std::memory_order_relaxed);
+    sacn_enabled_.store(out_cfg.sacn_enabled, std::memory_order_relaxed);
 }
 
 void Player::post(Cmd c) noexcept {
@@ -136,7 +140,7 @@ void Player::engine_loop() noexcept {
                 break;
             }
             switch (c.type) {
-                case CmdType::Open: handle_open(static_cast<uint16_t>(c.arg)); break;
+                case CmdType::Open: handle_open(static_cast<uint16_t>(c.arg), true); break;
                 case CmdType::Play: handle_play(); break;
                 case CmdType::Pause:
                     if (state_ == PlayState::Playing) {
@@ -170,13 +174,14 @@ void Player::engine_loop() noexcept {
             do_tick(n, deadline);
         } else if (state_ == PlayState::Paused && file_.is_open()) {
             // 暂停保活。
-            if (out_cfg_.keepalive_ms > 0 && have_frame_ &&
-                n - last_send_mono_us_ >= static_cast<uint64_t>(out_cfg_.keepalive_ms) * 1000) {
+            const uint32_t keepalive_ms = keepalive_ms_.load(std::memory_order_relaxed);
+            if (keepalive_ms > 0 && have_frame_ &&
+                n - last_send_mono_us_ >= static_cast<uint64_t>(keepalive_ms) * 1000) {
                 send_current();
                 last_send_mono_us_ = n;
             }
-            deadline = (out_cfg_.keepalive_ms > 0)
-                           ? n + static_cast<uint64_t>(out_cfg_.keepalive_ms) * 1000
+            deadline = (keepalive_ms > 0)
+                           ? n + static_cast<uint64_t>(keepalive_ms) * 1000
                            : n + kIdleWaitUs;
         }
 
@@ -193,7 +198,7 @@ void Player::engine_loop() noexcept {
     }
 }
 
-void Player::handle_open(uint16_t no) noexcept {
+void Player::handle_open(uint16_t no, bool user_initiated) noexcept {
     if (store_ == nullptr) {
         return;
     }
@@ -227,10 +232,8 @@ void Player::handle_open(uint16_t no) noexcept {
     late_max_us_ = 0;
     late_sum_us_ = 0;
     late_count_ = 0;
-    // 文件头自带循环标志，用户未显式选择前作为初始值。
-    if (file_.loop_recommended() && repeat_ == RepeatMode::Off) {
-        repeat_ = RepeatMode::Loop;
-    }
+    // 重复模式：用户主动打开按文件 loop 标志重置；连播内部切歌保留当前模式（不打断 Playlist）。
+    repeat_ = repeat_on_open(user_initiated, file_.loop_recommended(), repeat_);
     // 发布输出 Universe 列表快照（供设备发现应答）。
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -269,11 +272,11 @@ void Player::handle_stop() noexcept {
     base_pos_us_ = 0;
     base_mono_us_ = now_us();
     last_frame_ = SIZE_MAX;
-    if (out_cfg_.stop_behavior == StopBehavior::Blackout) {
+    if (stop_behavior_.load(std::memory_order_relaxed) == StopBehavior::Blackout) {
         send_blackout();
     }
     // sACN：通知停流。
-    if (out_cfg_.sacn_enabled) {
+    if (sacn_enabled_.load(std::memory_order_relaxed)) {
         for (const auto& u : file_.universes()) {
             out_->terminate_universe(u.universe, std::span<const uint8_t>(kZeros, u.dmx_len));
         }
@@ -321,6 +324,7 @@ void Player::handle_seek(uint32_t pos_ms) noexcept {
 }
 
 void Player::do_tick(uint64_t now, uint64_t& next_deadline_us) noexcept {
+    const uint32_t keepalive_ms = keepalive_ms_.load(std::memory_order_relaxed);
     const uint64_t dur = file_.duration_us();
     uint64_t pos = base_pos_us_ + (now - base_mono_us_) * speed_x100_ / 100;
 
@@ -366,8 +370,8 @@ void Player::do_tick(uint64_t now, uint64_t& next_deadline_us) noexcept {
     if (*f != last_frame_) {
         // 落后合并：直接跳到最新到期帧，只发最终状态。
         load_and_send(*f, now);
-    } else if (out_cfg_.keepalive_ms > 0 && have_frame_ &&
-               now - last_send_mono_us_ >= static_cast<uint64_t>(out_cfg_.keepalive_ms) * 1000) {
+    } else if (keepalive_ms > 0 && have_frame_ &&
+               now - last_send_mono_us_ >= static_cast<uint64_t>(keepalive_ms) * 1000) {
         send_current();
         last_send_mono_us_ = now;
     }
@@ -377,8 +381,8 @@ void Player::do_tick(uint64_t now, uint64_t& next_deadline_us) noexcept {
         (*f + 1 < file_.frame_count()) ? file_.index()[*f + 1].time_us : dur;
     uint64_t delta_pos = (next_time > pos) ? (next_time - pos) : 0;
     uint64_t dl = now + delta_pos * 100 / speed_x100_;
-    if (out_cfg_.keepalive_ms > 0) {
-        uint64_t ka = last_send_mono_us_ + static_cast<uint64_t>(out_cfg_.keepalive_ms) * 1000;
+    if (keepalive_ms > 0) {
+        uint64_t ka = last_send_mono_us_ + static_cast<uint64_t>(keepalive_ms) * 1000;
         dl = std::min(dl, ka);
     }
     if (dl <= now) {
@@ -541,7 +545,7 @@ void Player::advance_playlist() noexcept {
     uint16_t cur = program_no_;
     for (const auto& e : entries) {
         if (e.no > cur) {
-            handle_open(e.no);
+            handle_open(e.no, false);
             if (state_ == PlayState::Stopped && file_.is_open()) {
                 base_pos_us_ = 0;
                 base_mono_us_ = now_us();

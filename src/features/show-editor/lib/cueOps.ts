@@ -812,3 +812,21 @@ export function cuesAt(project: Pick<ShowProject, "cues">, atMs: number, trackId
 export function cuesOfTrack(project: Pick<ShowProject, "cues">, trackId: string): Cue[] {
   return project.cues.filter((c) => c.trackId === trackId).sort((a, b) => a.startMs - b.startMs);
 }
+
+/**
+ * 修改外观 / 场景片段的名称（时间线上显示）；清空则去掉名称（回到按内容显示）。
+ *
+ * @param draft 工程草稿。
+ * @param cueId 片段。
+ * @param label 新名称（首尾空白会去掉）。
+ * @returns 是否修改（片段不存在、不是外观 / 场景片段、所在轨道锁定时为 `false`）。
+ */
+export function setCueLabel(draft: ShowProject, cueId: string, label: string): boolean {
+  const cue = draft.cues.find((c) => c.id === cueId);
+  if (!cue || (cue.kind !== "look" && cue.kind !== "scene")) return false;
+  if (draft.tracks.find((t) => t.id === cue.trackId)?.lock) return false;
+  const v = label.trim();
+  if (v) cue.label = v;
+  else delete cue.label;
+  return true;
+}

@@ -449,6 +449,35 @@ describe("TimelinePanel 右键菜单与轨道多选", () => {
     expect(project().cues.map((c) => [c.startMs, c.endMs])).toEqual([[2000, 3000]]);
   });
 
+  it("点轨道头：灯具选择跟着轨道，右侧切到“灯具与 Patch”并请求定位；Ctrl 追加", () => {
+    const { a, b } = loadSample();
+    act(() => ui().setInspectorTab("cue"));
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 2" }));
+    const fb = project().fixtures[1].id;
+    expect(ui().selectedTrackIds).toEqual([b]);
+    expect(ui().selectedFixtureIds).toEqual([fb]);
+    expect(ui().inspectorTab).toBe("patch");
+    expect(ui().revealRequest?.ids).toEqual([fb]);
+    const seq = ui().revealRequest?.seq ?? 0;
+    // 同一条再点一次也会重新定位
+    fireEvent.click(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 2" }));
+    expect(ui().revealRequest?.seq).toBe(seq + 1);
+    fireEvent.click(screen.getByRole("button", { name: "选择轨道 RGBW全彩灯 1" }), { ctrlKey: true });
+    expect(ui().selectedTrackIds).toEqual([b, a]);
+    expect(ui().selectedFixtureIds).toEqual([fb, project().fixtures[0].id]);
+  });
+
+  it("点片段：同步灯具选择，右侧仍是 Cue 属性", () => {
+    loadSample();
+    act(() => ui().setSelectedFixtures([]));
+    renderPanel();
+    fireEvent.pointerDown(clip(), { button: 0, clientX: x(1500), clientY: y(0) });
+    fireEvent.pointerUp(clip(), { clientX: x(1500), clientY: y(0) });
+    expect(ui().selectedFixtureIds).toEqual([project().fixtures[0].id]);
+    expect(ui().inspectorTab).toBe("cue");
+  });
+
   it("右键轨道头删除灯具；轨道头 Ctrl / Shift 多选后按 Delete 一次删除全部（可撤销）", () => {
     const { b } = loadSample();
     act(() => useProjectStore.getState().update((d) => void addFixtures(d, RGBW, 1)));
@@ -637,6 +666,17 @@ describe("时间线标记类对象的删除", () => {
   });
 });
 
+describe("时间线图例", () => {
+  it("工具条的“时间轴图例”列出四种片段类别与片段上的标记", async () => {
+    loadSample();
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "时间轴图例" }));
+    const kinds = await screen.findByRole("list", { name: "片段类别" });
+    expect(within(kinds).getAllByRole("listitem").map((li) => li.textContent?.split(" · ")[0])).toEqual(["颜色", "特效", "预设", "场景"]);
+    expect(within(screen.getByRole("list", { name: "片段上的标记" })).getByText(/斜纹：这个片段不改颜色/)).toBeTruthy();
+  });
+});
+
 describe("时间线头部工具", () => {
   const renderFull = () =>
     render(
@@ -645,7 +685,7 @@ describe("时间线头部工具", () => {
         <WithCommands />
       </DndContext>,
     );
-  const tools = () => screen.getByRole("toolbar", { name: "时间线工具" });
+  const tools = () => screen.getByRole("toolbar", { name: "时间轴工具" });
 
   beforeEach(async () => {
     await act(async () => {
@@ -695,6 +735,49 @@ describe("时间线头部工具", () => {
     const before = ui().pxPerSec;
     fireEvent.click(within(tools()).getByRole("button", { name: /适应窗口/ }));
     expect(ui().pxPerSec).not.toBe(before);
-    expect(within(tools()).getByRole("slider", { name: "时间线缩放" })).toBeTruthy();
+    expect(within(tools()).getByRole("slider", { name: "时间轴缩放" })).toBeTruthy();
+  });
+});
+
+describe("片段的类别、名称与颜色", () => {
+  it("颜色 / 特效 / 预设 / 场景各有色条、图标与名称；读屏名称含类型与名称；预设改名后片段跟着变", () => {
+    const presets = [{ id: "pr", name: "暖橙", group: "color" as const, look: { color: fixed({ kind: "rgb" as const, rgb: [255, 128, 0] as [number, number, number] }) } }];
+    useProjectStore.getState().load(
+      produce(createEmptyProject("t"), (d) => {
+        addFixtures(d, RGBW, 4);
+        d.durationMs = 60_000;
+        d.presets = presets;
+        addLookCue(d, d.tracks[0].id, 0, { color: fixed({ kind: "rgb", rgb: [255, 0, 0] }) }, 2000);
+        const c = d.cues.at(-1);
+        if (c?.kind === "look") c.label = "LEE 106 原红";
+        addLookCue(d, d.tracks[1].id, 0, { intensity: { kind: "curve", curve: { shape: "sine", from: 0, to: 100, cycles: 2, phase: 0 } } }, 2000);
+        const e = d.cues.at(-1);
+        if (e?.kind === "look") e.label = "呼吸";
+        addLookCue(d, d.tracks[2].id, 0, { presetId: "pr" }, 2000);
+        d.tracks.push({ id: "st", target: { kind: "scene" }, mute: false, solo: false, lock: false, name: "场景" });
+        d.cues.push({ id: "sc", kind: "scene", trackId: "st", startMs: 0, endMs: 2000, brightness: 100, fadeInMs: 0, fadeOutMs: 0, easing: "linear", entries: [], label: "开场" });
+      }),
+    );
+    renderPanel();
+    const clipOf = (re: RegExp) => screen.getByRole("button", { name: re });
+    const red = clipOf(/LEE 106 原红/);
+    expect(red.getAttribute("data-category")).toBe("color");
+    expect(red.getAttribute("aria-label")).toMatch(/^颜色「LEE 106 原红」/);
+    expect(within(red).getByTestId("clip-accent").className).toContain("bg-clip-light");
+    expect(within(red).getByTestId("clip-fill").style.background).toBe("rgb(255, 0, 0)");
+    // 只改强度的“特效”：橙色色条、中性斜纹、悬停提示列出用到的层
+    const breathe = clipOf(/呼吸/);
+    expect(breathe.getAttribute("data-category")).toBe("effect");
+    expect(within(breathe).getByTestId("clip-accent").className).toContain("bg-clip-effect");
+    expect(within(breathe).getByTestId("clip-fill").hasAttribute("data-neutral")).toBe(true);
+    expect(breathe.getAttribute("title")).toBe("特效 · 呼吸 · 用到：强度");
+    const preset = clipOf(/预设「暖橙」/);
+    expect(within(preset).getByTestId("clip-accent").className).toContain("bg-clip-preset");
+    expect(within(preset).getByText("暖橙 · 100%")).toBeTruthy();
+    expect(clipOf(/场景「开场」/).getAttribute("data-category")).toBe("scene");
+    for (const el of [red, breathe, preset]) expect(within(el).getByTestId("clip-kind-icon")).toBeTruthy();
+
+    act(() => useProjectStore.getState().update((d) => void (d.presets[0].name = "琥珀")));
+    expect(clipOf(/预设「琥珀」/)).toBeTruthy();
   });
 });

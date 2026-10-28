@@ -38,9 +38,34 @@ export const INSPECTOR_TABS = ["patch", "program", "cue"] as const;
 /** 右侧属性区的标签页。 */
 export type InspectorTab = (typeof INSPECTOR_TABS)[number];
 
+/** 请 Patch 列表滚动到这些灯具（`seq` 每次递增，同一选择再请求也会滚动）。 */
+export interface FixtureRevealRequest {
+  ids: string[];
+  seq: number;
+}
+
 interface EditorUiState {
   /** 在 Patch 面板里勾选的灯具 */
   selectedFixtureIds: string[];
+  /** 最近一次“在 Patch 中定位”的请求 */
+  revealRequest: FixtureRevealRequest | null;
+  /**
+   * 请 Patch 列表滚动到这些灯具（第一台）。
+   *
+   * @param ids 灯具 id。
+   */
+  revealFixtures: (ids: string[]) => void;
+  /** 左侧素材库是否已收起（由面板尺寸回写） */
+  libraryCollapsed: boolean;
+  /** 右侧属性面板是否已收起（由面板尺寸回写） */
+  inspectorCollapsed: boolean;
+  /**
+   * 回写面板的收起状态。
+   *
+   * @param panel 面板。
+   * @param collapsed 是否收起。
+   */
+  setPanelCollapsed: (panel: "library" | "inspector", collapsed: boolean) => void;
   /** 在 Patch 面板里选中的分组 */
   selectedGroupId: string | null;
   /** 在时间线上选中的 Cue */
@@ -72,7 +97,7 @@ interface EditorUiState {
    * @param id 模型编号。
    */
   setFixtureAddModel: (id: string | null) => void;
-  /** 工具条的帮助菜单是否打开（F1） */
+  /** 顶栏的帮助菜单是否打开（F1） */
   helpOpen: boolean;
   /**
    * 打开 / 关闭帮助菜单。
@@ -321,6 +346,20 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
         : s.selectedFixtureIds.filter((x) => x !== id),
     })),
   setSelectedFixtures: (ids) => set({ selectedFixtureIds: ids }),
+  revealRequest: null,
+  revealFixtures: (ids) => set((s) => ({ revealRequest: { ids: [...ids], seq: (s.revealRequest?.seq ?? 0) + 1 } })),
+  libraryCollapsed: false,
+  inspectorCollapsed: false,
+  setPanelCollapsed: (panel, collapsed) =>
+    set((s) =>
+      panel === "library"
+        ? s.libraryCollapsed === collapsed
+          ? s
+          : { libraryCollapsed: collapsed }
+        : s.inspectorCollapsed === collapsed
+          ? s
+          : { inspectorCollapsed: collapsed },
+    ),
   selectGroup: (id) => set({ selectedGroupId: id }),
   selectCues: (ids) =>
     set(ids.length > 0 ? { selectedCueIds: ids, selectedMediaClipIds: [], selectedTimelineObject: null } : { selectedCueIds: ids }),

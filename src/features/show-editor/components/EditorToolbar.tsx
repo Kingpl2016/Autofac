@@ -9,7 +9,6 @@ import { selectDirty, useProjectStore } from "../stores/useProjectStore";
 import type { ShowFileController } from "../hooks/useShowFile";
 import { BakeStatus } from "./BakeStatus";
 import { FileMenu } from "./FileMenu";
-import { HelpMenu } from "./HelpMenu";
 import { TempoPopover } from "./TempoPopover";
 import { TransportBar } from "./TransportBar";
 
@@ -112,8 +111,6 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
         >
           <Redo2 aria-hidden />
         </Button>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <HelpMenu />
       </div>
     </div>
   );

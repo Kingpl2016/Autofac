@@ -241,6 +241,7 @@ pub fn run() {
             show_runtime::show_locate,
             show_runtime::show_status,
             show_runtime::show_set_dirty,
+            show_runtime::show_set_output_enabled,
             cue_template_commands::cue_templates_read,
             cue_template_commands::cue_templates_write,
             cue_template_commands::cue_templates_import,

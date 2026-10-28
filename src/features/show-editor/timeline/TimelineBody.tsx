@@ -16,6 +16,7 @@ import i18n from "@/shared/i18n";
 import { announce } from "@/shared/stores/announcerStore";
 import { placeCues } from "../lib/cueOps";
 import { duplicateCuesTo } from "../lib/editOps";
+import { selectTracksWithFixtures } from "../hooks/selectionActions";
 import { layerSupport, lookBadges, unsupportedLayers, type LayerBadge, type LayerSupport } from "../lib/fixtureProfile";
 import { trackFixtureIds } from "../lib/ops";
 import type { Cue, ShowProject, Track } from "../lib/project";
@@ -354,7 +355,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       const id = clipEl.dataset.cueId ?? "";
       const cue = current.cues.find((c) => c.id === id);
       if (!cue) return;
-      ui.selectTrack(cue.trackId);
+      // 灯具选择跟着片段所在的轨道（右侧保持 / 切到 Cue 属性）
+      selectTracksWithFixtures([cue.trackId], cue.trackId);
       // 点在关键帧 ◆ 上：选中片段并把播放头移到这个关键帧，不开始拖动
       const keyEl = target.closest<HTMLElement>("[data-key-ms]");
       if (keyEl) {
@@ -492,7 +494,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
         const rowTrack = m.row >= 0 ? tracks[m.row] : undefined;
         // 点在多选轨道中的一条上：保留多选（双击可在全部选中的轨道上新建）
         const inMulti = rowTrack && ui.selectedTrackIds.length > 1 && ui.selectedTrackIds.includes(rowTrack.id);
-        if (rowTrack && !inMulti) ui.selectTrack(rowTrack.id);
+        if (rowTrack && !inMulti) selectTracksWithFixtures([rowTrack.id], rowTrack.id);
         if (!m.additive) ui.selectCues([]);
       }
     }

@@ -121,3 +121,39 @@ export function trackSelection(project: Pick<ShowProject, "tracks" | "fixtures" 
   const track = project.tracks.find((t) => t.id === trackId);
   return track ? trackFixtureIds(project, track) : [];
 }
+
+/** 一组轨道对应的灯具选择。 */
+export interface TrackFixtureSelection {
+  /** 这些轨道驱动的灯具（按轨道顺序、去重） */
+  fixtureIds: string[];
+  /** 只选了一条分组轨道时为该分组，否则为 `null` */
+  groupId: string | null;
+}
+
+/**
+ * 把轨道选择换算成灯具选择（时间线点轨道 / 片段时与 Patch、编程器、舞台联动）。
+ *
+ * 灯具轨道为一台，分组轨道为全部成员（成员顺序），场景轨道为其片段涉及的灯具；已删除的轨道忽略。
+ *
+ * @param project 工程（只读）。
+ * @param trackIds 轨道 id（按选择顺序）。
+ * @returns 灯具与分组。
+ */
+export function selectionOfTracks(
+  project: Pick<ShowProject, "tracks" | "fixtures" | "groups" | "cues">,
+  trackIds: readonly string[],
+): TrackFixtureSelection {
+  const seen = new Set<string>();
+  const fixtureIds: string[] = [];
+  for (const id of trackIds) {
+    for (const f of trackSelection(project, id)) {
+      if (seen.has(f)) continue;
+      seen.add(f);
+      fixtureIds.push(f);
+    }
+  }
+  const tracks = trackIds.map((id) => project.tracks.find((t) => t.id === id)).filter((t) => t !== undefined);
+  const only = tracks.length === 1 ? tracks[0].target : null;
+  const groupId = only?.kind === "group" && project.groups.some((g) => g.id === only.id) ? only.id : null;
+  return { fixtureIds, groupId };
+}

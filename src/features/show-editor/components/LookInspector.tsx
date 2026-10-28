@@ -33,6 +33,7 @@ import { useProjectStore } from "../stores/useProjectStore";
 import { AttributeLayers } from "./AttributeLayers";
 import { ColorPicker } from "./ColorPicker";
 import { CommitInput } from "./CommitInput";
+import { InspectorSection } from "./InspectorSection";
 import { SliderField } from "./SliderField";
 import { SpreadPanel } from "./SpreadPanel";
 
@@ -75,6 +76,9 @@ function KeyButton({ label, active, disabled, onToggle }: KeyButtonProps) {
  *
  * 显示的值是播放头处的值（由引擎按关键帧 / 曲线取值）。选中多个外观片段时一起改（各自按自己的起点换算时刻）。
  *
+ * 输出 Cue 页的五个可折叠分区：强度、颜色、属性层、多灯分布、外观层复制粘贴（默认收起）；
+ * 关键帧导航由 [`LookKeyNav`] 放在 Cue 页顶部的摘要里。
+ *
  * @param props.cues 选中的外观片段（至少一个）。
  */
 export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
@@ -82,7 +86,6 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
   const update = useProjectStore((s) => s.update);
   const project = useProjectStore((s) => s.project);
   const playheadMs = useEditorUiStore((s) => s.playheadMs);
-  const setPlayhead = useEditorUiStore((s) => s.setPlayhead);
   const engine = useEngine();
 
   const first = cues[0];
@@ -130,8 +133,6 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
   const colorCount = colorSupportCount(support.caps);
   // 没有一台灯能表现颜色：不显示色盘（已有颜色层时提示并可移除）
   const colorUsable = members === 0 || colorCount > 0;
-  const keyTimes = lookKeyTimes(look);
-  const outsideHint = inside ? undefined : t("editor.look.outside");
 
   const mode: ParamMode = look.intensity?.kind === "keys" ? "keys" : look.intensity?.kind === "curve" ? "curve" : "value";
   const setMode = (next: ParamMode) =>
@@ -211,47 +212,10 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
     </label>
   );
 
+  // 分区：强度、颜色、属性层、多灯分布、复制粘贴（关键帧导航在 Cue 页顶部的摘要里，见 `LookKeyNav`）
   return (
-    <section aria-label={t("editor.look.title")} className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("editor.look.title")}</h4>
-        <div className="flex items-center gap-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            aria-label={t("editor.look.prevKey")}
-            title={t("editor.look.prevKey")}
-            disabled={adjacentKey(keyTimes, u, -1) === null}
-            onClick={() => {
-              const k = adjacentKey(keyTimes, u, -1);
-              if (k !== null) setPlayhead(first.startMs + k);
-            }}
-          >
-            <ChevronLeft aria-hidden />
-          </Button>
-          <span className="num text-[11px] text-muted-foreground">{t("editor.look.keyCount", { count: keyTimes.length })}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            aria-label={t("editor.look.nextKey")}
-            title={t("editor.look.nextKey")}
-            disabled={adjacentKey(keyTimes, u, 1) === null}
-            onClick={() => {
-              const k = adjacentKey(keyTimes, u, 1);
-              if (k !== null) setPlayhead(first.startMs + k);
-            }}
-          >
-            <ChevronRight aria-hidden />
-          </Button>
-        </div>
-      </div>
-      {!inside && <p className="text-xs text-muted-foreground">{outsideHint}</p>}
-
-      {/* 强度 */}
+    <>
+      <InspectorSection scope="cue" id="intensity" title={t("editor.look.intensity")}>
       <div className="grid gap-2">
         <div className="flex items-center justify-between gap-2">
           <Segmented<ParamMode>
@@ -315,8 +279,18 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
         )}
         {mode === "keys" && segmentSelect(look.intensity, "intensity")}
       </div>
+      </InspectorSection>
 
-      {/* 颜色 */}
+      <InspectorSection
+        scope="cue"
+        id="color"
+        title={t("editor.look.color")}
+        aside={
+          colorUsable && colorAt ? (
+            <span aria-hidden className="size-3.5 rounded-sm border border-border" style={{ backgroundColor: `rgb(${rgbAt.join(",")})` }} />
+          ) : null
+        }
+      >
       {!colorUsable ? (
         <div className="grid gap-1.5 rounded-md border border-dashed border-border p-2">
           <p className={cn("flex items-center gap-1.5 text-xs", look.color ? "text-warning" : "text-muted-foreground")}>
@@ -362,27 +336,91 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
         {look.color?.kind === "keys" && segmentSelect(look.color, "color")}
       </div>
       )}
+      </InspectorSection>
 
-      <AttributeLayers
-        look={look}
-        available={available}
-        total={members > 1 ? members : undefined}
-        uMs={uClamped}
-        lengthMs={length}
-        inside={inside}
-        engine={engine}
-        edit={edit}
-      />
+      <InspectorSection
+        scope="cue"
+        id="layers"
+        title={t("editor.layers.title")}
+        aside={<span className="num">{Object.keys(look.attrs ?? {}).length}</span>}
+      >
+        <AttributeLayers
+          look={look}
+          available={available}
+          total={members > 1 ? members : undefined}
+          uMs={uClamped}
+          lengthMs={length}
+          inside={inside}
+          engine={engine}
+          edit={edit}
+        />
+      </InspectorSection>
 
-      <SpreadPanel
-        look={look}
-        spread={first.spread}
-        members={members}
-        onChange={(spread) => update((d) => void setSpread(d, ids, spread))}
-      />
+      <InspectorSection scope="cue" id="spread" title={t("editor.spread.title")}>
+        <SpreadPanel
+          look={look}
+          spread={first.spread}
+          members={members}
+          onChange={(spread) => update((d) => void setSpread(d, ids, spread))}
+        />
+      </InspectorSection>
 
-      <LayerClipboardBar look={look} onPaste={(source) => edit((l) => mergeLayers(l, source))} />
-    </section>
+      <InspectorSection scope="cue" id="clipboard" title={t("editor.layers.clipboard")} defaultOpen={false}>
+        <LayerClipboardBar look={look} onPaste={(source) => edit((l) => mergeLayers(l, source))} />
+      </InspectorSection>
+    </>
+  );
+}
+
+/**
+ * 外观片段的关键帧导航（放在 Cue 页顶部的摘要里）：跳到上一个 / 下一个关键帧、帧数；
+ * 播放头在片段外时提示不能打关键帧。
+ *
+ * @param props.cues 选中的外观片段（至少一个；按第一个计算）。
+ */
+export function LookKeyNav({ cues }: { cues: readonly LookClip[] }) {
+  const { t } = useTranslation();
+  const playheadMs = useEditorUiStore((s) => s.playheadMs);
+  const setPlayhead = useEditorUiStore((s) => s.setPlayhead);
+  const first = cues[0];
+  const u = playheadMs - first.startMs;
+  const inside = u >= 0 && u <= first.endMs - first.startMs;
+  const keyTimes = lookKeyTimes(first.look);
+  const jump = (dir: 1 | -1) => {
+    const k = adjacentKey(keyTimes, u, dir);
+    if (k !== null) setPlayhead(first.startMs + k);
+  };
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div role="group" aria-label={t("editor.look.keyNav")} className="flex items-center gap-0.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={t("editor.look.prevKey")}
+          title={t("editor.look.prevKey")}
+          disabled={adjacentKey(keyTimes, u, -1) === null}
+          onClick={() => jump(-1)}
+        >
+          <ChevronLeft aria-hidden />
+        </Button>
+        <span className="num text-[11px] text-muted-foreground">{t("editor.look.keyCount", { count: keyTimes.length })}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={t("editor.look.nextKey")}
+          title={t("editor.look.nextKey")}
+          disabled={adjacentKey(keyTimes, u, 1) === null}
+          onClick={() => jump(1)}
+        >
+          <ChevronRight aria-hidden />
+        </Button>
+      </div>
+      {!inside && <p className="text-xs text-muted-foreground">{t("editor.look.outside")}</p>}
+    </div>
   );
 }
 
@@ -400,8 +438,9 @@ function LayerClipboardBar({ look, onPaste }: { look: Look; onPaste: (source: Lo
   const [picked, setPicked] = useState<ReadonlySet<LayerGroup> | null>(null);
   const chosen = picked ?? new Set(groups);
 
+  // 外层的分区（“外观层复制粘贴”）提供标题
   return (
-    <section aria-label={t("editor.layers.clipboard")} className="grid gap-1.5 border-t border-border pt-2">
+    <div className="grid gap-1.5">
       <div className="flex items-center gap-1.5">
         <Button
           type="button"
@@ -453,6 +492,6 @@ function LayerClipboardBar({ look, onPaste }: { look: Look; onPaste: (source: Lo
           ))}
         </fieldset>
       )}
-    </section>
+    </div>
   );
 }

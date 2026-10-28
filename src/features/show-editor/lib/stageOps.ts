@@ -105,6 +105,25 @@ export function moveFixtures(d: ShowProject, ids: readonly string[], dx: number,
 }
 
 /**
+ * 把一台灯具放到舞台上的指定坐标（属性面板里直接输入 x / y）。坐标会夹在舞台范围内。
+ *
+ * @param d 工程草稿。
+ * @param id 灯具 id。
+ * @param patch 新的 x / y（米）；省略的保持不变，非有限数忽略。
+ */
+export function setFixturePosition(d: ShowProject, id: string, patch: { x?: number; y?: number }): void {
+  if (!d.fixtures.some((f) => f.id === id)) return;
+  materializePlacements(d);
+  const s = d.fixtures.find((f) => f.id === id)?.stage;
+  if (!s) return;
+  const x = patch.x !== undefined && Number.isFinite(patch.x) ? patch.x : s.x;
+  const y = patch.y !== undefined && Number.isFinite(patch.y) ? patch.y : s.y;
+  const p = clampToStage(d.stage, x, y);
+  s.x = snap(p.x, 0.001);
+  s.y = snap(p.y, 0.001);
+}
+
+/**
  * 修改一组灯具的安装参数（高度、朝向、吊挂）。
  *
  * @param d 工程草稿。

@@ -51,6 +51,8 @@ type Transport = "stopped" | "playing" | "paused";
  * - 位置由“后端”（这里的时钟节拍）推进，约 30 Hz 推送 `show:state`；
  * - 播完且不循环则停在结尾并结束输出；循环则回绕；停止回到 0；
  * - 录制进行中 / 已打开回放节目时拒绝开始输出；输出期间拒绝录制和打开回放节目；
+ * - “输出到网络”关闭时照常播放，但不占用输出（不受录制 / 回放互斥影响）；
+
  * - 定位只在灯具存在时允许。
  *
  * # Arguments
@@ -77,8 +79,12 @@ export function createShowPlaybackModule(world: World): DemoModule {
   let transport: Transport = "stopped";
   let positionMs = 0;
   let locate: string | null = null;
+  /** “输出到网络”开关（默认开启）；关闭时照常走时钟，但不占用输出 */
+  let outputEnabled = true;
 
   const outputting = () => transport !== "stopped" || locate !== null;
+  /** 真正在向网络发送：会话在运行且输出打开（与后端的 `sending` 一致） */
+  const sending = () => outputting() && outputEnabled;
 
   const state = () => ({
     loaded,
@@ -90,20 +96,26 @@ export function createShowPlaybackModule(world: World): DemoModule {
     universes,
     warnings: [] as unknown[],
     outputting: outputting(),
+    outputEnabled,
+    sending: sending(),
     destinations: routedPorts ?? (forwarding ? 1 : null),
     dropped: 0,
   });
 
   const publish = () => world.bus.emit("show:state", state());
 
-  /** 开始输出前的互斥检查。 */
+  /** 开始输出前的互斥检查（输出关闭时不占用输出，不检查）。 */
   const guard = () => {
-    if (outputting()) return;
+    if (sending() || !outputEnabled) return;
+    checkFree();
+  };
+  /** 录制 / 回放进行中时不能开始输出。 */
+  const checkFree = () => {
     if (world.hooks.isRecording()) fail("recording_active");
     if (world.hooks.playerLoaded()) fail("playback_active");
   };
 
-  world.hooks.showOutputting = outputting;
+  world.hooks.showOutputting = sending;
 
   return {
     commands: {
@@ -173,6 +185,15 @@ export function createShowPlaybackModule(world: World): DemoModule {
         } else {
           locate = null;
         }
+        publish();
+        return state();
+      },
+
+      show_set_output_enabled: (args) => {
+        const enabled = args.enabled === true;
+        // 与后端一致：会话运行中重新打开输出时才需要仲裁
+        if (enabled && !outputEnabled && outputting()) checkFree();
+        outputEnabled = enabled;
         publish();
         return state();
       },

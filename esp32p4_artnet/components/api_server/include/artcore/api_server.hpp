@@ -14,6 +14,7 @@
 #include "artcore/control.hpp"
 #include "artcore/dmx_output.hpp"
 #include "artcore/dmx_uart.hpp"
+#include "artcore/forwarder.hpp"
 #include "artcore/net.hpp"
 #include "artcore/player.hpp"
 #include "artcore/program_store.hpp"
@@ -37,6 +38,8 @@ struct ApiDeps {
     DmxOutput* output = nullptr;
     /// UART DMX512 输出器（诊断：口数 / TX 超时计数）。可为空。
     DmxUart* uart = nullptr;
+    /// 实时转发器（诊断：接收 / 丢弃计数，定位转发收不到包的环节）。可为空。
+    Forwarder* forwarder = nullptr;
     /// 网络状态。
     Network* net = nullptr;
     /// SD 卡（挂载状态）。

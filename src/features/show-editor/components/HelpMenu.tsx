@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useInRouterContext, useNavigate } from "react-router-dom";
+import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
 import {
   CircleHelp,
   ClipboardCopy,
@@ -42,20 +42,28 @@ import { useProjectStore } from "../stores/useProjectStore";
 const AFTER_CLOSE_MS = 150;
 
 /**
- * 复制诊断信息：应用版本与运行环境（关于页同款）+ 当前节目的规模，方便反馈问题时附上。
+ * 复制诊断信息：应用版本与运行环境（关于页同款），在编辑页再附上当前节目的规模，方便反馈问题时附上。
+ *
+ * @param withShow 是否附上当前节目的规模（只在编辑页）。
  */
-async function copyDiagnostics(): Promise<void> {
+async function copyDiagnostics(withShow: boolean): Promise<void> {
   const t = i18n.t.bind(i18n);
   try {
     const info = await getAppInfo();
-    const p = useProjectStore.getState().project;
-    const show = t("editor.help.diagShow", {
-      fixtures: p.fixtures.length,
-      tracks: p.tracks.length,
-      cues: p.cues.length,
-      universes: p.output.universes.length,
-    });
-    await navigator.clipboard.writeText(`${buildDiagnostics(info)}\n${show}\n${navigator.userAgent}`);
+    const lines = [buildDiagnostics(info)];
+    if (withShow) {
+      const p = useProjectStore.getState().project;
+      lines.push(
+        t("editor.help.diagShow", {
+          fixtures: p.fixtures.length,
+          tracks: p.tracks.length,
+          cues: p.cues.length,
+          universes: p.output.universes.length,
+        }),
+      );
+    }
+    lines.push(navigator.userAgent);
+    await navigator.clipboard.writeText(lines.join("\n"));
     toast.success(t("editor.help.diagCopied"));
     announce(t("editor.help.diagCopied"));
   } catch {
@@ -72,11 +80,44 @@ async function openLogs(): Promise<void> {
   }
 }
 
+/** 当前路径是否是节目编辑页。 */
+function isEditorPath(pathname: string): boolean {
+  return pathname === "/editor" || pathname.startsWith("/editor/");
+}
+
 /**
- * 工具条右侧的帮助菜单（“?” 按钮，F1 打开）：播放上手引导、显示 / 隐藏本页的全部局部提示、
- * 快捷键速查与自定义、新功能、问题反馈（复制诊断信息、打开日志文件夹）、关于、重置引导与提示。
+ * 顶栏里的帮助菜单：按当前页面决定是否显示编辑器专属的菜单项。
+ * 编辑页的 F1 由编辑器命令表处理（可在快捷键设置里改）；其他页面在这里监听 F1。
  */
-export function HelpMenu() {
+export function HeaderHelpMenu() {
+  const { pathname } = useLocation();
+  const editor = isEditorPath(pathname);
+  const setOpen = useEditorUiStore((s) => s.setHelpOpen);
+
+  useEffect(() => {
+    if (editor) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "F1" || e.repeat || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      setOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editor, setOpen]);
+
+  // 离开编辑页时关掉菜单，避免带着编辑器的菜单项停在别的页面
+  useEffect(() => () => setOpen(false), [editor, setOpen]);
+
+  return <HelpMenu editor={editor} />;
+}
+
+/**
+ * 帮助菜单（“?” 按钮，F1 打开）。所有页面都有：新功能、关于、问题反馈（复制诊断信息、打开日志文件夹）；
+ * 编辑页另有：播放上手引导、显示 / 隐藏本页的全部局部提示、快捷键速查与自定义、重置引导与提示。
+ *
+ * @param props.editor 是否显示编辑器专属的菜单项（默认显示）。
+ */
+export function HelpMenu({ editor = true }: { editor?: boolean }) {
   const { t } = useTranslation();
   const open = useEditorUiStore((s) => s.helpOpen);
   const setOpen = useEditorUiStore((s) => s.setHelpOpen);
@@ -103,28 +144,32 @@ export function HelpMenu() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64" aria-label={t("editor.guide.help")}>
-          <DropdownMenuItem onSelect={() => void window.setTimeout(() => void runTour(t), AFTER_CLOSE_MS)}>
-            <PlayCircle aria-hidden />
-            {t("editor.guide.replay")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              setShowAll(!showAll);
-              announce(t(showAll ? "editor.guide.hintsHidden" : "editor.guide.hintsShown"));
-            }}
-          >
-            {showAll ? <LightbulbOff aria-hidden /> : <Lightbulb aria-hidden />}
-            {t(showAll ? "editor.guide.hideHints" : "editor.guide.showHints")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => useEditorUiStore.getState().setShortcutSheetOpen(true)}>
-            <Keyboard aria-hidden />
-            {t("editor.help.cheatSheet")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => useEditorUiStore.getState().setKeymapOpen(true)}>
-            <Settings2 aria-hidden />
-            {t("editor.guide.shortcuts")}
-          </DropdownMenuItem>
+          {editor && (
+            <>
+              <DropdownMenuItem onSelect={() => void window.setTimeout(() => void runTour(t), AFTER_CLOSE_MS)}>
+                <PlayCircle aria-hidden />
+                {t("editor.guide.replay")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setShowAll(!showAll);
+                  announce(t(showAll ? "editor.guide.hintsHidden" : "editor.guide.hintsShown"));
+                }}
+              >
+                {showAll ? <LightbulbOff aria-hidden /> : <Lightbulb aria-hidden />}
+                {t(showAll ? "editor.guide.hideHints" : "editor.guide.showHints")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => useEditorUiStore.getState().setShortcutSheetOpen(true)}>
+                <Keyboard aria-hidden />
+                {t("editor.help.cheatSheet")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => useEditorUiStore.getState().setKeymapOpen(true)}>
+                <Settings2 aria-hidden />
+                {t("editor.guide.shortcuts")}
+              </DropdownMenuItem>
+            </>
+          )}
           <DropdownMenuItem onSelect={() => setWhatsNew(true)}>
             <Sparkles aria-hidden />
             {t("editor.help.whatsNew")}
@@ -136,7 +181,7 @@ export function HelpMenu() {
               <MessageSquareWarning aria-hidden className="size-3.5" />
               {t("editor.help.feedback")}
             </DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => void copyDiagnostics()}>
+            <DropdownMenuItem onSelect={() => void copyDiagnostics(editor)}>
               <ClipboardCopy aria-hidden />
               {t("editor.help.copyDiagnostics")}
             </DropdownMenuItem>
@@ -145,17 +190,21 @@ export function HelpMenu() {
               {t("editor.help.openLogs")}
             </DropdownMenuItem>
           </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onSelect={() => {
-              useOnboardingStore.getState().reset();
-              setShowAll(false);
-              announce(t("editor.guide.resetDone"));
-            }}
-          >
-            <RotateCcw aria-hidden />
-            {t("editor.guide.reset")}
-          </DropdownMenuItem>
+          {editor && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  useOnboardingStore.getState().reset();
+                  setShowAll(false);
+                  announce(t("editor.guide.resetDone"));
+                }}
+              >
+                <RotateCcw aria-hidden />
+                {t("editor.guide.reset")}
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <WhatsNewDialog open={whatsNew} onOpenChange={setWhatsNew} />

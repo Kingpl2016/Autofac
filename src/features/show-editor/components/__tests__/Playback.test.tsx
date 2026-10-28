@@ -32,7 +32,7 @@ import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { usePlaybackStore } from "../../stores/usePlaybackStore";
 import { useProjectStore } from "../../stores/useProjectStore";
-import { FixtureRow } from "../FixtureRow";
+import { FixtureDetails } from "../FixtureDetails";
 import { PreviewPanel } from "../PreviewPanel";
 import { TransportBar } from "../TransportBar";
 
@@ -61,6 +61,8 @@ function state(over: Partial<ShowState> = {}): ShowState {
     universes: [0],
     warnings: [],
     outputting: false,
+    outputEnabled: true,
+    sending: false,
     destinations: null,
     dropped: 0,
     ...over,
@@ -293,20 +295,8 @@ describe("灯具定位按钮", () => {
         fixture = d.fixtures[0];
       }),
     );
-    return (
-      <ul>
-        <FixtureRow
-          fixture={project().fixtures[0] ?? fixture}
-          modelName="RGBW"
-          status={undefined}
-          selected={false}
-          onSelectedChange={() => undefined}
-          onRename={() => undefined}
-          onAddress={() => undefined}
-          onDelete={() => undefined}
-        />
-      </ul>
-    );
+    // 定位按钮在“灯具与 Patch”详情区的操作栏里（选中单台时）
+    return <FixtureDetails ids={[(project().fixtures[0] ?? fixture).id]} status={new Map()} />;
   }
 
   it("点击开始定位，再次点击结束；按下状态跟随后端", async () => {

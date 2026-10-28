@@ -1,7 +1,11 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PanelRightClose } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { collapsePanel } from "../hooks/panelControl";
 import { INSPECTOR_TABS, useEditorUiStore, type InspectorTab } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { CueInspector } from "./CueInspector";
@@ -20,7 +24,24 @@ export function InspectorPanel() {
   // 选中的 id 可能已被删除（撤销等），按工程过滤
   const mediaClips = useMemo(() => allClips.filter((c) => selectedMedia.includes(c.id)), [allClips, selectedMedia]);
   return (
-    <PanelFrame title={t("editor.inspector.title")} tourId="inspector" noScroll>
+    <PanelFrame
+      title={t("editor.inspector.title")}
+      tourId="inspector"
+      noScroll
+      actions={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={t("editor.inspector.collapse")}
+          title={t("editor.inspector.collapse")}
+          onClick={() => collapsePanel("inspector")}
+        >
+          <PanelRightClose aria-hidden />
+        </Button>
+      }
+    >
       <Tabs
         value={tab}
         onValueChange={(v) => setTab((INSPECTOR_TABS as readonly string[]).includes(v) ? (v as InspectorTab) : "patch")}
@@ -33,7 +54,8 @@ export function InspectorPanel() {
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value="patch" className="m-0 min-h-0 flex-1 overflow-auto">
+        {/* 灯具与 Patch 自己分上下两栏滚动 */}
+        <TabsContent value="patch" className="m-0 min-h-0 flex-1 overflow-hidden">
           <PatchPanel />
         </TabsContent>
         <TabsContent value="program" className="m-0 min-h-0 flex-1 overflow-auto">

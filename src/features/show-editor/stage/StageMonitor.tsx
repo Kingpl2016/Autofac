@@ -15,6 +15,7 @@ import { analyzePatch } from "../lib/patch";
 import { moveFixtures, removeStageObject, snap, STAGE_SNAP_M, updateStageObject } from "../lib/stageOps";
 import { formatTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
+import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProgrammerStore } from "../stores/useProgrammerStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { StageLayoutBar } from "./StageLayoutBar";
@@ -73,6 +74,7 @@ export function StageMonitor() {
   const selectedIds = useEditorUiStore((s) => s.selectedFixtureIds);
   const setSelected = useEditorUiStore((s) => s.setSelectedFixtures);
   const blackout = useEditorUiStore((s) => s.blackout);
+  const outputEnabled = usePlaybackStore((s) => s.state?.outputEnabled ?? true);
   const setBlackout = useEditorUiStore((s) => s.setBlackout);
   const values = useProgrammerStore((s) => s.values);
   const live = useProgrammerStore((s) => s.live);
@@ -440,10 +442,20 @@ export function StageMonitor() {
             </span>
           </div>
         )}
-        {blackout && (
-          <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-destructive px-2 py-0.5 text-[11px] font-medium text-destructive-foreground">
-            {t("editor.stage.blackoutOn")}
-          </span>
+        {(blackout || !outputEnabled) && (
+          <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">
+            {/* 输出关闭：只在本机预览，灯不会跟着变 */}
+            {!outputEnabled && (
+              <span className="rounded border border-warning/40 bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning backdrop-blur-sm">
+                {t("editor.stage.previewOnly")}
+              </span>
+            )}
+            {blackout && (
+              <span className="rounded bg-destructive px-2 py-0.5 text-[11px] font-medium text-destructive-foreground">
+                {t("editor.stage.blackoutOn")}
+              </span>
+            )}
+          </div>
         )}
         {/* 键盘 / 读屏：等价的灯具列表 */}
         <ul className="sr-only" aria-label={t("editor.stage.list")}>

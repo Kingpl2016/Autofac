@@ -577,9 +577,17 @@ export const EFFECT_CLIP_MS = 8000;
  * @param timeMs 片段起点（毫秒）。
  * @param def 特效。
  * @param params 参数（参数面板里的当前值）。
+ * @param label 片段名称（时间线上显示，通常是界面语言下的特效名）；省略时不写。
  * @returns 新片段 id；轨道不存在或放不下时为 `null`。
  */
-export function addEffectDefCue(draft: ShowProject, trackId: string, timeMs: number, def: EffectDef, params: EffectParams): string | null {
+export function addEffectDefCue(
+  draft: ShowProject,
+  trackId: string,
+  timeMs: number,
+  def: EffectDef,
+  params: EffectParams,
+  label?: string,
+): string | null {
   const track = draft.tracks.find((tr) => tr.id === trackId);
   if (!track) return null;
   const { look, spread } = buildEffectLook(def, params, {
@@ -587,5 +595,8 @@ export function addEffectDefCue(draft: ShowProject, trackId: string, timeMs: num
     members: trackFixtureIds(draft, track).length,
     tempo: draft.tempo,
   });
-  return addLookCue(draft, trackId, timeMs, look, EFFECT_CLIP_MS, spread);
+  const id = addLookCue(draft, trackId, timeMs, look, EFFECT_CLIP_MS, spread);
+  const cue = id ? draft.cues.find((c) => c.id === id) : undefined;
+  if (cue?.kind === "look" && label?.trim()) cue.label = label.trim();
+  return id;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Clapperboard, Eraser, ListPlus } from "lucide-react";
 
@@ -22,6 +22,7 @@ import { useProjectStore } from "../stores/useProjectStore";
 import { ColorPicker } from "./ColorPicker";
 import { CommitInput } from "./CommitInput";
 import { EmptyHint } from "./EmptyHint";
+import { InspectorSection } from "./InspectorSection";
 import { SelectionTools } from "./SelectionTools";
 import { SliderField } from "./SliderField";
 
@@ -35,6 +36,9 @@ const DEFAULT_RECORD_MS = 2000;
  * 2. 给选中的灯设强度、颜色——编程器的值立刻叠在预览上（置顶层），打开“实时输出”时灯也会跟着亮；
  * 3. 换一批灯继续设，不同的灯可以是不同的值；
  * 4. 在播放头处“记录为场景片段”（一个片段里多台灯各自的外观），或“记录到各自轨道”。
+ *
+ * 布局与“灯具与 Patch”的详情一致：顶部是摘要（已选 / 有值的台数）与全局操作（实时输出、移出所选、清空），
+ * 下面是可折叠分区：灯具选择、强度、颜色、记录（没选灯具时不显示强度与颜色）。展开状态记住。
  */
 export function ProgrammerPanel() {
   const { t } = useTranslation();
@@ -97,23 +101,53 @@ export function ProgrammerPanel() {
     );
   };
 
-  return (
-    <div className="flex flex-col gap-4 p-3">
-      <SelectionTools />
+  const ghost = (label: string, onClick: () => void, opts: { disabled?: boolean; icon?: ReactNode } = {}) => (
+    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={opts.disabled} onClick={onClick}>
+      {opts.icon}
+      {label}
+    </Button>
+  );
 
-      <section aria-label={t("editor.programmer.values")} className="flex flex-col gap-3">
+  return (
+    <div className="flex flex-col">
+      {/* 摘要与全局操作：始终在顶部（实时输出、清空是全局状态，一直能看到） */}
+      <div className="sticky top-0 z-10 flex flex-col gap-1.5 border-b border-border bg-surface-2 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t("editor.programmer.values")}
-          </h3>
-          <span className="num text-xs text-muted-foreground">
-            {t("editor.programmer.programmed", { count: programmed.length })}
-          </span>
+          <p className="min-w-0 truncate text-sm font-medium">
+            <span role="status" className="num">
+              {t("editor.select.count", { count: selected.length, total: all.length })}
+            </span>
+            <span aria-hidden className="mx-1.5 text-xs font-normal text-muted-foreground">
+              ·
+            </span>
+            <span className="num text-xs font-normal text-muted-foreground">{t("editor.programmer.programmed", { count: programmed.length })}</span>
+          </p>
+          <label className="flex shrink-0 items-center gap-1.5 text-xs" title={t("editor.programmer.liveHint")}>
+            {t("editor.programmer.live")}
+            <Switch aria-label={t("editor.programmer.live")} checked={live} onCheckedChange={setLive} />
+          </label>
         </div>
-        {disabled ? (
-          <p className="text-xs text-muted-foreground">{t("editor.programmer.selectFirst")}</p>
-        ) : (
-          <>
+        {disabled && <p className="text-xs text-muted-foreground">{t("editor.programmer.selectFirst")}</p>}
+        <div role="toolbar" aria-label={t("editor.programmer.actions")} className="flex flex-wrap items-center gap-1">
+          {ghost(t("editor.programmer.knockSelected"), () => setValues(knockout(values, selected)), { disabled })}
+          {ghost(
+            t("editor.programmer.clear"),
+            () => {
+              clear();
+              announce(t("editor.programmer.cleared"));
+            },
+            { disabled: programmed.length === 0 && !live, icon: <Eraser aria-hidden /> },
+          )}
+        </div>
+      </div>
+
+      <InspectorSection scope="program" id="select" title={t("editor.select.title")}>
+        <SelectionTools />
+      </InspectorSection>
+
+      {!disabled && (
+        <>
+          <InspectorSection scope="program" id="intensity" title={t("editor.programmer.intensity")}>
             <SliderField
               label={t("editor.programmer.intensity")}
               numberLabel={t("editor.programmer.intensityValue")}
@@ -125,6 +159,9 @@ export function ProgrammerPanel() {
               mixedLabel={t("editor.cue.mixed")}
               onCommit={(v) => setValues(programIntensity(values, selected, v))}
             />
+            <div>{ghost(t("editor.programmer.knockIntensity"), () => setValues(knockout(values, selected, "intensity")))}</div>
+          </InspectorSection>
+          <InspectorSection scope="program" id="color" title={t("editor.programmer.color")}>
             <ColorPicker
               key={selected.join(",")}
               value={color}
@@ -132,47 +169,12 @@ export function ProgrammerPanel() {
               gamma={project.output.gamma}
               onCommit={setColor}
             />
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setValues(knockout(values, selected, "intensity"))}
-              >
-                {t("editor.programmer.knockIntensity")}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setValues(knockout(values, selected, "color"))}
-              >
-                {t("editor.programmer.knockColor")}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setValues(knockout(values, selected))}
-              >
-                {t("editor.programmer.knockSelected")}
-              </Button>
-            </div>
-          </>
-        )}
-      </section>
+            <div>{ghost(t("editor.programmer.knockColor"), () => setValues(knockout(values, selected, "color")))}</div>
+          </InspectorSection>
+        </>
+      )}
 
-      <section aria-label={t("editor.programmer.record")} className="flex flex-col gap-2 border-t border-border pt-3">
-        <label className="flex items-center justify-between gap-2 text-sm">
-          <span>
-            {t("editor.programmer.live")}
-            <span className="block text-xs text-muted-foreground">{t("editor.programmer.liveHint")}</span>
-          </span>
-          <Switch checked={live} onCheckedChange={setLive} />
-        </label>
+      <InspectorSection scope="program" id="record" title={t("editor.programmer.record")}>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           {t("editor.programmer.length")}
           <CommitInput
@@ -203,23 +205,9 @@ export function ProgrammerPanel() {
             <ListPlus aria-hidden />
             {t("editor.programmer.recordLooks")}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            disabled={programmed.length === 0 && !live}
-            onClick={() => {
-              clear();
-              announce(t("editor.programmer.cleared"));
-            }}
-          >
-            <Eraser aria-hidden />
-            {t("editor.programmer.clear")}
-          </Button>
         </div>
         <p className="text-xs text-muted-foreground">{t("editor.programmer.recordHint")}</p>
-      </section>
+      </InspectorSection>
     </div>
   );
 }

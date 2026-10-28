@@ -62,6 +62,15 @@ Result<void> Forwarder::start(OutputRouter* out, uint16_t uni_start, uint16_t un
     sacn_ = enable_sacn;
     universes_.clear();
 
+    // 每次进入模式 1 从零统计，给出本次会话的干净视图。
+    rx_datagrams_.store(0, std::memory_order_relaxed);
+    artnet_parsed_.store(0, std::memory_order_relaxed);
+    sacn_parsed_.store(0, std::memory_order_relaxed);
+    dropped_range_.store(0, std::memory_order_relaxed);
+    last_src_ip_.store(0, std::memory_order_relaxed);
+    last_universe_.store(0, std::memory_order_relaxed);
+    sources_.store(0, std::memory_order_relaxed);
+
     if (out_ == nullptr || uni_count_ == 0) {
         ESP_LOGW(kTag, "转发未启用（out 为空或订阅范围为 0）");
         return {};
@@ -136,11 +145,27 @@ void Forwarder::stop() noexcept {
         sacn_sock_ = -1;
     }
     universes_.clear();
+    sources_.store(0, std::memory_order_relaxed);
 }
 
 bool Forwarder::in_range(uint16_t universe) const noexcept {
-    return universe >= uni_start_ &&
-           static_cast<uint32_t>(universe) < static_cast<uint32_t>(uni_start_) + uni_count_;
+    return universe_in_range(universe, uni_start_, uni_count_);
+}
+
+ForwarderStats Forwarder::stats() const noexcept {
+    ForwarderStats s;
+    s.running = running_.load();
+    s.uni_start = uni_start_;
+    s.uni_count = uni_count_;
+    s.sacn = sacn_;
+    s.rx_datagrams = rx_datagrams_.load(std::memory_order_relaxed);
+    s.artnet_parsed = artnet_parsed_.load(std::memory_order_relaxed);
+    s.sacn_parsed = sacn_parsed_.load(std::memory_order_relaxed);
+    s.dropped_range = dropped_range_.load(std::memory_order_relaxed);
+    s.last_src_ip = last_src_ip_.load(std::memory_order_relaxed);
+    s.last_universe = static_cast<uint16_t>(last_universe_.load(std::memory_order_relaxed));
+    s.sources = sources_.load(std::memory_order_relaxed);
+    return s;
 }
 
 void Forwarder::run() noexcept {
@@ -177,9 +202,11 @@ void Forwarder::run() noexcept {
                 int got = ::lwip_recvfrom(artnet_sock_, rx.data(), rx.size(), 0,
                                           reinterpret_cast<sockaddr*>(&src), &sl);
                 if (got > 0) {
+                    rx_datagrams_.fetch_add(1, std::memory_order_relaxed);
                     auto p = dmx::parse_artdmx(
                         std::span<const uint8_t>(rx.data(), static_cast<std::size_t>(got)));
                     if (p.has_value()) {
+                        artnet_parsed_.fetch_add(1, std::memory_order_relaxed);
                         ingest(p->universe, p->data, p->len, p->priority, p->terminated,
                                lwip_ntohl(src.sin_addr.s_addr), n);
                     }
@@ -192,9 +219,11 @@ void Forwarder::run() noexcept {
                 int got = ::lwip_recvfrom(sacn_sock_, rx.data(), rx.size(), 0,
                                           reinterpret_cast<sockaddr*>(&src), &sl);
                 if (got > 0) {
+                    rx_datagrams_.fetch_add(1, std::memory_order_relaxed);
                     auto p = dmx::parse_sacn_data(
                         std::span<const uint8_t>(rx.data(), static_cast<std::size_t>(got)));
                     if (p.has_value()) {
+                        sacn_parsed_.fetch_add(1, std::memory_order_relaxed);
                         ingest(p->universe, p->data, p->len, p->priority, p->terminated,
                                lwip_ntohl(src.sin_addr.s_addr), n);
                     }
@@ -212,7 +241,20 @@ void Forwarder::run() noexcept {
 
 void Forwarder::ingest(uint16_t universe, const uint8_t* data, uint16_t len, uint8_t priority,
                        bool terminated, uint32_t src_ip, uint64_t now) noexcept {
-    if (!in_range(universe) || data == nullptr) {
+    // 记录最近一包（无论是否在范围内），便于诊断"收没收到 / 来自哪个来源 / 哪个 universe"。
+    last_src_ip_.store(src_ip, std::memory_order_relaxed);
+    last_universe_.store(universe, std::memory_order_relaxed);
+
+    if (data == nullptr) {
+        return;
+    }
+    if (!in_range(universe)) {
+        const uint32_t d = dropped_range_.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (d == 1 || (d % 500) == 0) {
+            ESP_LOGW(kTag, "收到范围外 universe=%u（订阅 [%u,%u)），累计丢弃 %u 帧",
+                     static_cast<unsigned>(universe), static_cast<unsigned>(uni_start_),
+                     static_cast<unsigned>(uni_start_) + uni_count_, static_cast<unsigned>(d));
+        }
         return;
     }
     if (len > 512) {
@@ -226,7 +268,9 @@ void Forwarder::ingest(uint16_t universe, const uint8_t* data, uint16_t len, uin
         st.sources.erase(std::remove_if(st.sources.begin(), st.sources.end(),
                                         [src_ip](const Source& s) { return s.ip == src_ip; }),
                          st.sources.end());
-        if (st.sources.size() != before) {
+        const std::size_t removed = before - st.sources.size();
+        if (removed != 0) {
+            sources_.fetch_sub(static_cast<uint32_t>(removed), std::memory_order_relaxed);
             if (st.sources.empty()) {
                 universes_.erase(universe);
             } else {
@@ -251,6 +295,7 @@ void Forwarder::ingest(uint16_t universe, const uint8_t* data, uint16_t len, uin
         st.sources.emplace_back();
         src = &st.sources.back();
         src->ip = src_ip;
+        sources_.fetch_add(1, std::memory_order_relaxed);
     }
     src->last_us = now;
     // 归一化优先级：Art-Net（priority=0）按 E1.31 默认 100 参与合并。
@@ -297,7 +342,11 @@ void Forwarder::prune(uint64_t now) noexcept {
                                          return now - s.last_us > kSourceTimeoutUs;
                                      }),
                       sources.end());
-        if (sources.size() != before && !sources.empty()) {
+        const std::size_t removed = before - sources.size();
+        if (removed != 0) {
+            sources_.fetch_sub(static_cast<uint32_t>(removed), std::memory_order_relaxed);
+        }
+        if (removed != 0 && !sources.empty()) {
             merge_and_send(it->first, it->second);  // 来源减少，重算下发
         }
         if (sources.empty()) {
