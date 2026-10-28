@@ -112,6 +112,7 @@ function install(project: ShowProject, origin: DocumentOrigin): void {
     selectedTrackIds: [],
     contextTarget: null,
     hoverFixtureId: null,
+    selectedTimelineObject: null,
     playheadMs: 0,
     clipboard: [],
   });

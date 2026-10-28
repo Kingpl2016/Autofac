@@ -21,10 +21,10 @@ export function resolveTargetTracks(
   accept: (track: Track) => boolean = () => true,
 ): string[] {
   const ok = (tr: Track) => !tr.lock && accept(tr);
-  if (selection.selectedTrackIds.length > 1) {
-    const set = new Set(selection.selectedTrackIds);
-    return project.tracks.filter((tr) => set.has(tr.id) && ok(tr)).map((tr) => tr.id);
-  }
+  // 多选里已不存在的轨道（删除、换工程之后）不算；剩不到两条时按单选处理
+  const set = new Set(selection.selectedTrackIds);
+  const alive = project.tracks.filter((tr) => set.has(tr.id));
+  if (alive.length > 1) return alive.filter(ok).map((tr) => tr.id);
   const track = project.tracks.find((tr) => tr.id === selection.selectedTrackId && ok(tr)) ?? project.tracks.find(ok);
   return track ? [track.id] : [];
 }

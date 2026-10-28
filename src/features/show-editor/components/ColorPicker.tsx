@@ -7,18 +7,7 @@ import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
 import { isEmitter, layoutOf, type FixtureModel } from "@/features/fixtures";
 import { useEngine } from "../engine/useEngine";
-import {
-  hexToRgb,
-  hslToRgb,
-  hsToWheel,
-  hsvToRgb,
-  rgbToHex,
-  rgbToHsl,
-  rgbToHsv,
-  wheelToHs,
-  type Hsl,
-  type Hsv,
-} from "../lib/colorMath";
+import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
 import { mixPreview } from "../lib/mixPreview";
 import type { ColorValue, EmitterKey, Rgb, WhiteStrategy } from "../lib/project";
@@ -70,14 +59,11 @@ const KELVIN_BACKGROUND = `linear-gradient(to right, ${[1800, 2700, 3200, 4300, 
   })
   .join(", ")})`;
 
-/** HSL 的 CSS 写法（滑杆底色）。 */
-const hslCss = (h: number, s: number, l: number) => `hsl(${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
-/** 色相滑杆：满饱和、中等亮度的一圈色相（灰色时也看得清）。 */
-const HUE_GRADIENT = `linear-gradient(to right, ${[0, 60, 120, 180, 240, 300, 360].map((h) => hslCss(h, 1, 0.5)).join(", ")})`;
-/** 饱和度滑杆：当前色相与亮度下由灰到饱和。 */
-const satGradient = ({ h, l }: Hsl) => `linear-gradient(to right, ${hslCss(h, 0, l)}, ${hslCss(h, 1, l)})`;
-/** 亮度滑杆：黑 → 当前色 → 白。 */
-const lightGradient = ({ h, s }: Hsl) => `linear-gradient(to right, ${hslCss(h, s, 0)}, ${hslCss(h, s, 0.5)}, ${hslCss(h, s, 1)})`;
+/** 颜色明度（HSV 的 V）滑杆：黑 → 当前色相与饱和度下的满明度。 */
+const valueGradient = ({ h, s }: Hsv) => {
+  const [r, g, b] = hsvToRgb({ h, s, v: 1 });
+  return `linear-gradient(to right, rgb(0 0 0), rgb(${r} ${g} ${b}))`;
+};
 /** RGB 某一通道的滑杆：其它通道不变，该通道 0 → 255。 */
 const channelGradient = (rgb: Rgb, i: number) => {
   const at = (v: number) => {
@@ -112,8 +98,9 @@ interface ColorPickerProps {
 /**
  * 专业色盘：
  *
- * - **RGB**：三种输入方式（记住上次的选择）——色轮（色相 + 饱和度）+ 明度、HSL 渐变滑杆、RGB 数值滑杆；
- *   都可输入十六进制；白光策略决定 RGBW / RGBCW 灯怎样用白光；
+ * - **彩色**：选一个目标颜色，由每台灯的混色器按它的发光体自动混出。两种输入方式（记住上次的选择）——
+ *   色轮（HSV：色相 + 饱和度，旁边直接显示 / 输入 H、S、V，V 为颜色明度）与 RGB 数值滑杆；
+ *   都可输入十六进制；白光策略决定 RGBW / RGBCW 灯怎样用白光。整体亮度由外观的强度层负责；
  * - **色温**：1800K~10000K 滑杆与常用色温（RGB 灯按色温近似，冷暖白灯按 mired 分配）；
  * - **发光体**：按目标灯具的发光体逐路直给（手动覆盖混色）；
  * - 常用色、最近使用、屏幕取色；
@@ -154,18 +141,18 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
   const mode: Mode = shown.kind;
   const rgb = colorValueRgb(shown);
   const white: WhiteStrategy = shown.kind === "rgb" ? (shown.white ?? "preserve") : "preserve";
-  const hsv: Hsv = rgbToHsv(shown.kind === "rgb" ? shown.rgb : rgb);
   const asRgb = (next: Rgb): ColorValue => ({ kind: "rgb", rgb: next, ...(white !== "preserve" ? { white } : {}) });
 
-  // ---- 输入方式（色轮 / HSL / RGB 数值，记住上次的选择） ----
+  // ---- 输入方式（色轮 HSV / RGB 数值，记住上次的选择） ----
   const input = useColorInputStore((s) => s.input);
   const setInput = useColorInputStore((s) => s.setInput);
-  // 拖到灰色时 RGB 里没有色相：保留滑杆上的 HSL，颜色没被外部改动时继续用它
-  const [hslHold, setHslHold] = useState<Hsl | null>(null);
-  const hsl: Hsl = hslHold && same(asRgb(hslToRgb(hslHold)), shown) ? hslHold : rgbToHsl(rgb);
-  const fromHsl = (next: Hsl): ColorValue => {
-    setHslHold(next);
-    return asRgb(hslToRgb(next));
+  // 饱和度或明度到 0 时 RGB 里没有色相：保留上次的 HSV，颜色没被外部改动时继续用它（拉回来颜色不变）
+  const [hsvHold, setHsvHold] = useState<Hsv | null>(null);
+  const hsv: Hsv = hsvHold && same(asRgb(hsvToRgb(hsvHold)), shown) ? hsvHold : rgbToHsv(shown.kind === "rgb" ? shown.rgb : rgb);
+  const fromHsv = (next: Hsv): ColorValue => {
+    const held = { h: ((next.h % 360) + 360) % 360, s: clamp(next.s, 0, 1), v: clamp(next.v, 0, 1) };
+    setHsvHold(held);
+    return asRgb(hsvToRgb(held));
   };
 
   // ---- 目标灯具的发光体 ----
@@ -182,7 +169,7 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
     const r = wheelRef.current?.getBoundingClientRect();
     if (!r || r.width === 0) return;
     const { h, s } = wheelToHs(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
-    setDraft(asRgb(hsvToRgb({ h, s, v: hsv.v > 0 ? hsv.v : 1 })));
+    setDraft(fromHsv({ h, s, v: hsv.v > 0 ? hsv.v : 1 }));
   };
   const onWheelKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 15 : 5;
@@ -193,7 +180,7 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
     else if (e.key === "ArrowDown") s = clamp(s - step / 100, 0, 1);
     else return;
     e.preventDefault();
-    commit(asRgb(hsvToRgb({ h, s, v: hsv.v > 0 ? hsv.v : 1 })));
+    commit(fromHsv({ h, s, v: hsv.v > 0 ? hsv.v : 1 }));
   };
   const dot = hsToWheel(hsv.h, hsv.s);
 
@@ -309,7 +296,11 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
         <Segmented<Mode>
           ariaLabel={t("editor.color.mode")}
           value={mode}
-          options={(["rgb", "kelvin", "manual"] as const).map((m) => ({ value: m, label: t(`editor.color.modes.${m}`) }))}
+          options={(["rgb", "kelvin", "manual"] as const).map((m) => ({
+            value: m,
+            label: t(`editor.color.modes.${m}`),
+            title: t(`editor.color.modeHints.${m}`),
+          }))}
           onChange={switchMode}
         />
         <span
@@ -356,28 +347,12 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
               />
             </div>
             <div className="grid min-w-0 flex-1 gap-2">
-              <label className="grid gap-0.5 text-[11px] text-muted-foreground">
-                {t("editor.color.hex")}
-                <CommitInput
-                  className="num h-7 px-1.5 text-xs"
-                  label={t("editor.color.hex")}
-                  value={rgbToHex(rgb)}
-                  onCommit={(text) => {
-                    const parsed = hexToRgb(text);
-                    if (parsed) commit(asRgb(parsed));
-                  }}
-                />
-              </label>
-              <div className="grid grid-cols-3 gap-1">
-                {(["r", "g", "b"] as const).map((c, i) =>
-                  numberField(t(`editor.color.${c}`), shown.rgb[i], (n) => {
-                    const next: Rgb = [...shown.rgb];
-                    next[i] = clamp(Math.round(n), 0, 255);
-                    commit(asRgb(next));
-                  }, "w-full"),
-                )}
+              <div className="grid grid-cols-3 gap-1" role="group" aria-label={t("editor.color.hsv")}>
+                {numberField(t("editor.color.hsvH"), Math.round(hsv.h), (n) => commit(fromHsv({ ...hsv, h: n })), "w-full")}
+                {numberField(t("editor.color.hsvS"), Math.round(hsv.s * 100), (n) => commit(fromHsv({ ...hsv, s: n / 100 })), "w-full")}
+                {numberField(t("editor.color.hsvV"), Math.round(hsv.v * 100), (n) => commit(fromHsv({ ...hsv, v: n / 100 })), "w-full")}
               </div>
-              <label className="grid gap-0.5 text-[11px] text-muted-foreground">
+              <label className="grid gap-0.5 text-[11px] text-muted-foreground" title={t("editor.color.brightnessHint")}>
                 {t("editor.color.brightness", { value: Math.round(hsv.v * 100) })}
                 <input
                   type="range"
@@ -385,23 +360,19 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
                   max={100}
                   value={Math.round(hsv.v * 100)}
                   aria-label={t("editor.color.brightnessLabel")}
-                  className="w-full accent-primary"
+                  aria-valuetext={`${Math.round(hsv.v * 100)}%`}
+                  className="h-3 w-full cursor-pointer appearance-none rounded-full border border-border accent-foreground"
+                  style={{ background: valueGradient(hsv) }}
                   onChange={(e) => {
                     dragging.current = true;
-                    setDraft(asRgb(hsvToRgb({ ...hsv, v: Number(e.target.value) / 100 })));
+                    setDraft(fromHsv({ ...hsv, v: Number(e.target.value) / 100 }));
                   }}
                   onKeyUp={() => draft && commit(draft)}
                 />
               </label>
-            </div>
-          </div>
-          ) : input === "hsl" ? (
-            <div className="grid gap-1.5">
-              {gradientSlider(t("editor.color.hue"), "H", Math.round(hsl.h), 0, 360, "°", HUE_GRADIENT, (v) => fromHsl({ ...hsl, h: v }))}
-              {gradientSlider(t("editor.color.saturation"), "S", Math.round(hsl.s * 100), 0, 100, "%", satGradient(hsl), (v) => fromHsl({ ...hsl, s: v / 100 }))}
-              {gradientSlider(t("editor.color.lightness"), "L", Math.round(hsl.l * 100), 0, 100, "%", lightGradient(hsl), (v) => fromHsl({ ...hsl, l: v / 100 }))}
               {hexField}
             </div>
+          </div>
           ) : (
             <div className="grid gap-1.5">
               {(["r", "g", "b"] as const).map((ch, i) =>

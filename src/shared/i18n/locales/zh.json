@@ -1499,19 +1499,19 @@
       "title": "颜色",
       "mode": "颜色方式",
       "modes": {
-        "rgb": "RGB",
+        "rgb": "彩色",
         "kelvin": "色温",
         "manual": "发光体"
       },
-      "intent": "意图色 {{hex}}",
+      "intent": "目标颜色 {{hex}}",
       "wheel": "色轮（←/→ 色相，↑/↓ 饱和度）",
       "wheelValue": "色相 {{h}}°，饱和度 {{s}}%",
       "hex": "十六进制",
       "r": "红",
       "g": "绿",
       "b": "蓝",
-      "brightness": "明度 {{value}}%",
-      "brightnessLabel": "颜色明度",
+      "brightness": "颜色明度（V）{{value}}%",
+      "brightnessLabel": "颜色明度（V）",
       "white": "白光",
       "whites": {
         "off": "不用",
@@ -1549,18 +1549,24 @@
         "warm": "暖白 3200K",
         "neutral": "中性白 4300K",
         "daylight": "日光 5600K",
-        "white": "RGB 全白"
+        "white": "全白"
       },
       "input": "输入方式",
       "inputs": {
-        "wheel": "色轮",
-        "hsl": "HSL",
+        "wheel": "色轮（HSV）",
         "rgb": "RGB 数值"
       },
-      "hue": "色相",
-      "saturation": "饱和度",
-      "lightness": "亮度（HSL）",
-      "valueOf": "{{name}}数值"
+      "valueOf": "{{name}}数值",
+      "modeHints": {
+        "rgb": "选一个颜色，按每台灯的发光体自动混色",
+        "kelvin": "按色温给白光（冷暖白灯按色温分配，彩色灯近似）",
+        "manual": "直接给每个发光体（红、绿、蓝、白…）设值，跳过自动混色"
+      },
+      "brightnessHint": "颜色本身的明暗（HSV 的 V）；整体亮度请用强度",
+      "hsv": "HSV 数值",
+      "hsvH": "色相 H（°）",
+      "hsvS": "饱和度 S（%）",
+      "hsvV": "明度 V（%）"
     },
     "look": {
       "title": "外观与关键帧",
@@ -1694,7 +1700,9 @@
       "clipDisabled": "已禁用",
       "addedSkipped": "已在 {{count}} 条轨道新建片段，{{skipped}} 条轨道放不下",
       "addedOnTracks": "已在 {{count}} 条轨道新建片段",
-      "clipUnsupported": "没有灯支持：{{layers}}"
+      "clipUnsupported": "没有灯支持：{{layers}}",
+      "headerWidth": "轨道名称列宽度",
+      "headerWidthHint": "拖动调整轨道名称列的宽度，双击恢复默认；聚焦后可用 ←/→ 调整"
     },
     "ruler": {
       "label": "时间标尺",
@@ -1954,18 +1962,50 @@
       "noTrack": "没有可用的轨道。先添加灯具，或解锁轨道",
       "noRoom": "这个位置放不下新的 Cue",
       "added": "已添加 Cue",
-      "white": "白光",
-      "warmWhite": "暖白",
-      "red": "红",
-      "orange": "橙",
-      "yellow": "黄",
-      "green": "绿",
-      "cyan": "青",
-      "blue": "蓝",
-      "purple": "紫",
-      "magenta": "品红",
-      "fadeWhite": "白光渐入渐出",
-      "softWhite": "柔和暖光"
+      "groups": {
+        "basic": "基础色",
+        "stage": "舞台常用色（色纸参考）",
+        "white": "白光色温",
+        "custom": "我的模板"
+      },
+      "groupList": "{{name}}的模板",
+      "tools": "模板文件",
+      "import": "导入模板文件…",
+      "export": "导出全部模板…",
+      "reveal": "打开用户模板文件所在文件夹",
+      "reload": "重新加载用户模板文件",
+      "fileType": "Cue 模板",
+      "imported": "导入完成：新增 {{added}} 个、替换 {{replaced}} 个，跳过 {{skipped}} 条格式不对的",
+      "importEmpty": "这个文件里没有可用的模板",
+      "exported": "已导出 {{count}} 个模板",
+      "reloaded": "已重新加载，用户模板 {{count}} 个",
+      "loadFailed": "读不到用户模板文件，只显示内置模板（{{reason}}）",
+      "errors": {
+        "bad_path": "只能选择 .json 文件",
+        "file_too_large": "文件太大（超过 1 MB）",
+        "invalid_json": "文件不是合法的 JSON",
+        "io": "读写文件失败"
+      },
+      "issuesTitle": "用户模板文件里有 {{count}} 处问题，相应条目已跳过",
+      "issueItem": "第 {{index}} 条：{{message}}",
+      "issueFile": "文件格式不对：{{message}}",
+      "menu": "{{name}} 的操作",
+      "copyToMine": "复制为我的模板",
+      "duplicate": "复制一份",
+      "copySuffix": " 副本",
+      "copied": "已复制为 {{name}}，可以直接改名",
+      "rename": "重命名",
+      "nameOf": "{{name}} 的名称",
+      "moveToGroup": "移到分组",
+      "newGroup": "新分组…",
+      "groupOf": "{{name}} 的分组名",
+      "delete": "删除模板",
+      "deleted": "已删除模板 {{name}}",
+      "builtinHint": "内置模板（只读，右键可复制为我的模板后修改）",
+      "fileHint": "用户模板保存在软件数据目录的 cue-templates.json，可以直接编辑后点“重新加载”。色纸名称只作参考，LED 颜色为近似值。",
+      "customName": "我的模板 {{n}}",
+      "savedFromCue": "已存为 Cue 模板 {{name}}（在素材库“Cue 模板”的“我的模板”分组里）",
+      "cannotSave": "这个片段的颜色不能存为模板（发光体直给，或没有颜色）"
     },
     "cue": {
       "mixed": "（混合值）",
@@ -2000,8 +2040,11 @@
       "exists": "播放头处已经有标记点",
       "label": "标记点",
       "add": "在播放头处添加标记点",
-      "flagLabel": "标记点 {{name}}，{{time}}。点击定位，Enter 改名，Delete 删除",
-      "rename": "标记点名称"
+      "flagLabel": "标记点 {{name}}，{{time}}。点击选中并定位，Delete 删除，Enter 改名",
+      "rename": "标记点名称",
+      "delete": "删除标记 {{name}}",
+      "deleted": "已删除标记 {{name}}",
+      "hint": "点击选中，Delete 删除，双击改名，右键更多"
     },
     "tempo": {
       "title": "节拍",
@@ -2013,7 +2056,8 @@
       "align": "第一拍对齐到播放头",
       "clear": "清除节拍",
       "hint": "设置节拍后，时间线显示节拍网格，Cue 会吸附到拍点。播放时可以按 T 敲击节拍。",
-      "tapped": "节拍已更新为 {{bpm}} BPM"
+      "tapped": "节拍已更新为 {{bpm}} BPM",
+      "cleared": "已清除节拍网格"
     },
     "file": {
       "menu": "文件",
@@ -2374,7 +2418,10 @@
       "looped": "已循环段落 {{name}}",
       "defaultName": "段落 {{n}}",
       "added": "已在播放头处新建段落",
-      "noRoom": "播放头已在一个段落里，或离下一个段落太近"
+      "noRoom": "播放头已在一个段落里，或离下一个段落太近",
+      "delete": "删除段落 {{name}}",
+      "deleted": "已删除段落 {{name}}",
+      "selectedCues": "已选中段落内的 {{count}} 个片段"
     },
     "mediaTracks": {
       "lanes": "媒体轨道",
@@ -2452,7 +2499,23 @@
       "deleted": "已删除 {{fixtures}} 台灯具、{{tracks}} 条轨道、{{cues}} 个片段（可撤销）",
       "selectSameModel": "选中同型号灯具的轨道",
       "groupTracks": "把 {{count}} 台灯具编为一组",
-      "syncTracks": "以第一台为准同步 {{count}} 台灯具（模式 / 高度 / 朝向 / 倒装）"
+      "syncTracks": "以第一台为准同步 {{count}} 台灯具（模式 / 高度 / 朝向 / 倒装）",
+      "rename": "重命名",
+      "markerToPlayhead": "移到播放头处",
+      "sectionFromMarker": "从这里新建段落（到下一个标记）",
+      "deleteMarker": "删除标记",
+      "sectionColor": "段落颜色",
+      "loopSection": "设为循环区间",
+      "selectSectionCues": "选中段落内的片段",
+      "deleteSection": "删除段落",
+      "playLoop": "从入点播放循环",
+      "loopToSection": "把循环区间存为段落",
+      "clearLoop": "清除循环区间",
+      "playheadToKey": "播放头移到这个关键帧",
+      "deleteKey": "删除这个关键帧",
+      "clearKeys": "删除本片段全部关键帧",
+      "clearTempo": "清除节拍网格",
+      "saveAsTemplate": "存为 Cue 模板"
     },
     "tags": {
       "red": "红",
@@ -2569,7 +2632,7 @@
       "tour": {
         "welcome": {
           "title": "欢迎使用节目编辑器",
-          "body": "用一分钟认识这几个区域。随时可以按 Esc 跳过；之后在命令面板（Ctrl+K）里搜“引导”可以重新播放。"
+          "body": "用一分钟认识这几个区域。随时可以按 Esc 跳过；之后点工具条右上角的 ? 或按 F1，可以重新播放引导、显示本页提示。"
         },
         "library": {
           "title": "素材库",
@@ -2585,7 +2648,7 @@
         },
         "timeline": {
           "title": "时间线",
-          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选，一次在多条轨道上操作。"
+          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选。\n标记点、段落、循环区间：点选后按 Delete，或右键、悬停 × 删除，删除后可撤销。"
         },
         "mode": {
           "title": "实时模式 / 播放模式",
@@ -2593,7 +2656,7 @@
         },
         "shortcuts": {
           "title": "常用快捷操作",
-          "body": "Ctrl+K 命令面板（所有操作都能搜到）\n空格 播放 / 暂停，J / K / L 后退一帧 / 暂停 / 播放\nShift+Q 快捷轮盘，Shift+F10 右键菜单\n快捷键可在命令面板里搜“快捷键”自定义。"
+          "body": "Ctrl+K 命令面板（所有操作都能搜到）\n空格 播放 / 暂停，J / K / L 后退一帧 / 暂停 / 播放\nShift+Q 快捷轮盘，Shift+F10 右键菜单\n右上角的 ?（F1）里有快捷键一览、重新播放引导和本页提示。"
         }
       },
       "hints": {
@@ -2614,10 +2677,35 @@
           "body": "卡片按地址排出每台灯（同型号同色），通道格逐通道显示 512 个地址。悬停时舞台上对应的灯会一起高亮。"
         },
         "colorInput": {
-          "title": "三种调色方式",
-          "body": "色轮、HSL 滑杆、RGB 数值可以随时切换，会记住你上次用的方式。"
+          "title": "两种调色方式",
+          "body": "“彩色”有两种输入方式：色轮（HSV，旁边可直接输入 H / S / V）和 RGB 数值，会记住你上次用的。"
+        },
+        "timelineObjects": {
+          "title": "删除标记、段落与循环",
+          "body": "点选标记点或段落后按 Delete；也可以悬停点 ×，或右键选择删除。循环区间在标尺上悬停点 ×。删除后右下角可撤销。"
+        },
+        "templates": {
+          "title": "模板来自配置文件",
+          "body": "模板按分组列出，右键可复制、改名、移到别的分组或删除；工具条可导入 / 导出模板文件、打开所在文件夹，手改文件后点“重新加载”。"
         }
-      }
+      },
+      "help": "帮助",
+      "showHints": "显示本页提示",
+      "hideHints": "隐藏本页提示",
+      "hintsShown": "已显示本页的全部提示，点小圆点查看",
+      "hintsHidden": "已隐藏提示",
+      "shortcuts": "快捷键一览"
+    },
+    "undoAction": "撤销",
+    "loop": {
+      "clear": "清除循环区间",
+      "cleared": "已清除循环区间"
+    },
+    "keys": {
+      "deleted": "已删除 {{count}} 个关键帧",
+      "cleared": "已把 {{count}} 层关键帧改成固定值",
+      "none": "这里没有关键帧",
+      "hint": "关键帧 {{time}}：点击把播放头移到这里，右键删除"
     }
   },
   "fixtures": {

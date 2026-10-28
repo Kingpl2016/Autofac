@@ -21,11 +21,27 @@ export const SWATCH_DENSITIES = ["comfortable", "compact"] as const;
 /** 色块大小。 */
 export type SwatchDensity = (typeof SWATCH_DENSITIES)[number];
 
+/** 时间线左侧轨道名称列的宽度范围（像素）。 */
+export const TRACK_HEADER_WIDTH = { min: 160, max: 480, default: 208 } as const;
+
+/**
+ * 把宽度夹在允许范围内并取整。
+ *
+ * @param px 宽度（像素）。
+ * @returns 合法宽度；非数字时为默认宽度。
+ */
+export function clampHeaderWidth(px: number): number {
+  if (!Number.isFinite(px)) return TRACK_HEADER_WIDTH.default;
+  return Math.round(Math.min(TRACK_HEADER_WIDTH.max, Math.max(TRACK_HEADER_WIDTH.min, px)));
+}
+
 /** 落盘的数据。 */
 export interface EditorPrefsData {
   centerView: CenterView;
   swatchGroupBy: SwatchGroupBy;
   swatchDensity: SwatchDensity;
+  /** 时间线左侧轨道名称列的宽度（像素） */
+  trackHeaderWidth: number;
 }
 
 interface EditorPrefsState extends EditorPrefsData {
@@ -47,6 +63,12 @@ interface EditorPrefsState extends EditorPrefsData {
    * @param density 大小。
    */
   setSwatchDensity: (density: SwatchDensity) => void;
+  /**
+   * 设置轨道名称列的宽度（会夹在允许范围内）。
+   *
+   * @param px 宽度（像素）。
+   */
+  setTrackHeaderWidth: (px: number) => void;
 }
 
 /** 默认值：预览先显示色块，按 Universe 分区。 */
@@ -54,6 +76,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   centerView: "swatches",
   swatchGroupBy: "universe",
   swatchDensity: "comfortable",
+  trackHeaderWidth: TRACK_HEADER_WIDTH.default,
 };
 
 /**
@@ -71,11 +94,12 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     centerView: pick(CENTER_VIEWS, r.centerView, current.centerView),
     swatchGroupBy: pick(SWATCH_GROUP_BY, r.swatchGroupBy, current.swatchGroupBy),
     swatchDensity: pick(SWATCH_DENSITIES, r.swatchDensity, current.swatchDensity),
+    trackHeaderWidth: typeof r.trackHeaderWidth === "number" ? clampHeaderWidth(r.trackHeaderWidth) : current.trackHeaderWidth,
   };
 }
 
 /**
- * 编辑器的视图偏好（中间视图、色块分区与大小），落盘到界面偏好文件（键 `editor-prefs`）。
+ * 编辑器的视图偏好（中间视图、色块分区与大小、轨道名称列宽度），落盘到界面偏好文件（键 `editor-prefs`）。
  */
 export const useEditorPrefsStore = create<EditorPrefsState>()(
   persist(
@@ -84,12 +108,13 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setCenterView: (centerView) => set({ centerView }),
       setSwatchGroupBy: (swatchGroupBy) => set({ swatchGroupBy }),
       setSwatchDensity: (swatchDensity) => set({ swatchDensity }),
+      setTrackHeaderWidth: (px) => set({ trackHeaderWidth: clampHeaderWidth(px) }),
     }),
     {
       name: "editor-prefs",
       version: 1,
       storage: createTauriPersistStorage<EditorPrefsData>(),
-      partialize: ({ centerView, swatchGroupBy, swatchDensity }) => ({ centerView, swatchGroupBy, swatchDensity }),
+      partialize: ({ centerView, swatchGroupBy, swatchDensity, trackHeaderWidth }) => ({ centerView, swatchGroupBy, swatchDensity, trackHeaderWidth }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },
   ),

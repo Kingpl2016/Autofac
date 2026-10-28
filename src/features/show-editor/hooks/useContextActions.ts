@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import { announce } from "@/shared/stores/announcerStore";
 import type { ContextActionId } from "../lib/contextMenus";
 import { convertToLook } from "../lib/cueOps";
+import { CUSTOM_GROUP, uniqueTemplateId } from "../lib/cueTemplates";
 import { setCueTag } from "../lib/editOps";
 import {
   DEFAULT_SYNC_FIELDS,
@@ -14,15 +16,19 @@ import {
   tracksOfFixtures,
 } from "../lib/fixtureBatch";
 import { removeMediaTrack, setMediaClip, setMediaTrack } from "../lib/mediaClips";
-import { addMarker, setLoopEdge, setTrackFlag, setTrackView, TRACK_HEIGHT_ORDER } from "../lib/ops";
+import { addMarker, moveMarker, setLoopEdge, setLoopRange, setTrackFlag, setTrackView, TRACK_HEIGHT_ORDER } from "../lib/ops";
 import { createPreset } from "../lib/presetOps";
-import type { CueTag } from "../lib/project";
-import { addSection } from "../lib/sections";
+import type { CueTag, Rgb } from "../lib/project";
+import { addSection, updateSection } from "../lib/sections";
+import { templateFromCue } from "../lib/templateOps";
 import { removeTracks } from "../lib/trackOps";
+import { allTemplates, useCueTemplateStore } from "../stores/useCueTemplateStore";
 import { useEditorUiStore, type ContextTarget } from "../stores/useEditorUiStore";
+import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { requestShowDuration } from "./editorActions";
-import { seekTo } from "./transportActions";
+import { clearKeys, clearLoop, clearTempo, deleteKeyAt, deleteObject } from "./timelineObjectActions";
+import { seekTo, togglePlay } from "./transportActions";
 import { useCueActions } from "./useCueActions";
 
 /** 右键菜单动作的执行器。 */
@@ -40,6 +46,13 @@ export interface ContextActions {
    * @param tag 标签；`null` 清除。
    */
   tag: (tag: CueTag | null) => void;
+  /**
+   * 改段落颜色。
+   *
+   * @param sectionId 段落。
+   * @param color 颜色。
+   */
+  sectionColor: (sectionId: string, color: Rgb) => void;
 }
 
 /**
@@ -123,6 +136,36 @@ export function useContextActions(): ContextActions {
             createPreset(d, name, cue.look, name);
           });
           announce(t("editor.context.presetSaved"));
+          return;
+        }
+        case "saveAsTemplate": {
+          if (target.kind !== "cue") return;
+          const cue = project.cues.find((c) => c.id === target.id);
+          const body = cue ? templateFromCue(cue) : null;
+          if (!body) {
+            announce(t("editor.templates.cannotSave"));
+            return;
+          }
+          const store = useCueTemplateStore.getState();
+          const all = allTemplates(store);
+          const name = t("editor.templates.customName", { n: store.user.filter((x) => x.group === CUSTOM_GROUP).length + 1 });
+          const created = { ...body, id: uniqueTemplateId(all, "my"), name, group: CUSTOM_GROUP };
+          void (async () => {
+            // 还没读过用户文件时先读，避免覆盖文件里已有的模板
+            if (useCueTemplateStore.getState().status !== "ready") await useCueTemplateStore.getState().load();
+            const s = useCueTemplateStore.getState();
+            if (s.status !== "ready") {
+              toast.error(t(`editor.templates.errors.${s.error ?? "io"}`));
+              return;
+            }
+            if (await s.saveUser([...s.user, created])) {
+              const text = t("editor.templates.savedFromCue", { name });
+              announce(text);
+              toast.success(text);
+            } else {
+              toast.error(t(`editor.templates.errors.${useCueTemplateStore.getState().error ?? "io"}`));
+            }
+          })();
           return;
         }
         case "selectTrackCues": {
@@ -232,6 +275,88 @@ export function useContextActions(): ContextActions {
           if (target.kind !== "mediaTrack") return;
           update((d) => removeMediaTrack(d, target.id));
           return;
+        case "deleteMarker":
+          if (target.kind === "marker") deleteObject({ kind: "marker", id: target.id });
+          return;
+        case "deleteSection":
+          if (target.kind === "section") deleteObject({ kind: "section", id: target.id });
+          return;
+        case "renameObject":
+          if (target.kind === "marker" || target.kind === "section") ui.setRenamingObject(target.id);
+          return;
+        case "markerToPlayhead":
+          if (target.kind !== "marker") return;
+          update((d) => void moveMarker(d, target.id, ui.playheadMs));
+          return;
+        case "sectionFromMarker": {
+          if (target.kind !== "marker") return;
+          const marker = project.markers.find((m) => m.id === target.id);
+          if (!marker) return;
+          // 段落延伸到下一个标记点（没有时用 8 小节 / 8 秒）
+          const next = project.markers.filter((m) => m.timeMs > marker.timeMs).sort((a, b) => a.timeMs - b.timeMs)[0];
+          const tempo = project.tempo;
+          const fallback = tempo ? (60_000 / tempo.bpm) * tempo.beatsPerBar * 8 : 8000;
+          const length = next ? next.timeMs - marker.timeMs : fallback;
+          let created: string | null = null;
+          update((d) => {
+            created = addSection(d, marker.timeMs, length, marker.label || t("editor.sections.defaultName", { n: d.sections.length + 1 }));
+          });
+          announce(t(created ? "editor.sections.added" : "editor.sections.noRoom"));
+          return;
+        }
+        case "loopSection": {
+          if (target.kind !== "section") return;
+          const s = project.sections.find((x) => x.id === target.id);
+          if (!s) return;
+          update((d) => setLoopRange(d, { startMs: s.startMs, endMs: s.endMs }));
+          announce(t("editor.sections.looped", { name: s.name }));
+          return;
+        }
+        case "selectSectionCues": {
+          if (target.kind !== "section") return;
+          const s = project.sections.find((x) => x.id === target.id);
+          if (!s) return;
+          const ids = project.cues.filter((c) => c.startMs < s.endMs && c.endMs > s.startMs).map((c) => c.id);
+          ui.selectCues(ids);
+          announce(t("editor.sections.selectedCues", { count: ids.length }));
+          return;
+        }
+        case "clearLoop":
+          clearLoop();
+          return;
+        case "playLoop": {
+          const loop = project.loopRange;
+          if (!loop) return;
+          void seekTo(loop.startMs).then(() => {
+            if (usePlaybackStore.getState().state?.transport !== "playing") void togglePlay();
+          });
+          return;
+        }
+        case "loopToSection": {
+          const loop = project.loopRange;
+          if (!loop) return;
+          let created: string | null = null;
+          update((d) => {
+            created = addSection(d, loop.startMs, loop.endMs - loop.startMs, t("editor.sections.defaultName", { n: d.sections.length + 1 }));
+          });
+          announce(t(created ? "editor.sections.added" : "editor.sections.noRoom"));
+          return;
+        }
+        case "deleteKey":
+          if (target.kind === "keyframe") deleteKeyAt(target.cueId, target.uMs);
+          return;
+        case "clearKeys":
+          if (target.kind === "keyframe") clearKeys(target.cueId);
+          return;
+        case "playheadToKey": {
+          if (target.kind !== "keyframe") return;
+          const cue = project.cues.find((c) => c.id === target.cueId);
+          if (cue) void seekTo(cue.startMs + target.uMs);
+          return;
+        }
+        case "clearTempo":
+          clearTempo();
+          return;
       }
     },
     [actions, t],
@@ -242,5 +367,9 @@ export function useContextActions(): ContextActions {
     useProjectStore.getState().update((d) => void setCueTag(d, ids, value));
   }, []);
 
-  return { run, tag };
+  const sectionColor = useCallback((sectionId: string, color: Rgb) => {
+    useProjectStore.getState().update((d) => updateSection(d, sectionId, { color: [...color] }));
+  }, []);
+
+  return { run, tag, sectionColor };
 }

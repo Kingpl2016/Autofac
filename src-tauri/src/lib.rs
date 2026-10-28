@@ -5,6 +5,7 @@
 //! 宿主层只做装配与命令注册。
 
 mod about_commands;
+mod cue_template_commands;
 mod data_dir;
 mod devtools_commands;
 mod app_mode_commands;
@@ -238,6 +239,11 @@ pub fn run() {
             show_runtime::show_locate,
             show_runtime::show_status,
             show_runtime::show_set_dirty,
+            cue_template_commands::cue_templates_read,
+            cue_template_commands::cue_templates_write,
+            cue_template_commands::cue_templates_import,
+            cue_template_commands::cue_templates_export,
+            cue_template_commands::cue_templates_reveal,
             fixture_commands::fixture_list,
             fixture_commands::fixture_import_xlsx,
             fixture_commands::fixture_import_ofl,

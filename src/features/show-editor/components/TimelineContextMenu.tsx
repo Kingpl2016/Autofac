@@ -66,6 +66,8 @@ export function TimelineContextMenu({ commands, children }: { commands: readonly
     if (next.kind === "mediaClip" && !ui.selectedMediaClipIds.includes(next.id)) ui.selectMediaClips([next.id]);
     if (next.kind === "track" && !ui.selectedTrackIds.includes(next.id)) ui.selectTrack(next.id);
     if (next.kind === "empty" && next.trackId) ui.selectTrack(next.trackId);
+    if (next.kind === "marker" || next.kind === "section") ui.selectTimelineObject({ kind: next.kind, id: next.id });
+    if (next.kind === "keyframe" && !ui.selectedCueIds.includes(next.cueId)) ui.selectCues([next.cueId]);
     setTarget(next);
   };
 
@@ -141,6 +143,30 @@ export function TimelineContextMenu({ commands, children }: { commands: readonly
               })}
               <ContextMenuSeparator />
               <ContextMenuItem onSelect={() => run.tag(null)}>{t("editor.context.clearTag")}</ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        );
+      case "sectionColors":
+        return (
+          <ContextMenuSub key="sectionColors">
+            <ContextMenuSubTrigger>{t("editor.context.sectionColor")}</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {CUE_TAGS.map((tag) => {
+                const [r, g, b] = CUE_TAG_COLORS[tag];
+                return (
+                  <ContextMenuItem
+                    key={tag}
+                    onSelect={() => target?.kind === "section" && run.sectionColor(target.id, CUE_TAG_COLORS[tag])}
+                  >
+                    <span
+                      aria-hidden
+                      className="size-3 rounded-full bg-(--tag-color)"
+                      style={{ "--tag-color": `rgb(${r} ${g} ${b})` } as CSSProperties}
+                    />
+                    {t(`editor.tags.${tag}`)}
+                  </ContextMenuItem>
+                );
+              })}
             </ContextMenuSubContent>
           </ContextMenuSub>
         );

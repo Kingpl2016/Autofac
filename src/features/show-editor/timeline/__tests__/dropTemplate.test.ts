@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CUE_TEMPLATES } from "../../lib/cueTemplates";
+import { BUILTIN_TEMPLATES } from "../../lib/cueTemplates";
 import { dropTemplate, templateStyle } from "../dropTemplate";
 import type { Track } from "../../lib/project";
 import type { TimelineViewport } from "../geometry";
@@ -18,14 +18,19 @@ const viewport: TimelineViewport = {
   pxPerSec: 100,
   rows: rowLayout(tracks),
 };
-const red = CUE_TEMPLATES.find((t) => t.id === "red")!;
+const red = BUILTIN_TEMPLATES.find((t) => t.id === "red")!;
 
 describe("templateStyle", () => {
   it("复制模板的颜色、亮度和淡入淡出（不共享数组）", () => {
     const style = templateStyle(red);
     expect(style).toMatchObject({ brightness: 100, fadeInMs: 0, fadeOutMs: 0 });
     expect(style.rgb).toEqual([255, 0, 0]);
-    expect(style.rgb).not.toBe(red.rgb);
+    expect(style.color).toEqual({ kind: "rgb", rgb: [255, 0, 0] });
+    expect(style.color).not.toBe(red.color);
+    // 色温模板保持色温，显示色为近似 RGB
+    const warm = templateStyle(BUILTIN_TEMPLATES.find((t) => t.id === "k3200")!);
+    expect(warm.color).toEqual({ kind: "kelvin", kelvin: 3200 });
+    expect(warm.rgb?.[0]).toBe(255);
   });
 });
 

@@ -79,26 +79,44 @@ describe("ColorPicker", () => {
 describe("ColorPicker 输入方式", () => {
   beforeEach(() => useColorInputStore.setState({ input: "wheel" }));
 
-  it("切到 HSL：滑杆读出当前色，改饱和度提交；拖到灰色再拉回时保留色相；选择被记住", () => {
+  it("色轮（HSV）旁直接显示 H / S / V；S 输入 0 变灰、再输入 100 回到原色（色相保留）；V 滑杆与数值框提交", () => {
     const { onCommit, rerender } = setup({ kind: "rgb", rgb: [0, 0, 255] });
-    fireEvent.click(screen.getByRole("radio", { name: "HSL" }));
-    expect(useColorInputStore.getState().input).toBe("hsl");
-    const hue = screen.getByRole("slider", { name: "色相" });
-    expect(hue.getAttribute("aria-valuetext")).toBe("240°");
+    expect(screen.getByRole("radio", { name: "色轮（HSV）" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("radio", { name: "HSL" })).toBeNull();
+    const hsv = screen.getByRole("group", { name: "HSV 数值" });
+    const field = (name: string) => within(hsv).getByRole("textbox", { name });
+    expect((field("色相 H（°）") as HTMLInputElement).value).toBe("240");
+    expect((field("饱和度 S（%）") as HTMLInputElement).value).toBe("100");
+    expect((field("明度 V（%）") as HTMLInputElement).value).toBe("100");
 
-    const sat = screen.getByRole("textbox", { name: "饱和度数值" });
-    fireEvent.change(sat, { target: { value: "0" } });
-    fireEvent.blur(sat);
+    fireEvent.change(field("饱和度 S（%）"), { target: { value: "0" } });
+    fireEvent.blur(field("饱和度 S（%）"));
     const gray = onCommit.mock.lastCall?.[0] as ColorValue;
-    expect(gray).toEqual({ kind: "rgb", rgb: [128, 128, 128] });
-
+    expect(gray).toEqual({ kind: "rgb", rgb: [255, 255, 255] });
     rerender(<ColorPicker value={gray} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
-    // 灰色本身没有色相，但滑杆仍停在 240°
-    expect(screen.getByRole("slider", { name: "色相" }).getAttribute("aria-valuetext")).toBe("240°");
-    const sat2 = screen.getByRole("textbox", { name: "饱和度数值" });
-    fireEvent.change(sat2, { target: { value: "100" } });
-    fireEvent.blur(sat2);
+    // 白色本身没有色相，但数值仍停在 240°
+    expect((field("色相 H（°）") as HTMLInputElement).value).toBe("240");
+    fireEvent.change(field("饱和度 S（%）"), { target: { value: "100" } });
+    fireEvent.blur(field("饱和度 S（%）"));
     expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [0, 0, 255] });
+
+    rerender(<ColorPicker value={{ kind: "rgb", rgb: [0, 0, 255] }} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
+    fireEvent.change(field("明度 V（%）"), { target: { value: "50" } });
+    fireEvent.blur(field("明度 V（%）"));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [0, 0, 128] });
+    const v = screen.getByRole("slider", { name: "颜色明度（V）" });
+    expect(v.getAttribute("title") ?? v.closest("label")?.getAttribute("title")).toContain("整体亮度请用强度");
+  });
+
+  it("颜色方式改名为“彩色 / 色温 / 发光体”，各有悬停说明；旧设置里的 HSL 方式读回为色轮", async () => {
+    setup();
+    const rgb = screen.getByRole("radio", { name: "彩色" });
+    expect(rgb.getAttribute("title") ?? rgb.closest("[title]")?.getAttribute("title")).toContain("自动混色");
+    expect(screen.getByRole("img", { name: /^目标颜色 #ff0000/ })).toBeTruthy();
+    await useColorInputStore.persist.rehydrate();
+    expect(useColorInputStore.getState().input).toBe("wheel");
+    const merged = useColorInputStore.persist.getOptions().merge?.({ input: "hsl" }, useColorInputStore.getState());
+    expect((merged as { input: string }).input).toBe("wheel");
   });
 
   it("RGB 数值：通道滑杆与数值框", () => {

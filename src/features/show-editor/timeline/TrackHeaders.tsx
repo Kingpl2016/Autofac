@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from "react";
+import { forwardRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Boxes,
@@ -23,6 +23,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { FixtureType } from "../lib/fixtureProfile";
 import type { Track } from "../lib/project";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
+import { HeaderResizer } from "./HeaderResizer";
 import { MARKER_STRIP_HEIGHT } from "./MarkerStrip";
 import { RULER_HEIGHT } from "./timelineData";
 import { BODY_BOTTOM_PAD, trackHeight } from "./timelineLayout";
@@ -93,7 +95,7 @@ interface TrackHeadersProps {
 }
 
 /**
- * 时间线左侧的轨道头列：名称与 静音 / 独奏 / 锁定 开关。
+ * 时间线左侧的轨道头列：名称与 静音 / 独奏 / 锁定 开关。宽度可在右边缘拖动调整（会记住）。
  *
  * 行高与时间线的轨道行一致（各轨道可以有不同高度），顶部留出标记点条、波形与标尺的高度；
  * 纵向滚动位置由时间线同步（见 ref）。
@@ -103,8 +105,25 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
   ref,
 ) {
   const { t } = useTranslation();
+  const savedWidth = useEditorPrefsStore((s) => s.trackHeaderWidth);
+  const setWidth = useEditorPrefsStore((s) => s.setTrackHeaderWidth);
+  // 拖动中只改本地预览，松手才保存
+  const [preview, setPreview] = useState<number | null>(null);
+  const width = preview ?? savedWidth;
   return (
-    <div data-tour="track-headers" className="flex w-52 shrink-0 flex-col border-r border-border bg-surface-2">
+    <div
+      data-tour="track-headers"
+      className="relative flex shrink-0 flex-col border-r border-border bg-surface-2"
+      style={{ width }}
+    >
+      <HeaderResizer
+        width={width}
+        onPreview={setPreview}
+        onCommit={(px) => {
+          setPreview(null);
+          setWidth(px);
+        }}
+      />
       <div style={{ height: MARKER_STRIP_HEIGHT + RULER_HEIGHT }} className="shrink-0 border-b border-border" aria-hidden />
       {topSlot}
       <div ref={ref} className="min-h-0 flex-1 overflow-hidden" onWheel={(e) => onWheelScroll(e.deltaY)}>

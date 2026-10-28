@@ -9,9 +9,8 @@ import {
   pasteCues,
   pasteCuesToTracks,
   removeCues,
-  type CueStyle,
 } from "../lib/cueOps";
-import { addDefaultLook } from "../lib/cueDefaults";
+import { addDefaultLook, type TemplateStyle } from "../lib/cueDefaults";
 import { resolveTargetTracks } from "./useTargetCapabilities";
 import type { EffectPreset } from "../lib/effectPresets";
 import type { ShowProject, Track } from "../lib/project";
@@ -28,7 +27,7 @@ export interface CueActions {
    * @param style 可选的外观与长度。
    * @returns 新 Cue 的 id；放不下时为 `null`。
    */
-  addAt: (trackId: string, timeMs: number, style?: Partial<CueStyle> & { lengthMs?: number }) => string | null;
+  addAt: (trackId: string, timeMs: number, style?: TemplateStyle) => string | null;
   /**
    * 在轨道上新建一个特效 Cue 并选中它。
    *
@@ -46,7 +45,7 @@ export interface CueActions {
    * @param style 可选的外观与长度。
    * @returns 新片段 id。
    */
-  addAtTracks: (trackIds: readonly string[], timeMs: number, style?: Partial<CueStyle> & { lengthMs?: number }) => string[];
+  addAtTracks: (trackIds: readonly string[], timeMs: number, style?: TemplateStyle) => string[];
   /**
    * 在多条轨道上各新建一个片段（一步撤销），选中新片段；放不下的轨道跳过，多条轨道时汇总提示。
    *

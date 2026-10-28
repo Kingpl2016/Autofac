@@ -3,8 +3,8 @@ import { persist } from "zustand/middleware";
 
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
 
-/** 色盘 RGB 模式下的输入方式：色轮、HSL 滑杆、RGB 数值。 */
-export const COLOR_INPUTS = ["wheel", "hsl", "rgb"] as const;
+/** 色盘“彩色”方式下的输入方式：色轮（HSV）、RGB 数值。 */
+export const COLOR_INPUTS = ["wheel", "rgb"] as const;
 
 /** 输入方式。 */
 export type ColorInput = (typeof COLOR_INPUTS)[number];
@@ -37,6 +37,7 @@ export const useColorInputStore = create<ColorInputState>()(
       version: 1,
       storage: createTauriPersistStorage<ColorInputData>(),
       partialize: ({ input }) => ({ input }),
+      // 旧版本存的 `hsl` 方式已去掉（与色轮重复），读回时和其它非法值一样回到色轮
       merge: (persisted, current) => {
         const input = (persisted as Partial<ColorInputData> | null)?.input;
         return COLOR_INPUTS.includes(input as ColorInput) ? { ...current, input: input as ColorInput } : current;

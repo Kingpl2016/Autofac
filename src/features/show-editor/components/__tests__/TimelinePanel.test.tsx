@@ -5,6 +5,10 @@ import { DndContext } from "@dnd-kit/core";
 import { produce } from "immer";
 
 import i18n from "@/shared/i18n";
+
+/** 删除后的提示（带撤销按钮）走 sonner：替身记录调用。 */
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+vi.mock("sonner", () => ({ toast }));
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { useEditorHotkeys } from "../../hooks/useEditorHotkeys";
 import { addLookCue, addStaticCue } from "../../lib/cueOps";
@@ -12,6 +16,7 @@ import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject, type ShowProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
+import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { START_LEFT } from "../../timeline/timelineData";
@@ -382,6 +387,31 @@ describe("TimelinePanel 键盘", () => {
     expect(within(group()).queryByRole("textbox")).not.toBeNull();
   });
 
+  it("轨道名称列：拖动右边缘加宽（松手才保存），方向键调整，双击恢复默认", () => {
+    loadSample();
+    act(() => {
+      useEditorPrefsStore.setState({ trackHeaderWidth: 208 });
+    });
+    renderWithKeys();
+    const sep = screen.getByRole("separator", { name: "轨道名称列宽度" });
+    const column = sep.parentElement as HTMLElement;
+    fireEvent.pointerDown(sep, { button: 0, clientX: 208, pointerId: 5 });
+    fireEvent.pointerMove(sep, { clientX: 300, pointerId: 5 });
+    expect(column.style.width).toBe("300px");
+    expect(useEditorPrefsStore.getState().trackHeaderWidth).toBe(208);
+    fireEvent.pointerUp(sep, { clientX: 300, pointerId: 5 });
+    expect(useEditorPrefsStore.getState().trackHeaderWidth).toBe(300);
+    fireEvent.pointerDown(sep, { button: 0, clientX: 300, pointerId: 6 });
+    fireEvent.pointerMove(sep, { clientX: 2000, pointerId: 6 });
+    fireEvent.pointerUp(sep, { pointerId: 6 });
+    expect(useEditorPrefsStore.getState().trackHeaderWidth).toBe(480);
+    fireEvent.keyDown(sep, { key: "ArrowLeft", shiftKey: true });
+    expect(useEditorPrefsStore.getState().trackHeaderWidth).toBe(448);
+    expect(sep.getAttribute("aria-valuenow")).toBe("448");
+    fireEvent.doubleClick(sep);
+    expect(useEditorPrefsStore.getState().trackHeaderWidth).toBe(208);
+  });
+
   it("轨道头上的滚轮纵向滚动转交给轨道区", () => {
     loadSample();
     renderWithKeys();
@@ -488,5 +518,119 @@ describe("TimelinePanel 右键菜单与轨道多选", () => {
     const copy = project().cues.find((c) => c.id !== cueA);
     expect(copy).toMatchObject({ trackId: b, startMs: 5000, endMs: 7000 });
     expect(ui().selectedCueIds).toEqual([copy?.id]);
+  });
+});
+
+describe("时间线标记类对象的删除", () => {
+  const renderFull = () =>
+    render(
+      <DndContext>
+        <WithCommands />
+      </DndContext>,
+    );
+  const menu = () => screen.getByRole("menu", { name: "右键菜单" });
+  const flag = () => screen.getByRole("button", { name: /^标记点 副歌/ });
+
+  /** 加一个 1 秒处的标记“副歌”、0~4 秒的段落“主歌”、2~6 秒的循环区间。 */
+  function withObjects() {
+    loadSample();
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        d.markers.push({ id: "mk", timeMs: 1000, label: "副歌" });
+        d.sections.push({ id: "sc", name: "主歌", startMs: 0, endMs: 4000, color: [0, 0, 255] });
+        d.loopRange = { startMs: 2000, endMs: 6000 };
+      }),
+    );
+    toast.mockReset();
+  }
+
+  it("点选标记后按 Delete 删除（与片段选择互斥），提示里的“撤销”能恢复", () => {
+    withObjects();
+    renderFull();
+    act(() => ui().selectCues([project().cues[0].id]));
+    fireEvent.pointerDown(flag(), { button: 0, clientX: 0, pointerId: 1 });
+    fireEvent.pointerUp(flag(), { clientX: 0, pointerId: 1 });
+    expect(ui().selectedTimelineObject).toEqual({ kind: "marker", id: "mk" });
+    expect(ui().selectedCueIds).toEqual([]);
+    expect(flag().getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(project().markers).toEqual([]);
+    expect(project().cues).toHaveLength(1);
+    expect(toast).toHaveBeenCalledWith("已删除标记 副歌", expect.objectContaining({ action: expect.objectContaining({ label: "撤销" }) }));
+    const [, options] = toast.mock.lastCall as [string, { action: { onClick: () => void } }];
+    act(() => options.action.onClick());
+    expect(project().markers.map((m) => m.label)).toEqual(["副歌"]);
+  });
+
+  it("悬停 × 删除标记与段落；循环带中间的 × 清除循环区间；循环手柄上按 Delete 也能清除", () => {
+    withObjects();
+    renderFull();
+    fireEvent.click(screen.getByRole("button", { name: "删除标记 副歌" }));
+    expect(project().markers).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "删除段落 主歌" }));
+    expect(project().sections).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "清除循环区间" }));
+    expect(project().loopRange).toBeNull();
+    expect(toast).toHaveBeenCalledTimes(3);
+    act(() => useProjectStore.getState().update((d) => void (d.loopRange = { startMs: 2000, endMs: 6000 })));
+    fireEvent.keyDown(screen.getByRole("slider", { name: /循环入点/ }), { key: "Delete" });
+    expect(project().loopRange).toBeNull();
+  });
+
+  it("右键标记 → 删除；右键段落 → 设为循环区间；右键循环区间 → 清除", () => {
+    withObjects();
+    renderFull();
+    fireEvent.contextMenu(flag());
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: "删除标记" }));
+    expect(project().markers).toEqual([]);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^段落 主歌/ }));
+    expect(ui().selectedTimelineObject).toEqual({ kind: "section", id: "sc" });
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: "设为循环区间" }));
+    expect(project().loopRange).toEqual({ startMs: 0, endMs: 4000 });
+
+    fireEvent.contextMenu(document.querySelector("[data-loop]") as HTMLElement);
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: "清除循环区间" }));
+    expect(project().loopRange).toBeNull();
+  });
+
+  it("片段上的关键帧：点击只移播放头不拖动；右键删除这个关键帧", () => {
+    const { a } = loadSample();
+    let id = "";
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        id =
+          addLookCue(
+            d,
+            a,
+            10_000,
+            {
+              intensity: {
+                kind: "keys",
+                keys: [
+                  { tMs: 0, value: 0, curve: "linear" },
+                  { tMs: 1000, value: 100, curve: "linear" },
+                  { tMs: 2000, value: 50, curve: "linear" },
+                ],
+              },
+            },
+            3000,
+          ) ?? "";
+      }),
+    );
+    renderFull();
+    const keys = () => screen.getAllByTestId("clip-key").filter((k) => k.closest(`[data-cue-id="${id}"]`));
+    const second = keys()[1];
+    fireEvent.pointerDown(second, { button: 0, clientX: x(11_000), clientY: y(0), pointerId: 1 });
+    fireEvent.pointerMove(second, { clientX: x(15_000), clientY: y(0), pointerId: 1 });
+    fireEvent.pointerUp(second, { clientX: x(15_000), clientY: y(0), pointerId: 1 });
+    expect(project().cues.find((c) => c.id === id)?.startMs).toBe(10_000);
+    expect(ui().playheadMs).toBe(11_000);
+    expect(ui().selectedCueIds).toEqual([id]);
+
+    fireEvent.contextMenu(keys()[1]);
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: "删除这个关键帧" }));
+    const cue = project().cues.find((c) => c.id === id);
+    expect(cue?.kind === "look" && cue.look.intensity?.kind === "keys" && cue.look.intensity.keys.map((k) => k.tMs)).toEqual([0, 2000]);
   });
 });

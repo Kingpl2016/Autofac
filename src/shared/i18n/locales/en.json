@@ -1499,19 +1499,19 @@
       "title": "Color",
       "mode": "Color mode",
       "modes": {
-        "rgb": "RGB",
+        "rgb": "Color",
         "kelvin": "Kelvin",
         "manual": "Emitters"
       },
-      "intent": "Intended color {{hex}}",
+      "intent": "Target color {{hex}}",
       "wheel": "Color wheel (←/→ hue, ↑/↓ saturation)",
       "wheelValue": "Hue {{h}}°, saturation {{s}}%",
       "hex": "Hex",
       "r": "Red",
       "g": "Green",
       "b": "Blue",
-      "brightness": "Value {{value}}%",
-      "brightnessLabel": "Color value",
+      "brightness": "Color value (V) {{value}}%",
+      "brightnessLabel": "Color value (V)",
       "white": "White",
       "whites": {
         "off": "Off",
@@ -1549,18 +1549,24 @@
         "warm": "Warm white 3200K",
         "neutral": "Neutral white 4300K",
         "daylight": "Daylight 5600K",
-        "white": "RGB full white"
+        "white": "Full white"
       },
       "input": "Input method",
       "inputs": {
-        "wheel": "Wheel",
-        "hsl": "HSL",
+        "wheel": "Wheel (HSV)",
         "rgb": "RGB values"
       },
-      "hue": "Hue",
-      "saturation": "Saturation",
-      "lightness": "Lightness",
-      "valueOf": "{{name}} value"
+      "valueOf": "{{name}} value",
+      "modeHints": {
+        "rgb": "Pick a color; each fixture mixes it from its own emitters",
+        "kelvin": "White light by color temperature (tunable whites split it, color fixtures approximate)",
+        "manual": "Set each emitter (red, green, blue, white…) directly, bypassing auto mixing"
+      },
+      "brightnessHint": "How bright the color itself is (V in HSV); use intensity for overall level",
+      "hsv": "HSV values",
+      "hsvH": "Hue H (°)",
+      "hsvS": "Saturation S (%)",
+      "hsvV": "Value V (%)"
     },
     "look": {
       "title": "Look & keyframes",
@@ -1694,7 +1700,9 @@
       "clipDisabled": "Disabled",
       "addedSkipped": "Added clips on {{count}} tracks; {{skipped}} tracks had no room",
       "addedOnTracks": "Added clips on {{count}} tracks",
-      "clipUnsupported": "Not supported by any fixture: {{layers}}"
+      "clipUnsupported": "Not supported by any fixture: {{layers}}",
+      "headerWidth": "Track name column width",
+      "headerWidthHint": "Drag to resize the track name column, double-click to reset; arrow keys adjust when focused"
     },
     "ruler": {
       "label": "Time ruler",
@@ -1954,18 +1962,50 @@
       "noTrack": "No track available. Add fixtures first, or unlock a track",
       "noRoom": "There is no room for a new cue here",
       "added": "Cue added",
-      "white": "White",
-      "warmWhite": "Warm white",
-      "red": "Red",
-      "orange": "Orange",
-      "yellow": "Yellow",
-      "green": "Green",
-      "cyan": "Cyan",
-      "blue": "Blue",
-      "purple": "Purple",
-      "magenta": "Magenta",
-      "fadeWhite": "White fade in/out",
-      "softWhite": "Soft warm glow"
+      "groups": {
+        "basic": "Basic colors",
+        "stage": "Stage colors (gel reference)",
+        "white": "White by color temperature",
+        "custom": "My templates"
+      },
+      "groupList": "Templates in {{name}}",
+      "tools": "Template file",
+      "import": "Import template file…",
+      "export": "Export all templates…",
+      "reveal": "Show the user template file in its folder",
+      "reload": "Reload the user template file",
+      "fileType": "Cue templates",
+      "imported": "Imported: {{added}} added, {{replaced}} replaced, {{skipped}} invalid entries skipped",
+      "importEmpty": "No usable templates in this file",
+      "exported": "Exported {{count}} templates",
+      "reloaded": "Reloaded: {{count}} user templates",
+      "loadFailed": "Could not read the user template file; showing built-in templates only ({{reason}})",
+      "errors": {
+        "bad_path": "Please choose a .json file",
+        "file_too_large": "The file is too large (over 1 MB)",
+        "invalid_json": "The file is not valid JSON",
+        "io": "Could not read or write the file"
+      },
+      "issuesTitle": "{{count}} problems in the user template file; those entries were skipped",
+      "issueItem": "Entry {{index}}: {{message}}",
+      "issueFile": "Invalid file format: {{message}}",
+      "menu": "Actions for {{name}}",
+      "copyToMine": "Copy to my templates",
+      "duplicate": "Duplicate",
+      "copySuffix": " copy",
+      "copied": "Copied as {{name}}; you can rename it now",
+      "rename": "Rename",
+      "nameOf": "Name of {{name}}",
+      "moveToGroup": "Move to group",
+      "newGroup": "New group…",
+      "groupOf": "Group name for {{name}}",
+      "delete": "Delete template",
+      "deleted": "Deleted template {{name}}",
+      "builtinHint": "Built-in template (read-only; right-click to copy it to your templates and edit)",
+      "fileHint": "User templates live in cue-templates.json in the data folder; edit it and click Reload. Gel names are references only — LED colors are approximations.",
+      "customName": "My template {{n}}",
+      "savedFromCue": "Saved as cue template {{name}} (under “My templates” in the Cue templates tab)",
+      "cannotSave": "This clip's color can't be saved as a template (direct emitter values, or no color)"
     },
     "cue": {
       "mixed": "(mixed)",
@@ -2000,8 +2040,11 @@
       "exists": "There is already a marker at the playhead",
       "label": "Markers",
       "add": "Add a marker at the playhead",
-      "flagLabel": "Marker {{name}}, {{time}}. Click to seek, Enter to rename, Delete to remove",
-      "rename": "Marker name"
+      "flagLabel": "Marker {{name}}, {{time}}. Click to select and seek, Delete to remove, Enter to rename",
+      "rename": "Marker name",
+      "delete": "Delete marker {{name}}",
+      "deleted": "Deleted marker {{name}}",
+      "hint": "Click to select, Delete to remove, double-click to rename, right-click for more"
     },
     "tempo": {
       "title": "Tempo",
@@ -2013,7 +2056,8 @@
       "align": "Align first beat to playhead",
       "clear": "Clear tempo",
       "hint": "With a tempo set, the timeline shows a beat grid and cues snap to beats. Press T to tap the tempo while playing.",
-      "tapped": "Tempo set to {{bpm}} BPM"
+      "tapped": "Tempo set to {{bpm}} BPM",
+      "cleared": "Beat grid cleared"
     },
     "file": {
       "menu": "File",
@@ -2374,7 +2418,10 @@
       "looped": "Looping section {{name}}",
       "defaultName": "Section {{n}}",
       "added": "Created a section at the playhead",
-      "noRoom": "The playhead is already inside a section, or too close to the next one"
+      "noRoom": "The playhead is already inside a section, or too close to the next one",
+      "delete": "Delete section {{name}}",
+      "deleted": "Deleted section {{name}}",
+      "selectedCues": "Selected {{count}} clips in the section"
     },
     "mediaTracks": {
       "lanes": "Media tracks",
@@ -2452,7 +2499,23 @@
       "deleted": "Deleted {{fixtures}} fixture(s), {{tracks}} track(s) and {{cues}} clip(s) (undoable)",
       "selectSameModel": "Select tracks of the same model",
       "groupTracks": "Group {{count}} fixtures",
-      "syncTracks": "Sync {{count}} fixtures to the first (mode / height / rotation / hanging)"
+      "syncTracks": "Sync {{count}} fixtures to the first (mode / height / rotation / hanging)",
+      "rename": "Rename",
+      "markerToPlayhead": "Move to playhead",
+      "sectionFromMarker": "New section from here (to next marker)",
+      "deleteMarker": "Delete marker",
+      "sectionColor": "Section color",
+      "loopSection": "Set as loop range",
+      "selectSectionCues": "Select clips in section",
+      "deleteSection": "Delete section",
+      "playLoop": "Play loop from in point",
+      "loopToSection": "Save loop range as section",
+      "clearLoop": "Clear loop range",
+      "playheadToKey": "Move playhead to this keyframe",
+      "deleteKey": "Delete this keyframe",
+      "clearKeys": "Delete all keyframes in this clip",
+      "clearTempo": "Clear beat grid",
+      "saveAsTemplate": "Save as cue template"
     },
     "tags": {
       "red": "Red",
@@ -2569,7 +2632,7 @@
       "tour": {
         "welcome": {
           "title": "Welcome to the show editor",
-          "body": "Take a minute to meet the main areas. Press Esc to skip any time; search “tour” in the command palette (Ctrl+K) to replay it."
+          "body": "Take a minute to meet the main areas. Press Esc to skip any time; click ? at the top right (or press F1) to replay the tour or show the tips on this page."
         },
         "library": {
           "title": "Library",
@@ -2585,7 +2648,7 @@
         },
         "timeline": {
           "title": "Timeline",
-          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks."
+          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks.\nMarkers, sections and the loop range: select and press Delete, or right-click / hover × — you can undo."
         },
         "mode": {
           "title": "Live mode / Playback mode",
@@ -2593,7 +2656,7 @@
         },
         "shortcuts": {
           "title": "Handy shortcuts",
-          "body": "Ctrl+K command palette (every action is searchable)\nSpace play / pause, J / K / L back one frame / pause / play\nShift+Q radial menu, Shift+F10 context menu\nSearch “shortcuts” in the palette to customize keys."
+          "body": "Ctrl+K command palette (every action is searchable)\nSpace play / pause, J / K / L back one frame / pause / play\nShift+Q radial menu, Shift+F10 context menu\nThe ? menu (F1) has the shortcut list, the tour and page tips."
         }
       },
       "hints": {
@@ -2614,10 +2677,35 @@
           "body": "Cards lay out every fixture by address (same model, same color); the grid shows all 512 channels. Hovering highlights the fixture on the stage too."
         },
         "colorInput": {
-          "title": "Three ways to pick a color",
-          "body": "Switch between the wheel, HSL sliders and RGB values; the editor remembers the one you used last."
+          "title": "Two ways to pick a color",
+          "body": "“Color” has two input methods: the wheel (HSV, with H / S / V fields next to it) and RGB values; the editor remembers your last choice."
+        },
+        "timelineObjects": {
+          "title": "Deleting markers, sections and loops",
+          "body": "Select a marker or section and press Delete, hover and click ×, or right-click. For the loop range, hover the ruler band and click ×. Undo from the toast."
+        },
+        "templates": {
+          "title": "Templates come from a config file",
+          "body": "Templates are grouped; right-click to copy, rename, move or delete. The toolbar imports / exports template files, shows the file in its folder, and reloads it after you edit it."
         }
-      }
+      },
+      "help": "Help",
+      "showHints": "Show tips on this page",
+      "hideHints": "Hide tips on this page",
+      "hintsShown": "Showing all tips on this page; click a dot to read it",
+      "hintsHidden": "Tips hidden",
+      "shortcuts": "Keyboard shortcuts"
+    },
+    "undoAction": "Undo",
+    "loop": {
+      "clear": "Clear loop range",
+      "cleared": "Loop range cleared"
+    },
+    "keys": {
+      "deleted": "Deleted {{count}} keyframes",
+      "cleared": "Turned {{count}} keyframed layers into fixed values",
+      "none": "No keyframe here",
+      "hint": "Keyframe {{time}}: click to move the playhead here, right-click to delete"
     }
   },
   "fixtures": {

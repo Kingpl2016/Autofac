@@ -22,6 +22,7 @@ import { readTimelineViewport } from "../timeline/timelineView";
 import { addMarkerAtPlayhead, fitShowDuration, requestShowDuration, tapTempoNow } from "./editorActions";
 import { seekTo, stopPlayback, togglePlay } from "./transportActions";
 import { useCueActions } from "./useCueActions";
+import { clearLoop, deleteSelectedObject } from "./timelineObjectActions";
 import { runTour } from "../onboarding/runTour";
 import { useOnboardingStore } from "../stores/useOnboardingStore";
 
@@ -78,8 +79,10 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         titleKey: "editor.commands.delete",
         category: "edit",
         keys: ["delete", "backspace"],
-        enabled: () => hasSelection() || aliveMedia().length > 0,
+        enabled: () => hasSelection() || aliveMedia().length > 0 || ui().selectedTimelineObject !== null,
         run: () => {
+          // 最后点选的是标记点 / 段落时删它（与片段选择互斥）
+          if (deleteSelectedObject()) return;
           const media = aliveMedia();
           if (media.length === 0) {
             actions.removeSelected();
@@ -281,7 +284,7 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         enabled: () => ui().playheadMs > 0,
         run: () => void requestShowDuration(ui().playheadMs),
       },
-      { id: "timeline.loopClear", titleKey: "editor.commands.loopClear", category: "timeline", keys: ["alt+x"], enabled: () => project().loopRange !== null, run: () => update((d) => setLoopRange(d, null)) },
+      { id: "timeline.loopClear", titleKey: "editor.commands.loopClear", category: "timeline", keys: ["alt+x"], enabled: () => project().loopRange !== null, run: clearLoop },
       { id: "select.all", titleKey: "editor.commands.selectAll", category: "select", keys: ["mod+a"], run: () => ui().selectCues(project().cues.map((c) => c.id)) },
       {
         id: "select.after",
@@ -410,6 +413,7 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         },
       },
       { id: "view.keymap", titleKey: "editor.keymap.open", category: "view", run: () => ui().setKeymapOpen(true) },
+      { id: "help.menu", titleKey: "editor.guide.help", category: "view", keys: ["f1"], global: true, run: () => ui().setHelpOpen(true) },
       {
         id: "help.tour",
         titleKey: "editor.guide.replay",

@@ -142,13 +142,18 @@ export const ClipView = memo(function ClipView({
             <CueBlock cue={cue} dimmed={dimmed} locked={locked} selected={selected && !dragging} />
           </div>
           {keyTimes.map((tMs) => (
+            // 可点的关键帧：点击把播放头移到这里，右键删除（命中区约 10 px，比 ◆ 本身大）
             <span
               key={tMs}
               aria-hidden
               data-testid="clip-key"
-              className="pointer-events-none absolute z-[2] size-2 -translate-x-1/2 rotate-45 border border-background bg-keyframe"
-              style={{ left: `${(tMs / length) * 100}%`, bottom: (strip ? STRIP_HEIGHT : 0) + 2 }}
-            />
+              data-key-ms={tMs}
+              title={t("editor.keys.hint", { time: formatTimecode(cue.startMs + tMs) })}
+              className="group/key absolute z-[2] flex size-2.5 -translate-x-1/2 cursor-pointer items-center justify-center"
+              style={{ left: `${(tMs / length) * 100}%`, bottom: (strip ? STRIP_HEIGHT : 0) + 1 }}
+            >
+              <span className="size-2 rotate-45 border border-background bg-keyframe transition-transform group-hover/key:scale-125" />
+            </span>
           ))}
           {strip && (
             <span

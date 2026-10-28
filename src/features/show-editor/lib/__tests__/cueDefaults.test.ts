@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { produce } from "immer";
 
 import { addDefaultLook, applicability, attrEffectNeeds, defaultLook, effectNeeds, templateNeeds, trackSupports } from "../cueDefaults";
-import { CUE_TEMPLATES } from "../cueTemplates";
+import { BUILTIN_TEMPLATES } from "../cueTemplates";
 import { EFFECT_PRESETS } from "../effectPresets";
 import {
   availableAttrsOf,
@@ -49,8 +49,8 @@ describe("按灯具类型的默认外观与适用性", () => {
   });
 
   it("素材需要的能力与适用程度（按台数合计）", () => {
-    expect(templateNeeds(CUE_TEMPLATES.find((x) => x.id === "white")!)).toBe("intensity");
-    expect(templateNeeds(CUE_TEMPLATES.find((x) => x.id === "red")!)).toBe("mixing");
+    expect(templateNeeds(BUILTIN_TEMPLATES.find((x) => x.id === "white")!)).toBe("intensity");
+    expect(templateNeeds(BUILTIN_TEMPLATES.find((x) => x.id === "red")!)).toBe("mixing");
     expect(effectNeeds(EFFECT_PRESETS.find((x) => x.effect === "rainbow")!)).toBe("mixing");
     expect(effectNeeds(EFFECT_PRESETS.find((x) => x.effect === "breathe")!)).toBe("intensity");
     expect(attrEffectNeeds("circle")).toBe("position");

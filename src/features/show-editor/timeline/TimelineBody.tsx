@@ -353,6 +353,14 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       const cue = current.cues.find((c) => c.id === id);
       if (!cue) return;
       ui.selectTrack(cue.trackId);
+      // 点在关键帧 ◆ 上：选中片段并把播放头移到这个关键帧，不开始拖动
+      const keyEl = target.closest<HTMLElement>("[data-key-ms]");
+      if (keyEl) {
+        if (!ui.selectedCueIds.includes(id)) ui.selectCues([id]);
+        ui.setPlayhead(cue.startMs + Number(keyEl.dataset.keyMs ?? 0));
+        onPickCue();
+        return;
+      }
       const additive = e.ctrlKey || e.metaKey || e.shiftKey;
       // Ctrl 按在已选中的片段上：可能是要 Ctrl 拖动复制，取消选择推迟到松手（没拖动时）再做
       const deferToggle = (e.ctrlKey || e.metaKey) && ui.selectedCueIds.includes(id);

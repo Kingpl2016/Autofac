@@ -1,32 +1,217 @@
+import { z } from "zod";
+
+import builtinFile from "./builtinCueTemplates.json";
+import { colorValueRgb } from "./looks";
 import type { EffectCue, Rgb } from "./project";
 
 /**
- * Cue 模板：一组预设的“颜色场景”，从素材库拖到轨道（或点击）就能得到对应外观的静态 Cue。
- * 名称在语言包 `editor.templates.<id>`。
+ * Cue 模板：一组预设的“颜色场景”，从素材库拖到轨道（或点击）就能得到对应外观的片段。
+ *
+ * 模板从配置文件加载：内置模板随软件发布（`builtinCueTemplates.json`），用户模板在数据目录的
+ * `cue-templates.json`（可手改、导入导出，也可在软件里新建 / 改名 / 改分组 / 删除）。两者合并，
+ * 同 `id` 时用户的覆盖内置的。
+ *
+ * 文件格式（版本 1）：
+ *
+ * ```json
+ * { "version": 1, "templates": [
+ *   { "id": "lee-106", "group": "stage", "name": { "zh": "LEE 106 原红", "en": "LEE 106 Primary Red" },
+ *     "color": { "kind": "rgb", "rgb": [240, 0, 0] }, "brightness": 100, "fadeInMs": 0, "fadeOutMs": 0,
+ *     "note": "LEE 106 Primary Red" },
+ *   { "id": "k3200", "group": "white", "name": "钨丝灯 3200K", "color": { "kind": "kelvin", "kelvin": 3200 } }
+ * ] }
+ * ```
+ *
+ * 色纸编号只是参考：LED 混不出色纸的光谱，RGB 为近似值。
  */
+
+/** 文件格式版本。 */
+export const TEMPLATE_FILE_VERSION = 1;
+
+/** 内置的分组（显示顺序；用户可以用任意分组名）。 */
+export const BUILTIN_GROUPS = ["basic", "stage", "white", "custom"] as const;
+
+/** 新建的用户模板默认放进的分组。 */
+export const CUSTOM_GROUP = "custom";
+
+/** 模板的颜色：RGB 意图色或色温。 */
+export type TemplateColor = { kind: "rgb"; rgb: Rgb } | { kind: "kelvin"; kelvin: number };
+
+/** 一个 Cue 模板。 */
 export interface CueTemplate {
   id: string;
-  rgb: Rgb;
+  /** 显示名：一个字符串，或按语言给出（`zh` / `en`，缺的语言用另一个） */
+  name: string | { zh?: string; en?: string };
+  /** 分组 */
+  group: string;
+  color: TemplateColor;
+  /** 亮度 0~100 */
   brightness: number;
   fadeInMs: number;
   fadeOutMs: number;
+  /** 说明（例如参考的色纸编号） */
+  note?: string;
+  /** 内置模板（只读；运行时标记，不写进用户文件） */
+  builtin?: boolean;
 }
 
-/** 内置模板：常用的舞台颜色，外加两个带淡入淡出的白光。 */
-export const CUE_TEMPLATES: readonly CueTemplate[] = [
-  { id: "white", rgb: [255, 255, 255], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "warmWhite", rgb: [255, 200, 120], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "red", rgb: [255, 0, 0], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "orange", rgb: [255, 128, 0], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "yellow", rgb: [255, 220, 0], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "green", rgb: [0, 255, 0], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "cyan", rgb: [0, 255, 255], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "blue", rgb: [0, 0, 255], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "purple", rgb: [128, 0, 255], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "magenta", rgb: [255, 0, 255], brightness: 100, fadeInMs: 0, fadeOutMs: 0 },
-  { id: "fadeWhite", rgb: [255, 255, 255], brightness: 100, fadeInMs: 500, fadeOutMs: 500 },
-  { id: "softWhite", rgb: [255, 200, 120], brightness: 60, fadeInMs: 1000, fadeOutMs: 1000 },
-];
+const byte = z.number().int().min(0).max(255);
+const nonEmpty = z.string().trim().min(1).max(80);
+
+/** 单个模板的校验（缺省的亮度为 100、淡入淡出为 0、分组为“我的”）。 */
+const templateSchema = z.object({
+  id: z.string().trim().min(1).max(64).regex(/^[\w.-]+$/),
+  name: z.union([nonEmpty, z.object({ zh: nonEmpty.optional(), en: nonEmpty.optional() }).refine((n) => n.zh || n.en)]),
+  group: z.string().trim().min(1).max(32).default(CUSTOM_GROUP),
+  color: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("rgb"), rgb: z.tuple([byte, byte, byte]) }),
+    z.object({ kind: z.literal("kelvin"), kelvin: z.number().min(1000).max(40_000) }),
+  ]),
+  brightness: z.number().min(0).max(100).default(100),
+  fadeInMs: z.number().int().min(0).max(600_000).default(0),
+  fadeOutMs: z.number().int().min(0).max(600_000).default(0),
+  note: z.string().max(200).optional(),
+});
+
+/** 解析出的一处问题（第几条、哪里不对）。 */
+export interface TemplateIssue {
+  /** 第几条（从 1 起）；整份文件的问题为 `null` */
+  index: number | null;
+  /** 问题说明（字段路径 + 原因） */
+  message: string;
+}
+
+/** 解析结果：合法的模板 + 被跳过的条目说明。 */
+export interface TemplateParse {
+  templates: CueTemplate[];
+  issues: TemplateIssue[];
+}
+
+/**
+ * 解析模板文件：整份结构不对时没有模板；单条不对时跳过那一条并记下原因；`id` 重复时后一条覆盖前一条。
+ *
+ * @param data 已 `JSON.parse` 的文件内容。
+ * @returns 合法的模板与问题列表。
+ */
+export function parseTemplates(data: unknown): TemplateParse {
+  const root = z.object({ version: z.number().int().optional(), templates: z.array(z.unknown()) }).safeParse(data);
+  if (!root.success) return { templates: [], issues: [{ index: null, message: "templates" }] };
+  const issues: TemplateIssue[] = [];
+  if (root.data.version !== undefined && root.data.version > TEMPLATE_FILE_VERSION) {
+    issues.push({ index: null, message: `version ${root.data.version}` });
+  }
+  const byId = new Map<string, CueTemplate>();
+  root.data.templates.forEach((raw, i) => {
+    const r = templateSchema.safeParse(raw);
+    if (!r.success) {
+      const first = r.error.issues[0];
+      issues.push({ index: i + 1, message: `${first?.path.join(".") || "?"}: ${first?.message ?? ""}`.trim() });
+      return;
+    }
+    const { note, ...rest } = r.data;
+    byId.set(rest.id, { ...rest, color: rest.color as TemplateColor, ...(note ? { note } : {}) });
+  });
+  return { templates: [...byId.values()], issues };
+}
+
+/**
+ * 解析文件文本。
+ *
+ * @param text 文件内容。
+ * @returns 解析结果；不是 JSON 时没有模板并记一条问题。
+ */
+export function parseTemplateText(text: string): TemplateParse {
+  try {
+    return parseTemplates(JSON.parse(text));
+  } catch {
+    return { templates: [], issues: [{ index: null, message: "json" }] };
+  }
+}
+
+/**
+ * 序列化成文件内容（去掉运行时标记，缩进两格）。
+ *
+ * @param templates 模板。
+ * @returns JSON 文本。
+ */
+export function serializeTemplates(templates: readonly CueTemplate[]): string {
+  const clean = templates.map(({ builtin: _builtin, ...t }) => {
+    void _builtin;
+    return t;
+  });
+  return `${JSON.stringify({ version: TEMPLATE_FILE_VERSION, templates: clean }, null, 2)}\n`;
+}
+
+/** 内置模板（随软件发布，只读）。 */
+export const BUILTIN_TEMPLATES: readonly CueTemplate[] = parseTemplates(builtinFile).templates.map((t) => ({ ...t, builtin: true }));
+
+/**
+ * 内置 + 用户模板合并：同 `id` 时用户的覆盖内置的（位置保持在内置的位置），其余用户模板接在后面。
+ *
+ * @param builtin 内置模板。
+ * @param user 用户模板。
+ * @returns 合并后的列表。
+ */
+export function mergeTemplates(builtin: readonly CueTemplate[], user: readonly CueTemplate[]): CueTemplate[] {
+  const userById = new Map(user.map((t) => [t.id, t]));
+  const merged = builtin.map((t) => userById.get(t.id) ?? t);
+  const builtinIds = new Set(builtin.map((t) => t.id));
+  return [...merged, ...user.filter((t) => !builtinIds.has(t.id))];
+}
+
+/**
+ * 按分组排列：内置分组在前（`BUILTIN_GROUPS` 的顺序），用户自建的分组按出现顺序接在后面，“我的”放最后。
+ *
+ * @param templates 模板。
+ * @returns 分组与组内模板（空分组不出现）。
+ */
+export function groupTemplates(templates: readonly CueTemplate[]): { group: string; templates: CueTemplate[] }[] {
+  const order: string[] = BUILTIN_GROUPS.filter((g) => g !== CUSTOM_GROUP);
+  for (const t of templates) if (!order.includes(t.group) && t.group !== CUSTOM_GROUP) order.push(t.group);
+  order.push(CUSTOM_GROUP);
+  return order
+    .map((group) => ({ group, templates: templates.filter((t) => t.group === group) }))
+    .filter((g) => g.templates.length > 0);
+}
+
+/**
+ * 模板的显示名。
+ *
+ * @param template 模板。
+ * @param lang 界面语言（`zh` / `en`，其它按 `en`）。
+ * @returns 名称。
+ */
+export function templateName(template: Pick<CueTemplate, "name" | "id">, lang: string): string {
+  const n = template.name;
+  if (typeof n === "string") return n;
+  const zh = lang.startsWith("zh");
+  return (zh ? (n.zh ?? n.en) : (n.en ?? n.zh)) ?? template.id;
+}
+
+/**
+ * 模板在界面上的显示色（色温换算成近似的 RGB）。
+ *
+ * @param template 模板。
+ * @returns sRGB。
+ */
+export function templateRgb(template: Pick<CueTemplate, "color">): Rgb {
+  return colorValueRgb(template.color);
+}
+
+/**
+ * 生成一个不与已有模板重复的 `id`。
+ *
+ * @param existing 已有模板。
+ * @param base 前缀。
+ * @returns 新 `id`。
+ */
+export function uniqueTemplateId(existing: readonly Pick<CueTemplate, "id">[], base = "my"): string {
+  const ids = new Set(existing.map((t) => t.id));
+  for (let n = 1; ; n += 1) {
+    const id = `${base}-${n}`;
+    if (!ids.has(id)) return id;
+  }
+}
 
 /**
  * 颜色转成 CSS 变量值 `--cue-color` 用的字符串（运行时拼接，不在源码里写死颜色）。

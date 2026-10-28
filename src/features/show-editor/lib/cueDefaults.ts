@@ -1,9 +1,10 @@
 import type { AttrEffectId } from "./attrEffects";
 import { addLookCue, DEFAULT_CUE_MS, normalizeFades, type CueStyle } from "./cueOps";
+import { rgbToHsv } from "./colorMath";
 import type { CueTemplate } from "./cueTemplates";
 import type { EffectPreset } from "./effectPresets";
 import { trackCapabilities, type FixtureCapability, type TrackCapabilities } from "./fixtureProfile";
-import type { EffectId, Look, Rgb, ShowProject } from "./project";
+import type { ColorValue, EffectId, Look, Rgb, ShowProject } from "./project";
 
 /**
  * 按灯具类型决定的新片段默认外观，以及素材（模板、特效）对所选轨道是否适用。
@@ -26,8 +27,11 @@ export interface Applicability {
   total: number;
 }
 
-/** 白光类模板（调光灯也能用）。 */
-const WHITE_TEMPLATES: ReadonlySet<string> = new Set(["white", "warmWhite", "fadeWhite", "softWhite"]);
+/** 饱和度低于这个值的 RGB 模板算作白光（调光灯也能用）。 */
+const WHITE_SATURATION = 0.15;
+
+/** 新建片段的样式：模板给的颜色（RGB 或色温）、亮度、淡入淡出与长度。 */
+export type TemplateStyle = Partial<CueStyle> & { lengthMs?: number; color?: ColorValue };
 
 /** 只用强度就能表现的经典特效（颜色只是点缀）。 */
 const INTENSITY_EFFECTS: ReadonlySet<EffectId> = new Set<EffectId>(["breathe", "chase", "pulse", "sparkle", "strobe"]);
@@ -48,10 +52,11 @@ const ATTR_EFFECT_NEEDS: Record<AttrEffectId, FixtureCapability> = {
  * 模板需要的能力。
  *
  * @param template 模板。
- * @returns 白光类为强度，彩色为混色。
+ * @returns 色温模板和接近白色的 RGB 模板为强度（调光灯也能用），其余彩色为混色。
  */
-export function templateNeeds(template: Pick<CueTemplate, "id">): FixtureCapability {
-  return WHITE_TEMPLATES.has(template.id) ? "intensity" : "mixing";
+export function templateNeeds(template: Pick<CueTemplate, "color">): FixtureCapability {
+  if (template.color.kind === "kelvin") return "intensity";
+  return rgbToHsv(template.color.rgb).s < WHITE_SATURATION ? "intensity" : "mixing";
 }
 
 /**
@@ -113,13 +118,18 @@ export function trackSupports(
  * 新片段的默认外观（按轨道上灯具的能力）。
  *
  * @param caps 轨道能力。
- * @param rgb 颜色（模板给定；省略为白光）。
+ * @param color 颜色（模板给定的 RGB 或色温；省略为白光）。
  * @returns 外观：强度 100；能混色或调色温时加颜色层；能动时加居中的 Pan / Tilt。
  */
-export function defaultLook(caps: TrackCapabilities, rgb?: Rgb): Look {
+export function defaultLook(caps: TrackCapabilities, color?: Rgb | ColorValue): Look {
   const look: Look = { intensity: { kind: "value", value: 100 } };
   if (caps.any.has("mixing") || caps.any.has("colorTemp")) {
-    look.color = { kind: "value", value: { kind: "rgb", rgb: rgb ? [...rgb] : [255, 255, 255] } };
+    const value: ColorValue = !color
+      ? { kind: "rgb", rgb: [255, 255, 255] }
+      : Array.isArray(color)
+        ? { kind: "rgb", rgb: [...color] as Rgb }
+        : structuredClone(color);
+    look.color = { kind: "value", value };
   }
   if (caps.any.has("position")) {
     look.attrs = { pan: { kind: "value", value: 0.5 }, tilt: { kind: "value", value: 0.5 } };
@@ -133,18 +143,18 @@ export function defaultLook(caps: TrackCapabilities, rgb?: Rgb): Look {
  * @param d 工程草稿。
  * @param trackId 轨道（场景轨道不新建）。
  * @param timeMs 起点。
- * @param style 模板给的颜色、亮度、淡入淡出与长度。
+ * @param style 模板给的颜色（`color` 优先，其次 `rgb`）、亮度、淡入淡出与长度。
  * @returns 新片段 id；放不下或轨道不可用时为 `null`。
  */
 export function addDefaultLook(
   d: ShowProject,
   trackId: string,
   timeMs: number,
-  style: Partial<CueStyle> & { lengthMs?: number } = {},
+  style: TemplateStyle = {},
 ): string | null {
   const track = d.tracks.find((t) => t.id === trackId);
   if (!track || track.target.kind === "scene") return null;
-  const look = defaultLook(trackCapabilities(d, track), style.rgb);
+  const look = defaultLook(trackCapabilities(d, track), style.color ?? style.rgb);
   const id = addLookCue(d, trackId, timeMs, look, style.lengthMs ?? DEFAULT_CUE_MS);
   const cue = id ? d.cues.find((c) => c.id === id) : undefined;
   if (cue) {

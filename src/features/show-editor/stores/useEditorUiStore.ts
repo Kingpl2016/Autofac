@@ -12,7 +12,19 @@ export type ContextTarget =
   | { kind: "mediaTrack"; id: string }
   /** 轨道区空白处：所在轨道（在所有轨道之下时为 `null`）与时刻 */
   | { kind: "empty"; trackId: string | null; timeMs: number }
-  | { kind: "ruler"; timeMs: number };
+  | { kind: "ruler"; timeMs: number }
+  | { kind: "marker"; id: string }
+  | { kind: "section"; id: string }
+  /** 标尺上的 A-B 循环区间 */
+  | { kind: "loop"; timeMs: number }
+  /** 片段上的关键帧 ◆：所在片段与片段内时刻 */
+  | { kind: "keyframe"; cueId: string; uMs: number };
+
+/** 时间线上可以选中的标记类对象（标记点、段落）。 */
+export interface TimelineObject {
+  kind: "marker" | "section";
+  id: string;
+}
 
 /** 左侧图标栏的素材分区。 */
 export const LIBRARY_TABS = ["media", "fixtures", "cues", "effects", "presets", "groups", "history"] as const;
@@ -44,6 +56,38 @@ interface EditorUiState {
    * @param primary 主轨道。
    */
   selectTracks: (ids: string[], primary?: string | null) => void;
+  /** 选中的标记点 / 段落（与片段、媒体片段的选择互斥：按 Delete 删的就是最后点选的那类） */
+  selectedTimelineObject: TimelineObject | null;
+  /**
+   * 选中一个标记点 / 段落（同时清空片段与媒体片段的选择）；`null` 取消。
+   *
+   * @param obj 对象。
+   */
+  selectTimelineObject: (obj: TimelineObject | null) => void;
+  /** 工具条的帮助菜单是否打开（F1） */
+  helpOpen: boolean;
+  /**
+   * 打开 / 关闭帮助菜单。
+   *
+   * @param open 是否打开。
+   */
+  setHelpOpen: (open: boolean) => void;
+  /** “显示本页提示”：本次会话内把当前页面上的全部局部提示一起显示（包括已关掉的） */
+  hintsShowAll: boolean;
+  /**
+   * 开 / 关“显示本页提示”。
+   *
+   * @param on 是否显示。
+   */
+  setHintsShowAll: (on: boolean) => void;
+  /** 正在改名的标记点 / 段落（双击、F2 或右键菜单的“重命名”） */
+  renamingObjectId: string | null;
+  /**
+   * 进入 / 退出改名。
+   *
+   * @param id 标记点或段落 id；`null` 退出。
+   */
+  setRenamingObject: (id: string | null) => void;
   /** 右键菜单的目标（打开菜单时由事件位置决定） */
   contextTarget: ContextTarget | null;
   /**
@@ -261,7 +305,17 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     })),
   setSelectedFixtures: (ids) => set({ selectedFixtureIds: ids }),
   selectGroup: (id) => set({ selectedGroupId: id }),
-  selectCues: (ids) => set(ids.length > 0 ? { selectedCueIds: ids, selectedMediaClipIds: [] } : { selectedCueIds: ids }),
+  selectCues: (ids) =>
+    set(ids.length > 0 ? { selectedCueIds: ids, selectedMediaClipIds: [], selectedTimelineObject: null } : { selectedCueIds: ids }),
+  renamingObjectId: null,
+  setRenamingObject: (renamingObjectId) => set({ renamingObjectId }),
+  helpOpen: false,
+  setHelpOpen: (helpOpen) => set({ helpOpen }),
+  hintsShowAll: false,
+  setHintsShowAll: (hintsShowAll) => set({ hintsShowAll }),
+  selectedTimelineObject: null,
+  selectTimelineObject: (obj) =>
+    set(obj ? { selectedTimelineObject: obj, selectedCueIds: [], selectedMediaClipIds: [] } : { selectedTimelineObject: null }),
   keymapOpen: false,
   setKeymapOpen: (keymapOpen) => set({ keymapOpen }),
   durationRequest: null,
@@ -269,12 +323,14 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   draftOpen: false,
   setDraftOpen: (draftOpen) => set({ draftOpen }),
   selectedMediaClipIds: [],
-  selectMediaClips: (ids) => set(ids.length > 0 ? { selectedMediaClipIds: ids, selectedCueIds: [] } : { selectedMediaClipIds: ids }),
+  selectMediaClips: (ids) =>
+    set(ids.length > 0 ? { selectedMediaClipIds: ids, selectedCueIds: [], selectedTimelineObject: null } : { selectedMediaClipIds: ids }),
   toggleCue: (id) =>
     set((s) => ({
       selectedCueIds: s.selectedCueIds.includes(id)
         ? s.selectedCueIds.filter((x) => x !== id)
         : [...s.selectedCueIds, id],
+      selectedTimelineObject: null,
     })),
   selectTrack: (id) => set({ selectedTrackId: id, selectedTrackIds: id ? [id] : [] }),
   selectedTrackIds: [],
@@ -298,5 +354,6 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
       selectedTrackId: null,
       selectedTrackIds: [],
       selectedMediaClipIds: [],
+      selectedTimelineObject: null,
     }),
 }));

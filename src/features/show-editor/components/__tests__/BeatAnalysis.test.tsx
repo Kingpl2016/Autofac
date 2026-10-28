@@ -90,7 +90,7 @@ describe("段落色带", () => {
       }),
     );
     render(<MarkerStrip />);
-    const band = within(screen.getByRole("group", { name: /标记/ })).getByRole("button", { name: /段落 副歌/ });
+    const band = within(screen.getByRole("group", { name: /标记/ })).getByRole("button", { name: /^段落 副歌/ });
     fireEvent.click(band);
     expect(useEditorUiStore.getState().playheadMs).toBe(10_000);
     fireEvent.doubleClick(band);

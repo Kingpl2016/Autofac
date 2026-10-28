@@ -1,5 +1,5 @@
-import type { CueStyle } from "../lib/cueOps";
-import type { CueTemplate } from "../lib/cueTemplates";
+import type { TemplateStyle } from "../lib/cueDefaults";
+import { templateRgb, type CueTemplate } from "../lib/cueTemplates";
 import type { Track } from "../lib/project";
 import { pointToTimeRow, type TimelineViewport } from "./geometry";
 
@@ -15,11 +15,12 @@ export type DropResult =
  * 模板转成新建 Cue 的外观。
  *
  * @param template 素材库里的模板。
- * @returns 可传给 `addStaticCue` 的外观参数。
+ * @returns 新建片段的样式（颜色保持模板原样：RGB 或色温；`rgb` 为显示用的近似色）。
  */
-export function templateStyle(template: CueTemplate): Partial<CueStyle> {
+export function templateStyle(template: CueTemplate): TemplateStyle {
   return {
-    rgb: [...template.rgb],
+    color: structuredClone(template.color),
+    rgb: templateRgb(template),
     brightness: template.brightness,
     fadeInMs: template.fadeInMs,
     fadeOutMs: template.fadeOutMs,
@@ -41,7 +42,7 @@ export function dropTemplate(
   pointer: { x: number; y: number },
   tracks: readonly Track[],
   template: CueTemplate,
-  addAt: (trackId: string, timeMs: number, style: Partial<CueStyle>) => string | null,
+  addAt: (trackId: string, timeMs: number, style: TemplateStyle) => string | null,
 ): DropResult {
   return dropOnTimeline(viewport, pointer, tracks, (trackId, timeMs) =>
     addAt(trackId, timeMs, templateStyle(template)),

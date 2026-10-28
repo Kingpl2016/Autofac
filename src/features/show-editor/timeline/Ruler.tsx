@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import { X } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import { requestShowDuration } from "../hooks/editorActions";
+import { clearLoop } from "../hooks/timelineObjectActions";
 import { normalizeDuration } from "../lib/duration";
 import { MAX_DURATION_MS, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
@@ -17,8 +20,8 @@ import { useTimelineScrollStore } from "./timelineScrollStore";
 const FRAME = Math.round(1000 / OUTPUT_FPS);
 
 /**
- * 时间线标尺：自适应刻度（缩放到帧级时显示帧号）、A-B 循环区间（可拖动 / 方向键调整入点出点），
- * 点击或拖动标尺定位播放头。
+ * 时间线标尺：自适应刻度（缩放到帧级时显示帧号）、A-B 循环区间（可拖动 / 方向键调整入点出点，
+ * 在手柄上按 Delete 或点循环带中间的 × 清除），点击或拖动标尺定位播放头。
  */
 export function Ruler() {
   const { t } = useTranslation();
@@ -127,6 +130,7 @@ export function Ruler() {
           const step = e.shiftKey ? FRAME * 10 : FRAME;
           if (e.key === "ArrowLeft") commitEdge(edge, clamp(ms - step, 0, durationMs));
           else if (e.key === "ArrowRight") commitEdge(edge, clamp(ms + step, 0, durationMs));
+          else if (e.key === "Delete" || e.key === "Backspace") clearLoop();
           else return;
           e.preventDefault();
           e.stopPropagation();
@@ -159,10 +163,31 @@ export function Ruler() {
       )}
       {range && (
         <div
-          aria-hidden
-          className="absolute inset-y-0 bg-loop-range"
+          data-loop
+          className="group/loop absolute inset-y-0 bg-loop-range"
           style={{ left: xOf(range.startMs), width: Math.max(0, xOf(range.endMs) - xOf(range.startMs)) }}
-        />
+        >
+          {/* 悬停循环带时在中间出现 ×：清除循环区间（也可在入点 / 出点手柄上按 Delete） */}
+          {xOf(range.endMs) - xOf(range.startMs) >= 24 && !edgeDrag && (
+            <button
+              type="button"
+              aria-label={t("editor.loop.clear")}
+              title={t("editor.loop.clear")}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                clearLoop();
+              }}
+              className={cn(
+                "absolute left-1/2 top-1/2 z-[6] flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-sm",
+                "bg-surface-3/90 text-muted-foreground opacity-0 transition-opacity group-hover/loop:opacity-100",
+                "hover:bg-destructive hover:text-destructive-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              )}
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          )}
+        </div>
       )}
       <svg aria-hidden className="absolute inset-0 h-full w-full text-muted-foreground">
         {ticks.minor.map((ms) => (

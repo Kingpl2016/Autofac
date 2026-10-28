@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import i18n from "@/shared/i18n";
 
@@ -40,6 +40,15 @@ import { availableSteps, HINTS, nextHint, TOUR_STEPS } from "../guideContent";
 import { runTour, stopTour } from "../runTour";
 import { OnboardingRuntime } from "../useOnboarding";
 import { sanitizeOnboarding, TOUR_VERSION, useOnboardingStore } from "../../stores/useOnboardingStore";
+import { useEditorUiStore } from "../../stores/useEditorUiStore";
+import { HelpMenu } from "../../components/HelpMenu";
+import { useEditorHotkeys } from "../../hooks/useEditorHotkeys";
+
+/** 挂上全局快捷键（F1 打开帮助菜单）。 */
+function Hotkeys() {
+  useEditorHotkeys();
+  return null;
+}
 
 const store = () => useOnboardingStore.getState();
 
@@ -167,5 +176,53 @@ describe("局部提示", () => {
       (hintsApi.config?.onDismiss as (el: Element, hint: { id: string }) => void)(document.body, { id: "patchBatch" });
     });
     expect(store().dismissedHints).toEqual(["patchBatch"]);
+  });
+});
+
+describe("帮助菜单", () => {
+  it("F1 打开；“显示本页提示”把已关掉的提示也显示出来，全部看完后自动退出", async () => {
+    mount("patch-batch", "track-headers");
+    useOnboardingStore.setState({ tourVersion: TOUR_VERSION, dismissedHints: ["trackHeaders", "patchBatch"] });
+    useEditorUiStore.setState({ helpOpen: false, hintsShowAll: false });
+    render(
+      <>
+        <Hotkeys />
+        <HelpMenu />
+        <OnboardingRuntime />
+      </>,
+    );
+    await act(async () => {});
+    expect(hintsApi.show).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "F1" });
+    expect(useEditorUiStore.getState().helpOpen).toBe(true);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "显示本页提示" }));
+    expect(useEditorUiStore.getState().hintsShowAll).toBe(true);
+    await vi.waitFor(() => expect(hintsApi.show).toHaveBeenCalled());
+    const [list] = hintsApi.setHints.mock.lastCall as [{ id: string }[]];
+    expect(list.map((h) => h.id)).toEqual(["trackHeaders", "patchBatch"]);
+
+    const dismiss = hintsApi.config?.onDismiss as (el: Element, hint: { id: string }) => void;
+    act(() => dismiss(document.body, { id: "trackHeaders" }));
+    expect(useEditorUiStore.getState().hintsShowAll).toBe(true);
+    act(() => dismiss(document.body, { id: "patchBatch" }));
+    expect(useEditorUiStore.getState().hintsShowAll).toBe(false);
+  });
+
+  it("菜单里可以重新播放引导、重置引导与提示", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useOnboardingStore.setState({ tourVersion: TOUR_VERSION, dismissedHints: ["swatches"] });
+    useEditorUiStore.setState({ helpOpen: true, hintsShowAll: false });
+    render(<HelpMenu />);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重新播放上手引导" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(tour.drive).toHaveBeenCalledTimes(1);
+    stopTour();
+
+    act(() => useEditorUiStore.setState({ helpOpen: true }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重置上手引导与提示" }));
+    expect(store()).toMatchObject({ tourVersion: 0, dismissedHints: [] });
   });
 });

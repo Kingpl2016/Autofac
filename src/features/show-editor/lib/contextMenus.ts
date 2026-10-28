@@ -1,5 +1,6 @@
 import type { ContextTarget } from "../stores/useEditorUiStore";
 import { fixturesOfTracks } from "./fixtureBatch";
+import { templateFromCue } from "./templateOps";
 import type { ShowProject } from "./project";
 
 /**
@@ -21,6 +22,7 @@ export type ContextActionId =
   | "endHere"
   | "convertToLook"
   | "saveAsPreset"
+  | "saveAsTemplate"
   | "selectTrackCues"
   | "toggleMute"
   | "toggleSolo"
@@ -37,7 +39,21 @@ export type ContextActionId =
   | "toggleMediaMute"
   | "toggleMediaSolo"
   | "toggleMediaLock"
-  | "deleteMediaTrack";
+  | "deleteMediaTrack"
+  | "deleteMarker"
+  | "renameObject"
+  | "markerToPlayhead"
+  | "sectionFromMarker"
+  | "deleteSection"
+  | "loopSection"
+  | "selectSectionCues"
+  | "clearLoop"
+  | "playLoop"
+  | "loopToSection"
+  | "deleteKey"
+  | "clearKeys"
+  | "playheadToKey"
+  | "clearTempo";
 
 /** 菜单里的一项。 */
 export type MenuEntry =
@@ -54,7 +70,9 @@ export type MenuEntry =
     }
   | { kind: "separator" }
   /** 颜色标签子菜单（作用于选中的片段） */
-  | { kind: "tags" };
+  | { kind: "tags" }
+  /** 段落颜色子菜单 */
+  | { kind: "sectionColors" };
 
 /** 生成菜单需要的界面状态。 */
 export interface MenuContext {
@@ -99,6 +117,9 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
         sep,
         ...(cue.kind === "static" ? [act("convertToLook", "convertToLook")] : []),
         ...(cue.kind === "look" ? [act("saveAsPreset", "saveAsPreset")] : []),
+        ...(cue.kind === "look" || cue.kind === "static"
+          ? [act("saveAsTemplate", "saveAsTemplate", { disabled: templateFromCue(cue) === null })]
+          : []),
         cmd("select.after"),
         act("selectTrackCues", "selectTrackCues"),
         sep,
@@ -192,6 +213,47 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
         sep,
         act("endHere", "endHere", { disabled: target.timeMs <= 0 }),
         cmd("timeline.fitDuration"),
+        ...(project.tempo ? [sep, act("clearTempo", "clearTempo", { destructive: true })] : []),
       ];
+    case "marker": {
+      if (!project.markers.some((m) => m.id === target.id)) return [];
+      return [
+        act("renameObject", "rename"),
+        act("markerToPlayhead", "markerToPlayhead"),
+        act("sectionFromMarker", "sectionFromMarker"),
+        sep,
+        act("deleteMarker", "deleteMarker", { destructive: true }),
+      ];
+    }
+    case "section": {
+      if (!project.sections.some((s) => s.id === target.id)) return [];
+      return [
+        act("renameObject", "rename"),
+        { kind: "sectionColors" },
+        act("loopSection", "loopSection"),
+        act("selectSectionCues", "selectSectionCues"),
+        sep,
+        act("deleteSection", "deleteSection", { destructive: true }),
+      ];
+    }
+    case "loop":
+      if (!project.loopRange) return [];
+      return [
+        act("playLoop", "playLoop"),
+        act("loopToSection", "loopToSection"),
+        sep,
+        act("clearLoop", "clearLoop", { destructive: true }),
+      ];
+    case "keyframe": {
+      const cue = project.cues.find((c) => c.id === target.cueId);
+      if (!cue) return [];
+      const locked = project.tracks.find((t) => t.id === cue.trackId)?.lock === true;
+      return [
+        act("playheadToKey", "playheadToKey"),
+        sep,
+        act("deleteKey", "deleteKey", { destructive: true, disabled: locked }),
+        act("clearKeys", "clearKeys", { destructive: true, disabled: locked }),
+      ];
+    }
   }
 }

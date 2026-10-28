@@ -80,9 +80,10 @@ describe("编程器面板", () => {
     fireEvent.change(intensity, { target: { value: "60" } });
     fireEvent.blur(intensity);
     act(() => ui().setSelectedFixtures([ids()[2]]));
-    const red = screen.getByRole("textbox", { name: /红.*数值|红/ });
-    fireEvent.change(red, { target: { value: "0" } });
-    fireEvent.blur(red);
+    // 色盘默认是色轮（HSV）：用十六进制输入青色
+    const hex = screen.getByRole("textbox", { name: "十六进制" });
+    fireEvent.change(hex, { target: { value: "#00ffff" } });
+    fireEvent.blur(hex);
     // 只设颜色的灯自动给 100% 强度
     expect(programmer().values[ids()[2]]).toMatchObject({ intensity: fixed(100), color: fixed({ kind: "rgb", rgb: [0, 255, 255] }) });
     expect(programmer().values[ids()[0]]).toEqual({ intensity: fixed(60) });

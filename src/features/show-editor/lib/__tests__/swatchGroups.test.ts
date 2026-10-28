@@ -4,7 +4,7 @@ import { produce } from "immer";
 import { addFixtures, createGroup } from "../ops";
 import { createEmptyProject, type ShowProject } from "../project";
 import { pickSwatch, swatchSections, visibleOrder } from "../swatchGroups";
-import { DEFAULT_EDITOR_PREFS, sanitizeEditorPrefs } from "../../stores/useEditorPrefsStore";
+import { clampHeaderWidth, DEFAULT_EDITOR_PREFS, sanitizeEditorPrefs } from "../../stores/useEditorPrefsStore";
 import { DIMMER, RGBW } from "./testkit";
 
 /** U1：调光灯 @1；U0：RGBW @9、@1（Patch 顺序打乱）；前两台 RGBW 编为“前排”。 */
@@ -71,10 +71,14 @@ describe("预览色块分区", () => {
 
   it("视图偏好：默认色块；非法值逐项兜底", () => {
     expect(DEFAULT_EDITOR_PREFS.centerView).toBe("swatches");
-    expect(sanitizeEditorPrefs({ centerView: "stage", swatchGroupBy: "x", swatchDensity: 3 }, DEFAULT_EDITOR_PREFS)).toEqual({
+    expect(sanitizeEditorPrefs({ centerView: "stage", swatchGroupBy: "x", swatchDensity: 3, trackHeaderWidth: 9999 }, DEFAULT_EDITOR_PREFS)).toEqual({
       centerView: "stage",
       swatchGroupBy: "universe",
       swatchDensity: "comfortable",
+      trackHeaderWidth: 480,
     });
+    expect(sanitizeEditorPrefs({ trackHeaderWidth: "wide" }, DEFAULT_EDITOR_PREFS).trackHeaderWidth).toBe(208);
+    expect(clampHeaderWidth(10.6 + 200)).toBe(211);
+    expect(clampHeaderWidth(Number.NaN)).toBe(208);
   });
 });

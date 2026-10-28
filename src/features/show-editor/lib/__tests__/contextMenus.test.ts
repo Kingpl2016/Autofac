@@ -20,7 +20,7 @@ function base(): ShowProject {
 
 const ctx = { selectedTrackIds: [] as string[], hasClipboard: false };
 /** 菜单项的简写：命令 id / 动作 id / `-` / `tags` */
-const ids = (m: MenuEntry[]) => m.map((e) => (e.kind === "separator" ? "-" : e.kind === "tags" ? "tags" : e.id));
+const ids = (m: MenuEntry[]) => m.map((e) => (e.kind === "separator" ? "-" : e.kind === "tags" || e.kind === "sectionColors" ? e.kind : e.id));
 const action = (m: MenuEntry[], id: string) => m.find((e) => e.kind === "action" && e.id === id) as Extract<MenuEntry, { kind: "action" }>;
 
 describe("右键菜单内容", () => {
@@ -30,6 +30,7 @@ describe("右键菜单内容", () => {
     expect(ids(m)).toContain("edit.cut");
     expect(ids(m)).toContain("tags");
     expect(ids(m)).toContain("convertToLook");
+    expect(action(m, "saveAsTemplate").disabled).toBe(false);
     expect(ids(m)).not.toContain("saveAsPreset");
     expect(ids(m).at(-1)).toBe("edit.rippleDelete");
     expect(buildContextMenu({ kind: "cue", id: "gone" }, p, ctx)).toEqual([]);
@@ -78,6 +79,32 @@ describe("右键菜单内容", () => {
     expect(action(buildContextMenu({ kind: "empty", trackId: p.tracks[1].id, timeMs: 0 }, p, ctx), "addCueHere").disabled).toBe(false);
     expect(action(buildContextMenu({ kind: "ruler", timeMs: 0 }, p, ctx), "endHere").disabled).toBe(true);
     expect(action(buildContextMenu({ kind: "ruler", timeMs: 5000 }, p, ctx), "endHere").disabled).toBe(false);
+  });
+
+  it("标记点、段落、循环区间、关键帧的菜单；标尺在设置了节拍时可清除节拍网格", () => {
+    const p = produce(base(), (d) => {
+      d.markers.push({ id: "mk", timeMs: 1000, label: "副歌" });
+      d.sections.push({ id: "sc", name: "主歌", startMs: 0, endMs: 4000, color: [0, 0, 255] });
+      d.loopRange = { startMs: 0, endMs: 2000 };
+      d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 };
+    });
+    expect(ids(buildContextMenu({ kind: "marker", id: "mk" }, p, ctx))).toEqual([
+      "renameObject",
+      "markerToPlayhead",
+      "sectionFromMarker",
+      "-",
+      "deleteMarker",
+    ]);
+    const section = buildContextMenu({ kind: "section", id: "sc" }, p, ctx);
+    expect(ids(section)).toContain("sectionColors");
+    expect(action(section, "deleteSection").destructive).toBe(true);
+    expect(ids(buildContextMenu({ kind: "loop", timeMs: 0 }, p, ctx)).at(-1)).toBe("clearLoop");
+    const key = buildContextMenu({ kind: "keyframe", cueId: p.cues[0].id, uMs: 0 }, p, ctx);
+    expect(ids(key)).toEqual(["playheadToKey", "-", "deleteKey", "clearKeys"]);
+    expect(ids(buildContextMenu({ kind: "ruler", timeMs: 0 }, p, ctx)).at(-1)).toBe("clearTempo");
+    expect(ids(buildContextMenu({ kind: "ruler", timeMs: 0 }, base(), ctx))).not.toContain("clearTempo");
+    expect(buildContextMenu({ kind: "marker", id: "gone" }, p, ctx)).toEqual([]);
+    expect(buildContextMenu({ kind: "loop", timeMs: 0 }, base(), ctx)).toEqual([]);
   });
 
   it("媒体轨道头：开关反映当前状态", () => {
