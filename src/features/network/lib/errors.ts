@@ -34,7 +34,7 @@ const KNOWN_CODES = new Set([
 /**
  * 把任意抛出值规整为 [`NetError`]。
  *
- * Tauri 命令的 `Err({code,message})` 会原样 reject 为对象；演示模式与旧代码路径可能抛字符串或 `Error`。
+ * Tauri 命令的 `Err({code,message})` 会原样 reject 为对象；个别路径可能抛字符串或 `Error`，这里一并兜底。
  *
  * # Arguments
  *

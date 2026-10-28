@@ -7,14 +7,10 @@ import {
   LogLevel,
 } from "@tauri-apps/plugin-log";
 
-import { getDemoBackend } from "./demoBridge";
-
 export { LogLevel };
 
 /**
  * 订阅 tauri-plugin-log 的日志记录。
- *
- * 演示模式下日志面板的内容由演示数据提供，这里不再接入真实后端日志，避免两者混在一起。
  *
  * # Arguments
  *
@@ -27,7 +23,6 @@ export { LogLevel };
 export function attachLogger(
   fn: Parameters<typeof pluginAttachLogger>[0],
 ): ReturnType<typeof pluginAttachLogger> {
-  if (getDemoBackend()) return Promise.resolve(() => {});
   return pluginAttachLogger(fn);
 }
 

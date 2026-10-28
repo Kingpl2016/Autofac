@@ -6,7 +6,7 @@ import { onEvent } from "@/shared/tauri/events";
  * 把 Tauri 事件包成冷 Observable：订阅时才 `listen`，退订时 `unlisten`。
  *
  * `listen` 是异步的。若在它完成前就退订，这里在它完成后立刻补一次 `unlisten`，
- * 不会留下泄漏的监听器。演示模式下由 {@link onEvent} 决定走本地总线还是真实后端。
+ * 不会留下泄漏的监听器。
  *
  * @param event 事件名。
  * @returns 载荷流；`listen` 失败时以错误结束。

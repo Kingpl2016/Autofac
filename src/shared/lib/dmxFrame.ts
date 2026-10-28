@@ -54,7 +54,7 @@ interface DmxFrameInput {
 }
 
 /**
- * 编码一帧（演示后端与测试使用；真实后端在 Rust 侧编码）。
+ * 编码一帧（测试使用；真实后端在 Rust 侧编码）。
  *
  * # Arguments
  *

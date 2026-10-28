@@ -1,7 +1,0 @@
-[
-  { "name": "以太网", "ip": "192.168.1.10", "isLoopback": false },
-  { "name": "以太网 2 (灯光专网)", "ip": "10.10.0.10", "isLoopback": false },
-  { "name": "WLAN", "ip": "192.168.43.101", "isLoopback": false },
-  { "name": "VMware Network Adapter VMnet8", "ip": "192.168.150.1", "isLoopback": false },
-  { "name": "Loopback Pseudo-Interface 1", "ip": "127.0.0.1", "isLoopback": true }
-]

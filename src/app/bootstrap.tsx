@@ -27,20 +27,13 @@ function renderFatal(container: HTMLElement, error: unknown): void {
 /**
  * 启动主应用：
  *
- * 1. 演示模式（`npm run dev:demo`）下先装好演示后端，保证各监听器与首次查询挂载时就能拿到演示数据；
- *    正常构建里这段分支会被整体移除。
- * 2. 创建查询客户端、事件总线与插件宿主，依次执行各插件的 `setup`。
- * 3. 用插件组合出的 Provider 与 Runtime 渲染根组件。
+ * 1. 创建查询客户端、事件总线与插件宿主，依次执行各插件的 `setup`。
+ * 2. 用插件组合出的 Provider 与 Runtime 渲染根组件。
  *
  * @param container 挂载点。
  */
 export async function bootstrap(container: HTMLElement): Promise<void> {
   try {
-    if (__DEMO_MODE__) {
-      const { installDemo } = await import("@/demo");
-      await installDemo();
-    }
-
     const queryClient = new QueryClient({
       defaultOptions: { queries: { refetchOnWindowFocus: true } },
     });

@@ -1,7 +1,5 @@
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 
-import { getDemoBackend } from "./demoBridge";
-
 export type { DownloadEvent, Update };
 
 /**
@@ -15,6 +13,5 @@ export type { DownloadEvent, Update };
  * 有可用更新时返回 [`Update`]（可调用 `downloadAndInstall`）；已是最新返回 `null`。
  */
 export function checkForUpdate(): Promise<Update | null> {
-  const demo = getDemoBackend();
-  return demo ? demo.checkForUpdate() : check();
+  return check();
 }

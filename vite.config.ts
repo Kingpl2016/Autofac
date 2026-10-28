@@ -7,15 +7,8 @@ import path from "node:path";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
-  // 演示模式：`vite --mode demo`（npm run dev:demo）或设置环境变量 VITE_DEMO_MODE=1。
-  // 以构建期常量 `__DEMO_MODE__` 注入，普通构建里整段演示代码会被摇树移除。
-  const demo = mode === "demo" || process.env.VITE_DEMO_MODE === "1";
-
+export default defineConfig(() => {
   return {
-    define: {
-      __DEMO_MODE__: JSON.stringify(demo),
-    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

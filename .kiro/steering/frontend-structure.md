@@ -25,7 +25,6 @@ web/src/
 │       ├── lib/         纯逻辑函数、类型、常量
 │       ├── __tests__/   测试
 │       └── index.ts     公开 API（唯一出口）
-├── demo/           ← 演示模式（npm run dev:demo）：模拟后端 + data/*.json 测试数据；仅构建期开关打开时动态导入
 ├── layouts/        ← 页面布局（主布局、顶栏、侧栏、守卫）
 ├── pages/          ← 路由页面，每个路由一个薄层文件，只做组合
 ├── shared/         ← 跨功能通用代码（无业务含义）
@@ -70,13 +69,6 @@ HTTP 请求函数                          → shared/request/endpoints/<resourc
 某个业务功能专属的组件 / hook / 纯逻辑   → features/<domain>/<slice>/{components,hooks,lib}/
 路由入口页面                            → pages/<route>/<RoutePage>.tsx
 ```
-
-### 演示模式（`src/demo/`）
-
-- 测试数据只放在 `demo/data/*.json`，**不写进业务组件 / store / hook**；引擎代码（`demo/engine/`）只读这些数据。
-- 前端接入点只有 `shared/tauri/` 下的 `invoke.ts`、`events.ts`、`stream.ts`（二进制 DMX 通道流）、`updater.ts`、`log.ts`，经 `demoBridge.ts` 注册；页面与 store 不感知演示模式。
-- 入口在 `main.tsx` 里用构建期常量 `__DEMO_MODE__` 保护的动态 `import("@/demo")`，普通构建不得包含 `demo/`。
-- 新增后端命令或事件时，同步在 `demo/engine/` 对应模块里补上模拟（否则该命令在演示模式下会落到真实后端）。
 
 ---
 

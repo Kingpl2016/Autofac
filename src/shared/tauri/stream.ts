@@ -1,6 +1,5 @@
 import { Channel } from "@tauri-apps/api/core";
 
-import { getDemoStream } from "./demoBridge";
 import { invoke } from "./invoke";
 
 /**
@@ -8,8 +7,6 @@ import { invoke } from "./invoke";
  *
  * 后端至多保留一个订阅：新订阅替换旧订阅，取消时按订阅 id 匹配，旧订阅迟到的取消不会影响新订阅
  * （React 严格模式下 effect 会“订阅 → 取消 → 再订阅”）。取消后仍在途中的帧会被丢弃。
- * 演示模式下走演示后端注册的提供者；这必须在构造 Tauri `Channel` 之前判断，
- * 因为浏览器演示环境里没有 `__TAURI_INTERNALS__`，构造即抛错。
  *
  * # Arguments
  *
@@ -22,9 +19,6 @@ import { invoke } from "./invoke";
 export async function subscribeDmxStream(
   onFrame: (buf: ArrayBuffer) => void,
 ): Promise<() => void> {
-  const demo = getDemoStream();
-  if (demo) return demo.subscribe(onFrame);
-
   let active = true;
   const channel = new Channel<ArrayBuffer>((buf) => {
     if (active) onFrame(buf);

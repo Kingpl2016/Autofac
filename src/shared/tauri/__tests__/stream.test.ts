@@ -16,7 +16,7 @@ const core = vi.hoisted(() => {
 vi.mock("@tauri-apps/api/core", () => ({ Channel: core.Channel, invoke: core.invoke }));
 
 beforeEach(() => {
-  // demoBridge 有模块级状态：每个用例重新加载，互不影响
+  // 每个用例重新加载被测模块，互不影响
   vi.resetModules();
   core.channels.length = 0;
   core.invoke.mockReset();
@@ -44,21 +44,5 @@ describe("subscribeDmxStream", () => {
 
     core.channels[0].deliver(new ArrayBuffer(6));
     expect(onFrame).toHaveBeenCalledTimes(1);
-  });
-
-  it("演示模式：走注册的提供者，不构造 Tauri Channel、不调用命令", async () => {
-    const { installDemoStream } = await import("../demoBridge");
-    const off = vi.fn();
-    const provider = { subscribe: vi.fn(() => off) };
-    installDemoStream(provider);
-    const { subscribeDmxStream } = await import("../stream");
-
-    const onFrame = vi.fn();
-    const cancel = await subscribeDmxStream(onFrame);
-    expect(provider.subscribe).toHaveBeenCalledWith(onFrame);
-    expect(core.channels).toHaveLength(0);
-    expect(core.invoke).not.toHaveBeenCalled();
-    cancel();
-    expect(off).toHaveBeenCalledTimes(1);
   });
 });
