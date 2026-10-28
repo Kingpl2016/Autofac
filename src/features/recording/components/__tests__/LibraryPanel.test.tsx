@@ -141,8 +141,7 @@ describe("LibraryPanel", () => {
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((r) => r.textContent?.slice(0, 2))).toEqual(["01", "02"]);
     // 摘要：时长 · Universe 数 · 大小；不再平铺日期 / 来源 / 帧数
-    expect(rows[0].textContent).toContain("1:05.0 · 2 个 Universe");
-    expect(rows[0].textContent).not.toContain("2.0 KiB");
+    expect(rows[0].textContent).toContain("1:05.0 · 2 个 Universe · 2.0 KiB");
     expect(rows[0].textContent).not.toContain("10.0.0.1");
     expect(screen.getByText("开场秀").getAttribute("title")).toContain("10.0.0.1");
     openMenu("开场秀");
