@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { compareIp } from "../ip";
+import { compareIp, isUnspecifiedIpv4 } from "../ip";
+
+describe("isUnspecifiedIpv4", () => {
+  it("只把 0.0.0.0 视为未指定地址（不能作为发送目标）", () => {
+    expect(isUnspecifiedIpv4("0.0.0.0")).toBe(true);
+    expect(isUnspecifiedIpv4(" 00.0.000.0 ")).toBe(true);
+    for (const ip of ["255.255.255.255", "127.0.0.1", "0.0.0.1", "10.0.0.0", "", "0.0.0"]) expect(isUnspecifiedIpv4(ip), ip).toBe(false);
+  });
+});
 
 describe("compareIp", () => {
   it("IPv4 按数值而非字典序比较", () => {

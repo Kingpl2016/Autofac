@@ -6,6 +6,10 @@
 //! （见 [`crate::envelope::apply_gamma`]），混色结果直接写入 DMX（LED 的 PWM 与光通量成正比）。
 //! 对只有 RGB 的灯具，这与“先算颜色、写入前再套 Gamma”逐位等价。
 //!
+//! 所有以“显示色”描述的颜色都用**同一个工程 Gamma** 解码：界面上的 RGB、色温（先换成显示色）、
+//! 发光体校准里的 RGB / 色温、琥珀 / 青柠 / UV 的默认颜色。预览再用 Gamma 的逆编码回显示色
+//! （[`crate::envelope::encode_gamma`]），因此预览色与界面上选的颜色、与 DMX 输出三者一致。
+//!
 //! # 策略（Strategy）
 //!
 //! 每台灯具在编译时由 [`ColorMixer::for_fixture`]（工厂）按通道组成选出一种混色策略：
@@ -27,6 +31,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::compile::Driven;
+use crate::envelope::apply_gamma;
 use crate::fixture::{ChannelFunction, FixtureModel};
 
 /// 混色结果的分量数。
@@ -113,7 +118,14 @@ pub struct Emitters {
     pub cool_kelvin: f64,
     /// 暖白参考色温（K）：mired 插值用。
     pub warm_kelvin: f64,
+    /// 显示色 → 线性输出所用的 Gamma（工程 Gamma，已规整）：色温意图按它解码。
+    pub gamma: f64,
 }
+
+/// 未指定工程 Gamma 时（例如单元测试）使用的 Gamma（常见 LED 的感知校正）。
+///
+/// 工程本身缺省为 `1.0`（关闭校正，见 `project.rs` 的 `default_gamma`），这里只给不经过工程的调用方兜底。
+pub const DEFAULT_GAMMA: f64 = 2.2;
 
 /// 未校准的冷白色温。
 pub const DEFAULT_COOL_K: f64 = 6500.0;
@@ -122,6 +134,22 @@ pub const DEFAULT_WARM_K: f64 = 3000.0;
 
 impl Default for Emitters {
     fn default() -> Self {
+        Self::with_gamma(DEFAULT_GAMMA)
+    }
+}
+
+impl Emitters {
+    /// 未校准灯具的发光体颜色：显示色按 `gamma` 解码到线性。
+    ///
+    /// # Arguments
+    ///
+    /// * `gamma` - 工程 Gamma（已规整）。
+    ///
+    /// # Returns
+    ///
+    /// 理想发光体颜色（R/G/B 为单位向量，W/CW 为理想白，WW 为 3000K，琥珀 / UV / 青柠为常见颜色）。
+    #[must_use]
+    pub fn with_gamma(gamma: f64) -> Self {
         Self {
             vectors: [
                 [1.0, 0.0, 0.0],
@@ -129,37 +157,38 @@ impl Default for Emitters {
                 [0.0, 0.0, 1.0],
                 [1.0, 1.0, 1.0],
                 [1.0, 1.0, 1.0],
-                kelvin_to_linear(DEFAULT_WARM_K),
-                srgb8_to_linear([255, 191, 0]),
+                kelvin_to_output(DEFAULT_WARM_K, gamma),
+                display8_to_output([255, 191, 0], gamma),
                 // UV 只在预览里有颜色意义，RGB 意图从不分配给它
-                srgb8_to_linear([96, 0, 255]).map(|v| v * 0.3),
-                srgb8_to_linear([191, 255, 0]),
+                display8_to_output([96, 0, 255], gamma).map(|v| v * 0.3),
+                display8_to_output([191, 255, 0], gamma),
             ],
             cool_kelvin: DEFAULT_COOL_K,
             warm_kelvin: DEFAULT_WARM_K,
+            gamma,
         }
     }
-}
 
-impl Emitters {
     /// 由物模型的发光体校准生成颜色向量；未声明的发光体用理想颜色。
+    /// 校准里的 RGB 与色温是显示色，按工程 Gamma 解码（与界面上的颜色同一个换算）。
     ///
     /// # Arguments
     ///
     /// * `model` - 灯具物模型。
+    /// * `gamma` - 工程 Gamma（已规整）。
     ///
     /// # Returns
     ///
     /// 校准后的发光体颜色。
     #[must_use]
-    pub fn from_model(model: &FixtureModel) -> Self {
-        let mut e = Self::default();
+    pub fn from_model(model: &FixtureModel, gamma: f64) -> Self {
+        let mut e = Self::with_gamma(gamma);
         for cal in &model.emitters {
             let Some(index) = emitter_index(cal.function) else { continue };
             let base = if let Some(rgb) = cal.rgb {
-                normalize(srgb8_to_linear(rgb))
+                normalize(display8_to_output(rgb, gamma))
             } else if let Some(k) = cal.kelvin {
-                kelvin_to_linear(f64::from(k))
+                kelvin_to_output(f64::from(k), gamma)
             } else {
                 e.vectors[index]
             };
@@ -281,7 +310,7 @@ impl MixStrategy for RgbFamily {
     fn emit(&self, e: &Emitters, p: Present, request: &ColorRequest) -> Components {
         let (target, white) = match *request {
             ColorRequest::Rgb { rgb, white } => (rgb.map(|v| v.clamp(0.0, 1.0)), white),
-            ColorRequest::Kelvin(k) => (kelvin_to_linear(k), WhiteStrategy::Preserve),
+            ColorRequest::Kelvin(k) => (kelvin_to_output(k, e.gamma), WhiteStrategy::Preserve),
             ColorRequest::Manual(values) => return manual(values, p),
         };
         let mut out = [0.0; COMPONENTS];
@@ -642,8 +671,53 @@ pub fn linear_to_srgb(v: f64) -> f64 {
     }
 }
 
-fn srgb8_to_linear(c: [u8; 3]) -> [f64; 3] {
-    c.map(|v| srgb_to_linear(f64::from(v) / 255.0))
+/// 8 位显示色 → 线性输出（按工程 Gamma 解码，与界面颜色同一个换算）。
+fn display8_to_output(c: [u8; 3], gamma: f64) -> [f64; 3] {
+    c.map(|v| apply_gamma(f64::from(v) / 255.0, gamma))
+}
+
+/// 色温（K）→ 显示色（sRGB 编码空间，最大分量为 1）：Tanner Helland 对黑体辐射数据的拟合，
+/// 与前端色块用的 `kelvinToRgb` 同一公式。
+///
+/// # Arguments
+///
+/// * `kelvin` - 色温，超出 1000~40000 时被夹取。
+///
+/// # Returns
+///
+/// 显示色 `0..=1`。
+#[must_use]
+pub fn kelvin_display(kelvin: f64) -> [f64; 3] {
+    let t = kelvin.clamp(1000.0, 40000.0) / 100.0;
+    let r = if t <= 66.0 { 255.0 } else { 329.698_727_446 * (t - 60.0).powf(-0.133_204_759_2) };
+    let g = if t <= 66.0 {
+        99.470_802_586_1 * t.ln() - 161.119_568_166_1
+    } else {
+        288.122_169_528_3 * (t - 60.0).powf(-0.075_514_849_2)
+    };
+    let b = if t >= 66.0 {
+        255.0
+    } else if t <= 19.0 {
+        0.0
+    } else {
+        138.517_731_223_1 * (t - 10.0).ln() - 305.044_792_730_7
+    };
+    normalize([r, g, b].map(|v| v.clamp(0.0, 255.0) / 255.0))
+}
+
+/// 色温（K）→ 线性输出：显示色按工程 Gamma 解码（最大分量为 1）。
+///
+/// # Arguments
+///
+/// * `kelvin` - 色温。
+/// * `gamma` - 工程 Gamma（已规整）。
+///
+/// # Returns
+///
+/// 线性输出 `0..=1`。
+#[must_use]
+pub fn kelvin_to_output(kelvin: f64, gamma: f64) -> [f64; 3] {
+    kelvin_display(kelvin).map(|v| apply_gamma(v, gamma))
 }
 
 /// 色温（K）→ 线性 RGB（最大分量为 1）。
@@ -660,21 +734,7 @@ fn srgb8_to_linear(c: [u8; 3]) -> [f64; 3] {
 /// 线性 RGB。
 #[must_use]
 pub fn kelvin_to_linear(kelvin: f64) -> [f64; 3] {
-    let t = kelvin.clamp(1000.0, 40000.0) / 100.0;
-    let r = if t <= 66.0 { 255.0 } else { 329.698_727_446 * (t - 60.0).powf(-0.133_204_759_2) };
-    let g = if t <= 66.0 {
-        99.470_802_586_1 * t.ln() - 161.119_568_166_1
-    } else {
-        288.122_169_528_3 * (t - 60.0).powf(-0.075_514_849_2)
-    };
-    let b = if t >= 66.0 {
-        255.0
-    } else if t <= 19.0 {
-        0.0
-    } else {
-        138.517_731_223_1 * (t - 10.0).ln() - 305.044_792_730_7
-    };
-    normalize([r, g, b].map(|v| srgb_to_linear(v.clamp(0.0, 255.0) / 255.0)))
+    normalize(kelvin_display(kelvin).map(srgb_to_linear))
 }
 
 #[cfg(test)]
@@ -753,7 +813,7 @@ mod tests {
         assert!(near(grey[CW], 0.5) && near(grey[WW], 0.0));
         assert!(grey[R] < 1e-6 && grey[G] < 1e-6 && grey[B] < 1e-6);
 
-        let warm_target = kelvin_to_linear(3000.0);
+        let warm_target = kelvin_to_output(3000.0, DEFAULT_GAMMA);
         let warm = mx.mix(&rgb_req(warm_target), 1.0);
         assert!(warm[WW] > 0.99, "暖白应接近满亮：{warm:?}");
         assert!(warm[CW] < 0.02);
@@ -851,10 +911,31 @@ mod tests {
             ],
             ..FixtureModel::default()
         };
-        let e = Emitters::from_model(&model);
+        let e = Emitters::from_model(&model, 2.0);
         assert!(near(e.warm_kelvin, 2700.0));
         assert!(near(e.vectors[W][0], 0.5));
-        assert_eq!(e.vectors[WW], kelvin_to_linear(2700.0));
+        assert_eq!(e.vectors[WW], kelvin_to_output(2700.0, 2.0));
+    }
+
+    /// 同一个显示色无论写成意图 RGB、色温，还是发光体校准，都按同一个 Gamma 解码：
+    /// 意图正好等于校准过的白光颜色时，全部由白光给出（任意 Gamma）。
+    #[test]
+    fn 意图与校准用同一个_gamma_解码() {
+        use crate::fixture::Emitter;
+        for gamma in [1.0, 2.0, 2.2, 2.8] {
+            let model = FixtureModel {
+                emitters: vec![Emitter { function: ChannelFunction::White, rgb: Some([255, 230, 200]), intensity: 1.0, kelvin: None }],
+                ..FixtureModel::default()
+            };
+            let mx = ColorMixer::for_fixture(&Driven { white: slot(3), ..rgb_fixture() }, Emitters::from_model(&model, gamma));
+            let target = [255.0, 230.0, 200.0].map(|v: f64| apply_gamma(v / 255.0, gamma));
+            let m = mx.mix(&rgb_req(target), 1.0);
+            assert!(near(m[W], 1.0) && m[R] < 1e-6 && m[G] < 1e-6 && m[B] < 1e-6, "gamma={gamma} {m:?}");
+            // 色温意图：线性输出就是色温显示色按 Gamma 解码
+            let k = ColorMixer::for_fixture(&rgb_fixture(), Emitters::with_gamma(gamma)).mix(&ColorRequest::Kelvin(3200.0), 1.0);
+            let want = kelvin_to_output(3200.0, gamma);
+            assert!(near(k[R], want[0]) && near(k[G], want[1]) && near(k[B], want[2]), "gamma={gamma} {k:?}");
+        }
     }
 
     #[test]

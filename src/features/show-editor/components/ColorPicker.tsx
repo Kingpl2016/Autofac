@@ -10,7 +10,7 @@ import { useEngine } from "../engine/useEngine";
 import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
 import { mixPreview } from "../lib/mixPreview";
-import type { ColorValue, EmitterKey, Rgb, WhiteStrategy } from "../lib/project";
+import { DEFAULT_GAMMA, type ColorValue, type EmitterKey, type Rgb, type WhiteStrategy } from "../lib/project";
 import { clamp } from "../lib/time";
 import { COLOR_INPUTS, useColorInputStore, type ColorInput } from "../stores/useColorInputStore";
 import { useRecentColorsStore } from "../stores/useRecentColorsStore";
@@ -108,7 +108,7 @@ interface ColorPickerProps {
  *
  * 拖动时只改本地草稿（实时显示），松手才提交，一次拖动一步撤销。
  */
-export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPickerProps) {
+export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: ColorPickerProps) {
   const { t } = useTranslation();
   const engine = useEngine();
   const recent = useRecentColorsStore((s) => s.colors);
@@ -139,7 +139,7 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
 
   // 模式就是当前颜色值的类型：切换模式会提交一个换算后的颜色
   const mode: Mode = shown.kind;
-  const rgb = colorValueRgb(shown);
+  const rgb = colorValueRgb(shown, gamma);
   const white: WhiteStrategy = shown.kind === "rgb" ? (shown.white ?? "preserve") : "preserve";
   const asRgb = (next: Rgb): ColorValue => ({ kind: "rgb", rgb: next, ...(white !== "preserve" ? { white } : {}) });
 
@@ -225,7 +225,7 @@ export function ColorPicker({ value, onCommit, target, gamma = 2.2 }: ColorPicke
         "size-6 cursor-pointer rounded-sm border border-border bg-(--sw) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         same(color, shown) && "ring-2 ring-primary",
       )}
-      style={{ "--sw": css(colorValueRgb(color)) } as CSSProperties}
+      style={{ "--sw": css(colorValueRgb(color, gamma)) } as CSSProperties}
     />
   );
 

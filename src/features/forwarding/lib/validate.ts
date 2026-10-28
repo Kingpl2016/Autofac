@@ -1,4 +1,4 @@
-import { isValidIpv4 } from "@/shared/lib/ip";
+import { isUnspecifiedIpv4, isValidIpv4 } from "@/shared/lib/ip";
 import type { ForwardDestination, UniverseOverride } from "./types";
 
 /** 校验错误码，对应 i18n 键 `forwarding.error.<code>`。 */
@@ -6,6 +6,7 @@ export type ValidationCode =
   | "nameRequired"
   | "ipRequired"
   | "ipInvalid"
+  | "ipUnspecified"
   | "portInvalid"
   | "offsetInvalid"
   | "delayInvalid"
@@ -56,7 +57,7 @@ function validateOverride(o: UniverseOverride): OverrideErrors {
 /**
  * 校验一个转发目的地。
  *
- * 规则：名称非空；目标 IP 必须是 IPv4（发送套接字为 IPv4）；端口 1 到 65535；
+ * 规则：名称非空；目标 IP 必须是 IPv4（发送套接字为 IPv4），且不能是 `0.0.0.0`（只能用于绑定）；端口 1 到 65535；
  * Universe 偏移为整数且绝对值不超过 65535；默认延迟 0 到 2000 ms；
  * 覆盖规则的源 / 目标 Universe 在 0 到 65535，延迟在 0 到 2000 ms。
  *
@@ -69,6 +70,7 @@ export function validateDestination(d: ForwardDestination): DestinationErrors {
   const ip = d.targetIp.trim();
   if (!ip) fields.targetIp = "ipRequired";
   else if (!isValidIpv4(ip)) fields.targetIp = "ipInvalid";
+  else if (isUnspecifiedIpv4(ip)) fields.targetIp = "ipUnspecified";
   if (!inRange(d.port, 1, 65535)) fields.port = "portInvalid";
   if (!inRange(d.universeOffset, -MAX_UNIVERSE, MAX_UNIVERSE)) fields.universeOffset = "offsetInvalid";
   if (!inRange(d.defaultDelayMs, 0, MAX_DELAY_MS)) fields.defaultDelayMs = "delayInvalid";

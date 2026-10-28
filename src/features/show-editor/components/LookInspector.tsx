@@ -107,7 +107,7 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
     return paramHead(p) ?? 0;
   })();
   const colorAt = heldValueAt(look.color, uClamped);
-  const rgbAt: Rgb = colorAt ? colorValueRgb(colorAt) : [255, 255, 255];
+  const rgbAt: Rgb = colorAt ? colorValueRgb(colorAt, project.output.gamma) : [255, 255, 255];
   // 轨道上的全部灯具：属性层取并集（任一台有的功能都能编辑），并标出支持的台数
   const trackFixtures = useMemo(() => {
     const track = project.tracks.find((tr) => tr.id === first.trackId);

@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useProtocolFlags } from "@/features/settings";
-import { isValidIpv4 } from "../lib/ip";
+import { isUnspecifiedIpv4, isValidIpv4 } from "@/shared/lib/ip";
 import type { PlayerTarget } from "../lib/types";
 
 interface PlayerTargetPickerProps {
@@ -52,7 +52,9 @@ export function PlayerTargetPicker({
   // 关闭 sACN 后即使本地状态仍是 sacn，也只会按 Art-Net 应用
   const effectiveProtocol = sacnEnabled ? protocol : "artNet";
 
-  const ipOk = isValidIpv4(ip);
+  // 0.0.0.0 只能用于绑定，不能作为发送目标（系统会拒绝发送）
+  const ipUnspecified = isUnspecifiedIpv4(ip);
+  const ipOk = isValidIpv4(ip) && !ipUnspecified;
   const portNum = Number(port);
   const portOk = Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535;
 
@@ -95,8 +97,14 @@ export function PlayerTargetPicker({
               value={ip}
               placeholder="192.168.1.50"
               aria-invalid={ip.length > 0 && !ipOk}
+              aria-describedby={ipUnspecified ? "player-target-ip-error" : undefined}
               onChange={(e) => setIp(e.target.value)}
             />
+            {ipUnspecified && (
+              <p id="player-target-ip-error" className="text-xs text-destructive">
+                {t("player.ipUnspecified")}
+              </p>
+            )}
           </div>
           {sacnEnabled && (
             <div className="grid content-start gap-1.5">
@@ -156,6 +164,12 @@ export function PlayerTargetPicker({
         )}
       </div>
 
+      {target.kind === "direct" && isUnspecifiedIpv4(target.ip) && (
+        <p role="alert" className="flex items-start gap-2 text-xs text-destructive">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {t("player.currentUnspecified")}
+        </p>
+      )}
       {target.kind === "forwarding" && destinations === 0 && (
         <p className="flex items-start gap-2 text-xs text-warning">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />

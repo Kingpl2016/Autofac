@@ -39,3 +39,14 @@ export function isValidIpv4(text: string): boolean {
   const parts = text.trim().split(".");
   return parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 }
+
+/**
+ * 是否为“未指定地址” `0.0.0.0`。它只能用于绑定（表示全部网卡），不能作为发送目标：
+ * 系统会拒绝发送（Windows 报 10049），设备收不到任何数据。
+ *
+ * @param text 用户输入。
+ * @returns 是 `0.0.0.0` 时为 true。
+ */
+export function isUnspecifiedIpv4(text: string): boolean {
+  return isValidIpv4(text) && text.trim().split(".").every((p) => Number(p) === 0);
+}

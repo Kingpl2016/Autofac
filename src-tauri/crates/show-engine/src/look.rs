@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::effects::hash32;
 use crate::envelope::apply_gamma;
 use crate::fixture::ChannelFunction;
-use crate::mix::{kelvin_to_linear, ColorRequest, WhiteStrategy, EMITTERS};
+use crate::mix::{kelvin_display, ColorRequest, WhiteStrategy, EMITTERS};
 
 /// 相邻关键帧之间的插值方式。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -393,9 +393,9 @@ impl ColorState {
     }
 }
 
-/// 色温在 sRGB 编码空间的近似颜色（插值用）。
+/// 色温的显示色（与 RGB 交叉淡化时用，之后与 RGB 一起按工程 Gamma 解码）。
 fn kelvin_srgb(k: f64) -> [f64; 3] {
-    kelvin_to_linear(k).map(crate::mix::linear_to_srgb)
+    kelvin_display(k)
 }
 
 #[allow(clippy::many_single_char_names)]

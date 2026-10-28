@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import builtinFile from "./builtinCueTemplates.json";
+import { periodMs } from "./effects";
 import { colorValueRgb } from "./looks";
-import type { EffectCue, Rgb } from "./project";
+import type { EffectCue, Rgb, Tempo } from "./project";
 
 /**
  * Cue 模板：一组预设的“颜色场景”，从素材库拖到轨道（或点击）就能得到对应外观的片段。
@@ -233,15 +234,45 @@ const RAINBOW_STOPS: readonly Rgb[] = [
   [255, 0, 255],
 ];
 
+/** 画特效填充需要的上下文：周期按拍时要节拍，相位扩散要轨道成员数。 */
+export interface EffectFillContext {
+  tempo: Tempo | null;
+  /** 轨道上的灯具数（至少 1） */
+  members: number;
+}
+
 /**
- * 特效 Cue 在时间线上的填充：用它的颜色拼成横向渐变（单色为纯色，彩虹为全色带）。
+ * 特效 Cue 在时间线上的填充。
  *
- * @param cue 特效 Cue（只用到特效类型和颜色列表）。
+ * - 彩虹、渐变：颜色随时间循环，与引擎（`show-engine/src/effects.rs` 的 `sample`）一致——
+ *   每个周期走一圈、相位从片段起点算起，按片段长度重复；显示轨道第一台灯的相位（含相位扩散与方向）。
+ * - 其它特效：单色为纯色，多色为横向渐变。
+ *
+ * @param cue 特效 Cue。
+ * @param ctx 节拍与轨道成员数；省略时按 120 BPM、单台灯。
  * @returns 可直接用作 CSS `background` 的值。
  */
-export function effectBackground(cue: Pick<EffectCue, "effect" | "colors">): string {
+export function effectBackground(
+  cue: Pick<EffectCue, "effect" | "colors" | "period" | "phaseSpread" | "direction" | "startMs" | "endMs">,
+  ctx: EffectFillContext = { tempo: null, members: 1 },
+): string {
+  const cyclic = cue.effect === "rainbow" || cue.effect === "gradient";
   const colors = cue.effect === "rainbow" ? RAINBOW_STOPS : cue.colors;
   if (colors.length === 0) return "var(--primary)";
   if (colors.length === 1) return cssColor(colors[0]);
-  return `linear-gradient(90deg, ${colors.map(cssColor).join(", ")})`;
+  if (!cyclic) return `linear-gradient(90deg, ${colors.map(cssColor).join(", ")})`;
+
+  // 一个周期占片段宽度的百分比
+  const length = Math.max(1, cue.endMs - cue.startMs);
+  const cycle = (periodMs(cue.period, ctx.tempo) / length) * 100;
+  // 第一台灯的相位偏移：位置 p（反向时为最后一个）× 扩散 / 成员数
+  const n = Math.max(1, Math.floor(ctx.members));
+  const p = cue.direction < 0 ? n - 1 : 0;
+  const offset = (Math.min(1, Math.max(0, cue.phaseSpread)) * p) / n;
+  // 色标：首尾相接（回到第一个颜色），引擎在相邻颜色之间线性插值
+  const stops = [...colors, colors[0]].map((c, k) => {
+    const at = (k / colors.length - offset) * cycle;
+    return `${cssColor(c)} ${Math.round(at * 1000) / 1000}%`;
+  });
+  return `repeating-linear-gradient(90deg, ${stops.join(", ")})`;
 }

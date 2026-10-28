@@ -808,7 +808,8 @@
       "typeInvalid": "字段类型不正确",
       "protocolInvalid": "协议只能是 artNet 或 sacn",
       "modeInvalid": "模式只能是 all 或 selected",
-      "actionInvalid": "动作只能是 forward 或 exclude"
+      "actionInvalid": "动作只能是 forward 或 exclude",
+      "ipUnspecified": "0.0.0.0 不能作为目标 IP，请填写设备 IP 或广播地址（如 255.255.255.255）"
     },
     "delete": {
       "title": "删除目的地“{{name}}”？",
@@ -1203,7 +1204,9 @@
     "pageTitle": "播放器",
     "pageSubtitle": "在播放器模式下播放节目库里的节目",
     "errShowActive": "节目编辑器正在输出灯光，请先停止输出",
-    "remaining": "剩余 {{time}}"
+    "remaining": "剩余 {{time}}",
+    "ipUnspecified": "0.0.0.0 不能作为发送目标（它只表示“全部网卡”）。发给同网段所有设备请用 255.255.255.255 或子网广播地址，如 192.168.1.255。",
+    "currentUnspecified": "当前目标是 0.0.0.0，系统会拒绝发送，设备收不到任何数据。请改为设备 IP 或广播地址后点“应用”。"
   },
   "library": {
     "title": "节目库",
@@ -1673,7 +1676,7 @@
     },
     "timeline": {
       "title": "时间线",
-      "empty": "添加灯具后，每个灯具会在这里生成一条轨道",
+      "empty": "把左侧的灯具拖到这里（或点灯具旁的“+”），每台灯具会在这里生成一条轨道",
       "zoomIn": "放大时间线",
       "zoomOut": "缩小时间线",
       "tracksLabel": "轨道与 Cue",
@@ -2125,7 +2128,9 @@
       "button": "输出",
       "gamma": "Gamma",
       "gammaValue": "Gamma 数值",
-      "gammaHint": "1.0 为线性；LED 灯带常用 2.2，让低亮度的渐变更自然。",
+      "gammaEnable": "Gamma 校正",
+      "gammaHint": "数值越大，低亮度越暗、渐变越平滑；LED 灯带常用 2.2。",
+      "gammaOffHint": "关闭时按线性输出：DMX 值与所选颜色一致。LED 灯具低亮度渐变不自然时可以打开。",
       "latency": "灯光延迟补偿",
       "latencyHint": "正数让灯光比播放头晚输出，用来对齐有延迟的音频设备；负数则提前。",
       "skipped": "{{count}} 台灯具因模型缺失或地址越界不会输出",
@@ -2771,7 +2776,7 @@
       "submitAria": "按以上设置添加 {{count}} 个 {{name}}"
     },
     "effectLib": {
-      "hint": "点一下选中并调参数，再点“插入”加到所选轨道的播放头处；双击直接插入。放在分组轨道上会按成员错开（扇形、波浪、追逐）。",
+      "hint": "拖到时间线的轨道上放下；或点一下选中并调参数，再点“插入”加到所选轨道的播放头处；双击直接插入。放在分组轨道上会按成员错开（扇形、波浪、追逐）。",
       "tools": "特效库工具",
       "import": "导入特效…",
       "export": "导出全部特效…",

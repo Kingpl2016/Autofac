@@ -160,7 +160,7 @@ export function LibraryFixturesTab() {
 }
 
 /**
- * 一个灯具模型：左侧把手可拖，“+”快速加 1 台，展开按钮打开批量添加面板。
+ * 一个灯具模型：整行可拖（到 Patch / 舞台 / 时间线），“+”快速加 1 台，展开按钮打开批量添加面板。
  */
 function ModelCard({ model, type }: { model: FixtureModel; type: FixtureType }) {
   const { t } = useTranslation();
@@ -191,18 +191,21 @@ function ModelCard({ model, type }: { model: FixtureModel; type: FixtureType }) 
         expanded ? "border-primary/60" : "border-border hover:border-muted-foreground/40",
       )}
     >
-      <div className="flex items-center gap-1.5 py-1.5 pr-1 pl-1">
+      {/* 整行都能拖（不止左侧把手）；行内按钮的点击不受影响（移动 6px 才算拖拽） */}
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        data-testid="fixture-model-drag"
+        className={cn("flex cursor-grab items-center gap-1.5 py-1.5 pr-1 pl-1 active:cursor-grabbing", isDragging && "opacity-40")}
+      >
         <button
-          ref={setNodeRef}
           type="button"
-          {...listeners}
           {...attributes}
           aria-label={t("editor.fixtureAdd.drag", { name: model.name })}
           title={t("editor.fixtureAdd.drag", { name: model.name })}
           className={cn(
             "group flex h-8 shrink-0 cursor-grab items-center gap-0.5 rounded-md pr-1 text-muted-foreground hover:bg-accent active:cursor-grabbing",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            isDragging && "opacity-40",
           )}
         >
           <GripVertical aria-hidden className="size-3 opacity-50 group-hover:opacity-100" />

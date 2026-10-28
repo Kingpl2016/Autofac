@@ -32,6 +32,7 @@ import { START_LEFT } from "../timeline/timelineData";
 import { placeMediaOnTimeline } from "../hooks/mediaActions";
 import { effectNeeds, templateNeeds, trackSupports } from "../lib/cueDefaults";
 import { addLookCue } from "../lib/cueOps";
+import { addEffectDefCue, effectDefNeeds } from "../lib/effectLibrary";
 import type { FixtureCapability } from "../lib/fixtureProfile";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -39,6 +40,7 @@ import { AutoDraftDialog } from "./AutoDraftDialog";
 import { CommandPalette } from "./CommandPalette";
 import { DurationConfirmDialog } from "./DurationConfirmDialog";
 import { EditorToolbar } from "./EditorToolbar";
+import { EffectDefChip, type EffectDefDragData } from "./EffectLibrarySection";
 import { EffectChip, type EffectDragData } from "./EffectsTab";
 import { FileDialogs } from "./FileDialogs";
 import { IconRail } from "./IconRail";
@@ -55,7 +57,10 @@ import { TemplateChip, type TemplateDragData } from "./TemplatesTab";
 import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 
 /** 可以从素材库拖到时间线上的东西。 */
-type DragData = TemplateDragData | EffectDragData | PresetDragData | MediaDragData | FixtureModelDragData;
+type DragData = TemplateDragData | EffectDragData | EffectDefDragData | PresetDragData | MediaDragData | FixtureModelDragData;
+
+/** 会显示拖拽浮层的素材类型。 */
+const DRAG_KINDS: ReadonlySet<string> = new Set<DragData["kind"]>(["template", "effect", "effectDef", "preset", "media", "fixtureModel"]);
 
 /** 预设拖到轨道上新建的片段长度（毫秒）。 */
 const PRESET_CLIP_MS = 4000;
@@ -102,11 +107,7 @@ export function ShowEditorView() {
 
   const onDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as DragData | undefined;
-    setDragging(
-      data?.kind === "template" || data?.kind === "effect" || data?.kind === "preset" || data?.kind === "media" || data?.kind === "fixtureModel"
-        ? data
-        : null,
-    );
+    setDragging(data && DRAG_KINDS.has(data.kind) ? data : null);
   };
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -149,6 +150,24 @@ export function ShowEditorView() {
         pointer,
         tracks,
         guard(effectNeeds(data.preset), (trackId, timeMs) => actions.addEffectAt(trackId, timeMs, data.preset)),
+      );
+    } else if (data.kind === "effectDef") {
+      // 属性特效：按拖出时参数面板里的参数生成外观片段，分布按落点轨道的成员数展开
+      result = dropOnTimeline(
+        viewport,
+        pointer,
+        tracks,
+        guard(effectDefNeeds(data.def), (trackId, timeMs) => {
+          let id: string | null = null;
+          useProjectStore.getState().update((d) => {
+            id = addEffectDefCue(d, trackId, timeMs, data.def, data.params);
+          });
+          if (id) {
+            useEditorUiStore.getState().selectCues([id]);
+            useEditorUiStore.getState().setInspectorTab("cue");
+          }
+          return id;
+        }),
       );
     } else if (data.kind === "media") {
       // 素材拖到时间线：放在指针处的时间；指针下是同类媒体轨道时优先放进那条
@@ -238,6 +257,7 @@ export function ShowEditorView() {
       <DragOverlay dropAnimation={null}>
         {dragging?.kind === "template" && <TemplateChip template={dragging.template} overlay />}
         {dragging?.kind === "effect" && <EffectChip preset={dragging.preset} overlay />}
+        {dragging?.kind === "effectDef" && <EffectDefChip def={dragging.def} />}
         {dragging?.kind === "preset" && <PresetChip name={dragging.name} swatch={dragging.swatch} />}
         {dragging?.kind === "media" && <MediaChip name={dragging.name} mediaKind={dragging.mediaKind} />}
         {dragging?.kind === "fixtureModel" && <FixtureModelChip name={dragging.name} type={dragging.type} />}

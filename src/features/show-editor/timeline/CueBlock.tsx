@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { updateCues } from "../lib/cueOps";
 import { cssColor, effectBackground } from "../lib/cueTemplates";
 import { clipColor } from "../lib/looks";
+import { trackFixtureIds } from "../lib/ops";
 import type { Cue } from "../lib/project";
 import { clamp } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -33,7 +34,8 @@ interface FadeDrag {
  * 右侧斜坡是淡出；填充色就是 Cue 的颜色。选中后，两个斜坡的顶点出现可拖动的手柄，
  * 直接拖出淡入 / 淡出时长（也可以在属性面板里精确输入）。
  *
- * 形状用 `clip-path` 裁出，填充直接取 Cue 的颜色（用户数据，不是主题色）；特效用它的颜色拼成渐变，并在左上角标出名称。
+ * 形状用 `clip-path` 裁出，填充直接取 Cue 的颜色（用户数据，不是主题色）；特效用它的颜色拼成渐变
+ * （彩虹 / 渐变按周期重复，与输出一致），并在左上角标出名称。
  */
 export function CueBlock({ cue, dimmed, selected, locked }: CueBlockProps) {
   const { t } = useTranslation();
@@ -48,7 +50,15 @@ export function CueBlock({ cue, dimmed, selected, locked }: CueBlockProps) {
   const rampIn = (fadeIn / length) * 100;
   const rampOutStart = 100 - (fadeOut / length) * 100;
   const presets = useProjectStore((s) => s.project.presets);
-  const color = cue.kind === "effect" ? effectBackground(cue) : cssColor(clipColor(cue, presets));
+  const tempo = useProjectStore((s) => s.project.tempo);
+  const gamma = useProjectStore((s) => s.project.output.gamma);
+  // 特效的相位扩散按轨道成员错开：填充显示第一台灯的相位
+  const members = useProjectStore((s) => {
+    if (cue.kind !== "effect") return 1;
+    const track = s.project.tracks.find((tr) => tr.id === cue.trackId);
+    return track ? Math.max(1, trackFixtureIds(s.project, track).length) : 1;
+  });
+  const color = cue.kind === "effect" ? effectBackground(cue, { tempo, members }) : cssColor(clipColor(cue, presets, gamma));
   const shape = `polygon(0% 100%, ${rampIn}% ${top}%, ${rampOutStart}% ${top}%, 100% 100%)`;
 
   const begin = (side: "in" | "out") => (e: PointerEvent<HTMLElement>) => {

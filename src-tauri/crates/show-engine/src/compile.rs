@@ -370,6 +370,8 @@ impl CompiledShow {
 /// 可反复求值的 [`CompiledShow`]。
 #[must_use]
 pub fn compile(project: &ShowProject) -> CompiledShow {
+    // 显示色 ↔ 线性输出的换算（界面颜色、色温、发光体校准与预览都用它）
+    let gamma = sanitize_gamma(project.output.gamma);
     let mut warnings = Vec::new();
     let accepted = accept_fixtures(project, &mut warnings);
 
@@ -411,7 +413,7 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
             CompiledFixture {
                 id: a.id.to_owned(),
                 universe_index,
-                mixer: ColorMixer::for_fixture(&driven, Emitters::from_model(a.model)),
+                mixer: ColorMixer::for_fixture(&driven, Emitters::from_model(a.model, gamma)),
                 driven,
                 mirrors,
                 attrs,
@@ -430,7 +432,7 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
 
     CompiledShow {
         duration_ms: project.duration_ms.max(0),
-        gamma: sanitize_gamma(project.output.gamma),
+        gamma,
         tempo: project.tempo,
         universes,
         base,

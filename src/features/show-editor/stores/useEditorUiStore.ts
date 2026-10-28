@@ -27,7 +27,7 @@ export interface TimelineObject {
 }
 
 /** 左侧图标栏的素材分区。 */
-export const LIBRARY_TABS = ["media", "fixtures", "cues", "effects", "presets", "groups", "history"] as const;
+export const LIBRARY_TABS = ["fixtures", "cues", "media", "effects", "presets", "groups", "history"] as const;
 
 /** 左侧素材分区。 */
 export type LibraryTab = (typeof LIBRARY_TABS)[number];
@@ -298,7 +298,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   snapEnabled: true,
   mediaMuted: false,
   paletteOpen: false,
-  libraryTab: "media",
+  // 默认打开图标栏最上面的分区
+  libraryTab: LIBRARY_TABS[0],
   lookClipboard: null,
   setLookClipboard: (look) => set({ lookClipboard: look }),
   radial: null,

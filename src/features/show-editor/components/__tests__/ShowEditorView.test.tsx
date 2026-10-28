@@ -9,7 +9,7 @@ import i18n from "@/shared/i18n";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { resetRecoveryCheck } from "../../hooks/useShowFile";
-import { useEditorUiStore } from "../../stores/useEditorUiStore";
+import { LIBRARY_TABS, useEditorUiStore } from "../../stores/useEditorUiStore";
 import { HINTS } from "../../onboarding/guideContent";
 import { TOUR_VERSION, useOnboardingStore } from "../../stores/useOnboardingStore";
 import { ShowEditorView } from "../ShowEditorView";
@@ -43,9 +43,10 @@ beforeEach(async () => {
   // 这里测编辑器本身：引导视为已看过，局部提示全部关闭
   useOnboardingStore.setState({ tourVersion: TOUR_VERSION, dismissedHints: HINTS.map((h) => h.id) });
   invoke.mockReset();
-  invoke.mockResolvedValue(null);
+  // 默认打开的灯具页会读灯具素材库：给空列表
+  invoke.mockImplementation(async (cmd: string) => (cmd === "fixture_list" ? [] : null));
   resetRecoveryCheck();
-  useEditorUiStore.setState({ libraryTab: "media", paletteOpen: false });
+  useEditorUiStore.setState({ libraryTab: LIBRARY_TABS[0], paletteOpen: false });
 });
 
 afterEach(() => cleanup());
@@ -77,10 +78,11 @@ describe("ShowEditorView 外壳", () => {
     renderView();
     const rail = screen.getByRole("tablist", { name: "素材库" });
     const tabs = within(rail).getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["媒体", "灯具", "Cue 模板", "特效", "预设", "分组", "历史"]);
+    // 媒体排在 Cue 模板下面；默认打开最上面的灯具
+    expect(tabs.map((t) => t.textContent)).toEqual(["灯具", "Cue 模板", "媒体", "特效", "预设", "分组", "历史"]);
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     const library = screen.getByRole("region", { name: "素材库" });
-    expect(within(library).getByRole("heading", { name: "媒体" })).toBeTruthy();
+    expect(within(library).getByRole("heading", { name: "灯具" })).toBeTruthy();
 
     fireEvent.click(tabs[4]);
     expect(within(library).getByRole("heading", { name: "预设" })).toBeTruthy();
@@ -92,6 +94,9 @@ describe("ShowEditorView 外壳", () => {
     fireEvent.keyDown(document.activeElement as Element, { key: "End" });
     expect(within(library).getByRole("list", { name: "撤销历史" })).toBeTruthy();
     fireEvent.keyDown(document.activeElement as Element, { key: "Home" });
+    expect(within(library).getByRole("heading", { name: "灯具" })).toBeTruthy();
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
     expect(within(library).getByRole("heading", { name: "媒体" })).toBeTruthy();
   });
 

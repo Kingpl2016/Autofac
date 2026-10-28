@@ -12,7 +12,7 @@ import { PresetsTab } from "./PresetsTab";
 import { TemplatesTab } from "./TemplatesTab";
 
 /**
- * 左侧素材库：内容随左侧图标栏（`IconRail`）选中的分区切换——音视频、灯具、Cue 模板、特效、预设、分组、历史。
+ * 左侧素材库：内容随左侧图标栏（`IconRail`）选中的分区切换——灯具、Cue 模板、音视频、特效、预设、分组、历史。
  */
 export function LibraryPanel() {
   const { t } = useTranslation();

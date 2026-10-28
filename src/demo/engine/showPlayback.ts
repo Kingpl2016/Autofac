@@ -34,7 +34,7 @@ function routedPortCount(universes: DemoUniverse[] | undefined): number {
       if (!p.enabled) continue;
       const remote = p.remoteUniverse ?? -1;
       const okRemote = p.protocol === "sacn" ? remote >= 1 && remote <= 63_999 : remote >= 0 && remote <= 0x7fff;
-      const okMode = p.mode === "multicast" ? p.protocol === "sacn" : IPV4.test((p.ip ?? "").trim());
+      const okMode = p.mode === "multicast" ? p.protocol === "sacn" : IPV4.test((p.ip ?? "").trim()) && (p.ip ?? "").trim() !== "0.0.0.0";
       if (!okRemote || !okMode) fail("bad_target");
       n += 1;
     }

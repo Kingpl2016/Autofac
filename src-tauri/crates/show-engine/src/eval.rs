@@ -11,9 +11,9 @@
 
 use crate::compile::{CompiledCue, CompiledShow, DmxData};
 use crate::effects;
-use crate::envelope::{apply_gamma, envelope};
+use crate::envelope::{apply_gamma, encode_gamma, envelope};
 use crate::look::ColorState;
-use crate::mix::{linear_to_srgb, ColorRequest, Components, WhiteStrategy, COMPONENTS};
+use crate::mix::{ColorRequest, Components, WhiteStrategy, COMPONENTS};
 use crate::project::{Cue, CueBase};
 
 /// 向前回溯检查的 Cue 数：同一轨道的 Cue 不应重叠，这里仅作为对异常工程的容错。
@@ -332,9 +332,11 @@ impl CompiledShow {
         self.write_driven(out);
     }
 
-    /// 最近一次求值后各灯具实际发出的颜色（sRGB 0~255），供预览显示。
+    /// 最近一次求值后各灯具实际发出的颜色（显示色 0~255），供预览显示。
     ///
-    /// 由各发光体的输出与其颜色向量合成，再按 sRGB 编码；调光通道的级别已计入。
+    /// 由各发光体的输出与其颜色向量合成，再用工程 Gamma 的逆编码回显示色（与把界面颜色解码成
+    /// 输出的是同一个 Gamma），调光通道的级别已计入。因此纯 RGB 灯的预览色就是界面上选的颜色，
+    /// RGBW 等灯具的白光、仅调光灯的亮度、能力不足时的偏差也都如实体现。
     ///
     /// # Arguments
     ///
@@ -349,7 +351,7 @@ impl CompiledShow {
             .iter()
             .zip(&out.acc)
             .map(|(f, acc)| {
-                let rgb = f.mixer.emitted_rgb(acc).map(|v| (linear_to_srgb(v) * 255.0).round() as u8);
+                let rgb = f.mixer.emitted_rgb(acc).map(|v| (encode_gamma(v, self.gamma) * 255.0).round() as u8);
                 (f.id.as_str(), rgb)
             })
             .collect()
@@ -722,7 +724,52 @@ mod tests {
         assert_eq!(&frame_at(&set, 0)[49..54], &[0, 0, 0, 64, 0]);
         let colors = c.preview_colors(&set);
         let (_, rgb) = colors.iter().find(|(id, _)| *id == "x").expect("预览色");
-        assert!(rgb.iter().all(|v| *v > 120 && *v < 140), "{rgb:?}");
+        // 预览用同一个 Gamma 编码回显示色：就是选的灰 128（±1 为 DMX 取整误差）
+        assert!(rgb.iter().all(|v| v.abs_diff(128) <= 1), "{rgb:?}");
+    }
+
+    /// 预览色 = 界面上选的颜色（纯 RGB 灯），与 Gamma 无关：静态片段、经典特效、外观片段（含亮度与色温）
+    /// 都用同一个 Gamma 解码 / 编码。
+    #[test]
+    fn 预览色等于意图色_任意_gamma() {
+        let near = |a: [u8; 3], b: [u8; 3]| a.iter().zip(b).all(|(x, y)| x.abs_diff(y) <= 2);
+        for gamma in [1.0, 2.0, 2.2, 3.0] {
+            // 静态片段：橙色，亮度 100%
+            let mut p = rig();
+            p.output.gamma = gamma;
+            p.cues.push(cue("t0", 0, 1000, [255, 128, 40], 100.0));
+            let c = compile(&p);
+            let mut set = c.new_frames();
+            c.evaluate_into(10, &mut set);
+            let got = c.preview_colors(&set)[0].1;
+            assert!(near(got, [255, 128, 40]), "gamma={gamma} 静态 {got:?}");
+
+            // 外观片段：强度 50% → 每个分量减半；色温 3200K → 色温的显示色
+            for (look, want) in [
+                (r#"{"intensity":{"kind":"value","value":50},"color":{"kind":"value","value":{"kind":"rgb","rgb":[200,100,0]}}}"#, [100u8, 50, 0]),
+                (r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"kelvin","kelvin":3200}}}"#, {
+                    let k = crate::mix::kelvin_display(3200.0);
+                    k.map(|v| (v * 255.0).round() as u8)
+                }),
+            ] {
+                let json = format!(
+                    r#"{{"durationMs":10000,"fixtureModels":[{{"id":"m","name":"m","properties":[
+                        {{"name":"r","code":"R","function":"red","channel":1,"width":1,"bigEndian":true,"defaultValue":0}},
+                        {{"name":"g","code":"G","function":"green","channel":2,"width":1,"bigEndian":true,"defaultValue":0}},
+                        {{"name":"b","code":"B","function":"blue","channel":3,"width":1,"bigEndian":true,"defaultValue":0}}]}}],
+                       "fixtures":[{{"id":"f","modelId":"m","universe":0,"address":1}}],
+                       "tracks":[{{"id":"t","target":{{"kind":"fixture","id":"f"}}}}],
+                       "cues":[{{"kind":"look","id":"c","trackId":"t","startMs":0,"endMs":1000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","look":{look}}}],
+                       "output":{{"gamma":{gamma}}}}}"#
+                );
+                let p: ShowProject = serde_json::from_str(&json).unwrap();
+                let c = compile(&p);
+                let mut set = c.new_frames();
+                c.evaluate_into(10, &mut set);
+                let got = c.preview_colors(&set)[0].1;
+                assert!(near(got, want), "gamma={gamma} 外观 {look}: {got:?} ≠ {want:?}");
+            }
+        }
     }
     // ---------- v2：外观 / 场景片段、关键帧、分布、预设、Park、多重配接 ----------
 

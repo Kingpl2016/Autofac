@@ -163,6 +163,7 @@ describe("Universe 路由表", () => {
     const ok = defaultPort(0);
     expect(portIssue(ok)).toBeNull();
     expect(portIssue({ ...ok, mode: "unicast", ip: "10.0.0.256" })).toBe("badIp");
+    expect(portIssue({ ...ok, mode: "broadcast", ip: "0.0.0.0" })).toBe("badIp");
     expect(portIssue({ ...ok, mode: "multicast" })).toBe("multicastArtNet");
     expect(portIssue({ ...defaultPort(0, "sacn"), remoteUniverse: 0 })).toBe("remoteUniverse");
     expect(portIssue({ ...ok, ip: "坏地址", mode: "unicast", enabled: false })).toBeNull();

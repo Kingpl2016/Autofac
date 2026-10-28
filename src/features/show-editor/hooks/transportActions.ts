@@ -52,7 +52,9 @@ export function playbackErrorText(t: TFunction, error: unknown): string {
  * @param error 后端 reject 的值。
  */
 export function reportPlaybackError(error: unknown): void {
-  toast.error(playbackErrorText(i18n.t.bind(i18n) as TFunction, error));
+  const text = playbackErrorText(i18n.t.bind(i18n) as TFunction, error);
+  // 同一条错误只保留一个提示（工程每次修改都会重新同步，目标不合法时会反复失败）
+  toast.error(text, { id: `playback-error:${text}` });
 }
 
 /** 执行一个后端命令，失败时报告。 */

@@ -1,4 +1,5 @@
 import type { Device } from "@/shared/domain/device";
+import { isUnspecifiedIpv4 } from "@/shared/lib/ip";
 import { newId } from "./ids";
 import { footprintOf, sequentialAddresses, usedUniverses } from "./patch";
 import {
@@ -353,7 +354,8 @@ export function portIssue(port: UniversePort): PortIssue | null {
       : port.remoteUniverse >= MIN_SACN_UNIVERSE && port.remoteUniverse <= MAX_SACN_UNIVERSE;
   if (!okRemote) return "remoteUniverse";
   if (port.mode === "multicast") return port.protocol === "artNet" ? "multicastArtNet" : null;
-  return isIpv4(port.ip) ? null : "badIp";
+  // 0.0.0.0 只能用于绑定，不能作为发送目标
+  return isIpv4(port.ip) && !isUnspecifiedIpv4(port.ip) ? null : "badIp";
 }
 
 /** 路由表的整体检查结果。 */

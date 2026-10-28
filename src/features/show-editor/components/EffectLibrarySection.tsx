@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useDraggable } from "@dnd-kit/core";
 import {
   Activity,
   Aperture,
@@ -47,11 +48,10 @@ import { pickJsonFile, pickSavePath } from "@/shared/tauri/pickers";
 import { useCueActions } from "../hooks/useCueActions";
 import { supportedTargets } from "../hooks/useTargetCapabilities";
 import { applicability, type Applicability } from "../lib/cueDefaults";
-import { addLookCue } from "../lib/cueOps";
 import { templateErrorCode } from "../lib/cueTemplateApi";
 import { exportEffectFile, importEffectFile, revealUserEffects } from "../lib/effectApi";
 import {
-  buildEffectLook,
+  addEffectDefCue,
   copyEffectToUser,
   defaultEffectParams,
   EFFECT_GROUPS,
@@ -70,7 +70,6 @@ import {
 } from "../lib/effectLibrary";
 import { periodMs } from "../lib/effects";
 import type { TrackCapabilities } from "../lib/fixtureProfile";
-import { trackFixtureIds } from "../lib/ops";
 import { allEffects, useEffectLibraryStore } from "../stores/useEffectLibraryStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -103,8 +102,12 @@ const ICONS: Record<string, LucideIcon> = {
   rotateCw: RotateCw,
 };
 
-/** 新建特效片段的默认长度（毫秒）。 */
-const EFFECT_CLIP_MS = 8000;
+/** 拖拽数据：属性特效库里的一个特效，带拖出时参数面板里的参数。 */
+export interface EffectDefDragData {
+  kind: "effectDef";
+  def: EffectDef;
+  params: EffectParams;
+}
 
 /**
  * 在所选轨道（多选时每条支持的轨道）的播放头处插入一个特效片段，每条轨道按自己的成员数展开。
@@ -134,16 +137,7 @@ function insertEffect(
     announce(t("editor.apply.rejected", { reason: t(`editor.apply.needs.${needs}`) }));
     return;
   }
-  const created = actions.insertOnTracks(trackIds, (d, trackId) => {
-    const track = d.tracks.find((tr) => tr.id === trackId);
-    if (!track) return null;
-    const { look, spread } = buildEffectLook(def, params, {
-      lengthMs: EFFECT_CLIP_MS,
-      members: trackFixtureIds(d, track).length,
-      tempo: project.tempo,
-    });
-    return addLookCue(d, trackId, playheadMs, look, EFFECT_CLIP_MS, spread);
-  });
+  const created = actions.insertOnTracks(trackIds, (d, trackId) => addEffectDefCue(d, trackId, playheadMs, def, params));
   if (created.length > 0) useEditorUiStore.getState().setInspectorTab("cue");
   if (trackIds.length === 1) {
     announce(created.length > 0 ? t("editor.attrEffects.added", { name: effectName(def, lang) }) : t("editor.templates.noRoom"));
@@ -152,7 +146,8 @@ function insertEffect(
 
 /**
  * 素材库“特效”标签里的属性特效库：按分组列出配置文件里的特效（内置 + 用户），
- * 点一下选中并打开参数面板（速度、大小、相位扩散、分翼、方向、顺序），“插入”加到所选轨道；双击直接按当前参数插入。
+ * 点一下选中并打开参数面板（速度、大小、相位扩散、分翼、方向、顺序），“插入”加到所选轨道；双击直接按当前参数插入；
+ * 也可以拖到时间线的轨道上，在落点按当前参数生成片段。
  * 右键：内置特效“复制为我的特效”，用户特效可复制、删除。工具条可导入 / 导出 / 打开所在文件夹 / 重新加载。
  */
 export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
@@ -298,6 +293,7 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
                   <li key={def.id}>
                     <EffectItem
                       def={def}
+                      params={paramsOf(def)}
                       app={caps.length > 0 ? applicability(caps, effectDefNeeds(def)) : null}
                       selected={def.id === selectedId}
                       onSelect={() => setSelectedId(def.id === selectedId ? null : def.id)}
@@ -326,9 +322,22 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
   );
 }
 
-/** 一个特效卡片（点击选中、双击插入、右键复制 / 删除）。 */
+/** 拖动属性特效时跟随指针的小卡片。 */
+export function EffectDefChip({ def }: { def: EffectDef }) {
+  const { i18n } = useTranslation();
+  const Icon = ICONS[def.icon ?? ""] ?? Sparkles;
+  return (
+    <span className="flex items-center gap-2 rounded-md border border-primary bg-card px-2.5 py-2 text-sm shadow-lg">
+      <Icon className="size-4 shrink-0 text-clip-light" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">{effectName(def, i18n.language)}</span>
+    </span>
+  );
+}
+
+/** 一个特效卡片（拖到轨道上放下、点击选中、双击插入、右键复制 / 删除）。 */
 function EffectItem({
   def,
+  params,
   app,
   selected,
   onSelect,
@@ -337,6 +346,8 @@ function EffectItem({
   onDelete,
 }: {
   def: EffectDef;
+  /** 参数面板里的当前参数（拖到时间线时按它生成片段） */
+  params: EffectParams;
   app: Applicability | null;
   selected: boolean;
   onSelect: () => void;
@@ -348,11 +359,15 @@ function EffectItem({
   const name = effectName(def, i18n.language);
   const Icon = ICONS[def.icon ?? ""] ?? Sparkles;
   const badgeId = `effect-badge-${def.id}`;
+  const data: EffectDefDragData = { kind: "effectDef", def, params };
+  const { setNodeRef, listeners, isDragging } = useDraggable({ id: `effectDef:${def.id}`, data });
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
+          ref={setNodeRef}
           type="button"
+          {...listeners}
           aria-pressed={selected}
           aria-label={name}
           aria-describedby={app && app.level !== "full" ? badgeId : undefined}
@@ -361,10 +376,11 @@ function EffectItem({
           onClick={onSelect}
           onDoubleClick={onInsert}
           className={cn(
-            "flex w-full items-center gap-2 rounded-md border bg-card px-2.5 py-2 text-left text-sm hover:bg-surface-3",
+            "flex w-full cursor-grab items-center gap-2 rounded-md border bg-card px-2.5 py-2 text-left text-sm hover:bg-surface-3 active:cursor-grabbing",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected ? "border-primary bg-primary/10" : "border-border",
             app?.level === "none" && "opacity-50",
+            isDragging && "opacity-40",
           )}
         >
           <Icon className="size-4 shrink-0 text-clip-light" aria-hidden />

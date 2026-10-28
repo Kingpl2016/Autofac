@@ -101,6 +101,26 @@ pub fn apply_gamma(v: f64, gamma: f64) -> f64 {
     }
 }
 
+/// [`apply_gamma`] 的逆：把线性输出分数编码回显示色（预览用）。
+///
+/// # Arguments
+///
+/// * `v` - 线性输出分数，超出 `0..=1` 时先被夹取。
+/// * `gamma` - 已规整的 Gamma（见 [`sanitize_gamma`]）；`1.0` 时原样返回。
+///
+/// # Returns
+///
+/// `v.powf(1 / gamma)`，范围 `0..=1`。
+#[must_use]
+pub fn encode_gamma(v: f64, gamma: f64) -> f64 {
+    let v = v.clamp(0.0, 1.0);
+    if (gamma - 1.0).abs() < f64::EPSILON {
+        v
+    } else {
+        v.powf(1.0 / gamma)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +191,11 @@ mod tests {
         assert!((apply_gamma(0.5, 1.0) - 0.5).abs() < 1e-12);
         assert!((apply_gamma(0.5, 2.0) - 0.25).abs() < 1e-12);
         assert!((apply_gamma(2.0, 2.0) - 1.0).abs() < 1e-12);
+        // 编码是解码的逆
+        for g in [1.0, 2.0, 2.2, 3.0] {
+            for v in [0.0, 0.1, 0.5, 0.9, 1.0] {
+                assert!((encode_gamma(apply_gamma(v, g), g) - v).abs() < 1e-12, "g={g} v={v}");
+            }
+        }
     }
 }

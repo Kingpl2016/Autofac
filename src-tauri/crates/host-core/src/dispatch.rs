@@ -155,7 +155,7 @@ pub enum RouteError {
         /// 工程内的 Universe。
         universe: u16,
     },
-    /// 单播 / 广播端口的 IP 不是合法的 IPv4 地址。
+    /// 单播 / 广播端口的 IP 不是合法的 IPv4 地址，或是未指定地址 `0.0.0.0`。
     BadIp {
         /// 工程内的 Universe。
         universe: u16,
@@ -206,7 +206,8 @@ impl DispatchTarget {
                     }
                     PortMode::Multicast => {}
                     PortMode::Unicast | PortMode::Broadcast => {
-                        if p.ip.trim().parse::<std::net::Ipv4Addr>().is_err() {
+                        // 未指定地址（`0.0.0.0`）不能作为发送目标
+                        if p.ip.trim().parse::<std::net::Ipv4Addr>().map_or(true, |a| a.is_unspecified()) {
                             return Err(RouteError::BadIp { universe: u.universe });
                         }
                     }
@@ -1521,6 +1522,11 @@ mod tests {
             routed(vec![port(ForwardProtocol::ArtNet, PortMode::Unicast, "1.2.3", 1)]).normalized(),
             Err(RouteError::BadIp { universe: 1 })
         );
+        // 未指定地址不能作为发送目标
+        assert_eq!(
+            routed(vec![port(ForwardProtocol::ArtNet, PortMode::Broadcast, "0.0.0.0", 1)]).normalized(),
+            Err(RouteError::BadIp { universe: 1 })
+        );
         let ok = DispatchTarget::Routed {
             universes: vec![
                 RoutedUniverse { universe: 5, ports: vec![port(ForwardProtocol::Sacn, PortMode::Multicast, "", 7)] },
@@ -1742,6 +1748,23 @@ mod tests {
             crate::sender::SenderState::Ready,
             "非法 IP 不算套接字故障"
         );
+    }
+
+    /// 发往 `0.0.0.0`（未指定地址）在系统层面必然失败（Windows 报 10049）：视同非法 IP，
+    /// 连续发送也不触发发送套接字重建。
+    #[tokio::test]
+    async fn unspecified_ip_is_invalid_and_does_not_trigger_rebuild() {
+        let d = Dispatcher::with_table(ForwardingTable::default(), live_sender().await);
+        let target = DispatchTarget::Direct { ip: "0.0.0.0".into(), protocol: ForwardProtocol::ArtNet, port: 6454 };
+        for i in 0..(crate::sender::FAIL_STREAK_THRESHOLD * 2) {
+            let mut jobs = d.plan(1, &[1], u64::from(i), &target, false);
+            assert_eq!(jobs[0].endpoint.addr, None);
+            d.send_frame(&mut jobs, &mut super::SequenceTable::default(), None).await;
+        }
+        let snap = d.output_stats().snapshot();
+        assert_eq!(snap.sent, 0);
+        assert_eq!(snap.last_error.as_deref(), Some("目标 IP 无效: 0.0.0.0"));
+        assert_eq!(d.health().state(), crate::sender::SenderState::Ready, "不应反复重建发送套接字");
     }
 
     /// 转发表里的非法 IP 在编译时保留"无效"标记，发送时照旧计一次错误（即使发送器尚未就绪）。

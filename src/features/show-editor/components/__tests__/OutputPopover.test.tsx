@@ -62,6 +62,31 @@ describe("输出设置：基本与高级", () => {
     expect(screen.getByRole("button", { name: /高级/ }).getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("Gamma 校正默认关闭（1.0）；打开取 2.2 并显示数值，关闭回到 1.0", () => {
+    act(() => void useEditorPrefsStore.getState().setOutputAdvancedOpen(true));
+    renderPopover();
+    open();
+    expect(useProjectStore.getState().project.output.gamma).toBe(1);
+    const toggle = screen.getByRole("switch", { name: "Gamma 校正" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByLabelText("Gamma 数值")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(useProjectStore.getState().project.output.gamma).toBe(2.2);
+    expect(screen.getByLabelText("Gamma 数值")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Gamma 校正" }));
+    expect(useProjectStore.getState().project.output.gamma).toBe(1);
+    expect(screen.queryByLabelText("Gamma 数值")).toBeNull();
+  });
+
+  it("收起时：Gamma 打开才列入改过的项", () => {
+    act(() => useProjectStore.getState().update((d) => void (d.output.gamma = 2)));
+    renderPopover();
+    open();
+    expect(screen.getByRole("button", { name: /高级/ }).textContent).toContain("Gamma 2.0");
+  });
+
   it("通道锁定：添加、改值、解除，都是可撤销的编辑", () => {
     act(() => void useEditorPrefsStore.getState().setOutputAdvancedOpen(true));
     renderPopover();

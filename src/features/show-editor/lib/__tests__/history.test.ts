@@ -27,7 +27,7 @@ describe("撤销历史描述", () => {
   it("其它改动：节拍、舞台、输出、循环、时长、工程信息；只改顺序时看下一类", () => {
     expect(describeChange(base, produce(base, (d) => setTempo(d, { bpm: 128, offsetMs: 0, beatsPerBar: 4 })))).toEqual({ kind: "tempo" });
     expect(describeChange(base, produce(base, (d) => void (d.stage.width = 20))).kind).toBe("stage");
-    expect(describeChange(base, produce(base, (d) => void (d.output.gamma = 1))).kind).toBe("output");
+    expect(describeChange(base, produce(base, (d) => void (d.output.gamma = 2.2))).kind).toBe("output");
     expect(describeChange(base, produce(base, (d) => void (d.loopRange = { startMs: 0, endMs: 10 }))).kind).toBe("loop");
     expect(describeChange(base, produce(base, (d) => void (d.durationMs = 1))).kind).toBe("duration");
     expect(describeChange(base, produce(base, (d) => void (d.name = "新"))).kind).toBe("info");

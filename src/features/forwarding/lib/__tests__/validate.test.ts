@@ -26,6 +26,8 @@ describe("validateDestination", () => {
     expect(validateDestination(ok({ targetIp: "  " })).fields.targetIp).toBe("ipRequired");
     for (const bad of ["10.0.0", "256.0.0.1", "a.b.c.d", "::1", "10.0.0.1:6454"]) {
       expect(validateDestination(ok({ targetIp: bad })).fields.targetIp, bad).toBe("ipInvalid");
+    // 0.0.0.0 格式合法，但不能作为发送目标
+    expect(validateDestination(ok({ targetIp: "0.0.0.0" })).fields.targetIp).toBe("ipUnspecified");
     }
     expect(validateDestination(ok({ targetIp: " 10.0.0.5 " })).fields.targetIp).toBeUndefined();
   });

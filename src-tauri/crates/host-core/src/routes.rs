@@ -61,7 +61,7 @@ impl Endpoint {
     ///
     /// * `id` - 目的地 id。
     /// * `protocol` - 输出协议。
-    /// * `target_ip` - 目标 IP 字符串；非法时 `addr` 为 `None`。
+    /// * `target_ip` - 目标 IP 字符串；非法或为未指定地址（`0.0.0.0`）时 `addr` 为 `None`。
     /// * `port` - 目标端口。
     /// * `counters` - 统计计数器句柄；`None` 表示只计入全局统计。
     ///
@@ -81,9 +81,13 @@ impl Endpoint {
             protocol,
             target_ip: Arc::from(target_ip),
             port,
+            // `0.0.0.0` 是“未指定地址”，不能作为发送目标（Windows 上 sendto 报 10049）。
+            // 视同非法 IP：发送时只计一次错误，不上报发送器故障，避免反复重建发送套接字。
             addr: target_ip
+                .trim()
                 .parse::<IpAddr>()
                 .ok()
+                .filter(|ip| !ip.is_unspecified())
                 .map(|ip| SocketAddr::new(ip, port)),
             counters,
             priority: DEFAULT_SACN_PRIORITY,

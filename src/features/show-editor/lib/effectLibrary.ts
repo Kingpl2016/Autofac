@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import builtinFile from "./builtinEffects.json";
+import { addLookCue } from "./cueOps";
 import { periodMs } from "./effects";
 import type { FixtureCapability } from "./fixtureProfile";
-import type { AttrKey, ColorValue, EffectCue, Keyframe, Look, Param, Rgb, Spread, Tempo, WaveShape } from "./project";
+import { trackFixtureIds } from "./ops";
+import type { AttrKey, ColorValue, EffectCue, Keyframe, Look, Param, Rgb, ShowProject, Spread, Tempo, WaveShape } from "./project";
 
 /**
  * 特效库：声明式的属性特效定义（纯数据，没有脚本），由配置文件加载。
@@ -562,4 +564,28 @@ export function importEffects(
     byId.set(e.id, rest);
   }
   return { next: [...byId.values()], added, replaced };
+}
+
+/** 新建属性特效片段的默认长度（毫秒）。 */
+export const EFFECT_CLIP_MS = 8000;
+
+/**
+ * 在轨道上新建一个属性特效片段：按参数生成外观，按轨道成员数展开分布。
+ *
+ * @param draft 工程草稿。
+ * @param trackId 轨道。
+ * @param timeMs 片段起点（毫秒）。
+ * @param def 特效。
+ * @param params 参数（参数面板里的当前值）。
+ * @returns 新片段 id；轨道不存在或放不下时为 `null`。
+ */
+export function addEffectDefCue(draft: ShowProject, trackId: string, timeMs: number, def: EffectDef, params: EffectParams): string | null {
+  const track = draft.tracks.find((tr) => tr.id === trackId);
+  if (!track) return null;
+  const { look, spread } = buildEffectLook(def, params, {
+    lengthMs: EFFECT_CLIP_MS,
+    members: trackFixtureIds(draft, track).length,
+    tempo: draft.tempo,
+  });
+  return addLookCue(draft, trackId, timeMs, look, EFFECT_CLIP_MS, spread);
 }

@@ -89,7 +89,9 @@ function drag(target: Element, from: { x: number; y: number }, to: { x: number; 
 describe("TimelinePanel（自研时间线）", () => {
   it("没有轨道时显示提示，不渲染轨道区", () => {
     renderPanel();
-    expect(screen.getByText("添加灯具后，每个灯具会在这里生成一条轨道")).toBeTruthy();
+    expect(screen.getByText("把左侧的灯具拖到这里（或点灯具旁的“+”），每台灯具会在这里生成一条轨道")).toBeTruthy();
+    // 空提示本身就是放置区（新工程把灯具拖进来生成轨道）
+    expect(screen.getByTestId("timeline-empty-drop")).toBeTruthy();
     expect(screen.queryByTestId("timeline-body")).toBeNull();
   });
 

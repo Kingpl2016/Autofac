@@ -571,6 +571,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
               dragging={c.dragging}
               invalid={c.dragging && preview !== null && !preview.valid}
               presets={presets}
+              gamma={project.output.gamma}
               badges={clipLayers.get(c.cue.id)?.badges}
               unsupported={clipLayers.get(c.cue.id)?.unsupported}
               strip={

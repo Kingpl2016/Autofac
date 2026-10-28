@@ -207,13 +207,14 @@ pub struct PlaybackStatus {
 ///
 /// # Errors
 ///
-/// IP 无法解析返回 [`ERR_BAD_TARGET`]。
+/// IP 无法解析或为未指定地址（`0.0.0.0`）时返回 [`ERR_BAD_TARGET`]。
 pub fn normalize_target(target: DispatchTarget) -> Result<DispatchTarget, String> {
     match target {
         DispatchTarget::Forwarding => Ok(target),
         DispatchTarget::Routed { .. } => target.normalized().map_err(|_| ERR_BAD_TARGET.to_string()),
         DispatchTarget::Direct { ip, protocol, port } => {
-            if ip.trim().parse::<std::net::IpAddr>().is_err() {
+            // 未指定地址（`0.0.0.0`）不能作为发送目标
+            if ip.trim().parse::<std::net::IpAddr>().map_or(true, |a| a.is_unspecified()) {
                 return Err(ERR_BAD_TARGET.to_string());
             }
             let port = if port == 0 {
@@ -1231,6 +1232,16 @@ mod tests {
         assert_eq!(
             normalize_target(DispatchTarget::Direct {
                 ip: "not-an-ip".into(),
+                protocol: ForwardProtocol::ArtNet,
+                port: 6454
+            })
+            .unwrap_err(),
+            ERR_BAD_TARGET
+        );
+        // 未指定地址（0.0.0.0）不能作为发送目标
+        assert_eq!(
+            normalize_target(DispatchTarget::Direct {
+                ip: " 0.0.0.0 ".into(),
                 protocol: ForwardProtocol::ArtNet,
                 port: 6454
             })

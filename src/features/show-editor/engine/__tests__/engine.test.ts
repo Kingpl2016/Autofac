@@ -50,13 +50,56 @@ describe("show-engine WASM", () => {
     expect(compiled.universes).toEqual([2]);
     const preview = compiled.previewAt(500);
     // RGBW：白光 0.2 + RGB 余量，合成后的实际颜色等于目标色（线性 1/0.6/0.2）；
-    // 预览按 sRGB 编码显示，Gamma 1 的工程把输入当作线性光，所以显示值更亮
-    expect(Array.from(preview)).toEqual([255, 203, 124]);
+    // 预览按工程 Gamma 反向编码，所以预览色就是挑选的颜色
+    expect(Array.from(preview)).toEqual([255, 153, 51]);
     expect(Array.from(compiled.frame(0)?.slice(4, 8) ?? [])).toEqual([204, 102, 0, 51]);
     expect(compiled.frame(1)).toBeNull();
     compiled.dispose();
     expect(compiled.alive).toBe(false);
     expect(compiled.previewAt(500)).toHaveLength(0);
+  });
+
+  it("Gamma 2 的 RGB 灯：预览色等于挑选色，DMX 按 Gamma 解码", () => {
+    const engine = loadTestEngine();
+    const p = createEmptyProject("g2");
+    p.output.gamma = 2;
+    p.fixtureModels = [
+      {
+        id: "m",
+        name: "m",
+        system: "",
+        productType: "",
+        builtin: false,
+        properties: (["red", "green", "blue"] as const).map((fn, i) => ({
+          name: fn,
+          code: fn,
+          function: fn,
+          channel: i + 1,
+          width: 1 as const,
+          bigEndian: true,
+          defaultValue: 0,
+          valueDesc: "",
+          description: "",
+        })),
+      },
+    ];
+    p.fixtures = [{ id: "f", name: "F", modelId: "m", universe: 0, address: 1 }];
+    p.tracks = [{ id: "t", target: { kind: "fixture", id: "f" }, mute: false, solo: false, lock: false }];
+    p.cues = [
+      { kind: "static", id: "c", trackId: "t", startMs: 0, endMs: 1000, brightness: 100, fadeInMs: 0, fadeOutMs: 0, easing: "linear", rgb: [255, 128, 0] },
+    ];
+    const compiled = engine.compile(p);
+    expect(compiled).not.toBeNull();
+    if (!compiled) return;
+    const preview = Array.from(compiled.previewAt(500));
+    // 旧实现按 sRGB 编码，橙色会显示成 [255, 137, 0]
+    preview.forEach((v, i) => expect(Math.abs(v - [255, 128, 0][i])).toBeLessThanOrEqual(1));
+    // (128/255)^2 × 255 ≈ 64
+    const dmx = Array.from(compiled.frame(0)?.slice(0, 3) ?? []);
+    expect(dmx[0]).toBe(255);
+    expect(Math.abs(dmx[1] - 64)).toBeLessThanOrEqual(1);
+    expect(dmx[2]).toBe(0);
+    compiled.dispose();
   });
 
   it("v2 工程（外观片段 + 分布 + 场景片段 + 预设）的 JSON 形态与 Rust 一致", () => {

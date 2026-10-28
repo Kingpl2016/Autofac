@@ -55,7 +55,8 @@ function normalizeTarget(raw: unknown): PlayerTarget {
   if (raw === null || raw === undefined) return { kind: "forwarding" };
   const t = raw as PlayerTarget;
   if (t.kind === "forwarding") return t;
-  if (t.kind === "direct" && IPV4.test(t.ip) && t.port > 0 && t.port < 65536) return t;
+  // 与后端一致：0.0.0.0 不能作为发送目标
+  if (t.kind === "direct" && IPV4.test(t.ip) && t.ip !== "0.0.0.0" && t.port > 0 && t.port < 65536) return t;
   return fail("bad_target");
 }
 

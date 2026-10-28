@@ -7,7 +7,7 @@ describe("setOutput", () => {
   it("只改传入的字段，其余保持不变", () => {
     const p = createEmptyProject("t");
     setOutput(p, { loop: true });
-    expect(p.output).toMatchObject({ loop: true, gamma: 2.2, latencyCompMs: 0 });
+    expect(p.output).toMatchObject({ loop: true, gamma: 1, latencyCompMs: 0 });
     expect(p.output.target.kind).toBe("direct");
   });
 

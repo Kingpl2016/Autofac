@@ -32,6 +32,8 @@ interface ClipViewProps {
   /** 拖动预览放不下（与邻居重叠等） */
   invalid: boolean;
   presets: readonly Preset[];
+  /** 工程 Gamma（手动覆盖颜色的合成用） */
+  gamma: number;
   /** 实际输出色带（CSS 渐变，引擎采样）；尚未采样时为 `null` */
   strip: string | null;
   /** 外观片段用到的属性组（徽标） */
@@ -83,6 +85,7 @@ export const ClipView = memo(function ClipView({
   dragging,
   invalid,
   presets,
+  gamma,
   strip,
   badges,
   unsupported,
@@ -133,7 +136,7 @@ export const ClipView = memo(function ClipView({
         <div
           aria-hidden
           className={cn("h-full w-full bg-(--clip-color) opacity-80", dimmed && "opacity-40")}
-          style={{ "--clip-color": strip ?? cssColor(clipColor(cue, presets)) } as CSSProperties}
+          style={{ "--clip-color": strip ?? cssColor(clipColor(cue, presets, gamma)) } as CSSProperties}
         />
       ) : (
         <>

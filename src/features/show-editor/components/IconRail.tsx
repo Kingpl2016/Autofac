@@ -7,9 +7,9 @@ import { LIBRARY_TABS, useEditorUiStore, type LibraryTab } from "../stores/useEd
 
 /** 每个素材分区的图标。 */
 const ICONS: Record<LibraryTab, LucideIcon> = {
-  media: Film,
   fixtures: Lamp,
   cues: LayoutTemplate,
+  media: Film,
   effects: Sparkles,
   presets: Bookmark,
   groups: Boxes,

@@ -11,8 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { PlayerTargetPicker } from "@/features/recording";
-import { MAX_GAMMA, MAX_LATENCY_COMP_MS, MIN_GAMMA, setOutput } from "../lib/ops";
-import { DEFAULT_GAMMA } from "../lib/project";
+import { MAX_GAMMA, MAX_LATENCY_COMP_MS, MIN_GAMMA, MIN_GAMMA_ON, setOutput } from "../lib/ops";
+import { DEFAULT_GAMMA, RECOMMENDED_GAMMA } from "../lib/project";
 import { MAX_PARK, removePark, setPark, setSync } from "../lib/universeOps";
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
@@ -25,7 +25,8 @@ import { UniverseDialog } from "./UniverseDialog";
  * 工具条上的输出设置。
  *
  * - 基本：输出目标（Art-Net / sACN 转发表或指定 IP）与 Universe 路由表入口；
- * - 高级（默认收起，展开状态会记住）：Gamma、灯光延迟补偿、同步（ArtSync / sACN 同步 Universe）、通道锁定（Park）。
+ * - 高级（默认收起，展开状态会记住）：Gamma 校正（默认关闭，即 1.0 线性输出；打开后取推荐值 2.2 并可调）、
+ *   灯光延迟补偿、同步（ArtSync / sACN 同步 Universe）、通道锁定（Park）。
  *   收起时标题旁列出改过默认值的项，避免“看不见的设置”。
  *
  * 改动立即写入工程（可撤销），并随工程同步给后端；输出会话运行中也会实时生效。
@@ -41,6 +42,9 @@ export function OutputPopover() {
   const setAdvancedOpen = useEditorPrefsStore((s) => s.setOutputAdvancedOpen);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [routingOpen, setRoutingOpen] = useState(false);
+
+  // Gamma 1.0 即线性输出，视为“关闭”
+  const gammaOn = output.gamma > MIN_GAMMA;
 
   // 收起时提示哪些高级设置不是默认值
   const changed = [
@@ -106,18 +110,27 @@ export function OutputPopover() {
               )}
             </CollapsibleTrigger>
             <CollapsibleContent className="grid gap-4">
-              <div className="grid gap-1">
-                <SliderField
-                  label={t("editor.output.gamma")}
-                  numberLabel={t("editor.output.gammaValue")}
-                  value={output.gamma}
-                  min={MIN_GAMMA}
-                  max={MAX_GAMMA}
-                  step={0.1}
-                  decimals={1}
-                  onCommit={(gamma) => update((d) => setOutput(d, { gamma }))}
-                />
-                <p className="text-xs text-muted-foreground">{t("editor.output.gammaHint")}</p>
+              <div className="grid gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch
+                    checked={gammaOn}
+                    onCheckedChange={(on) => update((d) => setOutput(d, { gamma: on ? RECOMMENDED_GAMMA : DEFAULT_GAMMA }))}
+                  />
+                  {t("editor.output.gammaEnable")}
+                </label>
+                {gammaOn && (
+                  <SliderField
+                    label={t("editor.output.gamma")}
+                    numberLabel={t("editor.output.gammaValue")}
+                    value={output.gamma}
+                    min={MIN_GAMMA_ON}
+                    max={MAX_GAMMA}
+                    step={0.1}
+                    decimals={1}
+                    onCommit={(gamma) => update((d) => setOutput(d, { gamma }))}
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">{t(gammaOn ? "editor.output.gammaHint" : "editor.output.gammaOffHint")}</p>
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">{t("editor.output.latency")}</Label>

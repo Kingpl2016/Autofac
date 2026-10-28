@@ -364,8 +364,13 @@ pub struct OutputSettings {
     pub park: Vec<ParkEntry>,
 }
 
+/// 缺省的 Gamma：`1.0`，即关闭 Gamma 校正（线性输出），与前端新工程默认值一致。
+///
+/// # Returns
+///
+/// 固定返回 `1.0`。
 fn default_gamma() -> f64 {
-    2.2
+    1.0
 }
 
 impl Default for OutputSettings {
@@ -485,7 +490,7 @@ mod tests {
     fn 缺省字段使用默认值() {
         let p: ShowProject = serde_json::from_str(r#"{"durationMs": 1000}"#).expect("应能解析");
         assert!(p.fixtures.is_empty());
-        assert!((p.output.gamma - 2.2).abs() < 1e-9);
+        assert!((p.output.gamma - 1.0).abs() < 1e-9);
         assert!(!p.output.looping);
     }
 }

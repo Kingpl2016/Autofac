@@ -808,7 +808,8 @@
       "typeInvalid": "Wrong field type",
       "protocolInvalid": "Protocol must be artNet or sacn",
       "modeInvalid": "Mode must be all or selected",
-      "actionInvalid": "Action must be forward or exclude"
+      "actionInvalid": "Action must be forward or exclude",
+      "ipUnspecified": "0.0.0.0 can't be a target IP. Enter a device IP or a broadcast address (e.g. 255.255.255.255)"
     },
     "delete": {
       "title": "Delete destination \"{{name}}\"?",
@@ -1203,7 +1204,9 @@
     "pageTitle": "Player",
     "pageSubtitle": "Play programs from the library in Player mode",
     "errShowActive": "The show editor is outputting lights. Stop the output first",
-    "remaining": "{{time}} left"
+    "remaining": "{{time}} left",
+    "ipUnspecified": "0.0.0.0 can't be a send target (it only means “all interfaces”). To reach every device on the subnet, use 255.255.255.255 or the subnet broadcast address, e.g. 192.168.1.255.",
+    "currentUnspecified": "The current target is 0.0.0.0. The system refuses to send to it, so devices receive nothing. Change it to a device IP or broadcast address and press Apply."
   },
   "library": {
     "title": "Program Library",
@@ -1673,7 +1676,7 @@
     },
     "timeline": {
       "title": "Timeline",
-      "empty": "Add fixtures and each one gets a track here",
+      "empty": "Drag fixtures from the left here (or click + next to one); each fixture gets a track",
       "zoomIn": "Zoom in timeline",
       "zoomOut": "Zoom out timeline",
       "tracksLabel": "Tracks and cues",
@@ -2125,7 +2128,9 @@
       "button": "Output",
       "gamma": "Gamma",
       "gammaValue": "Gamma value",
-      "gammaHint": "1.0 is linear. LED strips commonly use 2.2 so dim fades look natural.",
+      "gammaEnable": "Gamma correction",
+      "gammaHint": "Higher values make low levels darker and fades smoother. LED strips commonly use 2.2.",
+      "gammaOffHint": "Off means linear output: DMX values match the picked colors. Turn it on if dim fades on LED fixtures look uneven.",
       "latency": "Light latency compensation",
       "latencyHint": "Positive values output lights later than the playhead to match a delayed audio device; negative values output earlier.",
       "skipped": "{{count}} fixtures will not output because of a missing model or out-of-range address",
@@ -2771,7 +2776,7 @@
       "submitAria": "Add {{count}} {{name}} with these settings"
     },
     "effectLib": {
-      "hint": "Click to select and tune, then Insert to add it at the playhead on the selected track; double-click inserts right away. On a group track it is offset across members (fan, wave, chase).",
+      "hint": "Drag onto a timeline track, or click to select and tune, then Insert to add it at the playhead on the selected track; double-click inserts right away. On a group track it is offset across members (fan, wave, chase).",
       "tools": "Effect library tools",
       "import": "Import effects…",
       "export": "Export all effects…",

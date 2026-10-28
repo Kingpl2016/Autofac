@@ -363,6 +363,8 @@ export function ensureDuration(draft: ShowProject, endMs: number): boolean {
 /** Gamma 的取值范围。 */
 export const MIN_GAMMA = 1;
 export const MAX_GAMMA = 3;
+/** 打开 Gamma 校正后滑块的下限（1.0 即关闭，由开关表示）。 */
+export const MIN_GAMMA_ON = 1.1;
 
 /** 输出延迟补偿的取值范围（毫秒）。 */
 export const MAX_LATENCY_COMP_MS = 1000;

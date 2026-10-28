@@ -1,4 +1,4 @@
-import type { ColorValue, Cue, Look, Param, Preset, Rgb } from "./project";
+import { DEFAULT_GAMMA, type ColorValue, type Cue, type Look, type Param, type Preset, type Rgb } from "./project";
 
 /**
  * 外观（Look）与参数（Param）的界面辅助：取代表值、合并预设、判断参与的层。
@@ -62,40 +62,50 @@ export function kelvinToRgb(kelvin: number): Rgb {
   return [clamp(r), clamp(g), clamp(b)];
 }
 
-/** 各发光体的显示色（手动覆盖时的近似合成用）。 */
-const EMITTER_RGB: Record<string, Rgb> = {
-  red: [255, 0, 0],
-  green: [0, 255, 0],
-  blue: [0, 0, 255],
-  white: [255, 255, 255],
-  coolWhite: [235, 242, 255],
-  warmWhite: [255, 180, 107],
-  amber: [255, 191, 0],
-  uv: [96, 0, 255],
-  lime: [191, 255, 0],
+/**
+ * 各发光体未校准时的显示色与相对亮度（手动覆盖时合成显示色用），与引擎 `Emitters::with_gamma` 一致：
+ * 白 / 冷白为理想白，暖白为 3000K，UV 只有 30% 的亮度。
+ */
+const EMITTER_RGB: Record<string, { rgb: Rgb; gain: number }> = {
+  red: { rgb: [255, 0, 0], gain: 1 },
+  green: { rgb: [0, 255, 0], gain: 1 },
+  blue: { rgb: [0, 0, 255], gain: 1 },
+  white: { rgb: [255, 255, 255], gain: 1 },
+  coolWhite: { rgb: [255, 255, 255], gain: 1 },
+  warmWhite: { rgb: kelvinToRgb(3000), gain: 1 },
+  amber: { rgb: [255, 191, 0], gain: 1 },
+  uv: { rgb: [96, 0, 255], gain: 0.3 },
+  lime: { rgb: [191, 255, 0], gain: 1 },
 };
 
 /**
  * 颜色值的显示色（近似）：RGB 原样、色温换算、手动覆盖按各发光体颜色叠加。
  *
+ * 手动覆盖（按发光体直给 DMX）的合成方式与引擎预览一致：各发光体的显示色按 Gamma 解码成线性光、
+ * 按输出值叠加，再用 Gamma 的逆编码回显示色。
+ *
  * @param c 颜色值。
+ * @param gamma 工程 Gamma（只影响手动覆盖的合成）；省略时按新工程默认值。
  * @returns sRGB。
  */
-export function colorValueRgb(c: ColorValue): Rgb {
+export function colorValueRgb(c: ColorValue, gamma: number = DEFAULT_GAMMA): Rgb {
   switch (c.kind) {
     case "rgb":
       return c.rgb;
     case "kelvin":
       return kelvinToRgb(c.kelvin);
     case "manual": {
+      const g = Number.isFinite(gamma) && gamma > 0 ? gamma : DEFAULT_GAMMA;
       const acc = [0, 0, 0];
       for (const [k, v] of Object.entries(c.values)) {
         const e = EMITTER_RGB[k];
         if (!e || !v) continue;
-        for (let i = 0; i < 3; i += 1) acc[i] += e[i] * v;
+        const amount = Math.min(1, Math.max(0, v));
+        for (let i = 0; i < 3; i += 1) acc[i] += amount * e.gain * (e.rgb[i] / 255) ** g;
       }
-      const peak = Math.max(255, ...acc);
-      return acc.map((v) => Math.round((v / peak) * 255)) as Rgb;
+      // 超过 1 时整体压缩（保持色相），与引擎 `emitted_rgb` 一致
+      const peak = Math.max(1, ...acc);
+      return acc.map((v) => Math.round((v / peak) ** (1 / g) * 255)) as Rgb;
     }
   }
 }
@@ -105,9 +115,10 @@ export function colorValueRgb(c: ColorValue): Rgb {
  *
  * @param cue 片段。
  * @param presets 预设库（外观引用预设时用）。
+ * @param gamma 工程 Gamma（手动覆盖的颜色合成用）。
  * @returns sRGB。
  */
-export function clipColor(cue: Cue, presets: readonly Preset[]): Rgb {
+export function clipColor(cue: Cue, presets: readonly Preset[], gamma: number = DEFAULT_GAMMA): Rgb {
   switch (cue.kind) {
     case "static":
       return cue.rgb;
@@ -115,12 +126,12 @@ export function clipColor(cue: Cue, presets: readonly Preset[]): Rgb {
       return cue.colors[0] ?? [255, 255, 255];
     case "look": {
       const color = paramHead(resolveLook(cue.look, presets).color);
-      return color ? colorValueRgb(color) : [160, 160, 160];
+      return color ? colorValueRgb(color, gamma) : [160, 160, 160];
     }
     case "scene": {
       const first = cue.entries.find((e) => resolveLook(e.look, presets).color);
       const color = first ? paramHead(resolveLook(first.look, presets).color) : undefined;
-      return color ? colorValueRgb(color) : [160, 160, 160];
+      return color ? colorValueRgb(color, gamma) : [160, 160, 160];
     }
   }
 }

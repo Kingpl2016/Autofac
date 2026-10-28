@@ -4,6 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Film, Music } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useCueActions } from "../hooks/useCueActions";
 import { nextMediaTrackName } from "../hooks/mediaActions";
 import { addMediaTrack } from "../lib/mediaClips";
@@ -54,7 +55,8 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
 
   const bodyRef = useRef<TimelineBodyHandle>(null);
   const headersRef = useRef<HTMLDivElement>(null);
-  const { setNodeRef: setDropRef } = useDroppable({ id: TIMELINE_DROP_ID });
+  const { setNodeRef: setDropRef, isOver, active: dragActive } = useDroppable({ id: TIMELINE_DROP_ID });
+  const fixtureOver = isOver && (dragActive?.data.current as { kind?: string } | undefined)?.kind === "fixtureModel";
   const { tracks } = project;
 
   const trackById = useMemo(() => new Map(tracks.map((tr) => [tr.id, tr])), [tracks]);
@@ -179,7 +181,14 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
       }
     >
       {!hasAnyTrack ? (
-        <EmptyHint>{t("editor.timeline.empty")}</EmptyHint>
+        // 没有轨道时空提示本身也是放置区：把灯具拖进来就生成轨道
+        <div
+          ref={setDropRef}
+          data-testid="timeline-empty-drop"
+          className={cn("h-full rounded-md transition-colors", fixtureOver && "bg-primary/10 ring-2 ring-inset ring-primary")}
+        >
+          <EmptyHint>{t("editor.timeline.empty")}</EmptyHint>
+        </div>
       ) : (
         <TimelineContextMenu commands={commands}>
         <div

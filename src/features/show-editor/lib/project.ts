@@ -26,8 +26,11 @@ export const OUTPUT_FPS = 30;
 /** 一个 Universe 的 DMX 通道数。 */
 export const DMX_CHANNELS = 512;
 
-/** 新工程的默认 Gamma（常见 LED 灯具的感知校正）。 */
-export const DEFAULT_GAMMA = 2.2;
+/** 新工程的默认 Gamma：1.0 即关闭 Gamma 校正（线性输出，DMX 值与所选颜色一致）。 */
+export const DEFAULT_GAMMA = 1;
+
+/** 打开 Gamma 校正时的推荐值（常见 LED 灯具的感知校正）。 */
+export const RECOMMENDED_GAMMA = 2.2;
 
 /** Universe 编号上限（`.artrec` 规范：net 0~127 × subuni 0~15）。 */
 export const MAX_UNIVERSE = 2047;

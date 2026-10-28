@@ -6,9 +6,11 @@ import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { createPreviewEvaluator } from "../color";
 import { addLookCue } from "../cueOps";
 import {
+  addEffectDefCue,
   BUILTIN_EFFECTS,
   buildEffectLook,
   copyEffectToUser,
+  EFFECT_CLIP_MS,
   defaultEffectParams,
   effectDefNeeds,
   groupEffects,
@@ -156,5 +158,31 @@ describe("特效库：生成外观", () => {
     expect(lit(100)).toEqual([0]);
     expect(lit(350)).toEqual([1]);
     expect(lit(850)).toEqual([3]);
+  });
+});
+
+describe("特效库：拖到时间线", () => {
+  it("在落点按参数生成外观片段，分布按落点轨道的成员数展开", () => {
+    let id: string | null = null;
+    const p = produce(createEmptyProject("t"), (d) => {
+      addFixtures(d, RGBW, 3);
+      d.durationMs = 30_000;
+      d.tempo = tempo;
+      createGroup(d, "排", d.fixtures.map((f) => f.id));
+      id = addEffectDefCue(d, d.tracks.at(-1)!.id, 2000, def("intensityChase"), { ...defaultEffectParams(def("intensityChase")), size: 60 });
+    });
+    const cue = p.cues.find((c) => c.id === id);
+    expect(cue).toMatchObject({ kind: "look", trackId: p.tracks.at(-1)!.id, startMs: 2000, endMs: 2000 + EFFECT_CLIP_MS });
+    expect(cue?.kind === "look" && cue.look.intensity).toMatchObject({ kind: "curve", curve: { to: 60, duty: 0.3333 } });
+    expect(cue?.kind === "look" && cue.spread?.values?.phase).toBeTruthy();
+    expect(projectIntegrityIssues(p)).toEqual([]);
+  });
+
+  it("轨道不存在时不改工程", () => {
+    const p = createEmptyProject("t");
+    const next = produce(p, (d) => {
+      expect(addEffectDefCue(d, "nope", 0, def("circle"), defaultEffectParams(def("circle")))).toBeNull();
+    });
+    expect(next).toBe(p);
   });
 });
