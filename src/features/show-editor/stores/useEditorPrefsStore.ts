@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
+import { DEFAULT_RECORD_PREFS, sanitizeRecordPrefs, type RecordPrefs } from "../lib/programmer";
 
 /** 中间区域的视图：色块预览、舞台监视器、灯具表（色块为默认）。 */
 export const CENTER_VIEWS = ["swatches", "stage", "sheet"] as const;
@@ -90,6 +91,8 @@ export interface EditorPrefsData {
   patchSections: SectionStates<"patch">;
   /** 编程器页各分区的展开状态 */
   programSections: SectionStates<"program">;
+  /** 编程器的记录设置（长度、单位、淡入） */
+  programmerRecord: RecordPrefs;
   /** Cue 属性页各分区的展开状态（同名分区在各片段类型之间共用） */
   cueSections: SectionStates<"cue">;
 }
@@ -97,7 +100,7 @@ export interface EditorPrefsData {
 /** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
 export const INSPECTOR_SECTIONS = {
   patch: ["basic", "dmx", "placement", "sync", "groupsOf", "universes", "channels", "groups"],
-  program: ["select", "intensity", "color", "record"],
+  program: ["select", "intensity", "color", "attrs", "fan", "record"],
   cue: ["color", "effect", "effectColors", "intensity", "layers", "spread", "clipboard", "scene", "fades", "time"],
 } as const;
 
@@ -183,6 +186,12 @@ interface EditorPrefsState extends EditorPrefsData {
    * @param format 刻度。
    */
   setRulerFormat: (format: RulerFormat) => void;
+  /**
+   * 修改编程器的记录设置（与当前值合并后规整）。
+   *
+   * @param patch 要改的字段。
+   */
+  setProgrammerRecord: (patch: Partial<RecordPrefs>) => void;
 }
 
 /**
@@ -221,6 +230,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   patchSections: {},
   programSections: {},
   cueSections: {},
+  programmerRecord: DEFAULT_RECORD_PREFS,
 };
 
 /**
@@ -272,6 +282,7 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     patchSections: sanitizeSections("patch", r.patchSections, current.patchSections),
     programSections: sanitizeSections("program", r.programSections, current.programSections),
     cueSections: sanitizeSections("cue", r.cueSections, current.cueSections),
+    programmerRecord: sanitizeRecordPrefs(r.programmerRecord, current.programmerRecord),
   };
 }
 
@@ -292,6 +303,8 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setSnapKind: (kind, on) => set((st) => ({ snapKinds: { ...st.snapKinds, [kind]: on } })),
       setRippleEdit: (rippleEdit) => set({ rippleEdit }),
       setRulerFormat: (rulerFormat) => set({ rulerFormat }),
+      setProgrammerRecord: (patch) =>
+        set((s) => ({ programmerRecord: sanitizeRecordPrefs({ ...s.programmerRecord, ...patch }, s.programmerRecord) })),
       setSection: (scope, section, open) =>
         set((st) => {
           const field = SECTION_FIELDS[scope];
@@ -316,6 +329,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         patchSections,
         programSections,
         cueSections,
+        programmerRecord,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -330,6 +344,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         patchSections,
         programSections,
         cueSections,
+        programmerRecord,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },

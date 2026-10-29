@@ -85,6 +85,7 @@ describe("预览色块分区", () => {
       patchSections: {},
       programSections: {},
       cueSections: {},
+      programmerRecord: DEFAULT_EDITOR_PREFS.programmerRecord,
     });
     // 属性面板各页的分区展开状态：只保留本页认识的分区和布尔值；不是对象时保持当前值
     const current = { ...DEFAULT_EDITOR_PREFS, patchSections: { sync: true }, cueSections: { time: false } };

@@ -47,6 +47,7 @@ export const HINTS: readonly HintDef[] = [
   { id: "patchBatch", target: "patch-batch", side: "left" },
   { id: "universeView", target: "universe-view", side: "left" },
   { id: "colorInput", target: "color-input", side: "left" },
+  { id: "programmer", target: "programmer-tools", side: "left" },
 ];
 
 /**

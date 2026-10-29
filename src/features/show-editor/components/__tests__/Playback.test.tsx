@@ -22,7 +22,9 @@ import { RGBW } from "../../lib/__tests__/testkit";
 import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { usePlaybackStore } from "../../stores/usePlaybackStore";
+import { useProgrammerStore } from "../../stores/useProgrammerStore";
 import { useProjectStore } from "../../stores/useProjectStore";
+import { HIGHLIGHT_TRACK_ID } from "../../lib/programmer";
 import { FixtureDetails } from "../FixtureDetails";
 import { PreviewPanel } from "../PreviewPanel";
 import { TransportBar } from "../TransportBar";
@@ -151,6 +153,29 @@ describe("TransportBar 与后端播放引擎", () => {
     expect(order.indexOf("show_load")).toBeGreaterThanOrEqual(0);
     expect(order.indexOf("show_load")).toBeLessThan(order.indexOf("show_play"));
     expect((calls("show_load")[0][1] as { project: { name: string } }).project.name).toBe("新名字");
+  });
+
+  it("高亮跟随实时输出：关着时不推给后端；打开后推送，并随选择变化重新推送", async () => {
+    installBackend();
+    act(() => useProjectStore.getState().update((d) => void addFixtures(d, RGBW, 2)));
+    const [a, b] = project().fixtures.map((f) => f.id);
+    act(() => useEditorUiStore.getState().setSelectedFixtures([a]));
+    render(<Harness />);
+    await settle();
+    const lastTracks = () => (calls("show_load").at(-1)?.[1] as { project: { tracks: { id: string }[]; cues: { id: string; entries?: { fixtureId: string }[] }[] } }).project;
+    act(() => useProgrammerStore.getState().setHighlight(true));
+    await waitFor(() => expect(calls("show_load").length).toBeGreaterThan(0));
+    expect(lastTracks().tracks.some((t) => t.id === HIGHLIGHT_TRACK_ID)).toBe(false);
+
+    invoke.mockClear();
+    act(() => useProgrammerStore.getState().setLive(true));
+    await waitFor(() => expect(lastTracks()?.tracks.some((t) => t.id === HIGHLIGHT_TRACK_ID)).toBe(true));
+    invoke.mockClear();
+    act(() => useEditorUiStore.getState().setSelectedFixtures([b]));
+    await waitFor(() =>
+      expect(lastTracks()?.cues.find((c) => c.id === "__highlight_clip__")?.entries?.map((e) => e.fixtureId)).toEqual([b]),
+    );
+    act(() => useProgrammerStore.getState().reset());
   });
 
   it("启动时把工程交给后端，并把后端位置对齐到播放头", async () => {

@@ -65,7 +65,7 @@ export const useProjectStore = create<ProjectState>()(
         });
         useProjectStore.temporal.getState().clear();
         // 编程器里的值属于上一个工程的灯具，换工程时清空
-        useProgrammerStore.getState().clear();
+        useProgrammerStore.getState().reset();
       },
       restore: (project) => {
         set((state) => {
@@ -74,7 +74,7 @@ export const useProjectStore = create<ProjectState>()(
           state.baseline = createEmptyProject("");
         });
         useProjectStore.temporal.getState().clear();
-        useProgrammerStore.getState().clear();
+        useProgrammerStore.getState().reset();
       },
       markSaved: (saved) =>
         set((state) => {

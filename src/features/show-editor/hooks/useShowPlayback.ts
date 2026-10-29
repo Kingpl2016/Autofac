@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { showLoad, showSeek, showSetOutputEnabled, showState$, showStop } from "../lib/playbackApi";
-import { blackoutProject, withProgrammer } from "../lib/programmer";
+import { blackoutProject, withHighlight, withProgrammer } from "../lib/programmer";
 import { createSyncer, throttle } from "../lib/syncer";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
@@ -37,14 +37,21 @@ export function useShowPlayback(): void {
       const project = useProjectStore.getState().project;
       // 黑场：全部轨道静音（Park 仍然生效），编程器也不输出
       if (useEditorUiStore.getState().blackout) return blackoutProject(project);
-      const { live, values } = useProgrammerStore.getState();
-      return live ? withProgrammer(project, values) : project;
+      const { live, values, highlight } = useProgrammerStore.getState();
+      if (!live) return project;
+      // 高亮跟随“实时输出”：打开时选中的灯在现场也亮成白光
+      return withHighlight(withProgrammer(project, values), highlight ? useEditorUiStore.getState().selectedFixtureIds : []);
     };
     const unsubscribeProject = useProjectStore.subscribe((s, prev) => {
       if (s.project !== prev.project) syncer.push(outgoing());
     });
     const unsubscribeProgrammer = useProgrammerStore.subscribe((s, prev) => {
-      if (s.live !== prev.live || (s.live && s.values !== prev.values)) syncer.push(outgoing());
+      if (s.live !== prev.live || (s.live && (s.values !== prev.values || s.highlight !== prev.highlight))) syncer.push(outgoing());
+    });
+    // 高亮跟随选择：实时输出 + 高亮时，换选择要重新推送
+    const unsubscribeSelection = useEditorUiStore.subscribe((s, prev) => {
+      const { live, highlight } = useProgrammerStore.getState();
+      if (live && highlight && s.selectedFixtureIds !== prev.selectedFixtureIds) syncer.push(outgoing());
     });
 
     const seek = throttle((ms: number) => {
@@ -87,6 +94,7 @@ export function useShowPlayback(): void {
       seek.cancel();
       unsubscribeProject();
       unsubscribeProgrammer();
+      unsubscribeSelection();
       unsubscribeBlackout();
       unsubscribePlayhead();
       stateSubscription.unsubscribe();

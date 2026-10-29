@@ -9,7 +9,7 @@ import { adjacentCue, adjacentEditPoint, editPoints, toggleCuesDisabled, trimCue
 import { removeMediaClips, splitMediaClips } from "../lib/mediaClips";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { addSection, sectionAt } from "../lib/sections";
-import { hasProgrammerValues, recordScene } from "../lib/programmer";
+import { hasProgrammerValues, knockout, recordLengthMs, recordLooks, recordScene } from "../lib/programmer";
 import { setLoopEdge, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
 import { clamp } from "@/shared/lib/math";
@@ -389,12 +389,74 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         keys: ["alt+r"],
         enabled: () => hasProgrammerValues(programmer().values),
         run: () => {
+          // 长度与淡入用编程器面板上的记录设置
+          const rec = useEditorPrefsStore.getState().programmerRecord;
+          const length = recordLengthMs(rec, project().tempo);
           let created = 0;
           update((d) => {
-            created = recordScene(d, programmer().values, ui().playheadMs, 2000, t("editor.programmer.sceneTrack")).cueIds.length;
+            created = recordScene(d, programmer().values, ui().playheadMs, length, t("editor.programmer.sceneTrack"), {
+              fadeInMs: rec.fadeInMs,
+            }).cueIds.length;
           });
           announce(t(created > 0 ? "editor.programmer.recordedScene" : "editor.programmer.noRoom"));
         },
+      },
+      {
+        id: "programmer.recordLooks",
+        titleKey: "editor.commands.programmerRecordLooks",
+        category: "edit",
+        keys: ["alt+shift+r"],
+        enabled: () => hasProgrammerValues(programmer().values),
+        run: () => {
+          const rec = useEditorPrefsStore.getState().programmerRecord;
+          let r = { cueIds: [] as string[], skipped: [] as string[] };
+          update((d) => {
+            r = recordLooks(d, programmer().values, ui().playheadMs, recordLengthMs(rec, project().tempo), { fadeInMs: rec.fadeInMs });
+          });
+          announce(
+            r.cueIds.length > 0
+              ? t("editor.programmer.recordedLooks", { count: r.cueIds.length, skipped: r.skipped.length })
+              : t("editor.programmer.noRoom"),
+          );
+        },
+      },
+      {
+        id: "programmer.knockout",
+        titleKey: "editor.commands.programmerKnockout",
+        category: "edit",
+        keys: ["alt+k"],
+        enabled: () => ui().selectedFixtureIds.some((id) => programmer().values[id] !== undefined),
+        run: () => {
+          programmer().setValues(knockout(programmer().values, ui().selectedFixtureIds));
+          announce(t("editor.programmer.knocked", { count: ui().selectedFixtureIds.length }));
+        },
+      },
+      {
+        id: "programmer.highlight",
+        titleKey: "editor.commands.programmerHighlight",
+        category: "output",
+        keys: ["h"],
+        run: () => {
+          const on = !programmer().highlight;
+          programmer().setHighlight(on);
+          announce(t(on ? "editor.programmer.highlightOn" : "editor.programmer.highlightOff"));
+        },
+      },
+      {
+        id: "programmer.undo",
+        titleKey: "editor.commands.programmerUndo",
+        category: "edit",
+        keys: ["alt+z"],
+        enabled: () => programmer().past.length > 0,
+        run: () => programmer().undo(),
+      },
+      {
+        id: "programmer.redo",
+        titleKey: "editor.commands.programmerRedo",
+        category: "edit",
+        keys: ["alt+shift+z"],
+        enabled: () => programmer().future.length > 0,
+        run: () => programmer().redo(),
       },
       {
         id: "programmer.live",

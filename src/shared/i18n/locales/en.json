@@ -1698,7 +1698,31 @@
       "noRoom": "No room at the playhead, nothing recorded",
       "clear": "Clear programmer",
       "cleared": "Programmer cleared",
-      "sceneTrack": "Scene"
+      "sceneTrack": "Scene",
+      "highlight": "Highlight",
+      "highlightPreviewOnly": "Highlight shows only in the preview; turn on “Live output” to light real fixtures.",
+      "highlightOn": "Highlight on",
+      "highlightOff": "Highlight off",
+      "undo": "Undo last programmer change",
+      "redo": "Redo programmer change",
+      "quickIntensity": "Intensity shortcuts",
+      "full": "Full",
+      "zero": "Zero",
+      "locate": "Locate",
+      "attrs": "Attributes",
+      "noAttrs": "The selected fixtures have no editable attributes (pan / tilt, gobo, zoom…).",
+      "knockAttr": "Remove {{name}}",
+      "lengthBeats": "Clip length (beats)",
+      "lengthUnit": "Length unit",
+      "beats": "beats",
+      "noTempo": "The project has no tempo yet",
+      "fadeIn": "Fade in",
+      "updateGroup": "Update selected clips",
+      "updateMerge": "Merge into selected clips ({{count}})",
+      "updateReplace": "Overwrite",
+      "updated": "Updated {{count}} clips",
+      "nothingUpdated": "Nothing to update (select look or scene clips on the timeline first)",
+      "knocked": "Removed programmer values of {{count}} fixtures"
     },
     "timeline": {
       "title": "Timeline",
@@ -1880,7 +1904,12 @@
       "backFrame": "Back one frame",
       "pause": "Pause",
       "play": "Play",
-      "contextMenu": "Open context menu"
+      "contextMenu": "Open context menu",
+      "programmerRecordLooks": "Programmer: record to own tracks",
+      "programmerKnockout": "Programmer: remove selected fixtures",
+      "programmerHighlight": "Programmer: toggle highlight",
+      "programmerUndo": "Programmer: undo",
+      "programmerRedo": "Programmer: redo"
     },
     "unsaved": "Unsaved changes",
     "toolbarUndo": "Undo",
@@ -2833,6 +2862,10 @@
         "effects": {
           "title": "Tune, then insert",
           "body": "Clicking an effect opens its parameters: speed, size, phase spread, wings, direction and order; then press Insert. Double-click inserts right away. Effects come from config files; right-click to copy one into your own effects."
+        },
+        "programmer": {
+          "title": "New programmer tools",
+          "body": "“Highlight” turns the selected fixtures full white so you can step through them with Alt+← / Alt+→. Below you'll find attributes, fan (A→B) and the programmer's own undo. Every section has a “?” with details."
         }
       },
       "help": "Help",
@@ -2954,7 +2987,65 @@
       "diagShow": "Current show: {{fixtures}} fixtures, {{tracks}} tracks, {{cues}} clips, {{universes}} universe routes",
       "diagCopied": "Diagnostics copied; paste them into your report",
       "diagFailed": "Could not copy diagnostics",
-      "logsFailed": "Could not open the log folder"
+      "logsFailed": "Could not open the log folder",
+      "open": "About “{{name}}”",
+      "keys": "Shortcuts",
+      "term": "Console term",
+      "programmer": {
+        "overview": {
+          "title": "Programmer",
+          "short": "Set different values on several fixtures at once, then record them to the timeline.",
+          "body": "The programmer is a scratch area: its values sit on top of the show (highest priority). They are not part of the project, not saved, and not in the project undo history.\n• Select fixtures → set intensity, color, attributes → select another batch and continue;\n• With “Live output” on, the fixtures follow the programmer immediately; otherwise you only see it in the preview;\n• The programmer has its own undo / redo (arrows at the top), so an accidental “Clear” can be undone;\n• “Remove selected” clears only the selected fixtures; “Clear programmer” clears everything.",
+          "keys": "P open programmer · Alt+Z / Alt+Shift+Z undo / redo · Alt+K remove selected · Alt+Backspace clear",
+          "term": "Programmer · Clear · Knockout"
+        },
+        "highlight": {
+          "title": "Highlight",
+          "short": "Selected fixtures go full white temporarily; step through them with Prev / Next.",
+          "body": "Highlight is not written into the programmer; turning it off restores everything.\n• It always shows in the preview; real fixtures light up only while “Live output” is on;\n• It follows the selection: Alt+← / Alt+→ moves the highlight to the previous / next fixture;\n• Channels with a highlight value (OFL highlightValue) use that value.",
+          "keys": "H toggle highlight · Alt+← / Alt+→ previous / next fixture",
+          "term": "Highlight · Next / Prev"
+        },
+        "select": {
+          "title": "Fixture selection",
+          "short": "Select odd / even, halves, every Nth, by group or by model.",
+          "body": "The selection is shared with the preview and the patch list.\n• Tools work on the current selection, or on all fixtures when nothing is selected;\n• “Every N, take M” is handy for chases and interleaving;\n• Fans follow the selection order: fixtures selected first come first.",
+          "keys": "Ctrl+Shift+A select all · Ctrl+Shift+I invert · Alt+← / Alt+→ previous / next",
+          "term": "Selection · MAtricks"
+        },
+        "intensity": {
+          "title": "Intensity",
+          "short": "Set the brightness of the selected fixtures; quick buttons for full, zero and ±10%.",
+          "body": "Intensity merges with the show by HTP (highest wins): dimming in the programmer does not override a brighter clip.\n• +10% / −10% add to each fixture's current value, keeping their differences;\n• With one fixture selected, “Locate” flashes it so you can find it on stage;\n• “Remove intensity” clears only the intensity layer.",
+          "keys": "H highlight · Alt+K remove selected",
+          "term": "Full / Zero · Locate"
+        },
+        "color": {
+          "title": "Color",
+          "short": "Pick a color; each fixture mixes it with its own emitters.",
+          "body": "Color merges by LTP (latest wins): the programmer color always wins over the show.\n• Only the modes the selected fixtures support are shown: color, color temperature, per emitter;\n• Each mode remembers its last value, so switching modes doesn't lose your color;\n• Fixtures that get a color but no intensity are set to 100% automatically.",
+          "term": "Color · CTC"
+        },
+        "attrs": {
+          "title": "Attributes",
+          "short": "Set pan / tilt, gobos, zoom and other non-color attributes the selection supports.",
+          "body": "Attributes are grouped into position, beam, focus and control.\n• Faders write 0–100%; channels with capabilities (gobo, color wheel, prism…) offer a slot list;\n• Values go only to fixtures that have the attribute; partial support shows a count;\n• “Mixed” means the selected fixtures differ; moving the fader unifies them;\n• × removes the attribute layer.",
+          "term": "Attribute · Feature group"
+        },
+        "fan": {
+          "title": "Fan",
+          "short": "Spread intensity, hue or an attribute from A to B across the selection order.",
+          "body": "Each fixture gets A + (B − A) × weight; the mode defines the weights:\n• /: symmetric around the middle — the middle fixture is A, the last one is B;\n• <: from the first fixture — the first is B, returning to A;\n• >: from the last fixture — the first is A, the last is B;\n• ><: largest in the middle — ends are A, middle is B;\n• <>: largest at the ends — middle is A, ends are B.\nThe transition sets the spacing: linear, sine, slow start, fast start. The bars below preview each fixture's value.",
+          "term": "Align · Fan · Align transition"
+        },
+        "record": {
+          "title": "Record",
+          "short": "Record the programmer as a scene clip, as clips on each track, or update the selected clips.",
+          "body": "Recording happens at the playhead; each record is one undo step.\n• Record as scene clip: different values for several fixtures in one clip (a scene track is created if needed);\n• Record to own tracks: one look clip per fixture on its own track; occupied positions are skipped;\n• Length in ms or beats (when the project has a tempo), with an optional fade-in;\n• Update selected clips: “Merge” changes only the layers in the programmer, “Overwrite” replaces the clip's look.",
+          "keys": "Alt+R record scene clip · Alt+Shift+R record to own tracks",
+          "term": "Store · Update · Merge / Overwrite"
+        }
+      }
     },
     "shortcutSheet": {
       "title": "Shortcut cheat sheet",
@@ -3065,6 +3156,33 @@
       "zoom": "Timeline zoom",
       "zoomValue": "{{value}} pixels per second",
       "fit": "Fit to window (Shift+Z)"
+    },
+    "fan": {
+      "title": "Fan",
+      "hue": "Hue",
+      "layer": "Layer to fan",
+      "from": "Value A",
+      "to": "Value B",
+      "swap": "Swap A and B",
+      "mode": "Fan mode",
+      "modes": {
+        "center": "/ Symmetric around the middle",
+        "first": "< From the first fixture",
+        "last": "> From the last fixture",
+        "middle": ">< Largest in the middle",
+        "ends": "<> Largest at the ends"
+      },
+      "transition": "Fan transition",
+      "transitions": {
+        "linear": "Linear",
+        "sine": "Sine",
+        "slow": "Slow",
+        "fast": "Fast"
+      },
+      "preview": "Values: {{values}}",
+      "apply": "Apply to {{count}}",
+      "applied": "Fanned {{name}} across {{count}} fixtures",
+      "needTwo": "Select at least two fixtures to fan."
     }
   },
   "fixtures": {

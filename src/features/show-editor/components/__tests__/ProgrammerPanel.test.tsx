@@ -9,7 +9,7 @@ import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
-import { PIXEL_BAR, RGBW } from "../../lib/__tests__/testkit";
+import { HEAD16, PIXEL_BAR, RGBW } from "../../lib/__tests__/testkit";
 import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProgrammerStore } from "../../stores/useProgrammerStore";
@@ -236,3 +236,106 @@ describe("灯具表", () => {
     expect(within(pixelRow(3)).getByRole("button", { name: /^R3 40%/ })).toBeTruthy();
   });
 });
+
+describe("编程器增强", () => {
+  /** 换成 2 台 RGBW + 2 台摇头灯。 */
+  function loadMovers() {
+    act(() => {
+      useProjectStore.getState().load(
+        produce(createEmptyProject("t"), (d) => {
+          addFixtures(d, RGBW, 2);
+          addFixtures(d, HEAD16, 2);
+          d.durationMs = 10_000;
+          d.output.gamma = 1;
+        }),
+      );
+    });
+  }
+
+  it("分区标题旁的“?”：悬停的一句话写在按钮说明里，点开是说明卡，不会收起分区", () => {
+    render(<ProgrammerPanel />);
+    const help = screen.getByRole("button", { name: "“灯具选择”的说明" });
+    expect(help.getAttribute("aria-description")).toContain("奇偶");
+    fireEvent.click(help);
+    const card = screen.getByRole("dialog", { name: "灯具选择" });
+    expect(within(card).getByText(/选择与预览区/)).toBeTruthy();
+    expect(within(card).getByText(/Ctrl\+Shift\+A/)).toBeTruthy();
+    expect(useEditorPrefsStore.getState().programSections.select).toBeUndefined();
+  });
+
+  it("属性分区只列选中灯支持的属性，只写给支持的灯；去掉属性层", () => {
+    loadMovers();
+    render(<ProgrammerPanel />);
+    const [rgb, , mover] = ids();
+    act(() => ui().setSelectedFixtures([rgb]));
+    expect(screen.getByText("选中的灯没有可编辑的属性（Pan / Tilt、图案、变焦等）。")).toBeTruthy();
+
+    act(() => ui().setSelectedFixtures([rgb, mover]));
+    const pan = screen.getByRole("textbox", { name: "水平 Pan 的数值" });
+    fireEvent.change(pan, { target: { value: "25" } });
+    fireEvent.blur(pan);
+    expect(programmer().values[mover]?.attrs?.pan).toEqual(fixed(0.25));
+    expect(programmer().values[rgb]).toBeUndefined();
+    expect(screen.getAllByText("1/2 台支持").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "去掉水平 Pan" }));
+    expect(programmer().values[mover]).toBeUndefined();
+  });
+
+  it("强度快捷按钮与编程器撤销", () => {
+    render(<ProgrammerPanel />);
+    act(() => ui().setSelectedFixtures(ids().slice(0, 2)));
+    fireEvent.click(screen.getByRole("button", { name: "满亮" }));
+    fireEvent.click(screen.getByRole("button", { name: "−10%" }));
+    expect(programmer().values[ids()[0]]?.intensity).toEqual(fixed(90));
+    fireEvent.click(screen.getByRole("button", { name: "撤销编程器的上一步" }));
+    expect(programmer().values[ids()[0]]?.intensity).toEqual(fixed(100));
+    fireEvent.click(screen.getByRole("button", { name: "清空编程器" }));
+    expect(programmer().values).toEqual({});
+    fireEvent.click(screen.getByRole("button", { name: "撤销编程器的上一步" }));
+    expect(programmer().values[ids()[1]]?.intensity).toEqual(fixed(100));
+  });
+
+  it("分布：按选择顺序从 A 到 B，预览柱状图给出各台取值", () => {
+    render(<ProgrammerPanel />);
+    // 先点的排在前面
+    act(() => ui().setSelectedFixtures([ids()[3], ids()[2], ids()[1], ids()[0]]));
+    const section = screen.getByRole("region", { name: "分布" });
+    commitText(within(section).getByRole("textbox", { name: "起点值 A" }), "10");
+    commitText(within(section).getByRole("textbox", { name: "终点值 B" }), "40");
+    expect(within(section).getByRole("img", { name: "各台取值：10、20、30、40" })).toBeTruthy();
+    fireEvent.click(within(section).getByRole("radio", { name: "><" }));
+    fireEvent.click(within(section).getByRole("button", { name: "应用到 4 台" }));
+    const got = ids().map((id) => programmer().values[id]?.intensity);
+    // 选择顺序是 4、3、2、1：两端（4 和 1）为 A，中间为 B 方向
+    expect(got[3]).toEqual(fixed(10));
+    expect(got[0]).toEqual(fixed(10));
+    expect(got[1]).toEqual(fixed(30));
+    expect(got[2]).toEqual(fixed(30));
+  });
+
+  it("高亮：预览里选中的灯变白；不写进编程器；关着实时输出时给出提示", () => {
+    act(() => {
+      useEditorPrefsStore.setState({ centerView: "swatches" });
+    });
+    render(
+      <>
+        <ProgrammerPanel />
+        <PreviewPanel />
+      </>,
+    );
+    act(() => ui().setSelectedFixtures([ids()[0]]));
+    fireEvent.click(screen.getByRole("switch", { name: "高亮" }));
+    expect(programmer().highlight).toBe(true);
+    expect(programmer().values).toEqual({});
+    expect(screen.getByText("高亮只在预览里生效；打开“实时输出”后现场的灯才会亮。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^RGBW全彩灯 1：红 255 绿 255 蓝 255/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^RGBW全彩灯 2：红 0 绿 0 蓝 0/ })).toBeTruthy();
+  });
+});
+
+/** 提交一个“提交式”输入框（改值 → 失焦）。 */
+function commitText(input: HTMLElement, value: string) {
+  act(() => input.focus());
+  fireEvent.change(input, { target: { value } });
+  fireEvent.blur(input);
+}
