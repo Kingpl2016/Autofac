@@ -1,4 +1,4 @@
-import { DEFAULT_GAMMA, type ColorValue, type Look, type Param, type Preset, type Rgb } from "./project";
+import { DEFAULT_GAMMA, type ColorValue, type CycleParam, type Look, type Param, type Preset, type Rgb } from "./project";
 
 /**
  * 外观（Look）与参数（Param）的界面辅助：取代表值、合并预设、判断参与的层。
@@ -8,12 +8,12 @@ import { DEFAULT_GAMMA, type ColorValue, type Look, type Param, type Preset, typ
  */
 
 /**
- * 参数的代表值：固定值本身、第一帧的值，或曲线的起点。
+ * 参数的代表值：固定值本身、第一帧的值、曲线的起点，或序列的第一个值。
  *
  * @param p 参数。
  * @returns 代表值；参数缺失时为 `undefined`。
  */
-export function paramHead<T>(p: Param<T> | undefined): T | undefined {
+export function paramHead<T>(p: Param<T> | CycleParam<T> | undefined): T | undefined {
   if (!p) return undefined;
   switch (p.kind) {
     case "value":
@@ -22,6 +22,8 @@ export function paramHead<T>(p: Param<T> | undefined): T | undefined {
       return p.keys[0]?.value;
     case "curve":
       return p.curve.from as T;
+    case "cycle":
+      return p.cycle.colors[0];
   }
 }
 

@@ -1629,7 +1629,9 @@
         "saw": "锯齿",
         "square": "方波",
         "ramp": "斜坡",
-        "random": "随机"
+        "random": "随机",
+        "noise": "平滑噪声",
+        "steps": "步进"
       },
       "from": "起点",
       "to": "终点",
@@ -3295,6 +3297,31 @@
       "apply": "复制 {{count}} 份",
       "done": "已复制 {{count}} 份",
       "partial": "只复制了 {{count}} / {{total}} 份：后面放不下"
+    },
+    "curve": {
+      "period": "周期",
+      "periodModes": {
+        "cycles": "次数",
+        "ms": "毫秒",
+        "beats": "拍"
+      },
+      "periodMs": "周期",
+      "periodBeats": "周期",
+      "beatUnit": "拍",
+      "sync": "按节拍对齐",
+      "syncHint": "相位从工程的第一拍算起：片段起点不在拍上也合拍",
+      "transition": "过渡",
+      "transitionHint": "波形在周期的这部分时间里走完，余下时间保持；步进和颜色序列按每一步计",
+      "ease": "缓动",
+      "easeDefault": "默认",
+      "duty": "占空比",
+      "perFixture": "每台灯不同",
+      "perFixtureHint": "关闭时所有灯走同一组随机值（可以靠相位分布错开）",
+      "reseed": "换一组",
+      "reseeded": "已换一组随机值",
+      "steps": "每一步（%）",
+      "stepsHint": "逗号分隔的百分比，一个周期均分成这些步，例如 100, 0, 0, 0 为亮一步、暗三步",
+      "stepsInvalid": "步进值无效：请输入 1~64 个 0~100 的数，用逗号分隔"
     }
   },
   "fixtures": {

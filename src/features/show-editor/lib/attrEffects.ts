@@ -174,15 +174,30 @@ export function buildAttrEffect(id: AttrEffectId, params: AttrEffectParams, temp
 /**
  * 外观里频率最高的强度方波 / 曲线的闪烁频率（Hz），用于频闪安全提示。
  *
+ * 按时间计的周期（毫秒 / 拍）按周期换算；步进波形按一个周期里“亮 → 暗”的次数计。
+ *
  * @param look 外观。
  * @param lengthMs 片段长度。
+ * @param tempo 工程节拍（按拍的周期用；省略时按 120 BPM）。
  * @returns 每秒闪烁次数；强度不是曲线时为 0。
  */
-export function flashRateHz(look: Look, lengthMs: number): number {
+export function flashRateHz(look: Look, lengthMs: number, tempo: Tempo | null = null): number {
   const p = look.intensity;
   if (p?.kind !== "curve" || lengthMs <= 0) return 0;
-  if (p.curve.shape === "ramp") return 0;
-  return (Math.max(1, p.curve.cycles) * 1000) / lengthMs;
+  const c = p.curve;
+  if (c.shape === "ramp") return 0;
+  const cyclesPerSec = c.period ? 1000 / periodMs(c.period, tempo) : (Math.max(1, c.cycles) * 1000) / lengthMs;
+  return cyclesPerSec * (c.shape === "steps" ? stepFlashes(c.steps ?? []) : 1);
+}
+
+/** 步进波形一个周期里从亮跳到暗的次数（首尾相接，至少按 1 计）。 */
+function stepFlashes(steps: readonly number[]): number {
+  let n = 0;
+  steps.forEach((v, i) => {
+    const next = steps[(i + 1) % steps.length];
+    if (v >= 0.5 && next < 0.5) n += 1;
+  });
+  return Math.max(1, n);
 }
 
 /**
@@ -190,10 +205,11 @@ export function flashRateHz(look: Look, lengthMs: number): number {
  *
  * @param look 外观。
  * @param lengthMs 片段长度。
+ * @param tempo 工程节拍（按拍的周期用）。
  * @returns 超过 [`MAX_SAFE_STROBE_HZ`] 时为 `true`。
  */
-export function unsafeFlash(look: Look, lengthMs: number): boolean {
-  return flashRateHz(look, lengthMs) > MAX_SAFE_STROBE_HZ;
+export function unsafeFlash(look: Look, lengthMs: number, tempo: Tempo | null = null): boolean {
+  return flashRateHz(look, lengthMs, tempo) > MAX_SAFE_STROBE_HZ;
 }
 
 /** 能转换成属性特效的旧 RGB 特效。 */

@@ -13,10 +13,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::effects::hash32;
+use crate::effects::{hash32, period_ms};
 use crate::envelope::apply_gamma;
 use crate::fixture::ChannelFunction;
 use crate::mix::{kelvin_display, ColorRequest, WhiteStrategy, EMITTERS};
+use crate::project::{EffectPeriod, Tempo};
 
 /// 相邻关键帧之间的插值方式。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +104,21 @@ pub enum WaveShape {
     Ramp,
     /// 每个周期一个确定性随机值。
     Random,
+    /// 平滑噪声：相邻周期的随机值之间插值（烛光、火焰）。
+    Noise,
+    /// 自定义步进：一个周期均分成 [`ValueCurve::steps`] 段，每段一个值。
+    Steps,
+}
+
+/// 周期的相位起点。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CurveSync {
+    /// 从片段（或这台灯延迟后的）起点算起。
+    #[default]
+    Clip,
+    /// 按节拍网格对齐（从工程第一拍算起），片段起点不在拍上也合拍。
+    Beat,
 }
 
 /// 数值曲线。
@@ -115,7 +131,7 @@ pub struct ValueCurve {
     pub from: f64,
     /// 目标值。
     pub to: f64,
-    /// 片段内的循环次数。
+    /// 片段内的循环次数（没有 [`ValueCurve::period`] 时使用）。
     #[serde(default = "one")]
     pub cycles: f64,
     /// 起始相位 0~1。
@@ -124,10 +140,158 @@ pub struct ValueCurve {
     /// 方波占空比 0~1。
     #[serde(default)]
     pub duty: Option<f64>,
+    /// 按时间计的周期（毫秒或拍）；给出时忽略 `cycles`，周期与片段长度无关。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period: Option<EffectPeriod>,
+    /// 相位起点；省略为 [`CurveSync::Clip`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync: Option<CurveSync>,
+    /// 过渡占周期（步进波形为每一步）的比例 0~1：在这段时间里走完波形，余下时间保持；省略为 1。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<f64>,
+    /// 过渡的缓动；省略时按形状本身（步进为保持，噪声为 S 曲线）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ease: Option<Curve>,
+    /// 步进波形每一步的值（0~1，乘到 `from`→`to` 区间上）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<f64>,
+    /// 随机 / 噪声的种子：给出时每台灯的随机序列各不相同；省略时所有灯共用同一序列（旧行为）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+}
+
+impl ValueCurve {
+    /// 只有形状、起止值与循环次数的曲线（其余字段为默认）。
+    ///
+    /// # Arguments
+    ///
+    /// * `shape` - 形状。
+    /// * `from` - 起始值。
+    /// * `to` - 目标值。
+    /// * `cycles` - 片段内的循环次数。
+    ///
+    /// # Returns
+    ///
+    /// 曲线。
+    #[must_use]
+    pub fn basic(shape: WaveShape, from: f64, to: f64, cycles: f64) -> Self {
+        Self {
+            shape,
+            from,
+            to,
+            cycles,
+            phase: 0.0,
+            duty: None,
+            period: None,
+            sync: None,
+            transition: None,
+            ease: None,
+            steps: Vec::new(),
+            seed: None,
+        }
+    }
 }
 
 fn one() -> f64 {
     1.0
+}
+
+/// 一次取值的上下文：片段内时刻、片段长度、额外相位，以及按时间计周期、节拍对齐、
+/// 每台灯随机序列需要的信息。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SampleCtx {
+    /// 相对片段（这台灯延迟后的）起点的时刻（毫秒）。
+    pub u_ms: f64,
+    /// 片段时长（毫秒）。
+    pub len_ms: f64,
+    /// 额外相位（周期的分数，可为任意实数）：多灯分布错开的相位。
+    pub phase_offset: f64,
+    /// 节目时间（毫秒）：按节拍对齐时使用。
+    pub abs_ms: f64,
+    /// 工程节拍；按拍计的周期没有节拍时按 [`crate::effects::FALLBACK_BPM`]。
+    pub tempo: Option<Tempo>,
+    /// 成员在分布里的序号：带种子的随机 / 噪声按它区分每台灯。
+    pub index: u32,
+}
+
+impl SampleCtx {
+    /// 只知道片段内时刻与长度时的上下文（节目时间取 `u_ms`，没有节拍，序号 0）。
+    ///
+    /// # Arguments
+    ///
+    /// * `u_ms` - 相对片段起点的时刻（毫秒）。
+    /// * `len_ms` - 片段时长（毫秒）。
+    ///
+    /// # Returns
+    ///
+    /// 上下文。
+    #[must_use]
+    pub fn clip(u_ms: f64, len_ms: f64) -> Self {
+        Self { u_ms, len_ms, phase_offset: 0.0, abs_ms: u_ms, tempo: None, index: 0 }
+    }
+}
+
+/// 周期计时（数值曲线与颜色序列共用）。
+#[derive(Debug, Clone, Copy)]
+struct Timing {
+    cycles: f64,
+    period: Option<EffectPeriod>,
+    sync: CurveSync,
+    phase: f64,
+}
+
+impl Timing {
+    /// 周期坐标 `x`（整数部分是第几个周期，小数部分是周期内的进度）与片段进度 `0..=1`。
+    fn position(&self, ctx: &SampleCtx) -> (f64, f64) {
+        let len = ctx.len_ms.max(1.0);
+        let progress = (ctx.u_ms / len).clamp(0.0, 1.0);
+        let base = if let Some(p) = self.period {
+            let ms = period_ms(p, ctx.tempo);
+            match self.sync {
+                CurveSync::Clip => ctx.u_ms.max(0.0) / ms,
+                CurveSync::Beat => {
+                    let offset = ctx.tempo.map_or(0.0, |t| if t.offset_ms.is_finite() { t.offset_ms } else { 0.0 });
+                    (ctx.abs_ms - offset) / ms
+                }
+            }
+        } else {
+            let cycles = if self.cycles.is_finite() { self.cycles.clamp(1.0, 1000.0) } else { 1.0 };
+            progress * cycles
+        };
+        let offset = if ctx.phase_offset.is_finite() { ctx.phase_offset } else { 0.0 };
+        let base = if base.is_finite() { base } else { 0.0 };
+        // 相位偏移折回 0~1；节拍对齐时 base 可能为负（第一拍之前），整数部分只用作随机序号
+        (base + self.phase.clamp(0.0, 1.0) + offset.rem_euclid(1.0), progress)
+    }
+}
+
+/// 过渡占比内的进度：`f` 走完 `transition` 后保持 1。
+fn transit(f: f64, transition: Option<f64>) -> f64 {
+    let t = transition.map_or(1.0, |t| if t.is_finite() { t.clamp(0.0, 1.0) } else { 1.0 });
+    if t <= 0.0 {
+        1.0
+    } else {
+        (f / t).min(1.0)
+    }
+}
+
+/// 周期序号（非负）：随机 / 噪声的取值键。
+fn step_of(x: f64) -> u32 {
+    let s = x.floor();
+    if s <= 0.0 {
+        0
+    } else {
+        s as u32
+    }
+}
+
+/// 一个确定性随机值 `0..1`。
+fn random_at(seed: Option<u32>, index: u32, step: u32) -> f64 {
+    let h = match seed {
+        Some(s) => hash32(s, index, step),
+        None => hash32(0x5EED, 0, step),
+    };
+    f64::from(h) / 4_294_967_296.0
 }
 
 /// 数值参数。
@@ -146,8 +310,8 @@ pub enum NumParam {
     },
     /// 数值曲线。
     Curve {
-        /// 曲线。
-        curve: ValueCurve,
+        /// 曲线（装箱：曲线字段较多，避免撑大每个参数）。
+        curve: Box<ValueCurve>,
     },
 }
 
@@ -180,40 +344,88 @@ impl NumParam {
     /// 参数值；关键帧为空时为 0。
     #[must_use]
     pub fn sample_phased(&self, u_ms: f64, len_ms: f64, phase_offset: f64) -> f64 {
+        self.sample_at(&SampleCtx { phase_offset, ..SampleCtx::clip(u_ms, len_ms) })
+    }
+
+    /// 按完整上下文取值（按时间计的周期、节拍对齐、每台灯的随机序列）。
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - 取值上下文。
+    ///
+    /// # Returns
+    ///
+    /// 参数值；关键帧为空时为 0。
+    #[must_use]
+    pub fn sample_at(&self, ctx: &SampleCtx) -> f64 {
         match self {
             Self::Value { value } => *value,
-            Self::Keys { keys } => sample_keys(keys, u_ms, |a, b, t| a + (b - a) * t).unwrap_or(0.0),
-            Self::Curve { curve } => sample_curve(curve, u_ms, len_ms, phase_offset),
+            Self::Keys { keys } => sample_keys(keys, ctx.u_ms, |a, b, t| a + (b - a) * t).unwrap_or(0.0),
+            Self::Curve { curve } => sample_curve(curve, ctx),
         }
     }
 }
 
-fn sample_curve(c: &ValueCurve, u_ms: f64, len_ms: f64, phase_offset: f64) -> f64 {
-    let len = len_ms.max(1.0);
-    let progress = (u_ms / len).clamp(0.0, 1.0);
-    let cycles = if c.cycles.is_finite() { c.cycles.clamp(1.0, 1000.0) } else { 1.0 };
-    let offset = if phase_offset.is_finite() { phase_offset } else { 0.0 };
-    // 相位偏移落在 0~1（负偏移按周期折回），保证 floor 后的周期序号不为负
-    let x = progress * cycles + c.phase.clamp(0.0, 1.0) + offset.rem_euclid(1.0);
+#[expect(clippy::many_single_char_names, reason = "波形数学记法 x/f/g/s 为习惯命名")]
+fn sample_curve(c: &ValueCurve, ctx: &SampleCtx) -> f64 {
+    let timing = Timing { cycles: c.cycles, period: c.period, sync: c.sync.unwrap_or_default(), phase: c.phase };
+    let (x, progress) = timing.position(ctx);
     let f = x - x.floor();
+    // 没有过渡与缓动时沿用原来的公式（结果逐位不变）
+    let plain = c.transition.is_none() && c.ease.is_none();
+    let g = {
+        let raw = transit(f, c.transition);
+        c.ease.map_or(raw, |e| e.apply(raw))
+    };
     let s = match c.shape {
-        WaveShape::Sine => 0.5 - 0.5 * (std::f64::consts::TAU * x).cos(),
-        WaveShape::Triangle => 1.0 - (2.0 * f - 1.0).abs(),
-        WaveShape::Saw => f,
+        WaveShape::Sine if plain => 0.5 - 0.5 * (std::f64::consts::TAU * x).cos(),
+        WaveShape::Sine => 0.5 - 0.5 * (std::f64::consts::TAU * g).cos(),
+        WaveShape::Triangle => 1.0 - (2.0 * g - 1.0).abs(),
+        WaveShape::Saw => g,
         WaveShape::Square => {
-            if f < c.duty.unwrap_or(0.5).clamp(0.0, 1.0) {
+            if g < c.duty.unwrap_or(0.5).clamp(0.0, 1.0) {
                 1.0
             } else {
                 0.0
             }
         }
-        WaveShape::Ramp => progress,
-        WaveShape::Random => {
-            let step = x.floor().max(0.0) as u32;
-            f64::from(hash32(0x5EED, 0, step)) / 4_294_967_296.0
+        WaveShape::Ramp => c.ease.map_or(progress, |e| e.apply(progress)),
+        WaveShape::Random => random_at(c.seed, ctx.index, step_of(x)),
+        WaveShape::Noise => {
+            let step = step_of(x);
+            let a = random_at(c.seed, ctx.index, step);
+            let b = random_at(c.seed, ctx.index, step.saturating_add(1));
+            a + (b - a) * c.ease.unwrap_or(Curve::SCurve).apply(transit(f, c.transition))
         }
+        WaveShape::Steps => steps_value(&c.steps, f, c.transition, c.ease),
     };
     c.from + (c.to - c.from) * s
+}
+
+/// 步进波形在周期内进度 `f` 处的值：没有缓动时保持每一步的值，有缓动时在过渡占比内滑向下一步。
+#[expect(clippy::many_single_char_names, reason = "插值数学记法 n/k/f/t 为习惯命名")]
+fn steps_value(steps: &[f64], f: f64, transition: Option<f64>, ease: Option<Curve>) -> f64 {
+    let n = steps.len();
+    if n == 0 {
+        return 0.0;
+    }
+    let pos = f.clamp(0.0, 1.0) * n as f64;
+    let k = (pos.floor() as usize).min(n - 1);
+    let at = |i: usize| {
+        let v = steps[i % n];
+        if v.is_finite() {
+            v.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    };
+    match ease {
+        None => at(k),
+        Some(e) => {
+            let t = e.apply(transit(pos - k as f64, transition));
+            at(k) + (at(k + 1) - at(k)) * t
+        }
+    }
 }
 
 /// 关键帧插值：第一帧之前取第一帧，最后一帧之后取最后一帧。
@@ -270,6 +482,113 @@ pub enum ColorParam {
         /// 关键帧。
         keys: Vec<Keyframe<ColorValue>>,
     },
+    /// 颜色序列：每个周期依次走过一组颜色（受多灯相位分布影响）。
+    Cycle {
+        /// 序列（装箱，理由同 [`NumParam::Curve`]）。
+        cycle: Box<ColorCycle>,
+    },
+}
+
+/// 一组颜色之间的过渡方式。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ColorBlend {
+    /// 平滑插值（RGB 分量线性，色温按 mired）。
+    #[default]
+    Smooth,
+    /// 跳变。
+    Step,
+    /// 按色相插值（沿色轮最短的方向），彩虹不经过灰色。
+    Hue,
+}
+
+/// 颜色序列。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorCycle {
+    /// 颜色（首尾相接）。
+    pub colors: Vec<ColorValue>,
+    /// 相邻颜色之间的过渡方式。
+    #[serde(default)]
+    pub blend: ColorBlend,
+    /// 片段内的循环次数（没有 `period` 时使用）。
+    #[serde(default = "one")]
+    pub cycles: f64,
+    /// 按时间计的周期；给出时忽略 `cycles`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period: Option<EffectPeriod>,
+    /// 相位起点。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync: Option<CurveSync>,
+    /// 起始相位 0~1。
+    #[serde(default)]
+    pub phase: f64,
+    /// 每种颜色里过渡所占的比例 0~1（余下时间停在下一种颜色上）；省略为 1。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<f64>,
+    /// 过渡的缓动；省略为线性。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ease: Option<Curve>,
+}
+
+impl ColorCycle {
+    /// 按上下文取颜色。
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - 取值上下文（相位偏移来自多灯分布）。
+    ///
+    /// # Returns
+    ///
+    /// 颜色状态；没有颜色时为 `None`。
+    #[must_use]
+    #[expect(clippy::many_single_char_names, reason = "插值数学记法 n/k/a/b/t 为习惯命名")]
+    pub fn sample_at(&self, ctx: &SampleCtx) -> Option<ColorState> {
+        let n = self.colors.len();
+        if n == 0 {
+            return None;
+        }
+        let timing = Timing { cycles: self.cycles, period: self.period, sync: self.sync.unwrap_or_default(), phase: self.phase };
+        let (x, _) = timing.position(ctx);
+        let pos = (x - x.floor()) * n as f64;
+        let k = (pos.floor() as usize).min(n - 1);
+        let a = ColorState::of(&self.colors[k]);
+        if self.blend == ColorBlend::Step || n == 1 {
+            return Some(a);
+        }
+        let b = ColorState::of(&self.colors[(k + 1) % n]);
+        let t = self.ease.unwrap_or_default().apply(transit(pos - k as f64, self.transition));
+        Some(blend_states(&a, &b, t, self.blend))
+    }
+}
+
+/// 两个颜色按过渡方式插值。
+#[expect(clippy::many_single_char_names, reason = "颜色插值记法 a/b/t/h/s/v 为习惯命名")]
+fn blend_states(a: &ColorState, b: &ColorState, t: f64, blend: ColorBlend) -> ColorState {
+    match (blend, a, b) {
+        (ColorBlend::Step, _, _) => {
+            if t < 1.0 {
+                *a
+            } else {
+                *b
+            }
+        }
+        (ColorBlend::Hue, ColorState::Rgb(x, _), ColorState::Rgb(y, w)) => {
+            let (h0, s0, v0) = rgb_to_hsv(*x);
+            let (h1, s1, v1) = rgb_to_hsv(*y);
+            // 沿色轮最短方向；一端是灰（饱和度为 0）时色相跟随另一端
+            let (h0, h1) = if s0 < 1e-9 { (h1, h1) } else if s1 < 1e-9 { (h0, h0) } else { (h0, h1) };
+            let mut d = h1 - h0;
+            if d > 0.5 {
+                d -= 1.0;
+            } else if d < -0.5 {
+                d += 1.0;
+            }
+            let t = t.clamp(0.0, 1.0);
+            ColorState::Rgb(hsv_to_rgb((h0 + d * t).rem_euclid(1.0), s0 + (s1 - s0) * t, v0 + (v1 - v0) * t), *w)
+        }
+        _ => ColorState::lerp(a, b, t),
+    }
 }
 
 /// 求值过程中的颜色状态（便于插值与 LTP 交叉淡化）。
@@ -444,6 +763,20 @@ impl ColorParam {
     /// 颜色状态；关键帧为空时为 `None`。
     #[must_use]
     pub fn sample(&self, u_ms: f64) -> Option<ColorState> {
+        self.sample_at(&SampleCtx::clip(u_ms, u_ms.max(1.0)))
+    }
+
+    /// 按完整上下文取颜色（颜色序列需要周期、节拍与相位偏移）。
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - 取值上下文。
+    ///
+    /// # Returns
+    ///
+    /// 颜色状态；关键帧或序列为空时为 `None`。
+    #[must_use]
+    pub fn sample_at(&self, ctx: &SampleCtx) -> Option<ColorState> {
         match self {
             Self::Value { value } => Some(ColorState::of(value)),
             Self::Keys { keys } => {
@@ -451,8 +784,9 @@ impl ColorParam {
                     .iter()
                     .map(|k| Keyframe { t_ms: k.t_ms, value: ColorState::of(&k.value), curve: k.curve })
                     .collect();
-                sample_keys(&states, u_ms, ColorState::lerp)
+                sample_keys(&states, ctx.u_ms, ColorState::lerp)
             }
+            Self::Cycle { cycle } => cycle.sample_at(ctx),
         }
     }
 }
@@ -549,6 +883,62 @@ pub struct Spread {
     /// 时间级联。
     #[serde(default)]
     pub delay: Option<SpreadDelay>,
+    /// 成块：连续 n 台视为同一个位置（取同样的值）；0 / 1 为不成块。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocks: Option<u32>,
+    /// 分组：每 n 个位置重复一遍分布（组内展开、各组相同）；0 / 1 为不分组。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub groups: Option<u32>,
+    /// 打乱顺序的种子：按种子确定性地打乱成员顺序；省略为不打乱。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shuffle: Option<u32>,
+    /// 静态颜色分布：沿成员铺开一组颜色（覆盖外观的颜色层）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colors: Option<SpreadColors>,
+}
+
+/// 沿成员铺开的一组颜色。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpreadColors {
+    /// 颜色（第一个成员到最后一个成员）。
+    pub colors: Vec<ColorValue>,
+    /// 过渡方式：平滑 / 按色相为渐变，跳变为均分成段。
+    #[serde(default)]
+    pub blend: ColorBlend,
+}
+
+impl SpreadColors {
+    /// 位置分数 `f` 处的颜色。
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - 位置分数 `0..=1`（见 [`Spread::fraction`]）。
+    ///
+    /// # Returns
+    ///
+    /// 颜色状态；没有颜色时为 `None`。
+    #[must_use]
+    #[expect(clippy::many_single_char_names, reason = "插值数学记法 n/k/a/b/f 为习惯命名")]
+    pub fn at(&self, f: f64) -> Option<ColorState> {
+        let n = self.colors.len();
+        if n == 0 {
+            return None;
+        }
+        let f = if f.is_finite() { f.clamp(0.0, 1.0) } else { 0.0 };
+        if n == 1 {
+            return Some(ColorState::of(&self.colors[0]));
+        }
+        if self.blend == ColorBlend::Step {
+            let k = ((f * n as f64).floor() as usize).min(n - 1);
+            return Some(ColorState::of(&self.colors[k]));
+        }
+        let pos = f * (n - 1) as f64;
+        let k = (pos.floor() as usize).min(n - 2);
+        let a = ColorState::of(&self.colors[k]);
+        let b = ColorState::of(&self.colors[k + 1]);
+        Some(blend_states(&a, &b, pos - k as f64, self.blend))
+    }
 }
 
 impl Spread {
@@ -567,6 +957,21 @@ impl Spread {
     /// 位置分数 `0..=1`；只有一个成员时为 0。
     #[must_use]
     pub fn fraction(&self, index: usize, count: usize) -> f64 {
+        let (mut index, mut count) = (index, count);
+        // 成块：连续 n 台合成一个位置
+        if let Some(b) = self.blocks.filter(|b| *b > 1) {
+            let b = b as usize;
+            index /= b;
+            count = count.div_ceil(b);
+        }
+        // 分组：每 n 个位置重复一遍
+        if let Some(g) = self.groups.filter(|g| *g > 1) {
+            let g = g as usize;
+            if count > g {
+                index %= g;
+                count = g;
+            }
+        }
         if count <= 1 {
             return 0.0;
         }
@@ -636,7 +1041,7 @@ mod tests {
     #[test]
     fn 数值曲线_形状与循环() {
         let c = |shape, cycles| NumParam::Curve {
-            curve: ValueCurve { shape, from: 10.0, to: 20.0, cycles, phase: 0.0, duty: None },
+            curve: Box::new(ValueCurve::basic(shape, 10.0, 20.0, cycles)),
         };
         assert!(near(c(WaveShape::Sine, 1.0).sample(0.0, 1000.0), 10.0));
         assert!(near(c(WaveShape::Sine, 1.0).sample(500.0, 1000.0), 20.0));
@@ -647,6 +1052,147 @@ mod tests {
         assert!(near(c(WaveShape::Ramp, 5.0).sample(250.0, 1000.0), 12.5));
         let r = c(WaveShape::Random, 4.0);
         assert!(near(r.sample(10.0, 1000.0), r.sample(200.0, 1000.0)), "同一周期内随机值不变");
+    }
+
+    fn curve(shape: WaveShape, edit: impl FnOnce(&mut ValueCurve)) -> NumParam {
+        let mut c = ValueCurve::basic(shape, 0.0, 100.0, 1.0);
+        edit(&mut c);
+        NumParam::Curve { curve: Box::new(c) }
+    }
+
+    fn at(p: &NumParam, u_ms: f64) -> f64 {
+        p.sample_at(&SampleCtx::clip(u_ms, 1000.0))
+    }
+
+    #[test]
+    fn 按时间计周期_与片段长度无关_按拍跟随节拍() {
+        let p = curve(WaveShape::Saw, |c| c.period = Some(EffectPeriod::Ms { ms: 400.0 }));
+        // 片段 1000 ms、cycles 1 被忽略：每 400 ms 一个周期
+        assert!(near(at(&p, 100.0), 25.0));
+        assert!(near(at(&p, 500.0), 25.0));
+        let beats = curve(WaveShape::Saw, |c| c.period = Some(EffectPeriod::Beats { beats: 1.0 }));
+        let tempo = Some(Tempo { bpm: 60.0, offset_ms: 0.0, beats_per_bar: 4 });
+        let ctx = SampleCtx { tempo, ..SampleCtx::clip(250.0, 10_000.0) };
+        assert!(near(beats.sample_at(&ctx), 25.0));
+        // 没有节拍：按 120 BPM（每拍 500 ms）
+        assert!(near(beats.sample_at(&SampleCtx::clip(250.0, 10_000.0)), 50.0));
+    }
+
+    #[test]
+    fn 节拍对齐_相位从第一拍算起() {
+        let tempo = Some(Tempo { bpm: 60.0, offset_ms: 200.0, beats_per_bar: 4 });
+        let clip = curve(WaveShape::Saw, |c| c.period = Some(EffectPeriod::Beats { beats: 1.0 }));
+        let beat = curve(WaveShape::Saw, |c| {
+            c.period = Some(EffectPeriod::Beats { beats: 1.0 });
+            c.sync = Some(CurveSync::Beat);
+        });
+        // 片段从 1450 ms 开始，播放到 1700 ms：片段内 250 ms，距第一拍 1500 ms
+        let ctx = SampleCtx { abs_ms: 1700.0, tempo, ..SampleCtx::clip(250.0, 4000.0) };
+        assert!(near(clip.sample_at(&ctx), 25.0));
+        assert!(near(beat.sample_at(&ctx), 50.0));
+    }
+
+    #[test]
+    fn 过渡占比与缓动() {
+        let tri = curve(WaveShape::Triangle, |c| c.transition = Some(0.5));
+        assert!(near(at(&tri, 125.0), 50.0));
+        assert!(near(at(&tri, 250.0), 100.0));
+        // 过渡走完后保持在终点（三角波回到起点）
+        assert!(near(at(&tri, 700.0), 0.0));
+        let eased = curve(WaveShape::Saw, |c| c.ease = Some(Curve::EaseIn));
+        assert!(near(at(&eased, 500.0), 25.0));
+        let ramp = curve(WaveShape::Ramp, |c| c.ease = Some(Curve::EaseOut));
+        assert!(near(at(&ramp, 500.0), 75.0));
+    }
+
+    #[test]
+    fn 步进波形_保持或滑向下一步() {
+        let hold = curve(WaveShape::Steps, |c| c.steps = vec![1.0, 0.0, 0.0, 1.0]);
+        assert!(near(at(&hold, 100.0), 100.0));
+        assert!(near(at(&hold, 300.0), 0.0));
+        assert!(near(at(&hold, 800.0), 100.0));
+        let slide = curve(WaveShape::Steps, |c| {
+            c.steps = vec![1.0, 0.0, 0.0, 1.0];
+            c.ease = Some(Curve::Linear);
+            c.transition = Some(0.5);
+        });
+        // 第 3 步（0 → 1）：步内 20% → 过渡进度 40%
+        assert!(near(at(&slide, 550.0), 40.0));
+        assert!(near(at(&slide, 700.0), 100.0));
+        assert!(near(at(&curve(WaveShape::Steps, |_| {}), 300.0), 0.0), "没有步时为起始值");
+    }
+
+    #[test]
+    fn 随机与噪声_带种子时每台灯不同() {
+        let shared = curve(WaveShape::Random, |c| c.cycles = 8.0);
+        let seeded = curve(WaveShape::Random, |c| {
+            c.cycles = 8.0;
+            c.seed = Some(3);
+        });
+        let of = |p: &NumParam, index| p.sample_at(&SampleCtx { index, ..SampleCtx::clip(300.0, 1000.0) });
+        assert!(near(of(&shared, 0), of(&shared, 1)), "没有种子：所有灯同一序列");
+        assert!(!near(of(&seeded, 0), of(&seeded, 1)), "有种子：每台灯不同");
+        let noise = curve(WaveShape::Noise, |c| {
+            c.cycles = 4.0;
+            c.seed = Some(9);
+        });
+        // 周期边界两侧连续
+        assert!((at(&noise, 249.999) - at(&noise, 250.001)).abs() < 0.01);
+        let v = at(&noise, 400.0);
+        assert!((0.0..=100.0).contains(&v));
+    }
+
+    #[test]
+    fn 颜色序列_平滑_跳变_按色相() {
+        let red = ColorValue::Rgb { rgb: [255, 0, 0], white: None };
+        let blue = ColorValue::Rgb { rgb: [0, 0, 255], white: None };
+        let green = ColorValue::Rgb { rgb: [0, 255, 0], white: None };
+        let cycle = |colors: Vec<ColorValue>, blend| ColorParam::Cycle {
+            cycle: Box::new(ColorCycle {
+                colors,
+                blend,
+                cycles: 1.0,
+                period: None,
+                sync: None,
+                phase: 0.0,
+                transition: None,
+                ease: None,
+            }),
+        };
+        let ctx = |u| SampleCtx::clip(u, 1000.0);
+        let smooth = cycle(vec![red.clone(), blue.clone()], ColorBlend::Smooth);
+        assert_eq!(smooth.sample_at(&ctx(250.0)), Some(ColorState::Rgb([0.5, 0.0, 0.5], WhiteStrategy::Preserve)));
+        let step = cycle(vec![red.clone(), blue], ColorBlend::Step);
+        assert_eq!(step.sample_at(&ctx(250.0)), Some(ColorState::of(&red)));
+        let hue = cycle(vec![red.clone(), green], ColorBlend::Hue);
+        let Some(ColorState::Rgb(y, _)) = hue.sample_at(&ctx(250.0)) else { panic!("应为 RGB") };
+        assert!(near(y[0], 1.0) && near(y[1], 1.0) && near(y[2], 0.0), "红 → 绿的中点是黄：{y:?}");
+        // 相位偏移半个周期：从第二种颜色开始
+        let shifted = SampleCtx { phase_offset: 0.5, ..ctx(0.0) };
+        assert_eq!(step.sample_at(&shifted), Some(ColorState::Rgb([0.0, 0.0, 1.0], WhiteStrategy::Preserve)));
+        assert_eq!(cycle(vec![], ColorBlend::Smooth).sample_at(&ctx(0.0)), None);
+        // 序列能从前端形态反序列化
+        let json = r#"{"kind":"cycle","cycle":{"colors":[{"kind":"rgb","rgb":[255,0,0]},{"kind":"kelvin","kelvin":3200}],"blend":"step","period":{"kind":"beats","beats":2}}}"#;
+        let parsed: ColorParam = serde_json::from_str(json).expect("颜色序列");
+        assert!(matches!(parsed, ColorParam::Cycle { .. }));
+    }
+
+    #[test]
+    fn 分布_成块_分组_静态颜色() {
+        let blocks = Spread { blocks: Some(2), ..Spread::default() };
+        let f: Vec<f64> = (0..6).map(|i| blocks.fraction(i, 6)).collect();
+        assert_eq!(f, vec![0.0, 0.0, 0.5, 0.5, 1.0, 1.0]);
+        let groups = Spread { groups: Some(3), ..Spread::default() };
+        let f: Vec<f64> = (0..6).map(|i| groups.fraction(i, 6)).collect();
+        assert_eq!(f, vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0]);
+        let colors = SpreadColors {
+            colors: vec![ColorValue::Rgb { rgb: [255, 0, 0], white: None }, ColorValue::Rgb { rgb: [0, 0, 255], white: None }],
+            blend: ColorBlend::Smooth,
+        };
+        assert_eq!(colors.at(0.5), Some(ColorState::Rgb([0.5, 0.0, 0.5], WhiteStrategy::Preserve)));
+        let step = SpreadColors { blend: ColorBlend::Step, ..colors };
+        assert_eq!(step.at(0.6), Some(ColorState::Rgb([0.0, 0.0, 1.0], WhiteStrategy::Preserve)));
+        assert_eq!(step.at(0.4), Some(ColorState::Rgb([1.0, 0.0, 0.0], WhiteStrategy::Preserve)));
     }
 
     #[test]

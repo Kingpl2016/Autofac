@@ -263,3 +263,69 @@ describe("projectIntegrityIssues", () => {
     expect(parseProject(JSON.stringify(broken))).toMatchObject({ ok: false, reason: "integrity" });
   });
 });
+
+describe("可配置特效的新字段", () => {
+  const withLook = (look: unknown, spread?: unknown) =>
+    produce(sample(), (d) => {
+      d.cues.push({
+        id: "l1",
+        trackId: d.tracks[0].id,
+        kind: "look",
+        startMs: 0,
+        endMs: 4000,
+        brightness: 100,
+        fadeInMs: 0,
+        fadeOutMs: 0,
+        easing: "linear",
+        look,
+        ...(spread ? { spread } : {}),
+      } as Cue);
+    });
+
+  it("曲线的周期、过渡、缓动、步进、种子与颜色序列、分布的新字段往返保留", () => {
+    const project = withLook(
+      {
+        intensity: {
+          kind: "curve",
+          curve: {
+            shape: "steps",
+            from: 0,
+            to: 100,
+            cycles: 1,
+            phase: 0,
+            period: { kind: "beats", beats: 0.5 },
+            sync: "beat",
+            transition: 0.25,
+            ease: "easeOut",
+            steps: [1, 0, 0, 0],
+            seed: 42,
+          },
+        },
+        color: {
+          kind: "cycle",
+          cycle: { colors: [{ kind: "rgb", rgb: [255, 0, 0] }, { kind: "kelvin", kelvin: 3200 }], blend: "hue", cycles: 1, phase: 0, period: { kind: "ms", ms: 2000 } },
+        },
+      },
+      {
+        blocks: 2,
+        groups: 3,
+        shuffle: 7,
+        colors: { colors: [{ kind: "rgb", rgb: [0, 0, 255] }], blend: "step" },
+        values: { "phase.intensity": { from: 0, to: 0.5 }, "phase.pan": { from: 0, to: 1 } },
+      },
+    );
+    const r = parseProject(JSON.stringify(project));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.project).toEqual(project);
+  });
+
+  it("越界的步进值、未知的分布键与过渡被拒绝", () => {
+    const bad = (look: unknown, spread?: unknown) => parseProject(JSON.stringify(withLook(look, spread))).ok;
+    const curve = (extra: object) => ({ intensity: { kind: "curve", curve: { shape: "steps", from: 0, to: 100, cycles: 1, phase: 0, ...extra } } });
+    expect(bad(curve({ steps: [2] }))).toBe(false);
+    expect(bad(curve({ transition: 1.5 }))).toBe(false);
+    expect(bad(curve({ period: { kind: "ms", ms: 5 } }))).toBe(false);
+    expect(bad({ intensity: { kind: "value", value: 50 } }, { values: { "phase.nope": { from: 0, to: 1 } } })).toBe(false);
+    expect(bad({ color: { kind: "cycle", cycle: { colors: [], cycles: 1, phase: 0 } } })).toBe(false);
+  });
+});

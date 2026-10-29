@@ -86,13 +86,44 @@ describe("外观片段的关键帧", () => {
     expect(screen.getByRole("combobox", { name: "强度当前区段的过渡方式" })).toBeTruthy();
   });
 
+  it("曲线的高级参数：按拍计周期（保持速度）、过渡、缓动、步进值、每台灯不同的随机", () => {
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 };
+      }),
+    );
+    render(<CueInspector />);
+    fireEvent.click(screen.getByRole("button", { name: "转换为外观片段（1）" }));
+    fireEvent.click(screen.getByRole("radio", { name: "曲线" }));
+    const curveOf = () => {
+      const c = cue();
+      return c.kind === "look" && c.look.intensity?.kind === "curve" ? c.look.intensity.curve : null;
+    };
+    // 片段 4 秒、2 次 → 每次 2 秒 = 4 拍
+    fireEvent.click(screen.getByRole("radio", { name: "拍" }));
+    expect(curveOf()?.period).toEqual({ kind: "beats", beats: 4 });
+    setNumber("强度 · 周期", "1");
+    expect(curveOf()?.period).toEqual({ kind: "beats", beats: 1 });
+    fireEvent.click(screen.getByRole("checkbox", { name: "强度 · 按节拍对齐" }));
+    expect(curveOf()?.sync).toBe("beat");
+    setNumber("强度 · 过渡", "25");
+    expect(curveOf()?.transition).toBe(0.25);
+    // 回到 100%：字段删除
+    setNumber("强度 · 过渡", "100");
+    expect(curveOf() && "transition" in curveOf()!).toBe(false);
+    // 改回次数：速度不变（1 拍 = 0.5 秒 → 4 秒里 8 次）
+    fireEvent.click(screen.getByRole("radio", { name: "次数" }));
+    expect(curveOf()).toMatchObject({ cycles: 8 });
+    expect(curveOf()?.period).toBeUndefined();
+  });
+
   it("切换为数值曲线并调参数；播放头在片段外时不能打关键帧", () => {
     render(<CueInspector />);
     fireEvent.click(screen.getByRole("button", { name: "转换为外观片段（1）" }));
     fireEvent.click(screen.getByRole("radio", { name: "曲线" }));
     const c = cue();
     expect(c.kind === "look" && c.look.intensity?.kind).toBe("curve");
-    setNumber("次数", "4");
+    setNumber("强度 · 次数", "4");
     const after = cue();
     expect(after.kind === "look" && after.look.intensity?.kind === "curve" && after.look.intensity.curve.cycles).toBe(4);
 

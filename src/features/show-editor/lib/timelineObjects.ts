@@ -33,7 +33,8 @@ export function deleteTimelineObject(d: ShowProject, obj: TimelineObject): strin
 /** 对外观里每个参数层执行同一个变换。 */
 function mapLook(look: Look, f: <T>(p: Param<T>) => Param<T>): void {
   if (look.intensity) look.intensity = f(look.intensity);
-  if (look.color) look.color = f(look.color);
+  // 颜色序列没有关键帧，不参与
+  if (look.color && look.color.kind !== "cycle") look.color = f(look.color);
   for (const key of Object.keys(look.attrs ?? {}) as (keyof NonNullable<Look["attrs"]>)[]) {
     const p = look.attrs?.[key];
     if (p && look.attrs) look.attrs[key] = f(p);

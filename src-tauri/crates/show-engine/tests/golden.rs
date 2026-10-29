@@ -120,6 +120,17 @@ fn build_project(case: &Value) -> Value {
                 cue["range"] = c.get("range").cloned().unwrap_or_else(|| json!([0, 100]));
                 cue["seed"] = json!(c["seed"].as_u64().unwrap_or(7));
             }
+            // 有 `look` 的是外观片段（可带 `spread`），外观与分布原样写入
+            if let Some(look) = c.get("look") {
+                if let Some(obj) = cue.as_object_mut() {
+                    obj.remove("rgb");
+                }
+                cue["kind"] = json!("look");
+                cue["look"] = look.clone();
+                if let Some(spread) = c.get("spread") {
+                    cue["spread"] = spread.clone();
+                }
+            }
             cue
         })
         .collect();

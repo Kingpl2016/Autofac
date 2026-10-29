@@ -12,7 +12,7 @@
 use crate::compile::{CompiledCue, CompiledFixture, CompiledShow, DmxData, WheelSlot};
 use crate::effects;
 use crate::envelope::{apply_gamma, encode_gamma, envelope};
-use crate::look::ColorState;
+use crate::look::{ColorState, SampleCtx};
 use crate::mix::{kelvin_to_output, ColorRequest, Components, WhiteStrategy, COMPONENTS, DIM, EMITTERS, SW};
 use crate::project::{Cue, CueBase};
 
@@ -279,19 +279,29 @@ impl CompiledShow {
         let len = (base.end_ms - start) as f64;
         let fi = e.fixture as usize;
         let at = |r: &crate::look::SpreadRange| r.from + (r.to - r.from) * f;
-        // 相位分布：数值曲线按成员错开相位（追逐 / 波浪），周期一致
+        // 相位分布：数值曲线按成员错开相位（追逐 / 波浪），周期一致；各层可以单独设置
         let phase = spread.and_then(|s| s.phase.as_ref().map(at)).unwrap_or(0.0);
+        let layer_phase = |own: Option<&crate::look::SpreadRange>| own.map_or(phase, at);
+        let ctx = SampleCtx { u_ms: u, len_ms: len, phase_offset: phase, abs_ms: t_ms as f64, tempo: self.tempo, index: e.slot };
 
         let state = &mut out.layers[fi];
-        let pct = spread
-            .and_then(|s| s.intensity.as_ref().map(at))
-            .or_else(|| look.intensity.as_ref().map(|p| p.sample_phased(u, len, phase)));
+        let pct = spread.and_then(|s| s.intensity.as_ref().map(at)).or_else(|| {
+            let p = layer_phase(spread.and_then(|s| s.intensity_phase.as_ref()));
+            look.intensity.as_ref().map(|param| param.sample_at(&SampleCtx { phase_offset: p, ..ctx }))
+        });
         if let Some(pct) = pct {
             let level = (pct / 100.0).clamp(0.0, 1.0) * (base.brightness / 100.0).clamp(0.0, 1.0) * env;
             state.intensity = state.intensity.max(level);
             state.touched = true;
         }
-        if let Some(mut color) = look.color.as_ref().and_then(|c| c.sample(u)) {
+        // 静态颜色分布覆盖外观的颜色层
+        let color = if let Some(colors) = spread.and_then(|s| s.spread.colors.as_ref()) {
+            colors.at(f)
+        } else {
+            let p = layer_phase(spread.and_then(|s| s.color_phase.as_ref()));
+            look.color.as_ref().and_then(|c| c.sample_at(&SampleCtx { phase_offset: p, ..ctx }))
+        };
+        if let Some(mut color) = color {
             if let Some(h) = spread.and_then(|s| s.hue.as_ref().map(at)) {
                 color = color.rotate_hue(h);
             }
@@ -317,7 +327,13 @@ impl CompiledShow {
         };
         for (function, param) in &look.attrs {
             let spread_value = spread.and_then(|s| s.attrs.iter().find(|(k, _)| k == function).map(|(_, r)| at(r)));
-            set(*function, spread_value.unwrap_or_else(|| param.sample_phased(u, len, phase)));
+            set(
+                *function,
+                spread_value.unwrap_or_else(|| {
+                    let own = spread.and_then(|s| s.attr_phase.iter().find(|(k, _)| k == function).map(|(_, r)| r));
+                    param.sample_at(&SampleCtx { phase_offset: layer_phase(own), ..ctx })
+                }),
+            );
         }
         // 只在分布里出现、外观里没有的属性也照样展开
         for (function, range) in spread.map(|s| s.attrs.as_slice()).unwrap_or_default() {

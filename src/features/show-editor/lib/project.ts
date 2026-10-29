@@ -127,20 +127,54 @@ export interface Keyframe<T> {
   curve: Curve;
 }
 
-/** 数值曲线的形状。 */
-export type WaveShape = "sine" | "triangle" | "saw" | "square" | "ramp" | "random";
+/**
+ * 数值曲线的形状。`noise` 为平滑噪声（相邻随机值之间插值），`steps` 为自定义步进（见 {@link ValueCurve.steps}）。
+ */
+export type WaveShape = "sine" | "triangle" | "saw" | "square" | "ramp" | "random" | "noise" | "steps";
+
+/** 周期：毫秒，或按 BPM 的拍数。 */
+export type Period = { kind: "ms"; ms: number } | { kind: "beats"; beats: number };
+
+/** 周期的相位起点：片段起点（默认），或按节拍网格对齐。 */
+export type CurveSync = "clip" | "beat";
+
+/** 周期计时（数值曲线与颜色序列共用）。 */
+export interface CycleTiming {
+  /** 片段内的循环次数，至少 1；有 `period` 时忽略 */
+  cycles: number;
+  /** 按时间计的周期：与片段长度无关，按拍时跟随工程节拍 */
+  period?: Period;
+  /** 相位起点，省略为 `clip` */
+  sync?: CurveSync;
+  /** 起始相位 0~1 */
+  phase: number;
+  /** 过渡占周期（步进 / 颜色序列为每一步）的比例 0~1，余下时间保持；省略为 1 */
+  transition?: number;
+  /** 过渡的缓动；省略时按形状本身（步进为保持、噪声为 S 曲线、颜色序列为线性） */
+  ease?: Curve;
+}
 
 /** 数值曲线：在片段时长内按形状在 `from` 与 `to` 之间变化，可重复多次。 */
-export interface ValueCurve {
+export interface ValueCurve extends CycleTiming {
   shape: WaveShape;
   from: number;
   to: number;
-  /** 片段内的循环次数，至少 1（`ramp` 只用第一段） */
-  cycles: number;
-  /** 起始相位 0~1 */
-  phase: number;
   /** 方波的占空比 0~1 */
   duty?: number;
+  /** 步进波形每一步的值（0~1，乘到 `from`→`to` 区间上） */
+  steps?: number[];
+  /** 随机 / 噪声的种子：给出时每台灯的序列各不相同 */
+  seed?: number;
+}
+
+/** 一组颜色之间的过渡方式：平滑、跳变、按色相（沿色轮）。 */
+export type ColorBlend = "smooth" | "step" | "hue";
+
+/** 颜色序列：每个周期依次走过一组颜色（首尾相接），受多灯相位分布影响。 */
+export interface ColorCycle extends CycleTiming {
+  colors: ColorValue[];
+  /** 省略为 `smooth` */
+  blend?: ColorBlend;
 }
 
 /**
@@ -203,15 +237,27 @@ export type AttrKey =
 export interface Look {
   /** 强度 0~100（%） */
   intensity?: Param<number>;
-  color?: Param<ColorValue>;
+  color?: ColorParam;
   /** 其它属性，0~1 DMX 分数 */
   attrs?: Partial<Record<AttrKey, Param<number>>>;
   /** 引用的预设：预设的各层作为底，本外观里显式写出的层覆盖它 */
   presetId?: string;
 }
 
-/** 分布里可以展开的量：强度、色相偏移（度）、数值曲线的相位偏移（周期的分数）或某个属性。 */
-export type SpreadKey = "intensity" | "hue" | "phase" | AttrKey;
+/** 序列参数：每个周期依次走过一组值（目前只用于颜色）。 */
+export type CycleParam<T> = { kind: "cycle"; cycle: CycleTiming & { colors: T[]; blend?: ColorBlend } };
+
+/** 颜色参数：固定值、关键帧，或颜色序列（{@link ColorCycle}）。 */
+export type ColorParam = Param<ColorValue> | CycleParam<ColorValue>;
+
+/** 只作用于某一层的相位偏移键。 */
+export type PhaseKey = `phase.${"intensity" | "color" | AttrKey}`;
+
+/**
+ * 分布里可以展开的量：强度、色相偏移（度）、数值曲线的相位偏移（周期的分数，`phase` 作用于全部层，
+ * `phase.<层>` 只作用于那一层）或某个属性。
+ */
+export type SpreadKey = "intensity" | "hue" | "phase" | PhaseKey | AttrKey;
 
 /**
  * 多灯分布（Fan / MAtricks）：把一个片段在轨道成员之间展开。
@@ -227,6 +273,14 @@ export interface Spread {
   wings?: number;
   values?: Partial<Record<SpreadKey, { from: number; to: number }>>;
   delay?: { fromMs: number; toMs: number };
+  /** 成块：连续 n 台取同样的值 */
+  blocks?: number;
+  /** 分组：每 n 个位置重复一遍分布 */
+  groups?: number;
+  /** 打乱顺序的种子 */
+  shuffle?: number;
+  /** 静态颜色分布：沿成员铺开一组颜色（覆盖外观的颜色层） */
+  colors?: { colors: ColorValue[]; blend?: ColorBlend };
 }
 
 /** 属性分层片段：在轨道（灯具 / 分组）上显示一个外观，可带分布。 */

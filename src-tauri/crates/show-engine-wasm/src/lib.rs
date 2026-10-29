@@ -19,7 +19,8 @@
 
 use std::cell::RefCell;
 
-use show_engine::look::NumParam;
+use show_engine::look::{NumParam, SampleCtx};
+use show_engine::project::Tempo;
 use show_engine::{compile, CompiledShow, FrameSet, ShowProject};
 
 /// 一个已加载的节目。
@@ -271,6 +272,58 @@ pub fn sample_num_bytes(bytes: &[u8], u_ms: f64, len_ms: f64) -> f64 {
     serde_json::from_slice::<NumParam>(bytes).map_or(f64::NAN, |p| p.sample(u_ms, len_ms))
 }
 
+/// 带完整上下文对数值参数取值：按时间计的周期需要节拍，节拍对齐需要节目时间，带种子的随机需要成员序号。
+///
+/// # Arguments
+///
+/// * `ptr` - 参数 JSON（前端 `Param<number>`）起始地址。
+/// * `len` - JSON 字节数。
+/// * `u_ms` - 相对片段起点的时刻（毫秒）。
+/// * `len_ms` - 片段时长（毫秒）。
+/// * `abs_ms` - 节目时间（毫秒）。
+/// * `bpm` - 工程 BPM；不大于 0 时视为没有节拍。
+/// * `offset_ms` - 第一拍的偏移（毫秒）。
+/// * `index` - 成员序号。
+///
+/// # Returns
+///
+/// 参数值；JSON 无法解析时为 `NaN`。
+///
+/// # Safety
+///
+/// `ptr..ptr+len` 必须是可读的、已初始化的内存。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn se_sample_num_at(
+    ptr: *const u8,
+    len: usize,
+    u_ms: f64,
+    len_ms: f64,
+    abs_ms: f64,
+    bpm: f64,
+    offset_ms: f64,
+    index: u32,
+) -> f64 {
+    // SAFETY: 由调用方保证区间可读。
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let tempo = (bpm.is_finite() && bpm > 0.0).then_some(Tempo { bpm, offset_ms, beats_per_bar: 4 });
+    sample_num_at_bytes(bytes, &SampleCtx { u_ms, len_ms, phase_offset: 0.0, abs_ms, tempo, index })
+}
+
+/// [`se_sample_num_at`] 的安全版本。
+///
+/// # Arguments
+///
+/// * `bytes` - 参数 JSON。
+/// * `ctx` - 取值上下文。
+///
+/// # Returns
+///
+/// 参数值；解析失败为 `NaN`。
+#[must_use]
+pub fn sample_num_at_bytes(bytes: &[u8], ctx: &SampleCtx) -> f64 {
+    serde_json::from_slice::<NumParam>(bytes).map_or(f64::NAN, |p| p.sample_at(ctx))
+}
+
 /// 共享输出缓冲的地址（变长结果写在这里）。
 ///
 /// # Returns
@@ -352,6 +405,20 @@ mod tests {
         let sine = br#"{"kind":"curve","curve":{"shape":"sine","from":0,"to":10,"cycles":1,"phase":0}}"#;
         assert!((sample_num_bytes(sine, 500.0, 1000.0) - 10.0).abs() < 1e-9);
         assert!(sample_num_bytes(b"nope", 0.0, 1.0).is_nan());
+    }
+
+    #[test]
+    fn 带上下文取值_按拍周期跟随节拍() {
+        let saw = br#"{"kind":"curve","curve":{"shape":"saw","from":0,"to":100,"cycles":1,"phase":0,"period":{"kind":"beats","beats":1}}}"#;
+        let p = saw.as_slice();
+        // 60 BPM：每拍 1000 ms
+        let v = unsafe { se_sample_num_at(p.as_ptr(), p.len(), 250.0, 8000.0, 250.0, 60.0, 0.0, 0) };
+        assert!((v - 25.0).abs() < 1e-9, "{v}");
+        // 没有节拍：按 120 BPM
+        let v = unsafe { se_sample_num_at(p.as_ptr(), p.len(), 250.0, 8000.0, 250.0, 0.0, 0.0, 0) };
+        assert!((v - 50.0).abs() < 1e-9, "{v}");
+        let ctx = SampleCtx::clip(0.0, 1.0);
+        assert!(sample_num_at_bytes(b"nope", &ctx).is_nan());
     }
 
     #[test]

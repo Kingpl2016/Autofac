@@ -352,16 +352,37 @@ pub struct CompiledSpread {
     pub attrs: Vec<(ChannelFunction, SpreadRange)>,
     /// 数值曲线的相位偏移（周期的分数）的起止值：追逐 / 波浪特效让每台灯错开相位，周期保持一致。
     pub phase: Option<SpreadRange>,
+    /// 只作用于强度层的相位偏移（键 `phase.intensity`）；没有时用 [`CompiledSpread::phase`]。
+    pub intensity_phase: Option<SpreadRange>,
+    /// 只作用于颜色层的相位偏移（键 `phase.color`）；没有时用 [`CompiledSpread::phase`]。
+    pub color_phase: Option<SpreadRange>,
+    /// 只作用于某个属性的相位偏移（键 `phase.<属性>`）。
+    pub attr_phase: Vec<(ChannelFunction, SpreadRange)>,
+}
+
+/// 把键名解析成通道功能。
+fn function_of(key: &str) -> Option<ChannelFunction> {
+    serde_json::from_value::<ChannelFunction>(serde_json::Value::String(key.to_owned())).ok()
 }
 
 impl CompiledSpread {
     fn new(spread: &Spread) -> Self {
         let mut attrs = Vec::new();
+        let mut attr_phase = Vec::new();
         for (key, range) in &spread.values {
             if key == "intensity" || key == "hue" || key == "phase" {
                 continue;
             }
-            if let Ok(f) = serde_json::from_value::<ChannelFunction>(serde_json::Value::String(key.clone())) {
+            if let Some(layer) = key.strip_prefix("phase.") {
+                if layer != "intensity"
+                    && layer != "color"
+                    && let Some(f) = function_of(layer)
+                {
+                    attr_phase.push((f, *range));
+                }
+                continue;
+            }
+            if let Some(f) = function_of(key) {
                 attrs.push((f, *range));
             }
         }
@@ -369,7 +390,10 @@ impl CompiledSpread {
             intensity: spread.values.get("intensity").copied(),
             hue: spread.values.get("hue").copied(),
             phase: spread.values.get("phase").copied(),
+            intensity_phase: spread.values.get("phase.intensity").copied(),
+            color_phase: spread.values.get("phase.color").copied(),
             attrs,
+            attr_phase,
             spread: spread.clone(),
         }
     }
@@ -978,6 +1002,13 @@ fn ordered(members: &[Vec<usize>], spread: Option<&Spread>, fixtures: &[Compiled
         SpreadOrder::StageX => out.sort_by(|a, b| key(a, 0).total_cmp(&key(b, 0))),
         SpreadOrder::StageY => out.sort_by(|a, b| key(a, 1).total_cmp(&key(b, 1))),
     }
+    // 打乱：按种子确定性洗牌（Fisher–Yates），预览、播放、导出结果相同
+    if let Some(seed) = spread.and_then(|s| s.shuffle) {
+        for i in (1..out.len()).rev() {
+            let j = (crate::effects::hash32(seed, i as u32, 0) as usize) % (i + 1);
+            out.swap(i, j);
+        }
+    }
     out
 }
 
@@ -1030,6 +1061,37 @@ mod tests {
             })
             .expect("应有 RGBW 内置模型")
             .id
+    }
+
+    #[test]
+    fn 分布打乱_确定且是成员的一种排列() {
+        let members: Vec<Vec<usize>> = (0..8).map(|i| vec![i]).collect();
+        let spread = Spread { shuffle: Some(42), ..Spread::default() };
+        let a = ordered(&members, Some(&spread), &[]);
+        let b = ordered(&members, Some(&spread), &[]);
+        assert_eq!(a, b, "同一种子结果相同");
+        assert_ne!(a, members, "应被打乱");
+        let mut sorted = a.clone();
+        sorted.sort();
+        assert_eq!(sorted, members, "是原成员的一种排列");
+        let other = ordered(&members, Some(&Spread { shuffle: Some(7), ..Spread::default() }), &[]);
+        assert_ne!(other, a, "不同种子顺序不同");
+        assert_eq!(ordered(&members, None, &[]), members);
+    }
+
+    #[test]
+    fn 分布按层的相位键被拆开() {
+        let spread: Spread = serde_json::from_str(
+            r#"{"values":{"phase":{"from":0,"to":1},"phase.intensity":{"from":0,"to":0.5},"phase.color":{"from":0,"to":0.25},"phase.pan":{"from":0,"to":0.75},"pan":{"from":0,"to":1},"phase.nope":{"from":0,"to":1}}}"#,
+        )
+        .expect("分布");
+        let c = CompiledSpread::new(&spread);
+        assert_eq!(c.intensity_phase.map(|r| r.to), Some(0.5));
+        assert_eq!(c.color_phase.map(|r| r.to), Some(0.25));
+        assert_eq!(c.attr_phase.len(), 1);
+        assert_eq!(c.attr_phase[0].0, ChannelFunction::Pan);
+        assert_eq!(c.attrs.len(), 1, "phase.* 不当作属性分布");
+        assert_eq!(c.phase.map(|r| r.to), Some(1.0));
     }
 
     #[test]

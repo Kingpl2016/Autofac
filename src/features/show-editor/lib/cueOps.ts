@@ -13,6 +13,7 @@ import {
 import { newId } from "./ids";
 import {
   type Cue,
+  type CycleParam,
   type Easing,
   type EffectCue,
   type Look,
@@ -711,7 +712,7 @@ export function placeCues(draft: ShowProject, placements: readonly CuePlacement[
 
 /** 把外观里关键帧的时间整体平移（片段被分割后，右半段的关键帧相对新起点）。 */
 function shiftLookKeys(look: Look, deltaMs: number): void {
-  const shift = <T>(p: Param<T> | undefined) => {
+  const shift = <T>(p: Param<T> | CycleParam<T> | undefined) => {
     if (p?.kind !== "keys") return;
     p.keys = p.keys.map((k) => ({ ...k, tMs: Math.max(0, k.tMs + deltaMs) }));
   };

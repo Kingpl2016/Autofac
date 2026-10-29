@@ -1798,6 +1798,464 @@
         }
       ],
       "name": "特效：特效同样受淡入包络约束"
+    },
+    {
+      "name": "外观：静态颜色分布（跳变）",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 2000,
+          "look": {
+            "intensity": {
+              "kind": "value",
+              "value": 100
+            }
+          },
+          "spread": {
+            "colors": {
+              "colors": [
+                {
+                  "kind": "rgb",
+                  "rgb": [
+                    255,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "kind": "rgb",
+                  "rgb": [
+                    0,
+                    0,
+                    255
+                  ]
+                }
+              ],
+              "blend": "step"
+            }
+          }
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "5": 0,
+            "6": 255,
+            "7": 0,
+            "8": 0,
+            "9": 255
+          }
+        }
+      ]
+    },
+    {
+      "name": "外观：颜色序列按颜色层相位分布",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 3000,
+          "look": {
+            "intensity": {
+              "kind": "value",
+              "value": 100
+            },
+            "color": {
+              "kind": "cycle",
+              "cycle": {
+                "colors": [
+                  {
+                    "kind": "rgb",
+                    "rgb": [
+                      255,
+                      0,
+                      0
+                    ]
+                  },
+                  {
+                    "kind": "rgb",
+                    "rgb": [
+                      0,
+                      255,
+                      0
+                    ]
+                  },
+                  {
+                    "kind": "rgb",
+                    "rgb": [
+                      0,
+                      0,
+                      255
+                    ]
+                  }
+                ],
+                "blend": "step",
+                "cycles": 1,
+                "phase": 0
+              }
+            }
+          },
+          "spread": {
+            "values": {
+              "phase.color": {
+                "from": 0,
+                "to": -0.6666666666666666
+              }
+            }
+          }
+        }
+      ],
+      "samples": [
+        {
+          "t": 0,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "5": 0,
+            "6": 255,
+            "7": 0,
+            "8": 255,
+            "9": 0
+          }
+        },
+        {
+          "t": 1100,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "2": 255,
+            "3": 0,
+            "4": 255,
+            "5": 0,
+            "6": 0,
+            "7": 0,
+            "8": 0,
+            "9": 255
+          }
+        }
+      ]
+    },
+    {
+      "name": "外观：强度分布成块",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 4
+        },
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 7
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 2000,
+          "look": {
+            "intensity": {
+              "kind": "value",
+              "value": 100
+            }
+          },
+          "spread": {
+            "blocks": 2,
+            "values": {
+              "intensity": {
+                "from": 100,
+                "to": 0
+              }
+            }
+          }
+        }
+      ],
+      "samples": [
+        {
+          "t": 500,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 255,
+            "3": 255,
+            "4": 255,
+            "5": 255,
+            "6": 255,
+            "7": 0,
+            "8": 0,
+            "9": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "外观：步进波形按拍计周期",
+      "gamma": 1,
+      "models": {
+        "rgb": [
+          "red",
+          "green",
+          "blue"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgb",
+          "universe": 0,
+          "address": 1
+        }
+      ],
+      "tempo": {
+        "bpm": 120
+      },
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 4000,
+          "look": {
+            "intensity": {
+              "kind": "curve",
+              "curve": {
+                "shape": "steps",
+                "from": 0,
+                "to": 100,
+                "cycles": 1,
+                "phase": 0,
+                "steps": [
+                  1,
+                  0
+                ],
+                "period": {
+                  "kind": "beats",
+                  "beats": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "samples": [
+        {
+          "t": 100,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 255,
+            "3": 255
+          }
+        },
+        {
+          "t": 300,
+          "universe": 0,
+          "expect": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          }
+        },
+        {
+          "t": 600,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "2": 255,
+            "3": 255
+          }
+        }
+      ]
+    },
+    {
+      "name": "外观：强度层单独错开相位，属性层不动",
+      "gamma": 1,
+      "models": {
+        "rgbp": [
+          "red",
+          "green",
+          "blue",
+          "pan"
+        ]
+      },
+      "fixtures": [
+        {
+          "model": "rgbp",
+          "universe": 0,
+          "address": 1
+        },
+        {
+          "model": "rgbp",
+          "universe": 0,
+          "address": 5
+        }
+      ],
+      "tracks": [
+        {
+          "fixtures": [
+            0,
+            1
+          ]
+        }
+      ],
+      "cues": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "look": {
+            "intensity": {
+              "kind": "curve",
+              "curve": {
+                "shape": "square",
+                "from": 0,
+                "to": 100,
+                "cycles": 1,
+                "phase": 0,
+                "duty": 0.5
+              }
+            },
+            "color": {
+              "kind": "value",
+              "value": {
+                "kind": "rgb",
+                "rgb": [
+                  255,
+                  0,
+                  0
+                ]
+              }
+            },
+            "attrs": {
+              "pan": {
+                "kind": "curve",
+                "curve": {
+                  "shape": "square",
+                  "from": 0,
+                  "to": 1,
+                  "cycles": 1,
+                  "phase": 0,
+                  "duty": 0.5
+                }
+              }
+            }
+          },
+          "spread": {
+            "values": {
+              "phase.intensity": {
+                "from": 0,
+                "to": 0.5
+              }
+            }
+          }
+        }
+      ],
+      "samples": [
+        {
+          "t": 100,
+          "universe": 0,
+          "expect": {
+            "1": 255,
+            "4": 255,
+            "5": 0,
+            "8": 255
+          }
+        }
+      ]
     }
   ]
 }

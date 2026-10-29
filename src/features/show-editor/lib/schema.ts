@@ -93,13 +93,30 @@ function keysOf<T extends z.ZodType>(value: T) {
   });
 }
 
+/** 按时间计的周期（与特效 Cue 的周期同一范围）。 */
+const periodSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("ms"), ms: z.number().min(20).max(600_000) }),
+  z.object({ kind: z.literal("beats"), beats: z.number().min(0.0625).max(128) }),
+]);
+
+/** 周期计时（数值曲线与颜色序列共用）。 */
+const cycleTiming = {
+  cycles: z.number().min(1).max(1000),
+  period: periodSchema.optional(),
+  sync: z.enum(["clip", "beat"]).optional(),
+  phase: z.number().min(0).max(1),
+  transition: fraction.optional(),
+  ease: curve.optional(),
+};
+
 const valueCurve = z.object({
-  shape: z.enum(["sine", "triangle", "saw", "square", "ramp", "random"]),
+  shape: z.enum(["sine", "triangle", "saw", "square", "ramp", "random", "noise", "steps"]),
   from: z.number(),
   to: z.number(),
-  cycles: z.number().min(1).max(1000),
-  phase: z.number().min(0).max(1),
+  ...cycleTiming,
   duty: fraction.optional(),
+  steps: z.array(fraction).max(64).optional(),
+  seed: z.number().int().min(0).max(0xffff_ffff).optional(),
 });
 
 /** 数值参数：固定值、关键帧或数值曲线，取值限定在 `range` 内。 */
@@ -119,9 +136,15 @@ const colorValue = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("manual"), values: z.partialRecord(emitterKey, fraction) }),
 ]);
 
+const colorBlend = z.enum(["smooth", "step", "hue"]);
+
 const colorParam = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("value"), value: colorValue }),
   keysOf(colorValue),
+  z.object({
+    kind: z.literal("cycle"),
+    cycle: z.object({ colors: z.array(colorValue).min(1).max(32), blend: colorBlend.optional(), ...cycleTiming }),
+  }),
 ]);
 
 const attrKey = z.enum([
@@ -166,11 +189,21 @@ const spread = z.object({
   wings: z.number().int().min(0).max(64).optional(),
   values: z
     .partialRecord(
-      z.union([z.literal("intensity"), z.literal("hue"), z.literal("phase"), attrKey]),
+      z.union([
+        z.literal("intensity"),
+        z.literal("hue"),
+        z.literal("phase"),
+        z.templateLiteral(["phase.", z.union([z.literal("intensity"), z.literal("color"), attrKey])]),
+        attrKey,
+      ]),
       z.object({ from: z.number(), to: z.number() }),
     )
     .optional(),
   delay: z.object({ fromMs: finiteMs, toMs: finiteMs }).optional(),
+  blocks: z.number().int().min(0).max(64).optional(),
+  groups: z.number().int().min(0).max(64).optional(),
+  shuffle: z.number().int().min(0).max(0xffff_ffff).optional(),
+  colors: z.object({ colors: z.array(colorValue).min(1).max(32), blend: colorBlend.optional() }).optional(),
 });
 
 // ---- 片段 ----

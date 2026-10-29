@@ -27,6 +27,7 @@ import {
 } from "../lib/keyframes";
 import { colorValueRgb, fixed, paramHead } from "../lib/looks";
 import { trackFixtureIds } from "../lib/ops";
+import { DEFAULT_STEPS, sanitizeCurve } from "../lib/curveTiming";
 import type { ColorValue, Curve, Look, LookClip, Param, Rgb, ValueCurve, WaveShape } from "../lib/project";
 import { clamp } from "@/shared/lib/math";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -34,6 +35,8 @@ import { useProjectStore } from "../stores/useProjectStore";
 import { AttributeLayers } from "./AttributeLayers";
 import { ColorPicker } from "./ColorPicker";
 import { CommitInput } from "./CommitInput";
+import { CurveShapeFields } from "./CurveShapeFields";
+import { CycleTimingFields } from "./CycleTimingFields";
 import { InspectorSection } from "./InspectorSection";
 import { SliderField } from "./SliderField";
 import { SpreadPanel } from "./SpreadPanel";
@@ -41,7 +44,7 @@ import { SpreadPanel } from "./SpreadPanel";
 /** 区段插值方式（下拉框顺序）。 */
 const CURVES: readonly Curve[] = ["linear", "hold", "easeIn", "easeOut", "easeInOut", "sCurve"];
 /** 数值曲线形状。 */
-const SHAPES: readonly WaveShape[] = ["sine", "triangle", "saw", "square", "ramp", "random"];
+const SHAPES: readonly WaveShape[] = ["sine", "triangle", "saw", "square", "ramp", "random", "noise", "steps"];
 /** 参数的编辑方式。 */
 type ParamMode = "value" | "keys" | "curve";
 
@@ -155,15 +158,17 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
     edit((l) => {
       if (l.intensity?.kind !== "curve") return;
       const c = { ...l.intensity.curve, ...patch };
+      // 切到步进波形时给一组默认步进
+      if (c.shape === "steps" && !c.steps?.length) c.steps = [...DEFAULT_STEPS];
       l.intensity = {
         kind: "curve",
-        curve: {
+        curve: sanitizeCurve({
           ...c,
           from: clamp(c.from, 0, 100),
           to: clamp(c.to, 0, 100),
           cycles: clamp(Math.round(c.cycles * 100) / 100, 1, 1000),
           phase: clamp(c.phase, 0, 1),
-        },
+        }),
       };
     });
 
@@ -266,16 +271,22 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
                   {t("editor.look.now", { value: Math.round(intensityAt) })}
                 </span>
               </div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {number(t("editor.look.from"), curve.from, (n) => setCurve({ from: n }), "%")}
                 {number(t("editor.look.to"), curve.to, (n) => setCurve({ to: n }), "%")}
-                {number(t("editor.look.cycles"), curve.cycles, (n) => setCurve({ cycles: n }))}
-                {number(t("editor.look.phase"), curve.phase, (n) => setCurve({ phase: n }))}
               </div>
-              {unsafeFlash(look, length) && (
+              <CycleTimingFields
+                timing={curve}
+                onChange={(patch) => setCurve(patch)}
+                lengthMs={length}
+                tempo={project.tempo}
+                name={t("editor.look.intensity")}
+              />
+              <CurveShapeFields curve={curve} onChange={setCurve} name={t("editor.look.intensity")} />
+              {unsafeFlash(look, length, project.tempo) && (
                 <p role="alert" className="flex items-start gap-1.5 text-xs text-warning">
                   <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                  {t("editor.look.unsafeFlash", { hz: flashRateHz(look, length).toFixed(1), max: MAX_SAFE_STROBE_HZ })}
+                  {t("editor.look.unsafeFlash", { hz: flashRateHz(look, length, project.tempo).toFixed(1), max: MAX_SAFE_STROBE_HZ })}
                 </p>
               )}
             </div>

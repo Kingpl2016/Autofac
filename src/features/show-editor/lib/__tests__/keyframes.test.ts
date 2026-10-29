@@ -91,6 +91,10 @@ describe("关键帧编辑", () => {
     expect(engine.sampleNum(p, 500, 2000)).toBeCloseTo(50);
     expect(engine.sampleNum(p, 1500, 2000)).toBeCloseTo(100);
     expect(engine.sampleNum({ kind: "curve", curve: { shape: "square", from: 0, to: 100, cycles: 1, phase: 0 } }, 250, 1000)).toBe(100);
+    // 按拍计的周期跟随传入的节拍（60 BPM：每拍 1 秒）
+    const beats = { kind: "curve" as const, curve: { shape: "saw" as const, from: 0, to: 100, cycles: 1, phase: 0, period: { kind: "beats" as const, beats: 1 } } };
+    expect(engine.sampleNum(beats, 250, 8000, { tempo: { bpm: 60, offsetMs: 0 } })).toBeCloseTo(25);
+    expect(engine.sampleNum(beats, 250, 8000, {})).toBeCloseTo(50);
   });
 });
 

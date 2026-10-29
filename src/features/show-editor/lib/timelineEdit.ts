@@ -2,7 +2,7 @@ import { produce } from "immer";
 
 import { MIN_CUE_MS, normalizeFades, placeCues, splitCues, type ClipCue, type CuePlacement } from "./cueOps";
 import { duplicateCuesTo } from "./editOps";
-import type { Look, Param, ShowProject, Tempo } from "./project";
+import type { CycleParam, Look, Param, ShowProject, Tempo } from "./project";
 import { clamp } from "@/shared/lib/math";
 import { snapToFrame } from "./time";
 
@@ -410,7 +410,7 @@ export function copyRange(project: ShowProject, range: { startMs: number; endMs:
 export function keyMoveRange(look: Look, fromMs: number, lengthMs: number): [number, number] {
   let lo = 0;
   let hi = lengthMs;
-  const visit = <T>(p: Param<T> | undefined) => {
+  const visit = <T>(p: Param<T> | CycleParam<T> | undefined) => {
     if (p?.kind !== "keys" || !p.keys.some((k) => k.tMs === fromMs)) return;
     for (const k of p.keys) {
       if (k.tMs < fromMs) lo = Math.max(lo, k.tMs + 1);
@@ -437,7 +437,7 @@ export function moveLookKey(look: Look, fromMs: number, toMs: number, lengthMs: 
   const [lo, hi] = copy ? [0, lengthMs] : keyMoveRange(look, fromMs, lengthMs);
   const to = Math.round(clamp(toMs, lo, hi));
   let found = false;
-  const move = <T>(p: Param<T> | undefined) => {
+  const move = <T>(p: Param<T> | CycleParam<T> | undefined) => {
     if (p?.kind !== "keys") return;
     const k = p.keys.find((x) => x.tMs === fromMs);
     if (!k) return;

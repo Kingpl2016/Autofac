@@ -1629,7 +1629,9 @@
         "saw": "Saw",
         "square": "Square",
         "ramp": "Ramp",
-        "random": "Random"
+        "random": "Random",
+        "noise": "Smooth noise",
+        "steps": "Steps"
       },
       "from": "From",
       "to": "To",
@@ -3295,6 +3297,31 @@
       "apply": "Make {{count}} copies",
       "done": "Made {{count}} copies",
       "partial": "Made only {{count}} of {{total}} copies: no room for the rest"
+    },
+    "curve": {
+      "period": "Period",
+      "periodModes": {
+        "cycles": "Cycles",
+        "ms": "ms",
+        "beats": "Beats"
+      },
+      "periodMs": "Period",
+      "periodBeats": "Period",
+      "beatUnit": "beats",
+      "sync": "Lock to beat",
+      "syncHint": "Phase counts from the project's first beat, so the effect stays on the beat even if the clip does not start on one",
+      "transition": "Transition",
+      "transitionHint": "The waveform completes within this part of the period and holds for the rest; steps and color cycles apply it per step",
+      "ease": "Easing",
+      "easeDefault": "Default",
+      "duty": "Duty cycle",
+      "perFixture": "Different per fixture",
+      "perFixtureHint": "When off, all fixtures follow the same random values (a phase spread can still offset them)",
+      "reseed": "Reroll",
+      "reseeded": "Random values rerolled",
+      "steps": "Steps (%)",
+      "stepsHint": "Comma-separated percentages; one period is split into these steps, e.g. 100, 0, 0, 0 is one on, three off",
+      "stepsInvalid": "Invalid steps: enter 1 to 64 numbers from 0 to 100, separated by commas"
     }
   },
   "fixtures": {

@@ -1,4 +1,4 @@
-import type { Param, ShowProject } from "../lib/project";
+import type { Param, ShowProject, Tempo } from "../lib/project";
 
 /**
  * show-engine 的 WebAssembly 版本（见 `src-tauri/crates/show-engine-wasm`）。
@@ -22,6 +22,17 @@ interface Exports {
   se_frame_ptr(handle: number, index: number): number;
   se_out_ptr(): number;
   se_sample_num(ptr: number, len: number, uMs: number, lenMs: number): number;
+  se_sample_num_at(ptr: number, len: number, uMs: number, lenMs: number, absMs: number, bpm: number, offsetMs: number, index: number): number;
+}
+
+/** 取值的附加上下文：按时间计的周期要节拍，节拍对齐要节目时间，带种子的随机要成员序号。 */
+export interface SampleContext {
+  /** 节目时间（毫秒）；省略时取片段内时刻 */
+  absMs?: number;
+  /** 工程节拍；省略时按拍的周期按 120 BPM */
+  tempo?: Pick<Tempo, "bpm" | "offsetMs"> | null;
+  /** 成员序号 */
+  index?: number;
 }
 
 /** 编译结果的元信息（`se_fixture_ids`）。 */
@@ -133,14 +144,17 @@ export class Engine {
    * @param param 数值参数（固定值 / 关键帧 / 数值曲线）。
    * @param uMs 相对片段起点的时刻。
    * @param lenMs 片段时长。
+   * @param ctx 附加上下文（节拍、节目时间、成员序号）；省略时与旧行为一致。
    * @returns 参数值；参数无法解析时为 `NaN`。
    */
-  sampleNum(param: Param<number>, uMs: number, lenMs: number): number {
+  sampleNum(param: Param<number>, uMs: number, lenMs: number, ctx?: SampleContext): number {
     const bytes = encoder.encode(JSON.stringify(param));
     const x = this.exports;
     const ptr = x.se_alloc(bytes.length);
     new Uint8Array(x.memory.buffer, ptr, bytes.length).set(bytes);
-    const v = x.se_sample_num(ptr, bytes.length, uMs, lenMs);
+    const v = ctx
+      ? x.se_sample_num_at(ptr, bytes.length, uMs, lenMs, ctx.absMs ?? uMs, ctx.tempo?.bpm ?? 0, ctx.tempo?.offsetMs ?? 0, ctx.index ?? 0)
+      : x.se_sample_num(ptr, bytes.length, uMs, lenMs);
     x.se_free(ptr, bytes.length);
     return v;
   }

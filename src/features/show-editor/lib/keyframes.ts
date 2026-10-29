@@ -1,5 +1,8 @@
 import { fixed } from "./looks";
-import type { Curve, Keyframe, Look, Param } from "./project";
+import type { Curve, CycleParam, Keyframe, Look, Param } from "./project";
+
+/** 关键帧编辑接受的参数：普通参数，或颜色序列（没有关键帧；打帧 / 改值时换成关键帧或固定值）。 */
+type AnyParam<T> = Param<T> | CycleParam<T>;
 
 /**
  * 关键帧编辑（剪映式）：每个参数旁一个 ◆，在播放头处打 / 删关键帧；参数已有关键帧时，改值自动在播放头处打帧。
@@ -17,7 +20,7 @@ export const KEY_EPSILON_MS = 17;
  * @param p 参数。
  * @returns 关键帧（按时间升序）。
  */
-export function keysOf<T>(p: Param<T> | undefined): Keyframe<T>[] {
+export function keysOf<T>(p: AnyParam<T> | undefined): Keyframe<T>[] {
   return p?.kind === "keys" ? p.keys : [];
 }
 
@@ -28,7 +31,7 @@ export function keysOf<T>(p: Param<T> | undefined): Keyframe<T>[] {
  * @param uMs 片段内时刻。
  * @returns 有时为 `true`。
  */
-export function hasKeyAt<T>(p: Param<T> | undefined, uMs: number): boolean {
+export function hasKeyAt<T>(p: AnyParam<T> | undefined, uMs: number): boolean {
   return keysOf(p).some((k) => Math.abs(k.tMs - uMs) <= KEY_EPSILON_MS);
 }
 
@@ -53,7 +56,7 @@ function normalized<T>(keys: readonly Keyframe<T>[]): Keyframe<T>[] {
  * @param curve 新关键帧到下一帧的插值方式。
  * @returns 新参数。
  */
-export function setKeyAt<T>(p: Param<T> | undefined, uMs: number, value: T, curve: Curve = "linear"): Param<T> {
+export function setKeyAt<T>(p: AnyParam<T> | undefined, uMs: number, value: T, curve: Curve = "linear"): Param<T> {
   const t = Math.max(0, Math.round(uMs));
   const keys = keysOf(p);
   const existing = keys.find((k) => Math.abs(k.tMs - t) <= KEY_EPSILON_MS);
@@ -88,8 +91,8 @@ export function removeKeyAt<T>(p: Param<T>, uMs: number): Param<T> {
  * @param current 播放头处当前显示的值（打帧时用它）。
  * @returns 新参数。
  */
-export function toggleKeyAt<T>(p: Param<T> | undefined, uMs: number, current: T): Param<T> {
-  return p && hasKeyAt(p, uMs) ? removeKeyAt(p, uMs) : setKeyAt(p, uMs, current);
+export function toggleKeyAt<T>(p: AnyParam<T> | undefined, uMs: number, current: T): Param<T> {
+  return p?.kind === "keys" && hasKeyAt(p, uMs) ? removeKeyAt(p, uMs) : setKeyAt(p, uMs, current);
 }
 
 /**
@@ -100,7 +103,7 @@ export function toggleKeyAt<T>(p: Param<T> | undefined, uMs: number, current: T)
  * @param value 新值。
  * @returns 新参数。
  */
-export function setValueAt<T>(p: Param<T> | undefined, uMs: number, value: T): Param<T> {
+export function setValueAt<T>(p: AnyParam<T> | undefined, uMs: number, value: T): Param<T> {
   return p?.kind === "keys" && p.keys.length > 0 ? setKeyAt(p, uMs, value) : fixed(value);
 }
 
@@ -129,7 +132,7 @@ export function setSegmentCurve<T>(p: Param<T>, uMs: number, curve: Curve): Para
  * @param uMs 片段内时刻。
  * @returns 插值方式；没有关键帧时为 `null`。
  */
-export function segmentCurve<T>(p: Param<T> | undefined, uMs: number): Curve | null {
+export function segmentCurve<T>(p: AnyParam<T> | undefined, uMs: number): Curve | null {
   const keys = keysOf(p);
   if (keys.length === 0) return null;
   let curve = keys[0].curve;
@@ -172,10 +175,12 @@ export function lookKeyTimes(look: Look): number[] {
  * @param uMs 片段内时刻。
  * @returns 值；参数缺省时为 `undefined`。
  */
-export function heldValueAt<T>(p: Param<T> | undefined, uMs: number): T | undefined {
+export function heldValueAt<T>(p: AnyParam<T> | undefined, uMs: number): T | undefined {
   if (!p) return undefined;
   if (p.kind === "value") return p.value;
   if (p.kind === "curve") return undefined;
+  // 序列：显示第一个值（逐帧取值在引擎里）
+  if (p.kind === "cycle") return p.cycle.colors[0];
   let v = p.keys[0]?.value;
   for (const k of p.keys) if (k.tMs <= uMs + KEY_EPSILON_MS) v = k.value;
   return v;

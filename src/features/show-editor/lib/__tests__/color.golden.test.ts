@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import type { ChannelFunction, FixtureModel } from "@/features/fixtures";
-import { createEmptyProject, type Cue, type EffectId, type Easing, type Rgb, type ShowProject } from "../project";
+import { createEmptyProject, type Cue, type EffectId, type Easing, type Look, type Rgb, type ShowProject, type Spread } from "../project";
+import { parseProject } from "../schema";
 import golden from "./golden/show-eval.json";
 
 /**
@@ -31,6 +32,9 @@ interface GoldenCue {
   direction?: 1 | -1;
   range?: [number, number];
   seed?: number;
+  /** 有 `look` 的是外观片段（可带分布） */
+  look?: Look;
+  spread?: Spread;
 }
 
 interface GoldenCase {
@@ -108,6 +112,7 @@ function buildProject(c: GoldenCase): ShowProject {
       fadeOutMs: q.fadeOutMs ?? 0,
       easing: q.easing ?? ("linear" as Easing),
     };
+    if (q.look) return { ...base, kind: "look", look: q.look, ...(q.spread ? { spread: q.spread } : {}) };
     if (q.effect) {
       return {
         ...base,
@@ -131,6 +136,13 @@ const cases = golden.cases as unknown as GoldenCase[];
 describe("WASM 求值与 Rust 黄金向量一致", () => {
   it("用例数量", () => {
     expect(cases.length).toBeGreaterThanOrEqual(30);
+  });
+
+  it("外观片段用例的工程能通过前端的工程校验", () => {
+    for (const c of cases.filter((x) => x.cues.some((q) => q.look))) {
+      const r = parseProject(JSON.stringify(buildProject(c)));
+      expect(r.ok, `${c.name}: ${r.ok ? "" : `${r.reason} ${r.detail ?? ""}`}`).toBe(true);
+    }
   });
 
   it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {

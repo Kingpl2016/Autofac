@@ -1,7 +1,19 @@
 import { cssColor, effectBackground, type EffectFillContext } from "./cueTemplates";
 import type { EffectDef } from "./effectLibrary";
 import { colorValueRgb, paramHead, resolveLook } from "./looks";
-import { DEFAULT_GAMMA, type ColorValue, type Cue, type Keyframe, type Look, type Param, type Preset } from "./project";
+import { periodMs } from "./effects";
+import {
+  DEFAULT_GAMMA,
+  type ColorCycle,
+  type ColorParam,
+  type ColorValue,
+  type Cue,
+  type Keyframe,
+  type Look,
+  type Param,
+  type Preset,
+  type Tempo,
+} from "./project";
 
 /**
  * 时间线片段的“长相”：类别（决定顶部色条与图标）、主体填充（设定的颜色随时间的变化）、显示名。
@@ -32,7 +44,7 @@ export interface ClipFillContext extends EffectFillContext {
  * @param p 参数。
  * @returns 是否变化。
  */
-function animated(p: Param<number> | Param<ColorValue> | undefined): boolean {
+function animated(p: Param<number> | ColorParam | undefined): boolean {
   return p !== undefined && p.kind !== "value";
 }
 
@@ -112,6 +124,38 @@ export function colorKeysGradient(keys: readonly Keyframe<ColorValue>[], lengthM
 }
 
 /**
+ * 颜色序列 → 按周期重复的横向渐变（第一台灯、相位从片段起点算起；按节拍对齐的序列只是近似）。
+ *
+ * @param cycle 颜色序列。
+ * @param lengthMs 片段长度。
+ * @param tempo 工程节拍（按拍的周期用）。
+ * @param gamma 工程 Gamma。
+ * @returns CSS 渐变；只有一种颜色时为纯色。
+ */
+export function colorCycleGradient(cycle: ColorCycle, lengthMs: number, tempo: Tempo | null, gamma: number): string {
+  const colors = cycle.colors;
+  if (colors.length === 0) return "transparent";
+  const css = (c: ColorValue) => cssColor(colorValueRgb(c, gamma));
+  if (colors.length === 1) return css(colors[0]);
+  const length = Math.max(1, lengthMs);
+  const period = cycle.period ? periodMs(cycle.period, tempo) : length / Math.max(1, cycle.cycles);
+  const width = (period / length) * 100;
+  const n = colors.length;
+  const shift = Math.min(1, Math.max(0, cycle.phase)) * width;
+  const at = (k: number) => pct((k / n) * width - shift);
+  const stops: string[] = [];
+  for (let k = 0; k <= n; k += 1) {
+    const c = colors[k % n];
+    if (cycle.blend === "step") {
+      if (k < n) stops.push(`${css(c)} ${at(k)}`, `${css(c)} ${at(k + 1)}`);
+    } else {
+      stops.push(`${css(c)} ${at(k)}`);
+    }
+  }
+  return `repeating-linear-gradient(90deg, ${stops.join(", ")})`;
+}
+
+/**
  * 片段主体的填充：设定的颜色随时间的变化（第一台灯，未计亮度）。
  *
  * - 静态片段：纯色；经典特效：`effectBackground`（彩虹 / 渐变按周期重复）；
@@ -127,9 +171,10 @@ export function colorKeysGradient(keys: readonly Keyframe<ColorValue>[], lengthM
 export function clipFill(cue: Cue, presets: readonly Preset[], ctx: ClipFillContext): ClipFill {
   const gamma = Number.isFinite(ctx.gamma) && ctx.gamma > 0 ? ctx.gamma : DEFAULT_GAMMA;
   const length = cue.endMs - cue.startMs;
-  const ofParam = (p: Param<ColorValue> | undefined): ClipFill => {
+  const ofParam = (p: ColorParam | undefined): ClipFill => {
     if (!p) return { background: null, neutral: true };
     if (p.kind === "keys") return { background: colorKeysGradient(p.keys, length, gamma), neutral: false };
+    if (p.kind === "cycle") return { background: colorCycleGradient(p.cycle, length, ctx.tempo, gamma), neutral: false };
     const head = paramHead(p);
     return head ? { background: cssColor(colorValueRgb(head, gamma)), neutral: false } : { background: null, neutral: true };
   };
