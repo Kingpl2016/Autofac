@@ -864,7 +864,6 @@
     "descDisplay": "Refresh rate and number / value formats",
     "descMerge": "Multi-source merge strategy",
     "descRecording": "Output folder, compression and splitting",
-    "descShortcuts": "Global recording shortcuts",
     "sectionNetwork": "Network",
     "sectionProtocol": "Protocol",
     "sectionDisplay": "Display",
@@ -907,7 +906,6 @@
     "compressionNone": "None",
     "recordingZstdLevel": "Zstd level (1-9)",
     "recordingSplitMinutes": "Auto-split length (minutes, 0 = off)",
-    "sectionShortcuts": "Shortcuts",
     "sectionDeveloper": "Developer",
     "descDeveloper": "For debugging, shown only in development builds",
     "devtools": "Developer tools",
@@ -915,11 +913,6 @@
     "devtoolsFailed": "Could not toggle developer tools",
     "nativeContextMenu": "Keep the browser context menu",
     "nativeContextMenuHint": "Temporarily restore the WebView's own context menu (Inspect Element etc.). Development builds only",
-    "hotkeyStartRecord": "Start recording",
-    "hotkeyStopRecord": "Stop recording",
-    "hotkeyReset": "Reset to default",
-    "hotkeyHint": "Global shortcuts, active even when the app is in the background",
-    "hotkeyCapture": "Press keys…",
     "recordingDirPlaceholder": "Leave empty for the default folder (data/recordings next to the app)",
     "recordingDirBrowse": "Browse…",
     "recordingDirOpen": "Open folder",
@@ -938,7 +931,13 @@
     "startInPlayerMode": "Start in Player mode",
     "startInPlayerModeHint": "For unattended program players: stop live input as soon as the app starts and only play programs. Takes effect on the next launch after saving.",
     "recordingGlow": "Recording glow",
-    "recordingGlowHint": "Show a breathing glow in the recording color around the window while recording. It stays static when reduced motion is on. Applies immediately, no need to save."
+    "recordingGlowHint": "Show a breathing glow in the recording color around the window while recording. It stays static when reduced motion is on. Applies immediately, no need to save.",
+    "searchLabel": "Search settings",
+    "searchPlaceholder": "Search settings…",
+    "searchClear": "Clear search",
+    "navLabel": "Settings sections",
+    "noMatch": "No settings match “{{query}}”",
+    "noMatchHint": "Try another keyword, or clear the search to see all settings."
   },
   "about": {
     "title": "About",
@@ -2661,7 +2660,8 @@
       "loop": "Changed the loop range",
       "duration": "Changed the show length",
       "info": "Changed project info",
-      "other": "Other change"
+      "other": "Other change",
+      "group": "Undo and redo"
     },
     "keymap": {
       "title": "Keyboard shortcuts",

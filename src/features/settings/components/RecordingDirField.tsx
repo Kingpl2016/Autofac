@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MIN_START_FREE_BYTES, formatDiskBytes } from "@/shared/domain/disk";
+import { cn } from "@/lib/utils";
 import { pickDirectory } from "@/shared/tauri/directory";
+import { useRowFilter } from "../hooks/useSettingsFilter";
 import { recordingCheckDir, recordingOpenDir, type DirCheck } from "../lib/recordingDir";
 
 /** 输入停顿多久后检查目录（毫秒）：避免每个按键都触发一次系统调用。 */
@@ -74,14 +76,22 @@ export function RecordingDirField({ value, onChange }: RecordingDirFieldProps) {
     }
   };
 
+  const { visible, highlighted } = useRowFilter(t("settings.recordingDir"));
+
   const invalid = check !== null && !check.writable;
   const notFolder = check !== null && check.exists && !check.isDir;
   const disk = check?.disk;
   const blocked = disk !== undefined && !disk.canStart;
   const low = disk !== undefined && disk.level !== "ok";
 
+  if (!visible) return null;
+
   return (
-    <div data-slot="setting-row" className="grid gap-2 px-5 py-3">
+    <div
+      data-slot="setting-row"
+      data-match={highlighted || undefined}
+      className={cn("grid gap-2 px-5 py-3.5", highlighted && "bg-primary/5")}
+    >
       <Label htmlFor="rec-dir" className="text-sm font-medium">
         {t("settings.recordingDir")}
       </Label>

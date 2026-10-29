@@ -43,6 +43,35 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
         )}
       </h1>
       <FileMenu file={file} />
+      {/* 撤销 / 重做紧挨“文件”：与常见编辑软件一致，最常用的两个操作离文件菜单最近 */}
+      <div role="group" aria-label={t("editor.history.group")} className="flex items-center gap-0.5 border-l border-border pl-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          disabled={!canUndo}
+          aria-label={t("editor.toolbarUndo")}
+          aria-keyshortcuts="Control+Z"
+          title={t("editor.toolbarUndo")}
+          onClick={() => useProjectStore.temporal.getState().undo()}
+        >
+          <Undo2 aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          disabled={!canRedo}
+          aria-label={t("editor.toolbarRedo")}
+          aria-keyshortcuts="Control+Y"
+          title={t("editor.toolbarRedo")}
+          onClick={() => useProjectStore.temporal.getState().redo()}
+        >
+          <Redo2 aria-hidden />
+        </Button>
+      </div>
       <BakeStatus />
       <div className="mx-auto">
         <TransportBar />
@@ -83,33 +112,6 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
           onClick={() => useEditorUiStore.getState().setPaletteOpen(true)}
         >
           <Command aria-hidden />
-        </Button>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          disabled={!canUndo}
-          aria-label={t("editor.toolbarUndo")}
-          aria-keyshortcuts="Control+Z"
-          title={t("editor.toolbarUndo")}
-          onClick={() => useProjectStore.temporal.getState().undo()}
-        >
-          <Undo2 aria-hidden />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          disabled={!canRedo}
-          aria-label={t("editor.toolbarRedo")}
-          aria-keyshortcuts="Control+Y"
-          title={t("editor.toolbarRedo")}
-          onClick={() => useProjectStore.temporal.getState().redo()}
-        >
-          <Redo2 aria-hidden />
         </Button>
       </div>
     </div>

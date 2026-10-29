@@ -6,7 +6,7 @@ import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { openTextFile, saveTextFile } from "@/shared/tauri/files";
-import { SettingsForm } from "./SettingsForm";
+import { SettingsBrowser } from "./SettingsBrowser";
 import { SaveStatusBadge } from "./SaveStatusBadge";
 import { useSettingsDraft } from "../hooks/useSettings";
 import { importSettings } from "../lib/api";
@@ -18,7 +18,7 @@ interface SettingsEditorProps {
 }
 
 /**
- * 设置编辑器：页头（自动保存状态 + 导入导出）+ 居中的单列分组表单。
+ * 设置编辑器：页头（自动保存状态 + 导入导出）+ 两栏设置主体（目录 / 搜索 + 分区卡片）。
  * 草稿由 {@link useSettingsDraft} 管理，变更 2 秒防抖自动保存。
  */
 export function SettingsEditor({ initial }: SettingsEditorProps) {
@@ -43,8 +43,8 @@ export function SettingsEditor({ initial }: SettingsEditorProps) {
   };
 
   return (
-    // 限制行宽并居中：设置行是「左标签 / 右控件」，过宽的屏幕上两端会离得太远，扫读困难
-    <div className="mx-auto w-full max-w-3xl">
+    // 限制总宽并居中：左侧目录 13rem + 右侧卡片约 48rem，设置行“左标签 / 右控件”两端不会离得太远
+    <div className="mx-auto w-full max-w-5xl">
       <PageHeader
         title={t("settings.title")}
         subtitle={t("settings.subtitle")}
@@ -62,7 +62,7 @@ export function SettingsEditor({ initial }: SettingsEditorProps) {
           </>
         }
       />
-      <SettingsForm settings={draft} update={update} />
+      <SettingsBrowser settings={draft} update={update} />
     </div>
   );
 }

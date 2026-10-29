@@ -864,7 +864,6 @@
     "descDisplay": "刷新率与编号 / 数值格式",
     "descMerge": "多源信号合并策略",
     "descRecording": "输出目录、压缩与分段",
-    "descShortcuts": "全局录制快捷键",
     "sectionNetwork": "网络",
     "sectionProtocol": "协议",
     "sectionDisplay": "显示",
@@ -907,7 +906,6 @@
     "compressionNone": "不压缩",
     "recordingZstdLevel": "Zstd 压缩等级 (1-9)",
     "recordingSplitMinutes": "自动分段时长（分钟，0 为不分段）",
-    "sectionShortcuts": "快捷键",
     "sectionDeveloper": "开发者",
     "descDeveloper": "调试用，只在开发版里显示",
     "devtools": "开发者工具",
@@ -915,11 +913,6 @@
     "devtoolsFailed": "无法切换开发者工具",
     "nativeContextMenu": "保留浏览器右键菜单",
     "nativeContextMenuHint": "临时恢复 WebView 自带的右键菜单（检查元素等），只影响开发版",
-    "hotkeyStartRecord": "开始录制",
-    "hotkeyStopRecord": "停止录制",
-    "hotkeyReset": "恢复默认",
-    "hotkeyHint": "全局快捷键，应用在后台时同样生效",
-    "hotkeyCapture": "按下组合键…",
     "recordingDirPlaceholder": "留空使用默认目录（软件目录下的 data/recordings）",
     "recordingDirBrowse": "浏览…",
     "recordingDirOpen": "打开目录",
@@ -938,7 +931,13 @@
     "startInPlayerMode": "启动时进入播放器模式",
     "startInPlayerModeHint": "适合无人值守的节目播放机：应用一启动就停止实时接收，只播放节目。保存后下次启动生效。",
     "recordingGlow": "录制光晕",
-    "recordingGlowHint": "录制时在窗口四周显示录制色的呼吸光晕，开启“减少动画”时保持静态。立即生效，不需要保存。"
+    "recordingGlowHint": "录制时在窗口四周显示录制色的呼吸光晕，开启“减少动画”时保持静态。立即生效，不需要保存。",
+    "searchLabel": "搜索设置",
+    "searchPlaceholder": "搜索设置…",
+    "searchClear": "清除搜索",
+    "navLabel": "设置分区",
+    "noMatch": "没有与“{{query}}”匹配的设置",
+    "noMatchHint": "换个关键词试试，或清除搜索查看全部设置。"
   },
   "about": {
     "title": "关于",
@@ -2661,7 +2660,8 @@
       "loop": "修改循环区间",
       "duration": "修改节目时长",
       "info": "修改工程信息",
-      "other": "其它修改"
+      "other": "其它修改",
+      "group": "撤销与重做"
     },
     "keymap": {
       "title": "快捷键",

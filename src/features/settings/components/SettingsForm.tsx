@@ -13,7 +13,6 @@ import { DeveloperSection } from "./DeveloperSection";
 import { RecordingDirField } from "./RecordingDirField";
 import { SettingsSectionById } from "./SettingsSection";
 import { SettingRow } from "./SettingRow";
-import { ShortcutsSection } from "./ShortcutsSection";
 import { useNetworkInterfaces } from "../hooks/useNetworkInterfaces";
 import type { AppSettings } from "../lib/types";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
@@ -55,8 +54,9 @@ function parseUniverses(text: string): number[] {
 }
 
 /**
- * 设置表单：网络 / 协议 / 显示 / 合并 / 录制 / 快捷键 六大分区。
- * 更新相关功能已迁到「关于」页。
+ * 设置表单：网络 / 协议 / 显示 / 合并 / 录制 / 播放器（开发构建另有“开发者”）。
+ * 更新相关功能在「关于」页；录制热键沿用已保存的值（默认值见 `DEFAULT_RECORD_HOTKEYS`），
+ * 不在这里提供修改界面。
  */
 export function SettingsForm({ settings, update }: SettingsFormProps) {
   const { t } = useTranslation();
@@ -65,7 +65,7 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
   const sacnOn = settings.protocol.sacnEnabled;
 
   return (
-    <div className="grid gap-8 pb-10">
+    <div className="grid gap-10 pb-16">
       {/* 网络 */}
       <SettingsSectionById id="network">
         <SettingRow label={t("settings.networkMode")}>
@@ -462,9 +462,6 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
           />
         </SettingRow>
       </SettingsSectionById>
-
-      {/* 快捷键 */}
-      <ShortcutsSection />
 
       {/* 开发者（只在开发构建里显示） */}
       {import.meta.env.DEV && <DeveloperSection />}
