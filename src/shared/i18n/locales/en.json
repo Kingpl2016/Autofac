@@ -3390,7 +3390,9 @@
         "timeline": "Timeline",
         "file": "File",
         "output": "Output",
-        "help": "Help"
+        "help": "Help",
+        "color": "Colour",
+        "settings": "Settings"
       },
       "items": {
         "fixtureAdd": {
@@ -3424,6 +3426,30 @@
         "helpMenu": {
           "title": "Help menu",
           "body": "Adds a shortcut cheat sheet, what's new, feedback (copy diagnostics, open log folder) and About."
+        },
+        "timelineQuick": {
+          "title": "Faster timeline editing",
+          "body": "Press D for draw mode and drag on empty space to draw a clip; double-click a clip edge to extend it to the neighbour or the playhead; keys 1–9 set selected clips to n beats (n seconds without tempo); a quick bar above the selected clip sets fades, tag, duplicate, disable and delete; right-click empty space to insert a template or effect; “Close gaps” is in the command palette."
+        },
+        "colorAdvanced": {
+          "title": "Advanced colour",
+          "body": "Swatches are split into common colours, gels (163 LEE / Rosco, searchable by number) and my swatches; new HSI input; “Advanced” adds saturation / value, hue ±15° and colour harmonies that can be spread across a group in one click. Static clips use the same picker."
+        },
+        "moreTemplates": {
+          "title": "More templates and effects",
+          "body": "12 new effects (heartbeat, lightning, fire, police lights, colour strobe, sunrise, ballyhoo and more, 40 in total) and 51 new cue templates (Rosco gels, concert colours, mood looks, effect presets, 93 in total)."
+        },
+        "fixtureLibraryV2": {
+          "title": "Redesigned fixture library",
+          "body": "Collapsible groups by type; cards show a type colour block, channel count and maker, and the block opens the channel table; favourite models and recently added ones stay on top; compact view."
+        },
+        "settingsRedesign": {
+          "title": "Redesigned settings",
+          "body": "A side index highlights the section you are reading and settings are searchable; on narrow windows the index becomes tabs at the top. The shortcuts section is gone; recording hotkeys keep their saved values."
+        },
+        "undoNearFile": {
+          "title": "Undo / redo next to File",
+          "body": "Undo and redo now sit right next to the File menu in the top toolbar."
         }
       }
     },
