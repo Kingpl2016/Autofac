@@ -12,7 +12,8 @@ import { announce } from "@/shared/stores/announcerStore";
 import { flashRateHz, unsafeFlash } from "../lib/attrEffects";
 import { setSpread, updateLooks } from "../lib/cueOps";
 import { MAX_SAFE_STROBE_HZ } from "../lib/effects";
-import { availableAttrsOf, colorSupportCount, fixtureProfile, layerSupport, supportsColor } from "../lib/fixtureProfile";
+import { availableAttrsOf, colorModes, colorSupportCount, fixtureProfile, layerSupport, supportsColor } from "../lib/fixtureProfile";
+import { parseRef } from "../lib/fixtureRef";
 import { layerGroupsOf, mergeLayers, pickLayers, type LayerGroup } from "../lib/layers";
 import {
   adjacentKey,
@@ -120,13 +121,16 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
   // 颜色预览用第一台能表现颜色的灯（都不能时用第一台）
   const target = useMemo(() => {
     const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
-    const list = trackFixtures.flatMap((id) => {
-      const f = project.fixtures.find((x) => x.id === id);
+    const list = trackFixtures.flatMap((ref) => {
+      // 像素轨道 / 像素分组：按像素取发光体与实际输出
+      const { fixtureId, head } = parseRef(ref);
+      const f = project.fixtures.find((x) => x.id === fixtureId);
       const model = f ? models.get(f.modelId) : undefined;
-      return f && model ? [{ model, modeId: f.modeId }] : [];
+      return f && model ? [{ model, modeId: f.modeId, head }] : [];
     });
     return list.find((x) => supportsColor({ any: fixtureProfile(x.model, x.modeId).caps })) ?? list[0] ?? null;
   }, [project, trackFixtures]);
+  const modes = useMemo(() => colorModes(project, trackFixtures), [project, trackFixtures]);
   const gamma = project.output.gamma;
   const available = useMemo(() => availableAttrsOf(project, trackFixtures), [project, trackFixtures]);
   const members = trackFixtures.length;
@@ -331,6 +335,7 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
           value={colorAt}
           target={target}
           gamma={gamma}
+          modes={modes}
           onCommit={(color) => edit((l, uMs) => void (l.color = setValueAt(l.color, uMs, color)))}
         />
         {look.color?.kind === "keys" && segmentSelect(look.color, "color")}

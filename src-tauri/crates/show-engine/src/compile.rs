@@ -164,7 +164,39 @@ pub struct WheelSlot {
     pub rgb: [f64; 3],
 }
 
-/// 由颜色层派生的属性通道：CMY 减色与色轮（下标指向 [`CompiledFixture::attrs`]）。
+/// 色温通道上标注了色温的一段（用户空间分数，已按反向换算）：`lo` 处为 `k_lo`，`hi` 处为 `k_hi`。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CtcSegment {
+    /// 区间起点。
+    pub lo: f64,
+    /// 区间终点。
+    pub hi: f64,
+    /// 起点的色温（K）。
+    pub k_lo: f64,
+    /// 终点的色温（K）；单值能力与 `k_lo` 相同。
+    pub k_hi: f64,
+}
+
+impl CtcSegment {
+    /// 色温在这一段里对应的取值（段内按色温线性插值，段外取最近的端点）。
+    ///
+    /// # Arguments
+    ///
+    /// * `kelvin` - 目标色温（K）。
+    ///
+    /// # Returns
+    ///
+    /// `(用户空间分数, 与目标色温的差距 K)`；差距为 0 表示目标落在这一段里。
+    #[must_use]
+    pub fn locate(&self, kelvin: f64) -> (f64, f64) {
+        let (min, max) = (self.k_lo.min(self.k_hi), self.k_lo.max(self.k_hi));
+        let k = kelvin.clamp(min, max);
+        let t = if (self.k_hi - self.k_lo).abs() < f64::EPSILON { 0.5 } else { (k - self.k_lo) / (self.k_hi - self.k_lo) };
+        (self.lo + (self.hi - self.lo) * t, (kelvin - k).abs())
+    }
+}
+
+/// 由颜色层派生的属性通道：CMY 减色、色轮与色温通道（下标指向 [`CompiledFixture::attrs`]）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ColorAttrs {
     /// 青 / 品红 / 黄通道。
@@ -173,6 +205,11 @@ pub struct ColorAttrs {
     pub wheel: Option<usize>,
     /// 色轮上带颜色的槽位（`Open` 槽位视为白色）。
     pub slots: Vec<WheelSlot>,
+    /// 色温通道：只在灯具没有其它调色手段（彩色 / 冷暖白发光体、CMY、色轮）时由色温意图驱动，
+    /// 否则混色已经在近似色温，再写色温通道会叠加两次。
+    pub ctc: Option<usize>,
+    /// 色温通道上标注了色温（K）的区间。
+    pub ctc_segments: Vec<CtcSegment>,
 }
 
 impl ColorAttrs {
@@ -180,10 +217,48 @@ impl ColorAttrs {
     ///
     /// # Returns
     ///
-    /// 有任一 CMY 通道或带颜色槽位的色轮时为 `true`。
+    /// 有任一 CMY 通道、带颜色槽位的色轮或可驱动的色温通道时为 `true`。
     #[must_use]
     pub fn any(&self) -> bool {
-        self.cmy.iter().any(Option::is_some) || (self.wheel.is_some() && !self.slots.is_empty())
+        self.cmy.iter().any(Option::is_some) || (self.wheel.is_some() && !self.slots.is_empty()) || self.ctc_value(6500.0).is_some()
+    }
+
+    /// 色温意图在色温通道上的取值。
+    ///
+    /// # Arguments
+    ///
+    /// * `kelvin` - 目标色温（K）。
+    ///
+    /// # Returns
+    ///
+    /// `Some((属性下标, 用户空间分数))`；没有可驱动的色温通道时为 `None`。
+    /// 目标超出通道标注的范围时取最近的端点。
+    #[must_use]
+    pub fn ctc_value(&self, kelvin: f64) -> Option<(usize, f64)> {
+        let index = self.ctc?;
+        let best = self
+            .ctc_segments
+            .iter()
+            .map(|s| s.locate(kelvin))
+            .min_by(|a, b| a.1.total_cmp(&b.1))?;
+        Some((index, best.0))
+    }
+
+    /// 色温通道当前取值对应的色温（预览用）。
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - 色温通道的用户空间分数。
+    ///
+    /// # Returns
+    ///
+    /// 落在某个标注区间里时为该处的色温（K），否则为 `None`。
+    #[must_use]
+    pub fn ctc_kelvin(&self, value: f64) -> Option<f64> {
+        self.ctc?;
+        let s = self.ctc_segments.iter().find(|s| s.lo - 1e-9 <= value && value <= s.hi + 1e-9)?;
+        let t = if s.hi - s.lo > f64::EPSILON { (value - s.lo) / (s.hi - s.lo) } else { 0.5 };
+        Some(s.k_lo + (s.k_hi - s.k_lo) * t)
     }
 }
 
@@ -470,14 +545,15 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
         let (driven, mirrors, attrs) = layout_fixture(origin, &body_props, &mut base[universe_index]);
         let body = fixtures.len();
         let body_has_dimmer = driven.dimmer.is_some();
+        let mixer = ColorMixer::for_fixture(&driven, emitters);
         fixtures.push(CompiledFixture {
             id: a.id.to_owned(),
             owner: None,
             head: 0,
             pixels: Vec::new(),
             universe_index,
-            mixer: ColorMixer::for_fixture(&driven, emitters),
-            color_attrs: color_attrs_of(a.layout, &attrs, gamma),
+            color_attrs: color_attrs_of(a.layout, &attrs, gamma, &mixer),
+            mixer,
             shutter_gate: shutter_gate_of(a.layout, &attrs),
             driven,
             mirrors,
@@ -504,8 +580,8 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
                 head: h,
                 pixels: Vec::new(),
                 universe_index,
+                color_attrs: color_attrs_of(a.layout, &attrs, gamma, &mixer),
                 mixer,
-                color_attrs: color_attrs_of(a.layout, &attrs, gamma),
                 shutter_gate: shutter_gate_of(a.layout, &attrs),
                 driven,
                 mirrors,
@@ -709,15 +785,66 @@ fn layout_fixture(origin: u16, props: &[&FixtureProperty], base: &mut DmxData) -
 /// 找出可由颜色层派生的属性通道：每种 CMY 功能与色轮各取第一个（整灯优先）。
 ///
 /// 色轮槽位取带颜色的能力区间（`Open` 槽位视为白色），区间换算成用户空间分数（反向通道翻转）。
-fn color_attrs_of(layout: &[FixtureProperty], attrs: &[AttrSlot], gamma: f64) -> ColorAttrs {
+fn color_attrs_of(layout: &[FixtureProperty], attrs: &[AttrSlot], gamma: f64, mixer: &ColorMixer) -> ColorAttrs {
     let mut out = ColorAttrs::default();
     let index_of = |f: ChannelFunction| {
         attrs.iter().enumerate().filter(|(_, a)| a.function == f).min_by_key(|(_, a)| a.head).map(|(i, _)| i)
     };
     out.cmy = [index_of(ChannelFunction::Cyan), index_of(ChannelFunction::Magenta), index_of(ChannelFunction::Yellow)];
-    let Some(wi) = index_of(ChannelFunction::ColorWheel) else { return out };
+    wheel_slots_of(layout, attrs, gamma, index_of(ChannelFunction::ColorWheel), &mut out);
+    // 色温通道只在没有其它调色手段时驱动（白光 / 单色发光体不算调色手段）
+    let present = mixer.present();
+    let can_tint = [R, G, B, CW, WW, AMBER, LIME, INDIGO].iter().any(|&c| present.has(c));
+    if !can_tint && out.cmy.iter().all(Option::is_none) && out.slots.is_empty() {
+        ctc_segments_of(layout, attrs, index_of(ChannelFunction::ColorTemp), &mut out);
+    }
+    out
+}
+
+/// 色温通道上标注了色温（单位 `K`）的能力区间，区间换算成用户空间分数（反向通道翻转）。
+fn ctc_segments_of(layout: &[FixtureProperty], attrs: &[AttrSlot], index: Option<usize>, out: &mut ColorAttrs) {
+    let Some(ci) = index else { return };
+    let Some(p) = layout.iter().find(|p| p.function == ChannelFunction::ColorTemp && p.head == attrs[ci].head) else {
+        return;
+    };
+    let max = f64::from(p.max_value());
+    let invert = attrs[ci].invert;
+    // 没有任何能力区间的色温通道（物模型表里常见“0~255 暖→冷”）：按整段从暖到冷近似
+    if p.capabilities.is_empty() {
+        // 反向通道：用户空间 0 对应 DMX 满值（冷）
+        let (k_lo, k_hi) = if invert { (DEFAULT_CTC_COOL_K, DEFAULT_CTC_WARM_K) } else { (DEFAULT_CTC_WARM_K, DEFAULT_CTC_COOL_K) };
+        out.ctc_segments.push(CtcSegment { lo: 0.0, hi: 1.0, k_lo, k_hi });
+        out.ctc = Some(ci);
+        return;
+    }
+    for c in &p.capabilities {
+        let Some([k_lo, k_hi]) = c.physical.filter(|_| c.unit.eq_ignore_ascii_case("k")) else { continue };
+        if !(k_lo > 0.0 && k_hi > 0.0) {
+            continue;
+        }
+        let (lo, hi) = (f64::from(c.range[0]) / max, f64::from(c.range[1]) / max);
+        let seg = if invert {
+            CtcSegment { lo: 1.0 - hi, hi: 1.0 - lo, k_lo: k_hi, k_hi: k_lo }
+        } else {
+            CtcSegment { lo, hi, k_lo, k_hi }
+        };
+        out.ctc_segments.push(seg);
+    }
+    if !out.ctc_segments.is_empty() {
+        out.ctc = Some(ci);
+    }
+}
+
+/// 没有标注的色温通道在最小值处的色温（K）。
+const DEFAULT_CTC_WARM_K: f64 = 2700.0;
+/// 没有标注的色温通道在最大值处的色温（K）。
+const DEFAULT_CTC_COOL_K: f64 = 6500.0;
+
+/// 色轮上带颜色的槽位。
+fn wheel_slots_of(layout: &[FixtureProperty], attrs: &[AttrSlot], gamma: f64, index: Option<usize>, out: &mut ColorAttrs) {
+    let Some(wi) = index else { return };
     let Some(wheel) = layout.iter().find(|p| p.function == ChannelFunction::ColorWheel && p.head == attrs[wi].head) else {
-        return out;
+        return;
     };
     let max = f64::from(wheel.max_value());
     let invert = attrs[wi].invert;
@@ -736,7 +863,6 @@ fn color_attrs_of(layout: &[FixtureProperty], attrs: &[AttrSlot], gamma: f64) ->
         out.slots.push(WheelSlot { lo, hi, mid: f64::midpoint(lo, hi), rgb: rgb.map(|v| v / peak) });
     }
     out.wheel = Some(wi);
-    out
 }
 
 /// 快门跟随强度的参数：整灯（像素号最小）的快门通道同时标注了开光与关光区间时，取两者的中点。

@@ -387,9 +387,9 @@ impl CompiledShow {
             .zip(&out.attrs)
             .map(|((f, acc), values)| {
                 let mut rgb = f.mixer.emitted_rgb(acc);
-                // 没有发光体的 CMY / 色轮灯：白光（调光级别）乘以当前滤色
+                // 没有发光体的 CMY / 色轮 / 色温通道灯：白光（调光级别）乘以当前滤色
                 if !f.mixer.has_emitters() && f.color_attrs.any() {
-                    let filter = filter_rgb(f, values);
+                    let filter = filter_rgb(f, values, self.gamma);
                     for (c, s) in rgb.iter_mut().zip(filter) {
                         *c *= s;
                     }
@@ -492,10 +492,11 @@ fn split_frames(frames: &mut [Frame], a: usize, b: usize) -> (&mut DmxData, Opti
     }
 }
 
-/// 由颜色层派生 CMY 与色轮的取值（只填本帧没有被属性层显式写过的通道）。
+/// 由颜色层派生 CMY、色轮与色温通道的取值（只填本帧没有被属性层显式写过的通道）。
 ///
 /// 颜色按峰值归一化后只表达色相与饱和度（亮度交给调光）：CMY 取 `1 - 分量`，
-/// 色轮选线性 RGB 距离最近的槽位并写入区间中点。按发光体直给的颜色不派生。
+/// 色轮选线性 RGB 距离最近的槽位并写入区间中点；色温意图按通道标注的色温区间换算（只有色温通道的灯）。
+/// 按发光体直给的颜色不派生。
 fn derive_color_attrs(fixture: &CompiledFixture, color: &ColorState, gamma: f64, values: &mut [Option<f64>]) {
     let ca = &fixture.color_attrs;
     if !ca.any() {
@@ -503,7 +504,15 @@ fn derive_color_attrs(fixture: &CompiledFixture, color: &ColorState, gamma: f64,
     }
     let rgb = match color.request(gamma) {
         ColorRequest::Rgb { rgb, .. } => rgb,
-        ColorRequest::Kelvin(k) => kelvin_to_output(k, gamma),
+        ColorRequest::Kelvin(k) => {
+            // 只有色温通道的灯（调光 + 色温）：色温意图直接写色温通道
+            if let Some((i, v)) = ca.ctc_value(k)
+                && values[i].is_none()
+            {
+                values[i] = Some(v);
+            }
+            kelvin_to_output(k, gamma)
+        }
         ColorRequest::Manual(_) => return,
     };
     let peak = rgb.iter().fold(0.0_f64, |m, v| m.max(*v));
@@ -528,8 +537,9 @@ fn derive_color_attrs(fixture: &CompiledFixture, color: &ColorState, gamma: f64,
     }
 }
 
-/// 没有发光体的灯具（CMY / 色轮）当前的滤色（线性 RGB）：CMY 取 `1 - 值`，色轮取当前槽位颜色，两者相乘。
-fn filter_rgb(fixture: &CompiledFixture, values: &[Option<f64>]) -> [f64; 3] {
+/// 没有发光体的灯具（CMY / 色轮 / 色温通道）当前的滤色（线性 RGB）：CMY 取 `1 - 值`，色轮取当前槽位颜色，
+/// 色温通道取当前色温的颜色，逐项相乘。
+fn filter_rgb(fixture: &CompiledFixture, values: &[Option<f64>], gamma: f64) -> [f64; 3] {
     let ca = &fixture.color_attrs;
     let value = |i: usize| values[i].unwrap_or(fixture.attrs[i].default).clamp(0.0, 1.0);
     let mut rgb = [1.0; 3];
@@ -543,6 +553,16 @@ fn filter_rgb(fixture: &CompiledFixture, values: &[Option<f64>]) -> [f64; 3] {
         if let Some(slot) = ca.slots.iter().find(|s| s.lo - 1e-9 <= v && v <= s.hi + 1e-9) {
             for (c, s) in rgb.iter_mut().zip(slot.rgb) {
                 *c *= s;
+            }
+        }
+    }
+    // 色温通道：白光染成当前色温的颜色（峰值归一化，亮度仍由调光决定）
+    if let Some(k) = ca.ctc.and_then(|i| ca.ctc_kelvin(value(i))) {
+        let tint = kelvin_to_output(k, gamma);
+        let peak = tint.iter().fold(0.0_f64, |m, v| m.max(*v));
+        if peak > 0.0 {
+            for (c, s) in rgb.iter_mut().zip(tint) {
+                *c *= s / peak;
             }
         }
     }
@@ -993,6 +1013,58 @@ mod tests {
         let c = compile(&p);
         c.evaluate_into(10, &mut set);
         assert_eq!(&frame_at(&set, 0)[1..5], &[0, 0, 0, 32]);
+    }
+
+    /// 标注了色温的能力区间：0~9 关闭，10~255 对应 2700K→6500K。
+    const CTC_CAPS: &str = r#"[{"range":[0,9],"label":"Off"},
+        {"range":[10,255],"label":"CTC","proportional":true,"physical":[2700,6500],"unit":"K"}]"#;
+
+    /// 调光 1 + 色温 2 的灯；`caps` 为色温通道的能力区间 JSON，`extra` 为附加的通道对象 JSON（以逗号开头）。
+    fn ctc_project(caps: &str, extra: &str, look: &str) -> ShowProject {
+        let json = format!(
+            r#"{{"durationMs":10000,"fixtureModels":[{{"id":"m","name":"m","properties":[
+                {{"name":"d","code":"D","function":"dimmer","channel":1,"width":1,"bigEndian":true,"defaultValue":0}},
+                {{"name":"t","code":"T","function":"colorTemp","channel":2,"width":1,"bigEndian":true,"defaultValue":0,"capabilities":{caps}}}{extra}]}}],
+               "fixtures":[{{"id":"f","modelId":"m","universe":0,"address":1}}],
+               "tracks":[{{"id":"t","target":{{"kind":"fixture","id":"f"}}}}],
+               "cues":[{{"kind":"look","id":"c","trackId":"t","startMs":0,"endMs":1000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","look":{look}}}],
+               "output":{{"gamma":1}}}}"#
+        );
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("工程 JSON 应合法：{e}"))
+    }
+
+    #[test]
+    fn 只有色温通道的灯_色温意图驱动色温通道_超出范围取端点() {
+        let kelvin = |k: u32| format!(r#"{{"intensity":{{"kind":"value","value":100}},"color":{{"kind":"value","value":{{"kind":"kelvin","kelvin":{k}}}}}}}"#);
+        let run_caps = |caps: &str, extra: &str, look: &str| {
+            let c = compile(&ctc_project(caps, extra, look));
+            let mut set = c.new_frames();
+            c.evaluate_into(10, &mut set);
+            (frame_at(&set, 0)[..2].to_vec(), c.preview_colors(&set)[0].1)
+        };
+        let run = |extra: &str, look: &str| run_caps(CTC_CAPS, extra, look);
+        let (warm, warm_rgb) = run("", &kelvin(2700));
+        assert_eq!(warm, [255, 10]);
+        // 暖白预览偏橙：红 > 蓝
+        assert!(warm_rgb[0] > warm_rgb[2], "{warm_rgb:?}");
+        assert_eq!(run("", &kelvin(6500)).0, [255, 255]);
+        let mid = run("", &kelvin(4600)).0[1];
+        assert!((132..=133).contains(&mid), "{mid}");
+        assert_eq!(run("", &kelvin(1800)).0[1], 10);
+        assert_eq!(run("", &kelvin(9000)).0[1], 255);
+
+        // 彩色意图不动色温通道；有 RGB 发光体的灯由混色近似色温，色温通道保持默认
+        let red = r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,0,0]}}}"#;
+        assert_eq!(run("", red).0[1], 0);
+        let rgb = r#",{"name":"r","code":"R","function":"red","channel":3,"width":1,"bigEndian":true,"defaultValue":0},
+                     {"name":"g","code":"G","function":"green","channel":4,"width":1,"bigEndian":true,"defaultValue":0},
+                     {"name":"b","code":"B","function":"blue","channel":5,"width":1,"bigEndian":true,"defaultValue":0}"#;
+        assert_eq!(run(rgb, &kelvin(2700)).0[1], 0);
+
+        // 没有能力区间的色温通道按整段 2700K→6500K 近似；有区间但都没标色温时不驱动
+        assert_eq!(run_caps("[]", "", &kelvin(6500)).0[1], 255);
+        assert_eq!(run_caps("[]", "", &kelvin(2700)).0[1], 0);
+        assert_eq!(run_caps(r#"[{"range":[0,255],"label":"CTC"}]"#, "", &kelvin(6500)).0[1], 0);
     }
 
     #[test]

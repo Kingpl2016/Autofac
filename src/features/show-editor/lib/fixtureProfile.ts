@@ -1,4 +1,6 @@
 import {
+  isEmitter,
+  layoutOf,
   modelProfile,
   type FixtureCapability,
   type FixtureModel,
@@ -8,7 +10,7 @@ import {
 import { parseRef } from "./fixtureRef";
 import { ATTR_KEYS, attrGroup, availableAttrs, type AttrInfo } from "./layers";
 import { trackFixtureIds } from "./ops";
-import type { AttrKey, Look, ShowProject, Track } from "./project";
+import type { AttrKey, ColorValue, Look, ShowProject, Track } from "./project";
 
 /**
  * 节目编辑器的能力汇总：单台灯具的画像来自灯具库（`modelProfile`），
@@ -224,4 +226,34 @@ export function availableAttrsOf(
     const a = byKey.get(k);
     return a ? [a] : [];
   });
+}
+
+/** 色盘的颜色方式（就是颜色值的类型）：彩色、色温、按发光体直给。 */
+export type ColorMode = ColorValue["kind"];
+
+/**
+ * 一组灯具支持的颜色方式（色盘据此隐藏不支持的方式）：至少一台灯支持就显示。
+ *
+ * - 彩色：能连续混色（RGB / CMY），或有颜色轮（选最近的槽位）；
+ * - 色温：能调色温（可混色近似、冷暖白，或可由色温驱动的色温通道）；
+ * - 发光体：有发光体通道（像素引用只看这个像素）。
+ *
+ * @param project 工程（只读）。
+ * @param fixtureIds 灯具或像素引用。
+ * @returns 支持的方式（固定顺序）；没有灯具时为全部方式（不限制）。
+ */
+export function colorModes(project: Pick<ShowProject, "fixtures" | "fixtureModels">, fixtureIds: readonly string[]): ColorMode[] {
+  const caps = fixturesCapabilities(project, fixtureIds);
+  if (caps.total === 0) return ["rgb", "kelvin", "manual"];
+  const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
+  const emitters = fixtureIds.some((id) => {
+    const r = resolveRef(project, models, id);
+    const layout = r?.model ? (layoutOf(r.model, r.modeId) ?? []) : [];
+    return layout.some((p) => isEmitter(p.function) && (r?.head === undefined || (p.head ?? 0) === r.head));
+  });
+  const out: ColorMode[] = [];
+  if (caps.any.has("mixing") || caps.any.has("colorWheel")) out.push("rgb");
+  if (caps.any.has("colorTemp")) out.push("kelvin");
+  if (emitters) out.push("manual");
+  return out;
 }

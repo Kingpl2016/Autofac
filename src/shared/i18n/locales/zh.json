@@ -1552,6 +1552,7 @@
       "kelvin": "色温",
       "kelvinValue": "色温（K）",
       "noEmitters": "目标灯具没有发光体通道",
+      "modeUnsupported": "所选灯具不支持“{{mode}}”，输出不会随它变化。请切换到其它颜色方式。",
       "emitterLevel": "{{name}} 输出",
       "palette": "常用色",
       "recent": "最近",

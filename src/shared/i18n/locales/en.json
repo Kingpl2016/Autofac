@@ -1552,6 +1552,7 @@
       "kelvin": "Color temperature",
       "kelvinValue": "Kelvin (K)",
       "noEmitters": "The target fixture has no emitter channels",
+      "modeUnsupported": "The selected fixtures don't support \"{{mode}}\", so the output won't follow it. Switch to another color mode.",
       "emitterLevel": "{{name}} output",
       "palette": "Palette",
       "recent": "Recent",

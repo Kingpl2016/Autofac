@@ -1,13 +1,13 @@
 import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 
-import { fixturesCapabilities, layerSupport } from "../fixtureProfile";
+import { colorModes, fixturesCapabilities, layerSupport } from "../fixtureProfile";
 import { baseOf, headsOf, parseRef, pixelRefsOf, refExists, refName, refOf } from "../fixtureRef";
 import { addFixtures, createGroup, removeFixtures, trackFixtureIds, trackName } from "../ops";
 import { createEmptyProject, type ShowProject } from "../project";
 import { parseProject } from "../schema";
 import { setFixtureMode } from "../universeOps";
-import { PIXEL_BAR as BAR } from "./testkit";
+import { DIMMER, PIXEL_BAR as BAR } from "./testkit";
 
 function project(): ShowProject {
   return produce(createEmptyProject("t"), (d) => void addFixtures(d, BAR, 1));
@@ -52,6 +52,15 @@ describe("灯具引用", () => {
     const caps = fixturesCapabilities(p, [`${f.id}#1`]);
     expect([...caps.any].sort()).toEqual(["colorTemp", "intensity", "mixing"]);
     expect(layerSupport(p, [`${f.id}#1`]).attrs.size).toBe(0);
+
+    // 色盘的颜色方式：按整灯 / 像素各自的通道判断；只有调光的灯没有任何方式；至少一台支持就显示
+    const q = produce(p, (d) => void addFixtures(d, DIMMER, 1));
+    const dim = q.fixtures[1].id;
+    expect(colorModes(q, [f.id])).toEqual(["rgb", "kelvin", "manual"]);
+    expect(colorModes(q, [`${f.id}#2`])).toEqual(["rgb", "kelvin", "manual"]);
+    expect(colorModes(q, [dim])).toEqual([]);
+    expect(colorModes(q, [dim, f.id])).toEqual(["rgb", "kelvin", "manual"]);
+    expect(colorModes(q, [])).toEqual(["rgb", "kelvin", "manual"]);
   });
 
   it("换到像素更少的模式时清理失效引用（分组成员不足时整组删除），撤销即可恢复", () => {

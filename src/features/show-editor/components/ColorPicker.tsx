@@ -10,6 +10,7 @@ import { isEmitter, layoutOf, type FixtureModel } from "@/features/fixtures";
 import { useEngine } from "../engine/useEngine";
 import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
+import type { ColorMode } from "../lib/fixtureProfile";
 import { emitterHead, mixPreview } from "../lib/mixPreview";
 import { DEFAULT_GAMMA, type ColorValue, type EmitterKey, type Rgb, type WhiteStrategy } from "../lib/project";
 import { clamp } from "@/shared/lib/math";
@@ -17,8 +18,11 @@ import { COLOR_INPUTS, useColorInputStore, type ColorInput } from "../stores/use
 import { useRecentColorsStore } from "../stores/useRecentColorsStore";
 import { CommitInput } from "./CommitInput";
 
-/** 色盘模式。 */
-type Mode = "rgb" | "kelvin" | "manual";
+/** 色盘模式（就是颜色值的类型）。 */
+type Mode = ColorMode;
+
+/** 全部模式（显示顺序）。 */
+const ALL_MODES: readonly Mode[] = ["rgb", "kelvin", "manual"];
 
 /** 色温范围。 */
 const MIN_K = 1800;
@@ -96,6 +100,11 @@ interface ColorPickerProps {
   target?: { model: FixtureModel; modeId?: string; head?: number | null } | null;
   /** 工程 Gamma（实际输出预览用） */
   gamma?: number;
+  /**
+   * 目标灯具支持的颜色方式（见 `colorModes`）；省略时全部显示。
+   * 不支持的方式隐藏，但当前值所用的方式总会显示（并提示输出不会变化）。
+   */
+  modes?: readonly Mode[];
 }
 
 /**
@@ -111,7 +120,7 @@ interface ColorPickerProps {
  *
  * 拖动时只改本地草稿（实时显示），松手才提交，一次拖动一步撤销。
  */
-export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: ColorPickerProps) {
+export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, modes = ALL_MODES }: ColorPickerProps) {
   const { t } = useTranslation();
   const engine = useEngine();
   const recent = useRecentColorsStore((s) => s.colors);
@@ -140,7 +149,7 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
     return () => window.removeEventListener("pointerup", finish);
   });
 
-  // 模式就是当前颜色值的类型：切换模式会提交一个换算后的颜色
+  // 模式就是当前颜色值的类型：切换模式会提交这个模式上次的值，没有时提交换算后的颜色
   const mode: Mode = shown.kind;
   const rgb = colorValueRgb(shown, gamma);
   const white: WhiteStrategy = shown.kind === "rgb" ? (shown.white ?? "preserve") : "preserve";
@@ -190,9 +199,16 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
   };
   const dot = hsToWheel(hsv.h, hsv.s);
 
+  const recentShown = recent.map((c, i) => ({ c, i })).filter(({ c }) => modes.includes(c.kind));
+
+  // 每种模式记住上次的值：彩色 → 色温 → 彩色时回到原来的彩色，而不是色温换算出的近白色
+  const lastByMode = useRef<Partial<Record<Mode, ColorValue>>>({});
   const switchMode = (next: Mode) => {
     if (next === shown.kind) return;
-    if (next === "rgb") commit({ kind: "rgb", rgb });
+    lastByMode.current[shown.kind] = shown;
+    const remembered = lastByMode.current[next];
+    if (remembered) commit(remembered);
+    else if (next === "rgb") commit({ kind: "rgb", rgb });
     else if (next === "kelvin") commit({ kind: "kelvin", kelvin: 3200 });
     else {
       const values: Partial<Record<EmitterKey, number>> = {};
@@ -302,7 +318,7 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
         <Segmented<Mode>
           ariaLabel={t("editor.color.mode")}
           value={mode}
-          options={(["rgb", "kelvin", "manual"] as const).map((m) => ({
+          options={ALL_MODES.filter((m) => m === mode || modes.includes(m)).map((m) => ({
             value: m,
             label: t(`editor.color.modes.${m}`),
             title: t(`editor.color.modeHints.${m}`),
@@ -316,6 +332,12 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
           style={{ "--intent": css(rgb) } as CSSProperties}
         />
       </div>
+
+      {!modes.includes(mode) && (
+        <p role="note" className="text-[11px] text-warning">
+          {t("editor.color.modeUnsupported", { mode: t(`editor.color.modes.${mode}`) })}
+        </p>
+      )}
 
       {mode === "rgb" && shown.kind === "rgb" && (
         <div data-tour="color-input" className="grid gap-2">
@@ -478,7 +500,7 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-muted-foreground">{t("editor.color.palette")}</span>
-          {canPickScreenColor() && (
+          {canPickScreenColor() && modes.includes("rgb") && (
             <Button
               type="button"
               variant="ghost"
@@ -497,11 +519,14 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
             </Button>
           )}
         </div>
-        <div className="flex flex-wrap gap-1">{PALETTE.map((p) => swatch(p.id, p.color, t(`editor.color.swatches.${p.id}`)))}</div>
-        {recent.length > 0 && (
+        {/* 常用色与最近使用只列出目标灯具支持的方式（例如只有色温通道的灯不列彩色） */}
+        <div className="flex flex-wrap gap-1">
+          {PALETTE.filter((p) => modes.includes(p.color.kind)).map((p) => swatch(p.id, p.color, t(`editor.color.swatches.${p.id}`)))}
+        </div>
+        {recentShown.length > 0 && (
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-[11px] text-muted-foreground">{t("editor.color.recent")}</span>
-            {recent.map((c, i) => swatch(`recent-${i}`, c, t("editor.color.recentItem", { hex: rgbToHex(colorValueRgb(c)) })))}
+            {recentShown.map(({ c, i }) => swatch(`recent-${i}`, c, t("editor.color.recentItem", { hex: rgbToHex(colorValueRgb(c)) })))}
           </div>
         )}
       </div>

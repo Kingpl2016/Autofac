@@ -29,6 +29,24 @@ describe("灯具能力画像", () => {
     expect(modelType(m)).toBe("mover");
   });
 
+  it("色温能力：混色、冷暖白，或可由色温驱动的色温通道（与引擎规则一致）", () => {
+    const ctc = (capabilities: FixtureProperty["capabilities"]) => ({ ...prop("colorTemp", 2), capabilities });
+    const has = (props: FixtureProperty[]) => modelProfile(model(props)).caps.has("colorTemp");
+    expect(has([prop("red", 1), prop("green", 2), prop("blue", 3)])).toBe(true);
+    expect(has([prop("coolWhite", 1), prop("warmWhite", 2)])).toBe(true);
+    // 调光 + 色温通道：没有区间（整段暖→冷）或区间标注了 K
+    expect(has([prop("dimmer", 1), ctc([])])).toBe(true);
+    expect(has([prop("dimmer", 1), ctc([{ range: [0, 255], label: "CTC", physical: [2700, 6500], unit: "K" }])])).toBe(true);
+    // 区间都没标色温：不知道怎么换算
+    expect(has([prop("dimmer", 1), ctc([{ range: [0, 255], label: "CTC" }])])).toBe(false);
+    // 只有调光 / 只有单色白：不能调色温
+    expect(has([prop("dimmer", 1)])).toBe(false);
+    expect(has([prop("white", 1)])).toBe(false);
+    // 有带颜色槽位的色轮：色温意图交给色轮，色温通道不驱动
+    const wheel = { ...prop("colorWheel", 3), capabilities: [{ range: [0, 255] as [number, number], label: "Red", color: [255, 0, 0] as [number, number, number] }] };
+    expect(has([prop("dimmer", 1), ctc([]), wheel])).toBe(false);
+  });
+
   it("类型列表覆盖全部类型且不重复", () => {
     expect(new Set(FIXTURE_TYPES).size).toBe(5);
   });

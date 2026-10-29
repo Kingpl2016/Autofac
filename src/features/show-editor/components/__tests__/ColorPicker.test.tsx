@@ -69,6 +69,37 @@ describe("ColorPicker", () => {
     expect(onCommit).toHaveBeenLastCalledWith({ kind: "manual", values: { red: 1, white: 0.4 } });
   });
 
+  it("彩色 → 色温 → 彩色：回到原来的彩色，而不是色温换算出的近白色", () => {
+    const { onCommit, rerender } = setup({ kind: "rgb", rgb: [255, 0, 0] });
+    fireEvent.click(screen.getByRole("radio", { name: "色温" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "kelvin", kelvin: 3200 });
+    rerender(<ColorPicker value={{ kind: "kelvin", kelvin: 3200 }} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "5600K" }));
+    rerender(<ColorPicker value={{ kind: "kelvin", kelvin: 5600 }} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
+    fireEvent.click(screen.getByRole("radio", { name: "彩色" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [255, 0, 0] });
+    // 再切回色温：回到上次的 5600K
+    rerender(<ColorPicker value={{ kind: "rgb", rgb: [255, 0, 0] }} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
+    fireEvent.click(screen.getByRole("radio", { name: "色温" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "kelvin", kelvin: 5600 });
+  });
+
+  it("隐藏灯具不支持的方式与常用色；当前值的方式不支持时仍显示并提示", () => {
+    const onCommit = vi.fn();
+    const { rerender } = render(
+      <ColorPicker value={{ kind: "kelvin", kelvin: 3200 }} onCommit={onCommit} gamma={1} modes={["kelvin"]} />,
+    );
+    expect(screen.getAllByRole("radio", { name: /^(彩色|色温|发光体)$/ }).map((r) => r.textContent)).toEqual(["色温"]);
+    expect(screen.queryByRole("button", { name: "红" })).toBeNull();
+    expect(screen.getByRole("button", { name: "日光 5600K" })).toBeTruthy();
+    expect(screen.queryByRole("note")).toBeNull();
+
+    rerender(<ColorPicker value={{ kind: "kelvin", kelvin: 3200 }} onCommit={onCommit} gamma={1} modes={["rgb"]} />);
+    expect(screen.getAllByRole("radio", { name: /^(彩色|色温|发光体)$/ }).map((r) => r.textContent)).toEqual(["彩色", "色温"]);
+    expect(screen.getByRole("note").textContent).toContain("不支持“色温”");
+    expect(screen.queryByRole("button", { name: "日光 5600K" })).toBeNull();
+  });
+
   it("实际输出：引擎模拟目标灯具各发光体的输出", () => {
     setup({ kind: "rgb", rgb: [255, 255, 255] });
     const meters = within(screen.getByLabelText("实际输出")).getAllByRole("meter");

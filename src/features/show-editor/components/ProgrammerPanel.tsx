@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { announce } from "@/shared/stores/announcerStore";
 import { paramHead } from "../lib/looks";
+import { colorModes } from "../lib/fixtureProfile";
 import { parseRef, pixelRefsOf } from "../lib/fixtureRef";
 import { ordered } from "../lib/fixtureSelection";
 import type { ColorValue } from "../lib/project";
@@ -171,6 +172,7 @@ export function ProgrammerPanel() {
               value={color}
               target={target}
               gamma={project.output.gamma}
+              modes={colorModes(project, selected)}
               onCommit={setColor}
             />
             <div>{ghost(t("editor.programmer.knockColor"), () => setValues(knockout(values, selected, "color")))}</div>

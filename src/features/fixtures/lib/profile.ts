@@ -1,5 +1,5 @@
 import { isEmitter, layoutOf } from "./functions";
-import type { ChannelFunction, FixtureModel } from "./types";
+import type { ChannelFunction, FixtureModel, FixtureProperty } from "./types";
 
 /**
  * 灯具能力画像：由模型（某个模式）的通道功能推断这台灯“能做什么”。
@@ -62,6 +62,42 @@ const BEAM: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
   "rotation",
 ]);
 
+/** 能给白光染色的发光体：有它们时由混色近似色温，引擎不驱动色温通道。 */
+const TINT_EMITTERS: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
+  "red",
+  "green",
+  "blue",
+  "coolWhite",
+  "warmWhite",
+  "amber",
+  "lime",
+  "indigo",
+]);
+
+/**
+ * 色温通道能否由颜色层的色温驱动（与引擎 `compile.rs` 的 `color_attrs_of` 规则一致）：
+ * 没有其它调色手段（彩色 / 冷暖白发光体、CMY、带颜色槽位的色轮），且色温通道没有能力区间
+ * （按整段暖→冷近似）或至少一个区间标注了色温（单位 `K`）。
+ *
+ * @param props 通道对象。
+ * @returns 能驱动时为 `true`。
+ */
+function drivableCtc(props: readonly FixtureProperty[]): boolean {
+  const ctc = props.find((p) => p.function === "colorTemp");
+  if (!ctc) return false;
+  const otherTint = props.some(
+    (p) =>
+      TINT_EMITTERS.has(p.function) ||
+      p.function === "cyan" ||
+      p.function === "magenta" ||
+      p.function === "yellow" ||
+      (p.function === "colorWheel" && (p.capabilities ?? []).some((c) => c.color || /open/i.test(c.label) || c.label === "白")),
+  );
+  if (otherTint) return false;
+  const caps = ctc.capabilities ?? [];
+  return caps.length === 0 || caps.some((c) => c.unit?.toLowerCase() === "k" && c.physical !== undefined);
+}
+
 /**
  * 推断一台灯具（模型的某个模式）的能力。
  *
@@ -82,7 +118,7 @@ export function modelProfile(model: FixtureModel | undefined, modeId?: string, h
   if (anyEmitter || has("dimmer", "switch") || masterDimmer) caps.add("intensity");
   const mixing = has("red", "green", "blue") || has("cyan", "magenta", "yellow");
   if (mixing) caps.add("mixing");
-  if (mixing || has("colorTemp") || (has("coolWhite") && has("warmWhite"))) caps.add("colorTemp");
+  if (mixing || (has("coolWhite") && has("warmWhite")) || drivableCtc(own)) caps.add("colorTemp");
   if (has("colorWheel")) caps.add("colorWheel");
   if (has("pan", "tilt")) caps.add("position");
   if ([...fns].some((f) => BEAM.has(f))) caps.add("beam");
