@@ -1392,7 +1392,17 @@
       "addAria": "Add {{count}} × {{name}}",
       "added": "Added {{count}} × {{name}}",
       "noFixtures": "The fixture library has no models yet",
-      "loadFailed": "Could not load the fixture library"
+      "loadFailed": "Could not load the fixture library",
+      "channelsOf": "Show the channels of {{name}}",
+      "channelsShort": "{{count}}ch",
+      "favorite": "Add {{name}} to favourites",
+      "unfavorite": "Remove {{name}} from favourites",
+      "channelCol": "Ch",
+      "nameCol": "Name",
+      "functionCol": "Function",
+      "favorites": "Favourites",
+      "recent": "Recently added",
+      "compact": "Compact view"
     },
     "preview": {
       "title": "Preview",

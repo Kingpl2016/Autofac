@@ -6,7 +6,7 @@ import { DEFAULT_RECORD_PREFS, sanitizeRecordPrefs, type RecordPrefs } from "../
 import { SWATCH_LABELS, type SwatchLabel, type SwatchSort } from "../lib/swatchGroups";
 import { effectParamsSchema, type EffectParams } from "../lib/effectDefSchema";
 import { SHEET_FILTERS, SHEET_READOUTS, SHEET_SORTS, type SheetFilter, type SheetReadout, type SheetSort } from "../lib/fixtureSheet";
-import { ATTRIBUTE_GROUPS, type AttributeGroup } from "@/features/fixtures";
+import { ATTRIBUTE_GROUPS, FIXTURE_TYPES, type AttributeGroup } from "@/features/fixtures";
 
 /** 中间区域的视图：色块预览、舞台监视器、灯具表（色块为默认）。 */
 export const CENTER_VIEWS = ["swatches", "stage", "sheet"] as const;
@@ -168,6 +168,60 @@ export function sanitizeSheetPrefs(raw: unknown, fallback: SheetPrefs): SheetPre
   };
 }
 
+/** 灯具素材库的密度：舒适（两行）或紧凑（一行）。 */
+export const FIXTURE_LIBRARY_DENSITIES = ["comfortable", "compact"] as const;
+
+/** 灯具素材库的密度。 */
+export type FixtureLibraryDensity = (typeof FIXTURE_LIBRARY_DENSITIES)[number];
+
+/** 灯具素材库里可折叠的分区：收藏、最近添加，以及各灯具类型。 */
+export const FIXTURE_LIBRARY_SECTIONS = ["favorites", "recent", ...FIXTURE_TYPES] as const;
+
+/** 灯具素材库里可折叠的分区。 */
+export type FixtureLibrarySection = (typeof FIXTURE_LIBRARY_SECTIONS)[number];
+
+/** 灯具素材库的偏好。 */
+export interface FixtureLibraryPrefs {
+  /** 收藏的模型 `id`（按收藏顺序） */
+  favorites: string[];
+  /** 最近添加过的模型 `id`（最新的在前） */
+  recent: string[];
+  /** 折叠的分区 */
+  collapsed: FixtureLibrarySection[];
+  /** 密度 */
+  density: FixtureLibraryDensity;
+}
+
+/** 灯具素材库偏好的默认值。 */
+export const DEFAULT_FIXTURE_LIBRARY: FixtureLibraryPrefs = { favorites: [], recent: [], collapsed: [], density: "comfortable" };
+
+/** 最多收藏多少个灯具模型。 */
+const MAX_FIXTURE_FAVORITES = 100;
+
+/** “最近添加”记住多少个模型。 */
+export const MAX_RECENT_FIXTURES = 6;
+
+/**
+ * 规整灯具素材库偏好：逐字段兜底，模型 `id` 去重并限制数量。
+ *
+ * @param raw 未知数据。
+ * @param fallback 兜底值。
+ * @returns 合法的偏好。
+ */
+export function sanitizeFixtureLibraryPrefs(raw: unknown, fallback: FixtureLibraryPrefs): FixtureLibraryPrefs {
+  const r = (raw ?? {}) as Partial<Record<keyof FixtureLibraryPrefs, unknown>>;
+  const ids = (v: unknown, max: number, fb: string[]) =>
+    Array.isArray(v) ? [...new Set(v.filter((k): k is string => typeof k === "string" && k.length > 0 && k.length <= 128))].slice(0, max) : fb;
+  return {
+    favorites: ids(r.favorites, MAX_FIXTURE_FAVORITES, fallback.favorites),
+    recent: ids(r.recent, MAX_RECENT_FIXTURES, fallback.recent),
+    collapsed: Array.isArray(r.collapsed)
+      ? FIXTURE_LIBRARY_SECTIONS.filter((s) => (r.collapsed as unknown[]).includes(s))
+      : fallback.collapsed,
+    density: FIXTURE_LIBRARY_DENSITIES.includes(r.density as FixtureLibraryDensity) ? (r.density as FixtureLibraryDensity) : fallback.density,
+  };
+}
+
 /** 落盘的数据。 */
 export interface EditorPrefsData {
   centerView: CenterView;
@@ -209,6 +263,8 @@ export interface EditorPrefsData {
   stage: StagePrefs;
   /** 灯具表的显示偏好 */
   sheet: SheetPrefs;
+  /** 灯具素材库：收藏、最近添加、折叠的分区与密度 */
+  fixtureLibrary: FixtureLibraryPrefs;
 }
 
 /** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
@@ -314,6 +370,25 @@ interface EditorPrefsState extends EditorPrefsData {
    */
   setSheetPrefs: (patch: Partial<SheetPrefs>) => void;
   /**
+   * 收藏 / 取消收藏一个灯具模型。
+   *
+   * @param id 模型 `id`。
+   * @param favorite 是否收藏。
+   */
+  setFixtureFavorite: (id: string, favorite: boolean) => void;
+  /**
+   * 记下刚添加过的灯具模型（放到“最近添加”最前面）。
+   *
+   * @param id 模型 `id`。
+   */
+  noteRecentFixture: (id: string) => void;
+  /**
+   * 修改灯具素材库的折叠分区或密度（与当前值合并后规整）。
+   *
+   * @param patch 要改的字段。
+   */
+  setFixtureLibraryPrefs: (patch: Partial<Pick<FixtureLibraryPrefs, "collapsed" | "density">>) => void;
+  /**
    * 展开 / 收起输出设置的“高级”分区。
    *
    * @param open 是否展开。
@@ -396,6 +471,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   favoriteTemplates: [],
   stage: DEFAULT_STAGE_PREFS,
   sheet: DEFAULT_SHEET_PREFS,
+  fixtureLibrary: DEFAULT_FIXTURE_LIBRARY,
 };
 
 /** 最多收藏多少个模板。 */
@@ -483,6 +559,7 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
       : current.favoriteTemplates,
     stage: sanitizeStagePrefs(r.stage, current.stage),
     sheet: sanitizeSheetPrefs(r.sheet, current.sheet),
+    fixtureLibrary: sanitizeFixtureLibraryPrefs(r.fixtureLibrary, current.fixtureLibrary),
   };
 }
 
@@ -522,6 +599,19 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         }),
       setStagePrefs: (patch) => set((s) => ({ stage: sanitizeStagePrefs({ ...s.stage, ...patch }, s.stage) })),
       setSheetPrefs: (patch) => set((s) => ({ sheet: sanitizeSheetPrefs({ ...s.sheet, ...patch }, s.sheet) })),
+      setFixtureFavorite: (id, favorite) =>
+        set((s) => {
+          const rest = s.fixtureLibrary.favorites.filter((k) => k !== id);
+          const favorites = favorite ? [...rest, id].slice(-MAX_FIXTURE_FAVORITES) : rest;
+          return { fixtureLibrary: { ...s.fixtureLibrary, favorites } };
+        }),
+      noteRecentFixture: (id) =>
+        set((s) => {
+          const recent = [id, ...s.fixtureLibrary.recent.filter((k) => k !== id)].slice(0, MAX_RECENT_FIXTURES);
+          return { fixtureLibrary: { ...s.fixtureLibrary, recent } };
+        }),
+      setFixtureLibraryPrefs: (patch) =>
+        set((s) => ({ fixtureLibrary: sanitizeFixtureLibraryPrefs({ ...s.fixtureLibrary, ...patch }, s.fixtureLibrary) })),
       setSection: (scope, section, open) =>
         set((st) => {
           const field = SECTION_FIELDS[scope];
@@ -554,6 +644,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         favoriteTemplates,
         stage,
         sheet,
+        fixtureLibrary,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -576,6 +667,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         favoriteTemplates,
         stage,
         sheet,
+        fixtureLibrary,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },

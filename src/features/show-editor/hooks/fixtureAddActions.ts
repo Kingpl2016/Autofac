@@ -5,6 +5,7 @@ import i18n from "@/shared/i18n";
 import { announce } from "@/shared/stores/announcerStore";
 import { applyAddPlan, NAME_PLACEHOLDER, planAddFixtures, type AddFixturesOptions, type AddPlan } from "../lib/addPlan";
 import { createGroup } from "../lib/ops";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 
@@ -58,6 +59,8 @@ export function addModelToShow(model: FixtureModel, options: AddModelOptions): A
     if (options.group && ids.length >= 2) groupId = createGroup(d, groupNameOf(model, options.nameTemplate), ids);
   });
   useEditorUiStore.getState().setSelectedFixtures(ids);
+  // 素材库的“最近添加”（拖放、“+”、批量添加都经过这里）
+  void useEditorPrefsStore.getState().noteRecentFixture(model.id);
 
   const first = plan.items[0];
   const parts = [i18n.t("editor.library.added", { count: ids.length, name: model.name })];

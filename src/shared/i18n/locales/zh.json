@@ -1392,7 +1392,17 @@
       "addAria": "添加 {{count}} 个 {{name}}",
       "added": "已添加 {{count}} 个 {{name}}",
       "noFixtures": "灯具素材库里还没有模型",
-      "loadFailed": "无法加载灯具素材库"
+      "loadFailed": "无法加载灯具素材库",
+      "channelsOf": "查看 {{name}} 的通道表",
+      "channelsShort": "{{count}}ch",
+      "favorite": "收藏 {{name}}",
+      "unfavorite": "取消收藏 {{name}}",
+      "channelCol": "通道",
+      "nameCol": "名称",
+      "functionCol": "功能",
+      "favorites": "收藏",
+      "recent": "最近添加",
+      "compact": "紧凑显示"
     },
     "preview": {
       "title": "预览",

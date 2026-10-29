@@ -11,7 +11,7 @@ vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { DIMMER, fakeFile, PIXEL_BAR, RGBW } from "../../lib/__tests__/testkit";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
-import { DEFAULT_FIXTURE_ADD, useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
+import { DEFAULT_FIXTURE_ADD, DEFAULT_FIXTURE_LIBRARY, useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { InspectorPanel } from "../InspectorPanel";
@@ -42,7 +42,7 @@ beforeEach(async () => {
   useEditorUiStore.getState().clearSelection();
   useEditorUiStore.setState({ fixtureAddModelId: null, revealRequest: null, inspectorTab: "patch" });
   await act(async () => {
-    await useEditorPrefsStore.setState({ fixtureAdd: DEFAULT_FIXTURE_ADD, patchSections: {}, programSections: {}, cueSections: {} });
+    await useEditorPrefsStore.setState({ fixtureAdd: DEFAULT_FIXTURE_ADD, fixtureLibrary: DEFAULT_FIXTURE_LIBRARY, patchSections: {}, programSections: {}, cueSections: {} });
   });
   useFixtureStore.setState({ models: [RGBW, DIMMER], status: "ready", error: null });
 });

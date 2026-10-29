@@ -93,7 +93,15 @@ describe("预览色块分区", () => {
       favoriteTemplates: [],
       stage: DEFAULT_EDITOR_PREFS.stage,
       sheet: DEFAULT_EDITOR_PREFS.sheet,
+      fixtureLibrary: DEFAULT_EDITOR_PREFS.fixtureLibrary,
     });
+    // 灯具素材库偏好：模型 id 去重限量，分区只保留认识的，密度只接受两种
+    expect(
+      sanitizeEditorPrefs(
+        { fixtureLibrary: { favorites: ["a", "a", 3, ""], recent: ["1", "2", "3", "4", "5", "6", "7"], collapsed: ["mover", "nope", "recent"], density: "tiny" } },
+        DEFAULT_EDITOR_PREFS,
+      ).fixtureLibrary,
+    ).toEqual({ favorites: ["a"], recent: ["1", "2", "3", "4", "5", "6"], collapsed: ["recent", "mover"], density: "comfortable" });
     // 灯具表偏好逐字段兜底；属性组只保留认识的
     expect(
       sanitizeEditorPrefs({ sheet: { readout: "hex", filter: "x", sort: "name", hiddenGroups: ["color", "nope", "beam"], showModel: 1, expandPixels: true } }, DEFAULT_EDITOR_PREFS).sheet,
