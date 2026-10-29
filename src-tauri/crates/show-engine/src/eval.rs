@@ -9,11 +9,11 @@
 //!
 //! 特效 Cue 由 [`crate::effects`] 给出每台灯具的颜色与强度调制，再走同一套混色。
 
-use crate::compile::{CompiledCue, CompiledShow, DmxData};
+use crate::compile::{CompiledCue, CompiledFixture, CompiledShow, DmxData, WheelSlot};
 use crate::effects;
 use crate::envelope::{apply_gamma, encode_gamma, envelope};
 use crate::look::ColorState;
-use crate::mix::{ColorRequest, Components, WhiteStrategy, COMPONENTS};
+use crate::mix::{kelvin_to_output, ColorRequest, Components, WhiteStrategy, COMPONENTS, DIM, EMITTERS, SW};
 use crate::project::{Cue, CueBase};
 
 /// 向前回溯检查的 Cue 数：同一轨道的 Cue 不应重叠，这里仅作为对异常工程的容错。
@@ -225,6 +225,9 @@ impl CompiledShow {
             let color = state.color.unwrap_or(ColorState::Rgb([1.0; 3], WhiteStrategy::Preserve));
             let mixed = self.fixtures[fi].mixer.mix(&color.request(g), apply_gamma(state.intensity, g));
             merge_max(&mut out.acc[fi], &mixed);
+            if let Some(color) = &state.color {
+                derive_color_attrs(&self.fixtures[fi], color, g, &mut out.attrs[fi]);
+            }
         }
     }
 
@@ -350,8 +353,17 @@ impl CompiledShow {
         self.fixtures
             .iter()
             .zip(&out.acc)
-            .map(|(f, acc)| {
-                let rgb = f.mixer.emitted_rgb(acc).map(|v| (encode_gamma(v, self.gamma) * 255.0).round() as u8);
+            .zip(&out.attrs)
+            .map(|((f, acc), values)| {
+                let mut rgb = f.mixer.emitted_rgb(acc);
+                // 没有发光体的 CMY / 色轮灯：白光（调光级别）乘以当前滤色
+                if !f.mixer.has_emitters() && f.color_attrs.any() {
+                    let filter = filter_rgb(f, values);
+                    for (c, s) in rgb.iter_mut().zip(filter) {
+                        *c *= s;
+                    }
+                }
+                let rgb = rgb.map(|v| (encode_gamma(v, self.gamma) * 255.0).round() as u8);
                 (f.id.as_str(), rgb)
             })
             .collect()
@@ -383,9 +395,16 @@ impl CompiledShow {
             for &(component, slot) in &fixture.mirrors {
                 slot.write(data, acc[component]);
             }
-            for (a, v) in fixture.attrs.iter().zip(attrs) {
+            let gate = fixture.shutter_gate.and_then(|(i, open, closed)| {
+                attrs[i].is_none().then(|| (i, if lit(fixture, acc) { open } else { closed }))
+            });
+            for (i, (a, v)) in fixture.attrs.iter().zip(attrs).enumerate() {
+                let v = match gate {
+                    Some((gi, g)) if gi == i => Some(g),
+                    _ => *v,
+                };
                 if let Some(v) = v {
-                    a.slot.write(data, if a.invert { 1.0 - v } else { *v });
+                    a.slot.write(data, if a.invert { 1.0 - v } else { v });
                 }
             }
         }
@@ -419,6 +438,73 @@ fn split_frames(frames: &mut [Frame], a: usize, b: usize) -> (&mut DmxData, Opti
         let (lo, hi) = frames.split_at_mut(a);
         (&mut hi[0].data, Some(&mut lo[b].data))
     }
+}
+
+/// 由颜色层派生 CMY 与色轮的取值（只填本帧没有被属性层显式写过的通道）。
+///
+/// 颜色按峰值归一化后只表达色相与饱和度（亮度交给调光）：CMY 取 `1 - 分量`，
+/// 色轮选线性 RGB 距离最近的槽位并写入区间中点。按发光体直给的颜色不派生。
+fn derive_color_attrs(fixture: &CompiledFixture, color: &ColorState, gamma: f64, values: &mut [Option<f64>]) {
+    let ca = &fixture.color_attrs;
+    if !ca.any() {
+        return;
+    }
+    let rgb = match color.request(gamma) {
+        ColorRequest::Rgb { rgb, .. } => rgb,
+        ColorRequest::Kelvin(k) => kelvin_to_output(k, gamma),
+        ColorRequest::Manual(_) => return,
+    };
+    let peak = rgb.iter().fold(0.0_f64, |m, v| m.max(*v));
+    if peak <= 0.0 || !peak.is_finite() {
+        return;
+    }
+    let n = rgb.map(|v| (v / peak).clamp(0.0, 1.0));
+    for (k, index) in ca.cmy.iter().enumerate() {
+        if let Some(i) = *index
+            && values[i].is_none()
+        {
+            values[i] = Some(1.0 - n[k]);
+        }
+    }
+    if let Some(wi) = ca.wheel
+        && values[wi].is_none()
+    {
+        let dist = |s: &WheelSlot| s.rgb.iter().zip(&n).map(|(a, b)| (a - b) * (a - b)).sum::<f64>();
+        if let Some(best) = ca.slots.iter().min_by(|a, b| dist(a).total_cmp(&dist(b))) {
+            values[wi] = Some(best.mid);
+        }
+    }
+}
+
+/// 没有发光体的灯具（CMY / 色轮）当前的滤色（线性 RGB）：CMY 取 `1 - 值`，色轮取当前槽位颜色，两者相乘。
+fn filter_rgb(fixture: &CompiledFixture, values: &[Option<f64>]) -> [f64; 3] {
+    let ca = &fixture.color_attrs;
+    let value = |i: usize| values[i].unwrap_or(fixture.attrs[i].default).clamp(0.0, 1.0);
+    let mut rgb = [1.0; 3];
+    for (k, index) in ca.cmy.iter().enumerate() {
+        if let Some(i) = *index {
+            rgb[k] *= 1.0 - value(i);
+        }
+    }
+    if let Some(wi) = ca.wheel {
+        let v = value(wi);
+        if let Some(slot) = ca.slots.iter().find(|s| s.lo - 1e-9 <= v && v <= s.hi + 1e-9) {
+            for (c, s) in rgb.iter_mut().zip(slot.rgb) {
+                *c *= s;
+            }
+        }
+    }
+    rgb
+}
+
+/// 灯具本帧是否出光：有调光通道看调光，否则看发光体与开关。
+fn lit(fixture: &CompiledFixture, acc: &Components) -> bool {
+    const EPS: f64 = 1e-6;
+    let present = fixture.mixer.present();
+    if present.has(DIM) {
+        return acc[DIM] > EPS;
+    }
+    acc[..EMITTERS].iter().any(|v| *v > EPS) || (present.has(SW) && acc[SW] > EPS)
 }
 
 fn merge_max(acc: &mut Components, v: &Components) {
@@ -527,6 +613,26 @@ mod tests {
         assert_eq!(&frame_at(&set, 2)[9..12], &[0, 0, 0]);
         c.evaluate_into(2000, &mut set);
         assert_eq!(&frame_at(&set, 0)[0..3], &[0, 0, 0]);
+    }
+
+    #[test]
+    fn 反向的发光体与调光通道写入_1_减值_黑场为满值() {
+        use ChannelFunction::{Blue, Dimmer, Green, Red};
+        let mut p = rig();
+        let mut m = model("inv", &[Red, Green, Blue, Dimmer]);
+        m.properties[0].invert = true;
+        m.properties[3].invert = true;
+        p.fixture_models.push(m);
+        p.fixtures[0].model_id = "inv".into();
+        p.cues.push(cue("t0", 1000, 2000, [255, 0, 0], 100.0));
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(500, &mut set);
+        // 黑场：反向通道输出 255，其余为 0
+        assert_eq!(&frame_at(&set, 0)[0..4], &[255, 0, 0, 255]);
+        c.evaluate_into(1500, &mut set);
+        // 红色满亮：红（反向）0，调光（反向）0
+        assert_eq!(&frame_at(&set, 0)[0..4], &[0, 0, 0, 0]);
     }
 
     #[test]
@@ -793,6 +899,100 @@ mod tests {
             fixtures.join(",")
         );
         serde_json::from_str(&json).unwrap_or_else(|e| panic!("工程 JSON 应合法：{e}\n{json}"))
+    }
+
+    /// 一台 CMY + 色轮摇头灯（调光 1、C 2、M 3、Y 4、色轮 5），一条外观片段写入 `look`。
+    fn subtractive_project(look: &str) -> ShowProject {
+        let json = format!(
+            r#"{{"durationMs":10000,"fixtureModels":[{{"id":"m","name":"m","properties":[
+                {{"name":"d","code":"D","function":"dimmer","channel":1,"width":1,"bigEndian":true,"defaultValue":0}},
+                {{"name":"c","code":"C","function":"cyan","channel":2,"width":1,"bigEndian":true,"defaultValue":0}},
+                {{"name":"m","code":"M","function":"magenta","channel":3,"width":1,"bigEndian":true,"defaultValue":0}},
+                {{"name":"y","code":"Y","function":"yellow","channel":4,"width":1,"bigEndian":true,"defaultValue":0}},
+                {{"name":"w","code":"CW","function":"colorWheel","channel":5,"width":1,"bigEndian":true,"defaultValue":0,"capabilities":[
+                  {{"range":[0,63],"label":"Open"}},
+                  {{"range":[64,127],"label":"Red","color":[255,0,0]}},
+                  {{"range":[128,191],"label":"Blue","color":[0,0,255]}}]}}]}}],
+               "fixtures":[{{"id":"f","modelId":"m","universe":0,"address":1}}],
+               "tracks":[{{"id":"t","target":{{"kind":"fixture","id":"f"}}}}],
+               "cues":[{{"kind":"look","id":"c","trackId":"t","startMs":0,"endMs":1000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","look":{look}}}],
+               "output":{{"gamma":1}}}}"#
+        );
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("工程 JSON 应合法：{e}"))
+    }
+
+    #[test]
+    fn 颜色层驱动_cmy_与最近的色轮槽位_预览为实际滤色() {
+        let p = subtractive_project(
+            r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,0,0]}}}"#,
+        );
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(10, &mut set);
+        let d = frame_at(&set, 0);
+        // 调光满、C 0、M 满、Y 满、色轮选红色槽位中点
+        assert_eq!(&d[0..5], &[255, 0, 255, 255, 96]);
+        assert_eq!(c.preview_colors(&set)[0].1, [255, 0, 0]);
+
+        // 白色：CMY 全开、色轮选 Open
+        let p = subtractive_project(
+            r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,255,255]}}}"#,
+        );
+        let c = compile(&p);
+        c.evaluate_into(10, &mut set);
+        assert_eq!(&frame_at(&set, 0)[1..5], &[0, 0, 0, 32]);
+    }
+
+    #[test]
+    fn 显式写出的属性层优先于颜色派生() {
+        let p = subtractive_project(
+            r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[0,0,255]}},
+                "attrs":{"cyan":{"kind":"value","value":0.5},"colorWheel":{"kind":"value","value":0}}}"#,
+        );
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(10, &mut set);
+        let d = frame_at(&set, 0);
+        // 蓝 → M、C 满；但 C 显式 0.5、色轮显式 0；Y 由颜色派生为满
+        assert_eq!(&d[1..5], &[128, 255, 0, 0]);
+    }
+
+    /// 调光 + 快门（0~9 关光、10~249 频闪、250~255 开光）的摇头灯，一条外观片段写入 `look`。
+    fn shutter_project(look: &str) -> ShowProject {
+        let json = format!(
+            r#"{{"durationMs":10000,"fixtureModels":[{{"id":"m","name":"m","properties":[
+                {{"name":"d","code":"D","function":"dimmer","channel":1,"width":1,"bigEndian":true,"defaultValue":0}},
+                {{"name":"s","code":"S","function":"shutter","channel":2,"width":1,"bigEndian":true,"defaultValue":252,"capabilities":[
+                  {{"range":[0,9],"label":"Closed","tag":"shutterClosed"}},
+                  {{"range":[10,249],"label":"Strobe","tag":"strobe"}},
+                  {{"range":[250,255],"label":"Open","tag":"shutterOpen"}}]}}]}}],
+               "fixtures":[{{"id":"f","modelId":"m","universe":0,"address":1}}],
+               "tracks":[{{"id":"t","target":{{"kind":"fixture","id":"f"}}}}],
+               "cues":[{{"kind":"look","id":"c","trackId":"t","startMs":0,"endMs":1000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","look":{look}}}],
+               "output":{{"gamma":1}}}}"#
+        );
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("工程 JSON 应合法：{e}"))
+    }
+
+    #[test]
+    fn 强度频闪时快门跟随_亮开光_暗关光_显式快门优先() {
+        // 1 秒 4 个方波周期：0~125ms 亮，125~250ms 暗
+        let p = shutter_project(
+            r#"{"intensity":{"kind":"curve","curve":{"shape":"square","from":0,"to":100,"cycles":4,"phase":0,"duty":0.5}}}"#,
+        );
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(60, &mut set);
+        assert_eq!(&frame_at(&set, 0)[0..2], &[255, 253], "亮：开光区间中点");
+        c.evaluate_into(190, &mut set);
+        assert_eq!(&frame_at(&set, 0)[0..2], &[0, 5], "暗：关光区间中点");
+
+        let p = shutter_project(
+            r#"{"intensity":{"kind":"value","value":100},"attrs":{"shutter":{"kind":"value","value":0.5}}}"#,
+        );
+        let c = compile(&p);
+        c.evaluate_into(60, &mut set);
+        assert_eq!(frame_at(&set, 0)[1], 128, "外观显式写了快门（频闪速度）时不覆盖");
     }
 
     fn base_json(id: &str, track: &str, start: i64, end: i64, fade_in: i64) -> String {

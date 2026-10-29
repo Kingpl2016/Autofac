@@ -463,6 +463,16 @@ impl ColorMixer {
         self.present
     }
 
+    /// 是否有加色发光体（否则只有调光 / 开关，颜色靠 CMY 或色轮）。
+    ///
+    /// # Returns
+    ///
+    /// 选中的策略不是“仅调光 / 开关”时为 `true`。
+    #[must_use]
+    pub fn has_emitters(&self) -> bool {
+        !matches!(self.strategy, Strategy::None(_))
+    }
+
     /// 混色：意图色 + 线性亮度级别 → 各分量线性输出。
     ///
     /// 有调光通道时颜色保持满值、亮度交给调光；没有时各发光体按级别缩放。
@@ -749,7 +759,7 @@ mod tests {
 
     #[expect(clippy::unnecessary_wraps, reason = "测试辅助：与被测 API 的 Option 签名对齐")]
     fn slot(offset: u16) -> Option<Slot> {
-        Some(Slot { offset, width: 1, big_endian: true })
+        Some(Slot { offset, width: 1, big_endian: true, invert: false })
     }
 
     fn near(a: f64, b: f64) -> bool {

@@ -12,8 +12,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::Serialize;
 
-use crate::envelope::sanitize_gamma;
-use crate::fixture::{footprint, ChannelFunction, FixtureModel, FixtureProperty, DMX_CHANNELS};
+use crate::envelope::{apply_gamma, sanitize_gamma};
+use crate::fixture::{footprint, CapabilityTag, ChannelFunction, FixtureModel, FixtureProperty, DMX_CHANNELS};
 use crate::look::{Look, Spread, SpreadOrder, SpreadRange};
 use crate::mix::{
     ColorMixer, Emitters, AMBER, B, COMPONENTS, CW, DIM, G, INDIGO, LIME, R, SW, UV, W, WW,
@@ -32,10 +32,13 @@ pub struct Slot {
     pub width: u8,
     /// 双通道属性是否大端（低通道放高字节）。
     pub big_endian: bool,
+    /// 反向输出（写入 `1 - 分数`）：被混色器驱动的发光体 / 调光 / 开关通道用；
+    /// 属性通道的反向由 [`AttrSlot::invert`] 处理，这里恒为 `false`。
+    pub invert: bool,
 }
 
 impl Slot {
-    /// 把 `0..=1` 的分数写入 DMX 数据。
+    /// 把 `0..=1` 的分数写入 DMX 数据（`invert` 时写入 `1 - 分数`）。
     ///
     /// # Arguments
     ///
@@ -43,6 +46,7 @@ impl Slot {
     /// * `frac` - 亮度分数，超出范围时被夹取。
     pub fn write(&self, data: &mut DmxData, frac: f64) {
         let frac = if frac.is_nan() { 0.0 } else { frac.clamp(0.0, 1.0) };
+        let frac = if self.invert { 1.0 - frac } else { frac };
         let at = usize::from(self.offset);
         if self.width >= 2 {
             let v = (frac * f64::from(u16::MAX)).round() as u16;
@@ -143,6 +147,44 @@ pub struct AttrSlot {
     pub invert: bool,
     /// 默认值的分数（LTP 从默认值开始淡入）。
     pub default: f64,
+    /// 所属像素头（0 为整灯）。
+    pub head: u16,
+}
+
+/// 色轮上的一个带颜色的槽位（用户空间分数，已按反向换算）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WheelSlot {
+    /// 区间起点。
+    pub lo: f64,
+    /// 区间终点。
+    pub hi: f64,
+    /// 选中这个槽位时写入的值（区间中点）。
+    pub mid: f64,
+    /// 槽位颜色（线性 RGB，最大分量为 1）。
+    pub rgb: [f64; 3],
+}
+
+/// 由颜色层派生的属性通道：CMY 减色与色轮（下标指向 [`CompiledFixture::attrs`]）。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ColorAttrs {
+    /// 青 / 品红 / 黄通道。
+    pub cmy: [Option<usize>; 3],
+    /// 色轮通道。
+    pub wheel: Option<usize>,
+    /// 色轮上带颜色的槽位（`Open` 槽位视为白色）。
+    pub slots: Vec<WheelSlot>,
+}
+
+impl ColorAttrs {
+    /// 是否有可由颜色层驱动的属性通道。
+    ///
+    /// # Returns
+    ///
+    /// 有任一 CMY 通道或带颜色槽位的色轮时为 `true`。
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.cmy.iter().any(Option::is_some) || (self.wheel.is_some() && !self.slots.is_empty())
+    }
 }
 
 /// 一台已编译的灯具。
@@ -160,6 +202,11 @@ pub struct CompiledFixture {
     pub mixer: ColorMixer,
     /// 属性通道。
     pub attrs: Vec<AttrSlot>,
+    /// 由颜色层派生的属性通道（没有发光体的 CMY / 色轮灯靠它调色）。
+    pub color_attrs: ColorAttrs,
+    /// 快门跟随强度：`(属性下标, 开光值, 关光值)`（用户空间分数）。快门有标注的开光与关光区间时存在；
+    /// 本帧没有外观显式写快门时，灯具暗着就关快门、亮着就开光，因此强度频闪也会驱动机械快门。
+    pub shutter_gate: Option<(usize, f64, f64)>,
     /// 灯具占用的通道区间：`(起始偏移, 通道数)`，多重配接时整段复制。
     pub span: (u16, u16),
     /// 多重配接的目标：`(Universe 下标, 起始偏移)`。
@@ -400,6 +447,8 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
         .map(|a| {
             let universe_index = index_of(a.universe);
             let (driven, mirrors, attrs) = layout_fixture(a, &mut base[universe_index]);
+            let color_attrs = color_attrs_of(a.layout, &attrs, gamma);
+            let shutter_gate = shutter_gate_of(a.layout, &attrs);
             let origin = a.address - 1;
             let span = (origin, footprint(a.layout));
             let copies: Vec<(usize, u16)> = a.copies.iter().map(|&(u, addr)| (index_of(u), addr - 1)).collect();
@@ -420,6 +469,8 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
                 driven,
                 mirrors,
                 attrs,
+                color_attrs,
+                shutter_gate,
                 span,
                 copies,
                 stage: a.stage,
@@ -540,7 +591,10 @@ fn layout_fixture(a: &Accepted<'_>, base: &mut DmxData) -> (Driven, Vec<(usize, 
             offset: origin + p.channel - 1,
             width: p.width,
             big_endian: p.big_endian,
+            invert: false,
         };
+        // 被驱动通道在写入时反向；属性通道自己处理反向（见 AttrSlot）
+        let driven_slot = Slot { invert: p.invert, ..slot };
         let target = match p.function {
             ChannelFunction::Red => Some((&mut driven.red, R)),
             ChannelFunction::Green => Some((&mut driven.green, G)),
@@ -557,8 +611,8 @@ fn layout_fixture(a: &Accepted<'_>, base: &mut DmxData) -> (Driven, Vec<(usize, 
             _ => None,
         };
         match target {
-            Some((t, _)) if t.is_none() => *t = Some(slot),
-            Some((_, component)) => mirrors.push((component, slot)),
+            Some((t, _)) if t.is_none() => *t = Some(driven_slot),
+            Some((_, component)) => mirrors.push((component, driven_slot)),
             None => {
                 write_default(base, slot, p.default_value);
                 if p.function != ChannelFunction::Other {
@@ -569,12 +623,59 @@ fn layout_fixture(a: &Accepted<'_>, base: &mut DmxData) -> (Driven, Vec<(usize, 
                         invert: p.invert,
                         // 默认值换算到“用户空间”（反向通道的用户值 = 1 - DMX 分数）
                         default: if p.invert { 1.0 - raw } else { raw },
+                        head: p.head,
                     });
                 }
             }
         }
     }
     (driven, mirrors, attrs)
+}
+
+/// 找出可由颜色层派生的属性通道：每种 CMY 功能与色轮各取第一个（整灯优先）。
+///
+/// 色轮槽位取带颜色的能力区间（`Open` 槽位视为白色），区间换算成用户空间分数（反向通道翻转）。
+fn color_attrs_of(layout: &[FixtureProperty], attrs: &[AttrSlot], gamma: f64) -> ColorAttrs {
+    let mut out = ColorAttrs::default();
+    let index_of = |f: ChannelFunction| {
+        attrs.iter().enumerate().filter(|(_, a)| a.function == f).min_by_key(|(_, a)| a.head).map(|(i, _)| i)
+    };
+    out.cmy = [index_of(ChannelFunction::Cyan), index_of(ChannelFunction::Magenta), index_of(ChannelFunction::Yellow)];
+    let Some(wi) = index_of(ChannelFunction::ColorWheel) else { return out };
+    let Some(wheel) = layout.iter().find(|p| p.function == ChannelFunction::ColorWheel && p.head == attrs[wi].head) else {
+        return out;
+    };
+    let max = f64::from(wheel.max_value());
+    let invert = attrs[wi].invert;
+    for c in &wheel.capabilities {
+        let rgb = match c.color {
+            Some(rgb) => rgb.map(|v| apply_gamma(f64::from(v) / 255.0, gamma)),
+            None if c.label.to_ascii_lowercase().contains("open") || c.label == "白" => [1.0; 3],
+            None => continue,
+        };
+        let peak = rgb.iter().fold(0.0_f64, |m, v| m.max(*v));
+        if peak <= 0.0 {
+            continue;
+        }
+        let (lo, hi) = (f64::from(c.range[0]) / max, f64::from(c.range[1]) / max);
+        let (lo, hi) = if invert { (1.0 - hi, 1.0 - lo) } else { (lo, hi) };
+        out.slots.push(WheelSlot { lo, hi, mid: f64::midpoint(lo, hi), rgb: rgb.map(|v| v / peak) });
+    }
+    out.wheel = Some(wi);
+    out
+}
+
+/// 快门跟随强度的参数：整灯（像素号最小）的快门通道同时标注了开光与关光区间时，取两者的中点。
+fn shutter_gate_of(layout: &[FixtureProperty], attrs: &[AttrSlot]) -> Option<(usize, f64, f64)> {
+    let (i, a) = attrs.iter().enumerate().filter(|(_, a)| a.function == ChannelFunction::Shutter).min_by_key(|(_, a)| a.head)?;
+    let p = layout.iter().find(|p| p.function == ChannelFunction::Shutter && p.head == a.head)?;
+    let mid = |tag| {
+        p.capability_tagged(tag).map(|c| {
+            let raw = f64::midpoint(f64::from(c.range[0]), f64::from(c.range[1])) / f64::from(p.max_value());
+            if a.invert { 1.0 - raw } else { raw }
+        })
+    };
+    Some((i, mid(CapabilityTag::ShutterOpen)?, mid(CapabilityTag::ShutterClosed)?))
 }
 
 /// 展开轨道绑定（灯具、分组或场景），应用静音 / 独奏，并为每条轨道编译排好序的片段。
@@ -918,15 +1019,15 @@ mod tests {
     #[test]
     fn 槽位写入_8位与16位字节序() {
         let mut d: DmxData = [0; 512];
-        Slot { offset: 0, width: 1, big_endian: true }.write(&mut d, 0.5);
+        Slot { offset: 0, width: 1, big_endian: true, invert: false }.write(&mut d, 0.5);
         assert_eq!(d[0], 128);
-        Slot { offset: 1, width: 2, big_endian: true }.write(&mut d, 1.0);
+        Slot { offset: 1, width: 2, big_endian: true, invert: false }.write(&mut d, 1.0);
         assert_eq!(&d[1..3], &[255, 255]);
-        Slot { offset: 3, width: 2, big_endian: true }.write(&mut d, 0.5);
+        Slot { offset: 3, width: 2, big_endian: true, invert: false }.write(&mut d, 0.5);
         assert_eq!(&d[3..5], &[128, 0]);
-        Slot { offset: 5, width: 2, big_endian: false }.write(&mut d, 0.5);
+        Slot { offset: 5, width: 2, big_endian: false, invert: false }.write(&mut d, 0.5);
         assert_eq!(&d[5..7], &[0, 128]);
-        Slot { offset: 7, width: 1, big_endian: true }.write(&mut d, 9.0);
+        Slot { offset: 7, width: 1, big_endian: true, invert: false }.write(&mut d, 9.0);
         assert_eq!(d[7], 255);
     }
 }
