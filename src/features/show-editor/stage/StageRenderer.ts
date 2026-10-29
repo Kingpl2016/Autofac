@@ -47,6 +47,8 @@ export interface StageFixture {
   parked: boolean;
   /** 倒装（吊挂）：光束的 Pan 方向反转 */
   hanging?: boolean;
+  /** 地址文字（`U0 @1`），标签显示地址时用 */
+  address?: string;
 }
 
 /** 主题颜色（从 CSS 变量读取）。 */
@@ -77,17 +79,47 @@ export interface StageFrame {
   selectedObject?: string | null;
   /** 背景图（铺满舞台区域，已加载完成的图片） */
   background?: CanvasImageSource | null;
+  /** 背景图不透明度（0~1）；省略为 0.45 */
+  backgroundOpacity?: number;
+  /** 布置模式细网格的间距（米，与吸附步长一致）；0 为不画；省略为 0.25 */
+  gridM?: number;
+  /**
+   * 灯具旁的文字：`selected` 只给选中 / 悬停的灯写名称（默认），`name` 全部写名称，
+   * `address` 全部写地址（悬停的写名称），`none` 只给悬停的写名称
+   */
+  labels?: "selected" | "name" | "address" | "none";
 }
 
 /** 灯具本体半径（像素）。 */
 export const FIXTURE_RADIUS = 7;
 
-/** 布置模式细网格的间距（米，与拖动吸附步长一致）。 */
+/** 布置模式细网格的默认间距（米，与默认吸附步长一致）。 */
 const EDIT_GRID_M = 0.25;
 
 /** 亮度（0~1，按 Rec.709 亮度）。 */
 function luminance([r, g, b]: Rgb): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+/**
+ * 灯具旁的文字（见 {@link StageFrame.labels}）。
+ *
+ * @param f 灯具。
+ * @param frame 帧。
+ * @returns 文字；不写时为 `null`。
+ */
+export function labelOf(f: Pick<StageFixture, "id" | "name" | "selected" | "address">, frame: Pick<StageFrame, "hover" | "labels">): string | null {
+  const hovered = f.id === frame.hover;
+  switch (frame.labels ?? "selected") {
+    case "name":
+      return f.name;
+    case "address":
+      return hovered ? f.name : (f.address ?? null);
+    case "none":
+      return hovered ? f.name : null;
+    case "selected":
+      return hovered || f.selected ? f.name : null;
+  }
 }
 
 /**
@@ -125,22 +157,23 @@ export class Canvas2DStageRenderer implements StageRenderer {
     const tl = toCanvas(view, -stage.width / 2, stage.depth);
     const br = toCanvas(view, stage.width / 2, 0);
     if (frame.background) {
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = Math.min(1, Math.max(0, frame.backgroundOpacity ?? 0.45));
       ctx.drawImage(frame.background, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
       ctx.globalAlpha = 1;
     }
     ctx.strokeStyle = theme.grid;
     ctx.lineWidth = 1;
-    if (frame.editing && view.scale * EDIT_GRID_M >= 6) {
+    const gridM = frame.gridM ?? EDIT_GRID_M;
+    if (frame.editing && gridM > 0 && view.scale * gridM >= 6) {
       // 布置模式：吸附步长的细网格
       ctx.globalAlpha = 0.35;
       ctx.beginPath();
-      for (let x = -stage.width / 2; x <= stage.width / 2 + 1e-6; x += EDIT_GRID_M) {
+      for (let x = -stage.width / 2; x <= stage.width / 2 + 1e-6; x += gridM) {
         const p = toCanvas(view, x, 0);
         ctx.moveTo(p.x + 0.5, tl.y);
         ctx.lineTo(p.x + 0.5, br.y);
       }
-      for (let y = 0; y <= stage.depth + 1e-6; y += EDIT_GRID_M) {
+      for (let y = 0; y <= stage.depth + 1e-6; y += gridM) {
         const p = toCanvas(view, 0, y);
         ctx.moveTo(tl.x, p.y + 0.5);
         ctx.lineTo(br.x, p.y + 0.5);
@@ -270,10 +303,11 @@ export class Canvas2DStageRenderer implements StageRenderer {
         ctx.font = "bold 9px sans-serif";
         ctx.fillText("P", c.x - FIXTURE_RADIUS - 7, c.y - FIXTURE_RADIUS + 2);
       }
-      if (f.id === frame.hover || f.selected) {
+      const text = labelOf(f, frame);
+      if (text) {
         ctx.fillStyle = theme.text;
         ctx.font = "11px sans-serif";
-        ctx.fillText(f.name, c.x + FIXTURE_RADIUS + 4, c.y + 4);
+        ctx.fillText(text, c.x + FIXTURE_RADIUS + 4, c.y + 4);
       }
     }
 

@@ -1410,7 +1410,7 @@
       "video": "{{name}} 的视频画面"
     },
     "stage": {
-      "label": "舞台监视器：{{count}} 台灯具，已选 {{selected}} 台",
+      "label": "舞台监视器：{{count}} 台灯具，已选 {{selected}} 台。滚轮缩放，Ctrl+A 全选，Esc 取消选择，右键有更多操作",
       "selection": "已选 {{count}} / {{total}}",
       "bloom": "光晕",
       "blind": "盲改",
@@ -1418,7 +1418,7 @@
       "blackoutOn": "黑场中 · 输出全暗",
       "list": "舞台上的灯具",
       "fixtureItem": "{{name}}：红 {{r}} 绿 {{g}} 蓝 {{b}}",
-      "labelEditing": "舞台布置：{{count}} 台灯具，已选 {{selected}} 台。拖动灯具或物件摆位，方向键微调",
+      "labelEditing": "舞台布置：{{count}} 台灯具，已选 {{selected}} 台。拖动灯具或物件摆位，方向键微调，滚轮缩放",
       "layoutMode": "布置",
       "layout": {
         "toolbar": "舞台布置",
@@ -1457,10 +1457,62 @@
         "text": "文字",
         "objectWidth": "宽",
         "objectHeight": "高",
-        "removeObject": "删除物件"
+        "removeObject": "删除物件",
+        "arcSweep": "弧线张角",
+        "gridColumns": "网格列数",
+        "columnsUnit": "列",
+        "alignGroup": "对齐",
+        "distributeGroup": "分布与镜像",
+        "align": {
+          "left": "左对齐",
+          "centerX": "左右居中对齐",
+          "right": "右对齐",
+          "back": "靠后对齐（画面上方）",
+          "centerY": "前后居中对齐",
+          "front": "靠前对齐（画面下方）"
+        },
+        "distribute": {
+          "x": "左右等距分布",
+          "y": "前后等距分布"
+        },
+        "mirror": {
+          "x": "左右镜像",
+          "y": "前后镜像"
+        },
+        "reverse": "反转顺序（首尾互换位置）"
       },
       "dropHint": "松开：把灯具放在这里",
-      "previewOnly": "仅预览 · 输出已关闭"
+      "previewOnly": "仅预览 · 输出已关闭",
+      "roleDescription": "舞台监视器",
+      "zoom": {
+        "toolbar": "视图缩放",
+        "in": "放大（+）",
+        "out": "缩小（−）",
+        "fit": "适应窗口",
+        "level": "缩放 {{percent}}%"
+      },
+      "view": {
+        "title": "视图设置",
+        "labels": "灯具旁的文字",
+        "labelModes": {
+          "selected": "选中时显示名称",
+          "name": "始终显示名称",
+          "address": "显示地址",
+          "none": "只在悬停时显示"
+        },
+        "snap": "布置吸附",
+        "snapOff": "不吸附",
+        "snapM": "{{m}} 米",
+        "backgroundOpacity": "背景图不透明度"
+      },
+      "menu": {
+        "label": "舞台菜单",
+        "sameModel": "选择同型号的灯",
+        "reset": "复位 {{count}} 台灯的位置",
+        "resetDone": "已复位 {{count}} 台灯的位置（回到自动排布）",
+        "selectAll": "全选灯具",
+        "clearSelection": "取消选择"
+      }
     },
     "inspector": {
       "title": "属性",
@@ -3155,6 +3207,13 @@
         "body": "特效由配置文件声明（内置 + 我的特效），插入时生成一个外观片段，片段会记住特效和参数。\n• 点一下选中并打开参数面板：速度、大小、相位扩散、分翼、方向、顺序，以及特效自己的参数（密度、颜色、色表…）；参数会记住，下次还在；\n• “高级”里有成块（连续几台同值）、分组（每几台重复一遍）、打乱顺序、按节拍对齐、换一组随机；\n• 插入后在 Cue 属性的“特效参数”里继续改，片段立即重新生成；手动改强度、颜色、属性层或分布后，片段转为普通外观（可撤销）；\n• 旧工程里的经典 RGB 特效照常播放，Cue 属性里可一键转换为可配置特效。",
         "keys": "双击卡片 按当前参数插入 · 拖到轨道 在落点插入",
         "term": "Phaser（相位特效）· MAtricks（Block / Group / Wings / Shuffle）"
+      },
+      "stage": {
+        "title": "舞台监视器",
+        "short": "俯视舞台，按摆放位置显示每台灯的实际输出；可以在这里选灯、摆位。",
+        "body": "灯的颜色、光晕和摇头灯的光束方向都来自引擎求值，与实际输出一致（已叠加编程器）。\n• 单击单选，Ctrl / Shift 追加，空白处拖动框选；双击灯打开编程器；\n• 滚轮以指针为中心缩放，Shift + 滚轮横向平移，中键拖动平移，F 适应窗口；\n• 右键：只选这台、选同型号、Locate、在 Patch 中定位、清除编程器值、复位位置；\n• “布置”模式：拖动灯具和布景物件摆位（按吸附步长吸附，按住 Alt 自由移动），方向键微调；底部工具条可对齐、等距分布、镜像、反转顺序、排成直线 / 弧线 / 网格 / 圆；\n• 视图设置：灯具旁显示名称或地址、吸附步长、背景图不透明度；\n• 角标：圆点 = 编程器里有值，P = 通道锁定。",
+        "keys": "滚轮 缩放 · F 适应窗口 · Ctrl+A 全选 · Esc 取消 · 方向键 平移 / 微调",
+        "term": "Layout View（布局视图）"
       }
     },
     "shortcutSheet": {

@@ -1,5 +1,28 @@
 import { useTranslation } from "react-i18next";
-import { Circle, Grid3x3, ImageMinus, ImagePlus, Minus, RectangleHorizontal, RotateCcw, Spline, Trash2, Type, Waypoints } from "lucide-react";
+import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalDistributeCenter,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalDistributeCenter,
+  ArrowLeftRight,
+  ArrowRightLeft,
+  ArrowUpDown,
+  Circle,
+  Grid3x3,
+  ImageMinus,
+  ImagePlus,
+  Minus,
+  RectangleHorizontal,
+  RotateCcw,
+  Spline,
+  Trash2,
+  Type,
+  Waypoints,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -10,15 +33,22 @@ import { IMAGE_EXTENSIONS } from "../lib/mediaApi";
 import type { StageObject } from "../lib/project";
 import {
   addStageObject,
+  alignFixtures,
   arrangeFixtures,
+  distributeFixtures,
+  mirrorFixtures,
   removeStageObject,
   resetPlacements,
+  reverseFixturePositions,
   setFixturePlacement,
   setStageBackground,
   setStageSize,
   updateStageObject,
+  type AlignMode,
   type Arrangement,
+  type StageAxis,
 } from "../lib/stageOps";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import type { StageBackgroundState } from "./useStageBackground";
@@ -64,7 +94,8 @@ interface StageLayoutBarProps {
 }
 
 /**
- * 舞台布置工具条：添加布景物件、舞台尺寸、背景图；选中灯具时可设朝向 / 高度 / 吊挂、对齐排列、复位；
+ * 舞台布置工具条：添加布景物件、舞台尺寸、背景图；选中灯具时可设朝向 / 高度 / 吊挂、排列（弧线张角与网格列数记在偏好里）、
+ * 对齐（左 / 中 / 右 / 后 / 中 / 前）、等距分布、左右 / 前后镜像、反转顺序、复位；
  * 选中物件时可改文字、尺寸、角度或删除。所有修改都是一步撤销。
  */
 export function StageLayoutBar({ selectedObjectId, onSelectObject, background }: StageLayoutBarProps) {
@@ -91,11 +122,50 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
     if (path) update((d) => setStageBackground(d, path));
   };
 
+  // 按工程顺序（与选择工具的顺序一致）
+  const orderedIds = () => fixtures.filter((f) => selectedIds.includes(f.id)).map((f) => f.id);
   const arrange = (how: Arrangement) => {
-    // 按工程顺序排列（与选择工具的顺序一致）
-    const ids = fixtures.filter((f) => selectedIds.includes(f.id)).map((f) => f.id);
+    const ids = orderedIds();
     update((d) => arrangeFixtures(d, ids, how));
   };
+  const prefs = useEditorPrefsStore((s) => s.stage);
+  const setPrefs = useEditorPrefsStore((s) => s.setStagePrefs);
+  const columns = prefs.gridColumns > 0 ? prefs.gridColumns : Math.ceil(Math.sqrt(selected.length));
+  /** 一个图标按钮（对齐 / 分布 / 镜像）。 */
+  const iconTool = (label: string, Icon: typeof Minus, run: () => void, disabled = false) => (
+    <Button
+      key={label}
+      type="button"
+      size="icon"
+      variant="ghost"
+      className="size-6 [&_svg]:size-3.5"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={() => {
+        run();
+        announce(label);
+      }}
+    >
+      <Icon aria-hidden />
+    </Button>
+  );
+  const ALIGN: { mode: AlignMode; icon: typeof Minus }[] = [
+    { mode: "left", icon: AlignStartVertical },
+    { mode: "centerX", icon: AlignCenterVertical },
+    { mode: "right", icon: AlignEndVertical },
+    { mode: "back", icon: AlignStartHorizontal },
+    { mode: "centerY", icon: AlignCenterHorizontal },
+    { mode: "front", icon: AlignEndHorizontal },
+  ];
+  const DISTRIBUTE: { axis: StageAxis; icon: typeof Minus }[] = [
+    { axis: "x", icon: AlignHorizontalDistributeCenter },
+    { axis: "y", icon: AlignVerticalDistributeCenter },
+  ];
+  const MIRROR: { axis: StageAxis; icon: typeof Minus }[] = [
+    { axis: "x", icon: ArrowLeftRight },
+    { axis: "y", icon: ArrowUpDown },
+  ];
 
   return (
     <div className="flex flex-col gap-1 border-t border-border bg-background/85 px-2 py-1.5 backdrop-blur-sm">
@@ -168,25 +238,41 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
                 size="sm"
                 variant="ghost"
                 className="h-6 gap-1 px-1.5 text-[11px]"
-                onClick={() => arrange({ kind: "arc", sweepDeg: 90 })}
+                onClick={() => arrange({ kind: "arc", sweepDeg: prefs.arcSweep })}
               >
                 <Spline aria-hidden className="size-3" />
                 {t("editor.stage.layout.arrange.arc")}
               </Button>
+              <Field label={t("editor.stage.layout.arcSweep")} value={prefs.arcSweep} unit="°" onCommit={(v) => setPrefs({ arcSweep: v })} />
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
                 className="h-6 gap-1 px-1.5 text-[11px]"
-                onClick={() => arrange({ kind: "grid", columns: Math.ceil(Math.sqrt(selected.length)) })}
+                onClick={() => arrange({ kind: "grid", columns })}
               >
                 <Grid3x3 aria-hidden className="size-3" />
                 {t("editor.stage.layout.arrange.grid")}
               </Button>
+              <Field label={t("editor.stage.layout.gridColumns")} value={columns} unit={t("editor.stage.layout.columnsUnit")} onCommit={(v) => setPrefs({ gridColumns: v })} />
               <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => arrange({ kind: "circle" })}>
                 <Circle aria-hidden className="size-3" />
                 {t("editor.stage.layout.arrange.circle")}
               </Button>
+              <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+              <span role="group" aria-label={t("editor.stage.layout.alignGroup")} className="flex items-center">
+                {ALIGN.map(({ mode, icon }) => iconTool(t(`editor.stage.layout.align.${mode}`), icon, () => update((d) => alignFixtures(d, selectedIds, mode))))}
+              </span>
+              <span role="group" aria-label={t("editor.stage.layout.distributeGroup")} className="flex items-center">
+                {DISTRIBUTE.map(({ axis, icon }) =>
+                  iconTool(t(`editor.stage.layout.distribute.${axis}`), icon, () => update((d) => distributeFixtures(d, selectedIds, axis)), selected.length < 3),
+                )}
+                {MIRROR.map(({ axis, icon }) => iconTool(t(`editor.stage.layout.mirror.${axis}`), icon, () => update((d) => mirrorFixtures(d, selectedIds, axis))))}
+                {iconTool(t("editor.stage.layout.reverse"), ArrowRightLeft, () => {
+                  const ids = orderedIds();
+                  update((d) => reverseFixturePositions(d, ids));
+                })}
+              </span>
             </>
           )}
           <Button

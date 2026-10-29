@@ -9,7 +9,7 @@ import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
-import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
+import { DEFAULT_STAGE_PREFS, useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProgrammerStore } from "../../stores/useProgrammerStore";
 import { useProjectStore } from "../../stores/useProjectStore";
@@ -67,7 +67,7 @@ beforeEach(async () => {
     }),
   );
   useEditorUiStore.setState({ selectedFixtureIds: [], playheadMs: 0, blackout: false });
-  useEditorPrefsStore.setState({ centerView: "stage" });
+  useEditorPrefsStore.setState({ centerView: "stage", stage: DEFAULT_STAGE_PREFS });
   useProgrammerStore.setState({ values: {}, live: false });
 });
 
@@ -86,7 +86,7 @@ describe("舞台监视器", () => {
   it("默认中间区显示舞台；画布带名称并实际绘制了每台灯", () => {
     render(<PreviewPanel />);
     expect(screen.getByRole("radio", { name: "舞台" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("img", { name: "舞台监视器：4 台灯具，已选 0 台" })).toBeTruthy();
+    expect(screen.getByRole("application", { name: /^舞台监视器：4 台灯具，已选 0 台/ })).toBeTruthy();
     expect(fake.calls.filter((c) => c === "arc").length).toBeGreaterThanOrEqual(4);
   });
 
@@ -98,7 +98,7 @@ describe("舞台监视器", () => {
 
   it("点击画布上的灯具选中它，Ctrl 追加；点空白处清空选择", () => {
     render(<StageMonitor />);
-    const canvas = screen.getByRole("img");
+    const canvas = screen.getByRole("application");
     const a = canvasPoint(0);
     const c = canvasPoint(2);
     fireEvent.pointerDown(canvas, { button: 0, clientX: a.x, clientY: a.y });
@@ -113,7 +113,7 @@ describe("舞台监视器", () => {
 
   it("从空白处拖出矩形框选所有灯具", () => {
     render(<StageMonitor />);
-    const canvas = screen.getByRole("img");
+    const canvas = screen.getByRole("application");
     fireEvent.pointerDown(canvas, { button: 0, clientX: 1, clientY: 1 });
     fireEvent.pointerMove(canvas, { clientX: WIDTH - 1, clientY: HEIGHT - 1 });
     fireEvent.pointerUp(canvas, { clientX: WIDTH - 1, clientY: HEIGHT - 1 });
@@ -124,7 +124,7 @@ describe("舞台监视器", () => {
     act(() => ui().setInspectorTab("patch"));
     render(<StageMonitor />);
     const b = canvasPoint(1);
-    fireEvent.doubleClick(screen.getByRole("img"), { clientX: b.x, clientY: b.y });
+    fireEvent.doubleClick(screen.getByRole("application"), { clientX: b.x, clientY: b.y });
     expect(ui().selectedFixtureIds).toEqual([ids()[1]]);
     expect(ui().inspectorTab).toBe("program");
   });
@@ -146,7 +146,7 @@ describe("舞台监视器", () => {
   it("布置模式：拖动灯具按 0.25 m 吸附摆位（一步撤销），未拖动的灯固定在原位", () => {
     render(<StageMonitor />);
     fireEvent.click(screen.getByRole("button", { name: "布置" }));
-    const canvas = screen.getByRole("img");
+    const canvas = screen.getByRole("application");
     expect(canvas.getAttribute("aria-label")).toContain("舞台布置");
     const view = fitStage(project().stage, WIDTH, HEIGHT);
     const start = canvasPoint(0);
@@ -168,7 +168,7 @@ describe("舞台监视器", () => {
     act(() => ui().setSelectedFixtures([ids()[0], ids()[1]]));
     render(<StageMonitor />);
     fireEvent.click(screen.getByRole("button", { name: "布置" }));
-    const canvas = screen.getByRole("img");
+    const canvas = screen.getByRole("application");
     fireEvent.keyDown(canvas, { key: "ArrowRight", shiftKey: true });
     const a = project().fixtures[0].stage!;
     const b = project().fixtures[1].stage!;
@@ -224,12 +224,90 @@ describe("舞台监视器", () => {
     const o = project().stage.objects[0];
     const view = fitStage(project().stage, WIDTH, HEIGHT);
     const c = toCanvas(view, o.x, o.y);
-    const canvas = screen.getByRole("img");
+    const canvas = screen.getByRole("application");
     fireEvent.pointerDown(canvas, { button: 0, clientX: c.x, clientY: c.y });
     fireEvent.pointerMove(canvas, { clientX: c.x + view.scale * 2, clientY: c.y });
     fireEvent.pointerUp(canvas, { clientX: c.x + view.scale * 2, clientY: c.y });
     expect(project().stage.objects[0].x).toBeCloseTo(o.x + 2, 3);
     expect(project().stage.objects[0].y).toBeCloseTo(o.y, 3);
+  });
+
+  it("视图：滚轮以指针为中心缩放，按钮缩放与适应窗口；缩放后点选仍按实际位置命中", () => {
+    render(<StageMonitor />);
+    const canvas = screen.getByRole("application");
+    const level = () => screen.getByLabelText(/^缩放 \d+%$/).textContent;
+    expect(level()).toBe("100%");
+    const a = canvasPoint(0);
+    // 在第 0 台灯上放大：它在画布上的位置不变，仍能点中
+    fireEvent.wheel(canvas, { deltaY: -400, clientX: a.x, clientY: a.y });
+    expect(level()).not.toBe("100%");
+    fireEvent.pointerDown(canvas, { button: 0, clientX: a.x, clientY: a.y });
+    expect(ui().selectedFixtureIds).toEqual([ids()[0]]);
+    fireEvent.click(screen.getByRole("button", { name: "适应窗口" }));
+    expect(level()).toBe("100%");
+    fireEvent.click(screen.getByRole("button", { name: "放大（+）" }));
+    expect(level()).toBe("125%");
+    fireEvent.keyDown(canvas, { key: "f" });
+    expect(level()).toBe("100%");
+    fireEvent.keyDown(canvas, { key: "-" });
+    expect(level()).toBe("80%");
+  });
+
+  it("键盘：Ctrl+A 全选、Esc 取消选择（处理过的按键阻止默认行为）", () => {
+    render(<StageMonitor />);
+    const canvas = screen.getByRole("application");
+    const all = new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => void canvas.dispatchEvent(all));
+    expect(ui().selectedFixtureIds).toEqual(ids());
+    expect(all.defaultPrevented).toBe(true);
+    fireEvent.keyDown(canvas, { key: "Escape" });
+    expect(ui().selectedFixtureIds).toEqual([]);
+  });
+
+  it("右键灯具：选同型号、复位位置；空白处可全选", async () => {
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        d.fixtures[0].stage = { x: 1, y: 1 };
+      }),
+    );
+    render(<StageMonitor />);
+    const canvas = screen.getByRole("application");
+    const a = canvasPoint(0);
+    fireEvent.contextMenu(canvas, { clientX: a.x, clientY: a.y });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "选择同型号的灯" }));
+    expect(ui().selectedFixtureIds).toEqual(ids());
+
+    act(() => ui().setSelectedFixtures([]));
+    fireEvent.contextMenu(canvas, { clientX: a.x, clientY: a.y });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "复位 1 台灯的位置" }));
+    expect(project().fixtures[0].stage).toBeUndefined();
+
+    fireEvent.contextMenu(canvas, { clientX: 2, clientY: 2 });
+    expect(screen.queryByRole("menuitem", { name: "选择同型号的灯" })).toBeNull();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /全选灯具/ }));
+    expect(ui().selectedFixtureIds).toEqual(ids());
+  });
+
+  it("布置模式：左对齐、等距分布、反转顺序；弧线张角记在偏好里", () => {
+    act(() => {
+      useProjectStore.getState().update((d) => {
+        d.fixtures.forEach((f, i) => (f.stage = { x: i * 1.5 - (i === 2 ? 1 : 0), y: i }));
+      });
+      ui().setSelectedFixtures(ids());
+    });
+    render(<StageMonitor />);
+    fireEvent.click(screen.getByRole("button", { name: "布置" }));
+    const group = screen.getByRole("group", { name: "4 台灯具" });
+    fireEvent.click(within(group).getByRole("button", { name: "左右等距分布" }));
+    expect(project().fixtures.map((f) => f.stage!.x)).toEqual([0, 1.5, 3, 4.5]);
+    fireEvent.click(within(group).getByRole("button", { name: "反转顺序（首尾互换位置）" }));
+    expect(project().fixtures.map((f) => f.stage!.x)).toEqual([4.5, 3, 1.5, 0]);
+    fireEvent.click(within(group).getByRole("button", { name: "左对齐" }));
+    expect(new Set(project().fixtures.map((f) => f.stage!.x))).toEqual(new Set([0]));
+    const sweep = within(group).getByRole("textbox", { name: "弧线张角" });
+    fireEvent.change(sweep, { target: { value: "180" } });
+    fireEvent.blur(sweep);
+    expect(useEditorPrefsStore.getState().stage.arcSweep).toBe(180);
   });
 
   it("黑场：预览全暗并显示状态；盲改按钮切换编程器实时输出", () => {

@@ -1410,7 +1410,7 @@
       "video": "Video of {{name}}"
     },
     "stage": {
-      "label": "Stage monitor: {{count}} fixtures, {{selected}} selected",
+      "label": "Stage monitor: {{count}} fixtures, {{selected}} selected. Wheel to zoom, Ctrl+A selects all, Esc clears, right-click for more",
       "selection": "{{count}} / {{total}} selected",
       "bloom": "Bloom",
       "blind": "Blind",
@@ -1418,7 +1418,7 @@
       "blackoutOn": "Blackout · all output dark",
       "list": "Fixtures on stage",
       "fixtureItem": "{{name}}: red {{r}} green {{g}} blue {{b}}",
-      "labelEditing": "Stage layout: {{count}} fixtures, {{selected}} selected. Drag fixtures or objects to place them, arrow keys to nudge",
+      "labelEditing": "Stage layout: {{count}} fixtures, {{selected}} selected. Drag fixtures or objects to place them, arrow keys nudge, wheel zooms",
       "layoutMode": "Layout",
       "layout": {
         "toolbar": "Stage layout",
@@ -1457,10 +1457,62 @@
         "text": "Text",
         "objectWidth": "W",
         "objectHeight": "H",
-        "removeObject": "Delete object"
+        "removeObject": "Delete object",
+        "arcSweep": "Arc sweep",
+        "gridColumns": "Grid columns",
+        "columnsUnit": "cols",
+        "alignGroup": "Align",
+        "distributeGroup": "Distribute and mirror",
+        "align": {
+          "left": "Align left",
+          "centerX": "Align centers left–right",
+          "right": "Align right",
+          "back": "Align to back (top of view)",
+          "centerY": "Align centers front–back",
+          "front": "Align to front (bottom of view)"
+        },
+        "distribute": {
+          "x": "Distribute evenly left–right",
+          "y": "Distribute evenly front–back"
+        },
+        "mirror": {
+          "x": "Mirror left–right",
+          "y": "Mirror front–back"
+        },
+        "reverse": "Reverse order (swap first and last positions)"
       },
       "dropHint": "Release to place the fixture here",
-      "previewOnly": "Preview only · output off"
+      "previewOnly": "Preview only · output off",
+      "roleDescription": "Stage monitor",
+      "zoom": {
+        "toolbar": "View zoom",
+        "in": "Zoom in (+)",
+        "out": "Zoom out (−)",
+        "fit": "Fit to window",
+        "level": "Zoom {{percent}}%"
+      },
+      "view": {
+        "title": "View settings",
+        "labels": "Fixture labels",
+        "labelModes": {
+          "selected": "Name when selected",
+          "name": "Always show names",
+          "address": "Show addresses",
+          "none": "Only on hover"
+        },
+        "snap": "Layout snapping",
+        "snapOff": "No snapping",
+        "snapM": "{{m}} m",
+        "backgroundOpacity": "Background image opacity"
+      },
+      "menu": {
+        "label": "Stage menu",
+        "sameModel": "Select fixtures of the same model",
+        "reset": "Reset position of {{count}} fixtures",
+        "resetDone": "Reset {{count}} fixtures to the automatic layout",
+        "selectAll": "Select all fixtures",
+        "clearSelection": "Clear selection"
+      }
     },
     "inspector": {
       "title": "Properties",
@@ -3155,6 +3207,13 @@
         "body": "Effects are declared in config files (built-in plus My effects). Inserting one creates a look clip that remembers the effect and its parameters.\n• Click a card to open its parameters: speed, size, phase spread, wings, direction, order, plus the effect's own parameters (density, color, color list…). Parameters are remembered for next time;\n• Advanced adds blocks (neighbours share a value), groups (repeat every n), shuffle, lock to beat and reroll random;\n• After inserting, keep tuning under Effect parameters in the Cue inspector and the clip regenerates. Editing intensity, color, attribute layers or spread by hand turns it into a plain look (undoable);\n• Classic RGB effects in older projects still play and can be converted to configurable effects in the Cue inspector.",
         "keys": "Double-click a card to insert with current parameters · Drag onto a track to insert there",
         "term": "Phaser · MAtricks (Block / Group / Wings / Shuffle)"
+      },
+      "stage": {
+        "title": "Stage monitor",
+        "short": "Top view of the stage showing each fixture's actual output at its position; select and place fixtures here.",
+        "body": "Colors, glow and moving-head beam directions come from the engine, matching the real output (programmer included).\n• Click to select, Ctrl / Shift to add, drag on empty space to lasso; double-click a fixture to open the programmer;\n• Wheel zooms around the pointer, Shift + wheel pans sideways, middle-drag pans, F fits the window;\n• Right-click: select only this, select same model, Locate, reveal in Patch, clear programmer values, reset position;\n• Layout mode: drag fixtures and set pieces (snapping to the step, hold Alt for free movement), arrow keys nudge; the bottom bar aligns, distributes, mirrors, reverses and arranges in a line / arc / grid / circle;\n• View settings: show names or addresses next to fixtures, snapping step, background opacity;\n• Badges: dot = programmer value, P = parked channel.",
+        "keys": "Wheel zoom · F fit · Ctrl+A select all · Esc clear · Arrows pan / nudge",
+        "term": "Layout View"
       }
     },
     "shortcutSheet": {

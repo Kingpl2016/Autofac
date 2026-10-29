@@ -12,9 +12,6 @@ import type { ShowProject, StageObject, StagePlacement } from "./project";
 /** 舞台宽 / 纵深的范围（米）。 */
 export const STAGE_SIZE_RANGE = { min: 1, max: 200 } as const;
 
-/** 拖动时的吸附步长（米）。 */
-export const STAGE_SNAP_M = 0.25;
-
 /** 新建布景物件的默认尺寸（米）。 */
 const OBJECT_DEFAULTS: Record<StageObject["kind"], { w: number; h: number }> = {
   truss: { w: 6, h: 0.3 },
@@ -254,6 +251,111 @@ export function arrangeFixtures(d: ShowProject, ids: readonly string[], how: Arr
       break;
     }
   }
+}
+
+/** 对齐方式：左 / 右 / 后（画布上方）/ 前（画布下方）/ 水平居中 / 纵深居中。 */
+export type AlignMode = "left" | "right" | "back" | "front" | "centerX" | "centerY";
+
+/** 平面上的轴：x 为左右，y 为前后（纵深）。 */
+export type StageAxis = "x" | "y";
+
+/**
+ * 取一组灯（按给定顺序）并先固定自动排布的位置。
+ *
+ * @param d 工程草稿。
+ * @param ids 灯具 id。
+ * @returns 灯具的舞台位置（与 `ids` 同序，跳过不存在的）。
+ */
+function placedList(d: ShowProject, ids: readonly string[]): StagePlacement[] {
+  const byId = new Map(d.fixtures.map((f) => [f.id, f]));
+  const list = ids.map((id) => byId.get(id)).filter((f) => f !== undefined);
+  if (list.length === 0) return [];
+  materializePlacements(d);
+  return list.map((f) => f.stage as StagePlacement);
+}
+
+/** 写入一个位置（夹到舞台范围、去掉浮点尾数）。 */
+function putAt(d: ShowProject, s: StagePlacement, x: number, y: number): void {
+  const p = clampToStage(d.stage, x, y);
+  s.x = snap(p.x, 0.001);
+  s.y = snap(p.y, 0.001);
+}
+
+/**
+ * 对齐一组灯具：按包围盒的一条边或中线对齐（另一个方向不变）。
+ *
+ * @param d 工程草稿。
+ * @param ids 灯具 id（至少 2 台才有意义）。
+ * @param mode 对齐方式。
+ */
+export function alignFixtures(d: ShowProject, ids: readonly string[], mode: AlignMode): void {
+  const list = placedList(d, ids);
+  if (list.length < 2) return;
+  const xs = list.map((s) => s.x);
+  const ys = list.map((s) => s.y);
+  const target: Record<AlignMode, number> = {
+    left: Math.min(...xs),
+    right: Math.max(...xs),
+    back: Math.max(...ys),
+    front: Math.min(...ys),
+    centerX: (Math.min(...xs) + Math.max(...xs)) / 2,
+    centerY: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+  const v = target[mode];
+  const horizontal = mode === "left" || mode === "right" || mode === "centerX";
+  for (const s of list) putAt(d, s, horizontal ? v : s.x, horizontal ? s.y : v);
+}
+
+/**
+ * 等距分布：沿一个轴按当前坐标排序，两端的灯不动，中间的均匀分布（另一个方向不变）。
+ *
+ * @param d 工程草稿。
+ * @param ids 灯具 id（至少 3 台才有变化）。
+ * @param axis 轴。
+ */
+export function distributeFixtures(d: ShowProject, ids: readonly string[], axis: StageAxis): void {
+  const list = placedList(d, ids);
+  if (list.length < 3) return;
+  const sorted = [...list].sort((a, b) => a[axis] - b[axis]);
+  const lo = sorted[0][axis];
+  const hi = sorted[sorted.length - 1][axis];
+  sorted.forEach((s, i) => {
+    const v = lo + ((hi - lo) * i) / (sorted.length - 1);
+    putAt(d, s, axis === "x" ? v : s.x, axis === "y" ? v : s.y);
+  });
+}
+
+/**
+ * 镜像：以这组灯包围盒的中线翻转位置（`x` 为左右翻转，`y` 为前后翻转），朝向随之镜像。
+ *
+ * @param d 工程草稿。
+ * @param ids 灯具 id。
+ * @param axis 翻转哪个坐标。
+ */
+export function mirrorFixtures(d: ShowProject, ids: readonly string[], axis: StageAxis): void {
+  const list = placedList(d, ids);
+  if (list.length === 0) return;
+  const vs = list.map((s) => s[axis]);
+  const mid = (Math.min(...vs) + Math.max(...vs)) / 2;
+  for (const s of list) {
+    putAt(d, s, axis === "x" ? 2 * mid - s.x : s.x, axis === "y" ? 2 * mid - s.y : s.y);
+    if (s.rotation !== undefined && s.rotation !== 0) s.rotation = normalizeDeg(axis === "x" ? -s.rotation : 180 - s.rotation);
+  }
+}
+
+/**
+ * 反转顺序：第一台与最后一台互换位置，第二台与倒数第二台互换……（朝向、高度、吊挂不变）。
+ *
+ * 舞台上的位置决定“按舞台位置”分布的顺序，这样可以不改工程顺序而让追逐反向。
+ *
+ * @param d 工程草稿。
+ * @param ids 灯具 id（顺序即当前顺序）。
+ */
+export function reverseFixturePositions(d: ShowProject, ids: readonly string[]): void {
+  const list = placedList(d, ids);
+  if (list.length < 2) return;
+  const spots = list.map((s) => ({ x: s.x, y: s.y })).reverse();
+  list.forEach((s, i) => putAt(d, s, spots[i].x, spots[i].y));
 }
 
 /**

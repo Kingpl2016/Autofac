@@ -70,6 +70,54 @@ export interface FixtureAddPrefs {
 /** 批量添加的默认设置。 */
 export const DEFAULT_FIXTURE_ADD: FixtureAddPrefs = { count: 4, gap: 0, autoStart: true, universe: 0, address: 1, group: false };
 
+/** 舞台上灯具旁的文字：只在选中 / 悬停时显示名称、始终显示名称、始终显示地址、只在悬停时显示。 */
+export const STAGE_LABELS = ["selected", "name", "address", "none"] as const;
+
+/** 舞台上灯具旁的文字。 */
+export type StageLabel = (typeof STAGE_LABELS)[number];
+
+/** 布置模式的吸附步长（米）；0 为不吸附。 */
+export const STAGE_SNAP_STEPS = [0, 0.1, 0.25, 0.5, 1] as const;
+
+/** 舞台监视器的显示与布置偏好。 */
+export interface StagePrefs {
+  /** 光晕 */
+  bloom: boolean;
+  /** 灯具旁的文字 */
+  labels: StageLabel;
+  /** 拖动吸附步长（米，取 {@link STAGE_SNAP_STEPS} 之一） */
+  snapM: number;
+  /** 背景图不透明度（0.05~1） */
+  backgroundOpacity: number;
+  /** “排成弧线”的张角（度，10~359） */
+  arcSweep: number;
+  /** “排成网格”的列数；0 为自动（约为平方根） */
+  gridColumns: number;
+}
+
+/** 舞台偏好的默认值。 */
+export const DEFAULT_STAGE_PREFS: StagePrefs = { bloom: true, labels: "selected", snapM: 0.25, backgroundOpacity: 0.45, arcSweep: 90, gridColumns: 0 };
+
+/**
+ * 规整舞台偏好：逐字段兜底。
+ *
+ * @param raw 未知数据。
+ * @param fallback 兜底值。
+ * @returns 合法的偏好。
+ */
+export function sanitizeStagePrefs(raw: unknown, fallback: StagePrefs): StagePrefs {
+  const r = (raw ?? {}) as Partial<Record<keyof StagePrefs, unknown>>;
+  const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  return {
+    bloom: typeof r.bloom === "boolean" ? r.bloom : fallback.bloom,
+    labels: STAGE_LABELS.includes(r.labels as StageLabel) ? (r.labels as StageLabel) : fallback.labels,
+    snapM: (STAGE_SNAP_STEPS as readonly number[]).includes(r.snapM as number) ? (r.snapM as number) : fallback.snapM,
+    backgroundOpacity: finite(r.backgroundOpacity) ? Math.min(1, Math.max(0.05, r.backgroundOpacity)) : fallback.backgroundOpacity,
+    arcSweep: finite(r.arcSweep) ? Math.round(Math.min(359, Math.max(10, r.arcSweep))) : fallback.arcSweep,
+    gridColumns: finite(r.gridColumns) ? Math.round(Math.min(64, Math.max(0, r.gridColumns))) : fallback.gridColumns,
+  };
+}
+
 /** 落盘的数据。 */
 export interface EditorPrefsData {
   centerView: CenterView;
@@ -107,6 +155,8 @@ export interface EditorPrefsData {
   effectParams: Record<string, EffectParams>;
   /** 收藏的 Cue 模板（模板 `id`，按收藏顺序；内置模板也可以收藏） */
   favoriteTemplates: string[];
+  /** 舞台监视器的显示与布置偏好 */
+  stage: StagePrefs;
 }
 
 /** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
@@ -200,6 +250,12 @@ interface EditorPrefsState extends EditorPrefsData {
    */
   setTemplateFavorite: (id: string, favorite: boolean) => void;
   /**
+   * 修改舞台偏好（与当前值合并后规整）。
+   *
+   * @param patch 要改的字段。
+   */
+  setStagePrefs: (patch: Partial<StagePrefs>) => void;
+  /**
    * 展开 / 收起输出设置的“高级”分区。
    *
    * @param open 是否展开。
@@ -280,6 +336,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   programmerRecord: DEFAULT_RECORD_PREFS,
   effectParams: {},
   favoriteTemplates: [],
+  stage: DEFAULT_STAGE_PREFS,
 };
 
 /** 最多收藏多少个模板。 */
@@ -365,6 +422,7 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     favoriteTemplates: Array.isArray(r.favoriteTemplates)
       ? [...new Set(r.favoriteTemplates.filter((k): k is string => typeof k === "string" && /^[\w.-]{1,64}$/.test(k)))].slice(0, MAX_FAVORITES)
       : current.favoriteTemplates,
+    stage: sanitizeStagePrefs(r.stage, current.stage),
   };
 }
 
@@ -402,6 +460,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
           const rest = s.favoriteTemplates.filter((k) => k !== id);
           return { favoriteTemplates: favorite ? [...rest, id].slice(-MAX_FAVORITES) : rest };
         }),
+      setStagePrefs: (patch) => set((s) => ({ stage: sanitizeStagePrefs({ ...s.stage, ...patch }, s.stage) })),
       setSection: (scope, section, open) =>
         set((st) => {
           const field = SECTION_FIELDS[scope];
@@ -432,6 +491,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         programmerRecord,
         effectParams,
         favoriteTemplates,
+        stage,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -452,6 +512,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         programmerRecord,
         effectParams,
         favoriteTemplates,
+        stage,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },

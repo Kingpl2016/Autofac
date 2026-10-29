@@ -34,6 +34,71 @@ export function fitStage(stage: Pick<StageLayout, "width" | "depth">, width: num
   return { scale, originX: width / 2, originY: height / 2 + (d * scale) / 2 };
 }
 
+/** 视图的缩放与平移（相对“适应窗口”）：`zoom` 1 为整个舞台放进画布，平移为画布像素。 */
+export interface StageCamera {
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+/** 适应窗口（不缩放、不平移）。 */
+export const FIT_CAMERA: StageCamera = { zoom: 1, panX: 0, panY: 0 };
+
+/** 缩放范围（相对适应窗口）。 */
+export const ZOOM_RANGE = { min: 0.25, max: 8 } as const;
+
+/**
+ * 在“适应窗口”的换算上叠加缩放与平移：以画布中心为缩放中心，再平移。
+ *
+ * @param fit 适应窗口的换算（{@link fitStage}）。
+ * @param camera 缩放与平移。
+ * @param width 画布宽。
+ * @param height 画布高。
+ * @returns 实际使用的换算。
+ */
+export function applyCamera(fit: StageView, camera: StageCamera, width: number, height: number): StageView {
+  const cx = width / 2;
+  const cy = height / 2;
+  return {
+    scale: fit.scale * camera.zoom,
+    originX: cx + (fit.originX - cx) * camera.zoom + camera.panX,
+    originY: cy + (fit.originY - cy) * camera.zoom + camera.panY,
+  };
+}
+
+/**
+ * 以指针为中心缩放：指针下的舞台点缩放前后保持在同一个画布位置。
+ *
+ * @param fit 适应窗口的换算。
+ * @param camera 当前缩放与平移。
+ * @param width 画布宽。
+ * @param height 画布高。
+ * @param px 指针 x（画布）。
+ * @param py 指针 y（画布）。
+ * @param factor 缩放倍数（> 1 放大）。
+ * @returns 新的缩放与平移（缩放夹在 {@link ZOOM_RANGE} 内）。
+ */
+export function zoomAt(
+  fit: StageView,
+  camera: StageCamera,
+  width: number,
+  height: number,
+  px: number,
+  py: number,
+  factor: number,
+): StageCamera {
+  const zoom = Math.min(ZOOM_RANGE.max, Math.max(ZOOM_RANGE.min, camera.zoom * (Number.isFinite(factor) && factor > 0 ? factor : 1)));
+  const s = toStage(applyCamera(fit, camera, width, height), px, py);
+  const cx = width / 2;
+  const cy = height / 2;
+  const scale = fit.scale * zoom;
+  return {
+    zoom,
+    panX: px - (cx + (fit.originX - cx) * zoom + s.x * scale),
+    panY: py - (cy + (fit.originY - cy) * zoom - s.y * scale),
+  };
+}
+
 /**
  * 舞台坐标 → 画布坐标。
  *
