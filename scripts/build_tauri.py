@@ -27,6 +27,10 @@ WebView2（``--webview2``）：``bundled`` 随包携带固定版运行时（离�
     python scripts/build_tauri.py --variant all --format portable
     python scripts/build_tauri.py --variant win7 --webview2-cab D:\\dl\\xxx.x64.cab
     python scripts/build_tauri.py --dry-run             # 只打印将要执行的步骤
+    python scripts/build_tauri.py --version 0.2.0       # 先把版本号改为 0.2.0 再打包
+
+``--version`` 会写回 package.json / package-lock.json / src-tauri/tauri.conf.json / Cargo.toml / Cargo.lock。
+产物文件名（安装包、压缩包及压缩包内的顶层文件夹）末尾带构建时间后缀，如 ``..._portable_20261030-153012.zip``。
 
 只依赖 Python 标准库（需要 3.11+），另需 Node.js / npm、Rust、``expand.exe``（Windows 自带，仅 win7 变体用）。
 
@@ -46,6 +50,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -178,6 +183,46 @@ def read_product() -> tuple[str, str, str]:
 
 def host_arch() -> str:
     return "x86" if platform.machine().lower() in ("x86", "i386", "i686") else "x64"
+
+
+# --------------------------------------------------------------------------- 版本号
+
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+
+# (文件, 匹配旧版本号的正则（分组 1/2 为版本号前后的原文）, 替换次数：0 = 全部, 是否必须存在)
+VERSION_FILES: list[tuple[Path, re.Pattern[str], int, bool]] = [
+    (ROOT / "package.json", re.compile(r'(^\s*"version"\s*:\s*")[^"]*(")', re.M), 1, True),
+    # 根节点与 packages[""] 各有一处
+    (ROOT / "package-lock.json", re.compile(r'("name"\s*:\s*"art-net-studio",\s*"version"\s*:\s*")[^"]*(")'), 0, False),
+    (TAURI_CONF, re.compile(r'(^\s*"version"\s*:\s*")[^"]*(")', re.M), 1, True),
+    (CARGO_TOML, re.compile(r'(^\[package\]\s*\n(?:[^\n]*\n)*?version\s*=\s*")[^"]*(")', re.M), 1, True),
+    (TAURI_DIR / "Cargo.lock", re.compile(r'(name = "art-net-studio"\r?\nversion = ")[^"]*(")'), 1, False),
+]
+
+
+def set_version(new: str, dry_run: bool) -> None:
+    """把版本号写入各配置文件；保留原有格式与换行符，全部匹配成功后才落盘。"""
+    if not SEMVER_RE.match(new):
+        fail(f"版本号格式无效：{new}（应为 SemVer，如 1.2.3 或 1.2.3-beta.1）")
+    pending: list[tuple[Path, str]] = []
+    for path, pattern, count, required in VERSION_FILES:
+        if not path.is_file():
+            if required:
+                fail(f"找不到 {path}")
+            continue
+        text = path.read_bytes().decode("utf-8")  # 不经 read_text，避免换行符被转换
+        updated, n = pattern.subn(lambda m: f"{m.group(1)}{new}{m.group(2)}", text, count=count)
+        if n == 0:
+            fail(f"未在 {path.relative_to(ROOT)} 中找到版本号字段")
+        if updated != text:
+            pending.append((path, updated))
+    if not pending:
+        log(f"版本号已是 {new}，无需修改")
+        return
+    for path, updated in pending:
+        log(f"{'[dry-run] 将修改' if dry_run else '修改'}版本号 -> {new}：{path.relative_to(ROOT)}")
+        if not dry_run:
+            path.write_bytes(updated.encode("utf-8"))
 
 
 # --------------------------------------------------------------------------- WebView2 固定运行时
@@ -500,6 +545,11 @@ def build_one(
     exe = v.release_dir / f"{bin_name}.exe"
     if args.dry_run:
         log(f"[dry-run] 预期产物目录：{v.release_dir}")
+        stem = f"{product.replace(' ', '-')}_{version}_{v.arch}{v.tag}_{mode}"
+        if want_installer:
+            log(f"[dry-run] 安装包：{OUT_DIR.name}/{stem}_setup_{args.build_stamp}.exe")
+        if want_portable:
+            log(f"[dry-run] 免安装包：{OUT_DIR.name}/{stem}_portable_{args.build_stamp}.zip")
         return produced
     if not exe.is_file() or exe.stat().st_mtime < started - 5:
         fail(f"构建后未找到新的可执行文件：{exe}")
@@ -509,6 +559,7 @@ def build_one(
 
     OUT_DIR.mkdir(exist_ok=True)
     stem = f"{product.replace(' ', '-')}_{version}_{v.arch}{v.tag}_{mode}"
+    stamp = args.build_stamp  # 同一次运行的所有产物共用一个时间后缀
 
     if want_installer:
         installers = sorted(
@@ -518,7 +569,7 @@ def build_one(
         )
         if not installers or installers[0].stat().st_mtime < started - 5:
             fail(f"未找到新生成的 NSIS 安装包：{v.release_dir / 'bundle' / 'nsis'}")
-        dst = OUT_DIR / f"{stem}_setup.exe"
+        dst = OUT_DIR / f"{stem}_setup_{stamp}.exe"
         shutil.copy2(installers[0], dst)
         produced.append(dst)
         sig = installers[0].with_name(installers[0].name + ".sig")
@@ -527,7 +578,7 @@ def build_one(
             produced.append(dst.with_name(dst.name + ".sig"))
 
     if want_portable:
-        produced.append(make_portable(v, exe, runtime_dir, OUT_DIR / f"{stem}_portable.zip", product, version))
+        produced.append(make_portable(v, exe, runtime_dir, OUT_DIR / f"{stem}_portable_{stamp}.zip", product, version))
 
     return produced
 
@@ -595,6 +646,12 @@ def parse_args() -> argparse.Namespace:
         help="WebView2：bundled=随包携带固定版运行时，system=使用系统已装的，both=两种都出\n"
         "（默认 auto：win7 变体携带，modern 变体用系统的）",
     )
+    p.add_argument(
+        "--version",
+        dest="new_version",
+        metavar="X.Y.Z",
+        help="打包前修改版本号（写回 package.json / tauri.conf.json / Cargo.toml 及对应 lock 文件）",
+    )
     p.add_argument("--arch", choices=["x64", "x86"], default="x64", help="win7 变体的目标架构（默认 x64）")
     p.add_argument("--webview2-cab", help="本地 WebView2 固定版本 cab 文件（携带 WebView2 时使用）")
     p.add_argument("--webview2-dir", help="已解压的 WebView2 固定版本运行时目录（携带 WebView2 时使用）")
@@ -618,7 +675,12 @@ def main() -> None:
     if sys.platform != "win32":
         fail("本脚本仅支持在 Windows 上打包 Windows 产物")
     args = parse_args()
+    args.build_stamp = time.strftime("%Y%m%d-%H%M%S")
+    if args.new_version:
+        set_version(args.new_version.strip().removeprefix("v"), args.dry_run)
     product, version, bin_name = read_product()
+    if args.new_version and args.dry_run:
+        version = args.new_version.strip().removeprefix("v")  # dry-run 未落盘，按新版本号展示
     log(f"{product} v{version}  变体={args.variant}  产物={args.format}  WebView2={args.webview2}")
 
     variants: list[Variant] = []
