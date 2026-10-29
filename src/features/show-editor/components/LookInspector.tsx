@@ -100,9 +100,15 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
   const ids = cues.map((c) => c.id);
   const look = first.look;
 
+  /** 特效生成的片段被手动改了外观层或分布：提示已转为普通外观（可撤销）。 */
+  const noteDetach = () => {
+    if (cues.some((c) => c.fx)) announce(t("editor.fx.detached"));
+  };
   /** 对每个选中片段按它自己的片段内时刻执行修改。 */
-  const edit = (recipe: (look: LookClip["look"], uMs: number) => void) =>
+  const edit = (recipe: (look: LookClip["look"], uMs: number) => void) => {
+    noteDetach();
     update((d) => void updateLooks(d, ids, (l, cue) => recipe(l, clamp(playheadMs - cue.startMs, 0, cue.endMs - cue.startMs))));
+  };
 
   const intensityAt = (() => {
     const p = look.intensity;
@@ -377,7 +383,10 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
           look={look}
           spread={first.spread}
           members={members}
-          onChange={(spread) => update((d) => void setSpread(d, ids, spread))}
+          onChange={(spread) => {
+            noteDetach();
+            update((d) => void setSpread(d, ids, spread));
+          }}
         />
       </InspectorSection>
 

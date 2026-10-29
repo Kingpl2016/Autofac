@@ -2350,8 +2350,8 @@
       "strobeHint": "Intensity square wave (mind strobe safety)",
       "rainbow": "Rainbow",
       "rainbowHint": "Color cycles through hues; group members are offset in hue",
-      "convert": "Convert to attribute effect",
-      "convertHint": "Turns breathe, pulse, strobe, chase and rainbow into equivalent look clips (curve + spread) that can layer with others and take keyframes",
+      "convert": "Convert to configurable effect",
+      "convertHint": "Replaces it with the matching configurable effect (period, spread, direction, brightness range and colors carry over) so you can keep tuning it and layer other looks",
       "converted": "Converted {{count}} effects"
     },
     "effects": {
@@ -3043,7 +3043,16 @@
         "stageY": "Front–back"
       },
       "reset": "Reset",
-      "insertSelected": "Insert"
+      "insertSelected": "Insert",
+      "advanced": "Advanced",
+      "blocks": "Blocks",
+      "groupEvery": "Groups",
+      "shuffle": "Shuffle order",
+      "shuffleHint": "Shuffles the member order with a seed (fixed result, same in preview and playback)",
+      "reshuffle": "Reshuffle",
+      "colorN": "{{name}} {{n}}",
+      "addColor": "Add to {{name}}",
+      "removeColor": "Remove color {{n}}"
     },
     "help": {
       "cheatSheet": "Shortcut cheat sheet",
@@ -3127,6 +3136,13 @@
         "body": "Cues can be dragged, trimmed and split; everything is undoable.\n• Time range: Shift + drag on the ruler to select a span; right-click to delete it (closing the gap), insert a gap or copy. With no cue selected, Ctrl+C / Ctrl+X / Delete act on the range and Z zooms to it;\n• Ripple edit: when on, deleting or dragging a cue moves later cues on the same track; hold Alt while dragging to affect all tracks plus markers, sections, the loop and media;\n• Arrange: select several cues and right-click Arrange to align starts, chain, space by beat, quantize or repeat;\n• Tracks: drag the grip on the track header to reorder, drag the bottom edge to resize (double-click resets);\n• Keyframes: drag a keyframe on a cue to retime it, hold Ctrl to copy;\n• Click the playhead timecode in the toolbar to type a time to jump to (e.g. 1:23.10, +2s, 12f);\n• The colour tag filter dims other cues and can select every cue with that tag.",
         "keys": "Shift+drag ruler select range · Z zoom to range · Alt+Shift+Delete delete range · Alt+Shift+G insert gap · Ctrl+Shift+V paste at mouse · Alt+Shift+↑/↓ move track · Shift+↑/↓ previous / next marker",
         "term": "Time Range · Ripple · Align / Quantize · Insert Time"
+      },
+      "effects": {
+        "title": "Attribute effects",
+        "short": "Effects you can keep tuning after inserting; speed is in beats or milliseconds, so stretching a clip does not change it.",
+        "body": "Effects are declared in config files (built-in plus My effects). Inserting one creates a look clip that remembers the effect and its parameters.\n• Click a card to open its parameters: speed, size, phase spread, wings, direction, order, plus the effect's own parameters (density, color, color list…). Parameters are remembered for next time;\n• Advanced adds blocks (neighbours share a value), groups (repeat every n), shuffle, lock to beat and reroll random;\n• After inserting, keep tuning under Effect parameters in the Cue inspector and the clip regenerates. Editing intensity, color, attribute layers or spread by hand turns it into a plain look (undoable);\n• Classic RGB effects in older projects still play and can be converted to configurable effects in the Cue inspector.",
+        "keys": "Double-click a card to insert with current parameters · Drag onto a track to insert there",
+        "term": "Phaser · MAtricks (Block / Group / Wings / Shuffle)"
       }
     },
     "shortcutSheet": {
@@ -3322,6 +3338,14 @@
       "steps": "Steps (%)",
       "stepsHint": "Comma-separated percentages; one period is split into these steps, e.g. 100, 0, 0, 0 is one on, three off",
       "stepsInvalid": "Invalid steps: enter 1 to 64 numbers from 0 to 100, separated by commas"
+    },
+    "fx": {
+      "title": "Effect parameters",
+      "hint": "Changing a parameter regenerates this clip's curves and spread. Editing the intensity, color, attribute layers or spread below turns the clip into a plain look (undoable).",
+      "detach": "Make plain look",
+      "detachHint": "Keeps the current result so you can edit each layer by hand (effect parameters are no longer available)",
+      "detached": "Turned into a plain look: effect parameters are no longer available (undoable)",
+      "detachedCount": "Turned {{count}} clip(s) into plain looks"
     }
   },
   "fixtures": {

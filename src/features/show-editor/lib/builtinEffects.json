@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "effects": [
     {
       "id": "circle", "group": "position", "icon": "orbit", "scale": "fraction",
@@ -107,7 +107,8 @@
       "name": { "zh": "呼吸", "en": "Breathe" },
       "hint": { "zh": "整组一起缓慢明暗起伏，不熄灭", "en": "The whole group slowly breathes without going dark" },
       "period": { "kind": "beats", "beats": 4 }, "size": 100, "spread": 0, "spreadBy": "phase",
-      "look": { "intensity": { "shape": "sine", "lo": 0.2, "hi": 1 } }
+      "params": [{ "id": "floor", "type": "percent", "default": 0.2, "label": { "zh": "最暗", "en": "Lowest" } }],
+      "look": { "intensity": { "shape": "sine", "lo": "$floor", "hi": 1 } }
     },
     {
       "id": "pulse", "group": "intensity", "icon": "zap", "scale": "percent",
@@ -120,8 +121,17 @@
       "id": "flicker", "group": "intensity", "icon": "sparkles", "scale": "percent",
       "name": { "zh": "随机闪烁", "en": "Random flicker" },
       "hint": { "zh": "强度随机跳动，成员之间各不相同", "en": "Intensity jumps randomly, different for each member" },
-      "period": { "kind": "ms", "ms": 250 }, "size": 100, "spread": 0.61, "spreadBy": "phase",
-      "look": { "intensity": { "shape": "random", "lo": 0.1, "hi": 1 } }
+      "period": { "kind": "ms", "ms": 250 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [{ "id": "floor", "type": "percent", "default": 0.1, "label": { "zh": "最暗", "en": "Lowest" } }],
+      "look": { "intensity": { "shape": "random", "lo": "$floor", "hi": 1, "seed": true } }
+    },
+    {
+      "id": "candle", "group": "intensity", "icon": "flame", "scale": "percent",
+      "name": { "zh": "烛光", "en": "Candle" },
+      "hint": { "zh": "平滑噪声，每台灯各自轻轻摇曳", "en": "Smooth noise; each fixture flickers gently on its own" },
+      "period": { "kind": "ms", "ms": 180 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [{ "id": "floor", "type": "percent", "default": 0.55, "label": { "zh": "最暗", "en": "Lowest" } }],
+      "look": { "intensity": { "shape": "noise", "lo": "$floor", "hi": 1, "seed": true } }
     },
     {
       "id": "fadeIn", "group": "intensity", "icon": "sunrise", "scale": "percent",
@@ -142,7 +152,8 @@
       "name": { "zh": "频闪", "en": "Strobe" },
       "hint": { "zh": "强度方波（注意频闪安全）", "en": "Intensity square wave (mind strobe safety)" },
       "period": { "kind": "ms", "ms": 125 }, "size": 100, "spread": 0, "spreadBy": "none",
-      "look": { "intensity": { "shape": "square", "lo": 0, "hi": 1, "duty": 0.5 } }
+      "params": [{ "id": "duty", "type": "percent", "default": 0.5, "label": { "zh": "亮的比例", "en": "On time" } }],
+      "look": { "intensity": { "shape": "square", "lo": 0, "hi": 1, "duty": "$duty" } }
     },
     {
       "id": "rainbow", "group": "color", "icon": "rainbow", "scale": "percent",
@@ -159,23 +170,62 @@
       "name": { "zh": "双色交替", "en": "Two-color alternate" },
       "hint": { "zh": "两种颜色按拍切换；分组成员错开半拍形成交错", "en": "Switches between two colors on the beat; members alternate" },
       "period": { "kind": "beats", "beats": 2 }, "size": 100, "spread": 0.5, "spreadBy": "delay",
-      "look": { "intensity": { "value": 1 }, "color": { "colors": [[255, 0, 0], [0, 64, 255]], "blend": "step" } }
+      "params": [{ "id": "colors", "type": "colors", "default": [[255, 0, 0], [0, 64, 255]], "min": 2, "max": 8, "label": { "zh": "颜色", "en": "Colors" } }],
+      "look": { "intensity": { "value": 1 }, "color": { "colors": "$colors", "blend": "step" } }
     },
     {
       "id": "colorChase", "group": "color", "icon": "palette", "scale": "percent",
       "name": { "zh": "颜色追逐", "en": "Color chase" },
       "hint": { "zh": "红、绿、蓝依次跳变，沿分组推进", "en": "Steps red, green, blue and travels along the group" },
       "period": { "kind": "beats", "beats": 3 }, "size": 100, "spread": 1, "spreadBy": "delay",
-      "look": { "intensity": { "value": 1 }, "color": { "colors": [[255, 0, 0], [0, 255, 0], [0, 0, 255]], "blend": "step" } }
+      "params": [{ "id": "colors", "type": "colors", "default": [[255, 0, 0], [0, 255, 0], [0, 0, 255]], "min": 2, "max": 8, "label": { "zh": "颜色", "en": "Colors" } }],
+      "look": { "intensity": { "value": 1 }, "color": { "colors": "$colors", "blend": "step" } }
     },
     {
       "id": "hueSweep", "group": "color", "icon": "blend", "scale": "percent",
       "name": { "zh": "冷暖扫色", "en": "Warm-cool sweep" },
       "hint": { "zh": "在暖橙、品红、紫、冰蓝之间平滑过渡", "en": "Glides between amber, magenta, violet and ice blue" },
       "period": { "kind": "beats", "beats": 16 }, "size": 100, "spread": 0.5, "spreadBy": "delay",
+      "params": [{ "id": "colors", "type": "colors", "default": [[255, 96, 0], [255, 0, 128], [128, 0, 255], [0, 160, 255]], "min": 2, "max": 8, "label": { "zh": "颜色", "en": "Colors" } }],
+      "look": { "intensity": { "value": 1 }, "color": { "colors": "$colors", "blend": "smooth" } }
+    },
+    {
+      "id": "gradient", "group": "color", "icon": "blend", "scale": "percent",
+      "name": { "zh": "流动渐变", "en": "Flowing gradient" },
+      "hint": { "zh": "一组颜色平滑循环，沿分组流动", "en": "Colors blend smoothly in a loop and flow along the group" },
+      "period": { "kind": "ms", "ms": 8000 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "params": [
+        { "id": "colors", "type": "colors", "default": [[255, 0, 0], [0, 0, 255]], "min": 2, "max": 8, "label": { "zh": "颜色", "en": "Colors" } },
+        {
+          "id": "blend", "type": "choice", "default": "smooth", "label": { "zh": "过渡", "en": "Blend" },
+          "options": [
+            { "value": "smooth", "label": { "zh": "平滑", "en": "Smooth" } },
+            { "value": "hue", "label": { "zh": "沿色相", "en": "Along hue" } }
+          ]
+        }
+      ],
+      "look": { "intensity": { "value": 1 }, "color": { "colors": "$colors", "blend": "$blend" } }
+    },
+    {
+      "id": "wipe", "group": "color", "icon": "chevronsRight", "scale": "percent",
+      "name": { "zh": "颜色擦除", "en": "Color wipe" },
+      "hint": { "zh": "颜色依次扫过分组：第一种颜色推过去，再被下一种推回来", "en": "Each color sweeps across the group in turn" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "params": [{ "id": "colors", "type": "colors", "default": [[255, 0, 0], [0, 0, 255]], "min": 2, "max": 8, "label": { "zh": "颜色", "en": "Colors" } }],
+      "look": { "intensity": { "value": 1 }, "color": { "colors": "$colors", "blend": "step" } }
+    },
+    {
+      "id": "sparkle", "group": "color", "icon": "sparkles", "scale": "percent",
+      "name": { "zh": "星光闪烁", "en": "Sparkle" },
+      "hint": { "zh": "每台灯随机点亮后衰减，密度可调", "en": "Fixtures light up at random and fade; density is adjustable" },
+      "period": { "kind": "ms", "ms": 250 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [
+        { "id": "density", "type": "percent", "default": 0.3, "label": { "zh": "密度", "en": "Density" } },
+        { "id": "color", "type": "color", "default": [255, 255, 255], "label": { "zh": "颜色", "en": "Color" } }
+      ],
       "look": {
-        "intensity": { "value": 1 },
-        "color": { "colors": [[255, 96, 0], [255, 0, 128], [128, 0, 255], [0, 160, 255]], "blend": "smooth" }
+        "intensity": { "shape": "random", "lo": 0, "hi": 1, "duty": "$density", "ease": "linear", "seed": true },
+        "color": { "rgb": "$color" }
       }
     },
     {

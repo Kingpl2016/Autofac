@@ -480,6 +480,8 @@ export function updateLooks(
     if (cue.kind !== "look" || !wanted.has(cue.id) || !editableTrack(draft, cue.trackId)) continue;
     recipe(cue.look, cue);
     if (cue.look.attrs && Object.keys(cue.look.attrs).length === 0) delete cue.look.attrs;
+    // 手动改了外观：不再是特效生成的片段
+    delete cue.fx;
     touched += 1;
   }
   return touched;
@@ -573,6 +575,8 @@ export function setSpread(draft: ShowProject, ids: readonly string[], spread: Sp
   let n = 0;
   for (const cue of draft.cues) {
     if (cue.kind !== "look" || !wanted.has(cue.id) || !editableTrack(draft, cue.trackId)) continue;
+    // 手动改了分布：不再是特效生成的片段
+    delete cue.fx;
     if (spread) cue.spread = structuredClone(spread);
     else delete cue.spread;
     n += 1;

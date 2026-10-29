@@ -31,7 +31,7 @@ import { dropOnTimeline, templateStyle } from "../timeline/dropTemplate";
 import { readTimelineViewport } from "../timeline/timelineView";
 import { START_LEFT } from "../timeline/timelineData";
 import { placeMediaOnTimeline } from "../hooks/mediaActions";
-import { effectNeeds, templateNeeds, trackSupports } from "../lib/cueDefaults";
+import { templateNeeds, trackSupports } from "../lib/cueDefaults";
 import { addLookCue } from "../lib/cueOps";
 import { addEffectDefCue, effectDefNeeds, effectName } from "../lib/effectLibrary";
 import type { FixtureCapability } from "../lib/fixtureProfile";
@@ -44,7 +44,6 @@ import { EditorColumns } from "./EditorColumns";
 import { EditorToolbar } from "./EditorToolbar";
 import { ModelUpdatesBanner } from "./ModelUpdatesBanner";
 import { EffectDefChip, type EffectDefDragData } from "./EffectLibrarySection";
-import { EffectChip, type EffectDragData } from "./EffectsTab";
 import { FileDialogs } from "./FileDialogs";
 import { IconRail } from "./IconRail";
 import { InspectorPanel } from "./InspectorPanel";
@@ -65,7 +64,6 @@ import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 /** 可以从素材库拖到时间线上的东西。 */
 type DragData =
   | TemplateDragData
-  | EffectDragData
   | EffectDefDragData
   | PresetDragData
   | MediaDragData
@@ -75,7 +73,6 @@ type DragData =
 /** 会显示拖拽浮层的素材类型。 */
 const DRAG_KINDS: ReadonlySet<string> = new Set<DragData["kind"]>([
   "template",
-  "effect",
   "effectDef",
   "preset",
   "media",
@@ -185,13 +182,6 @@ export function ShowEditorView() {
         pointer,
         tracks,
         guard(templateNeeds(data.template), (trackId, timeMs) => actions.addAt(trackId, timeMs, templateStyle(data.template))),
-      );
-    } else if (data.kind === "effect") {
-      result = dropOnTimeline(
-        viewport,
-        pointer,
-        tracks,
-        guard(effectNeeds(data.preset), (trackId, timeMs) => actions.addEffectAt(trackId, timeMs, data.preset)),
       );
     } else if (data.kind === "effectDef") {
       // 属性特效：按拖出时参数面板里的参数生成外观片段，分布按落点轨道的成员数展开
@@ -304,7 +294,6 @@ export function ShowEditorView() {
       <OnboardingRuntime />
       <DragOverlay dropAnimation={null}>
         {dragging?.kind === "template" && <TemplateChip template={dragging.template} overlay />}
-        {dragging?.kind === "effect" && <EffectChip preset={dragging.preset} overlay />}
         {dragging?.kind === "effectDef" && <EffectDefChip def={dragging.def} />}
         {dragging?.kind === "preset" && <PresetChip name={dragging.name} swatch={dragging.swatch} />}
         {dragging?.kind === "media" && <MediaChip name={dragging.name} mediaKind={dragging.mediaKind} />}

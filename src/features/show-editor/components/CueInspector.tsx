@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
-import { CONVERTIBLE_EFFECTS, lookFromLegacyEffect } from "../lib/attrEffects";
 import { cssColor } from "../lib/cueTemplates";
 import { clipName } from "../lib/clipVisual";
+import { commonFx, convertLegacyEffects, detachFx, effectName, setFxParams } from "../lib/effectLibrary";
 import {
   convertToLook,
-  replaceWithLook,
   setCueLabel,
   setCueTimes,
   updateCues,
@@ -23,7 +22,7 @@ import {
 import { revealInPatch } from "../hooks/selectionActions";
 import { setCueLengths } from "../lib/editOps";
 import { selectionOfTracks } from "../lib/fixtureSelection";
-import { trackFixtureIds, trackName } from "../lib/ops";
+import { trackName } from "../lib/ops";
 import type { Cue, Easing, EffectCue, LookClip } from "../lib/project";
 import { formatTimecode, parseTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -31,6 +30,7 @@ import { useProjectStore } from "../stores/useProjectStore";
 import { CommitInput } from "./CommitInput";
 import { ColorSection } from "./ColorSection";
 import { EffectInspector } from "./EffectInspector";
+import { EffectParamsPanel } from "./EffectParamsPanel";
 import { EmptyHint } from "./EmptyHint";
 import { InspectorSection } from "./InspectorSection";
 import { LookInspector, LookKeyNav } from "./LookInspector";
@@ -63,7 +63,7 @@ function common<T>(cues: readonly Cue[], pick: (c: Cue) => T): { value: T; mixed
  * 复制粘贴；场景：场景条目），最后是共用的“亮度与淡入淡出”“时间”。分区展开状态记住，同名分区各类型共用。
  */
 export function CueInspector() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const selectedIds = useEditorUiStore((s) => s.selectedCueIds);
@@ -105,7 +105,10 @@ export function CueInspector() {
   })();
 
   const scene = single?.kind === "scene" ? single : null;
-  const convertible = effects.some((c) => CONVERTIBLE_EFFECTS.has(c.effect)) && !locked;
+  const convertible = effects.length > 0 && !locked;
+  // 选中的外观片段都是同一个特效生成的：显示“特效参数”，改参数即重新生成
+  const fx = looks.length === looks.filter((c) => c.fx).length ? commonFx(looks) : null;
+  const lookIds = looks.map((c) => c.id);
   const firstStatic = statics[0]?.kind === "static" ? statics[0] : null;
 
   return (
@@ -177,12 +180,7 @@ export function CueInspector() {
                 onClick={() => {
                   let n = 0;
                   update((d) => {
-                    for (const c of effects) {
-                      const track = d.tracks.find((tr) => tr.id === c.trackId);
-                      const members = track ? trackFixtureIds(d, track).length : 1;
-                      const converted = lookFromLegacyEffect(c, members, d.tempo);
-                      if (converted && replaceWithLook(d, c.id, converted.look, converted.spread)) n += 1;
-                    }
+                    n = convertLegacyEffects(d, effectIds, (def) => effectName(def, i18n.language));
                   });
                   announce(t("editor.attrEffects.converted", { count: n }));
                 }}
@@ -218,6 +216,31 @@ export function CueInspector() {
           tempo={project.tempo}
           onPatch={(changes: EffectPatch) => update((d) => void updateEffectCues(d, effectIds, changes))}
         />
+      )}
+
+      {fx && !locked && (
+        <InspectorSection
+          scope="cue"
+          id="fx"
+          title={t("editor.fx.title")}
+          aside={<span className="truncate text-[11px] text-muted-foreground">{effectName(fx.def, i18n.language)}</span>}
+        >
+          <EffectParamsPanel
+            key={lookIds.join(",")}
+            def={fx.def}
+            params={fx.params}
+            onChange={(p) => update((d) => void setFxParams(d, lookIds, p))}
+            onReset={() => update((d) => void setFxParams(d, lookIds, "reset"))}
+            onDetach={() => {
+              let n = 0;
+              update((d) => {
+                n = detachFx(d, lookIds);
+              });
+              announce(t("editor.fx.detachedCount", { count: n }));
+            }}
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">{t("editor.fx.hint")}</p>
+        </InspectorSection>
       )}
 
       {looks.length > 0 && <LookInspector cues={looks} />}

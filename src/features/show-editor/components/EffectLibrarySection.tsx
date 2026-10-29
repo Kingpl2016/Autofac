@@ -7,11 +7,13 @@ import {
   Blend,
   ChevronDown,
   ChevronRight,
+  ChevronsRight,
   Copy,
   Diamond,
   Fan,
   FileDown,
   FileUp,
+  Flame,
   FolderOpen,
   Infinity as InfinityIcon,
   MoveHorizontal,
@@ -23,7 +25,6 @@ import {
   Rainbow,
   RefreshCw,
   Repeat,
-  RotateCcw,
   RotateCw,
   Shuffle,
   Sparkles,
@@ -42,7 +43,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
-import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
 import { pickJsonFile, pickSavePath } from "@/shared/tauri/pickers";
 import { useCueActions } from "../hooks/useCueActions";
@@ -61,21 +61,23 @@ import {
   groupEffects,
   importEffects,
   localizedText,
-  MAX_WINGS,
+  mergeEffectParams,
   parseEffectText,
   removeEffect,
+  sanitizeEffectParams,
   serializeEffects,
   type EffectDef,
   type EffectIssue,
   type EffectParams,
 } from "../lib/effectLibrary";
-import { periodMs } from "../lib/effects";
 import type { TrackCapabilities } from "../lib/fixtureProfile";
 import { allEffects, useEffectLibraryStore } from "../stores/useEffectLibraryStore";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { ApplyBadge } from "./ApplyBadge";
-import { CommitInput } from "./CommitInput";
+import { EffectParamsPanel } from "./EffectParamsPanel";
+import { HelpTip } from "./HelpTip";
 
 /** 特效定义里的图标名 → lucide 图标。 */
 const ICONS: Record<string, LucideIcon> = {
@@ -101,6 +103,8 @@ const ICONS: Record<string, LucideIcon> = {
   zoomIn: ZoomIn,
   aperture: Aperture,
   rotateCw: RotateCw,
+  flame: Flame,
+  chevronsRight: ChevronsRight,
 };
 
 /** 拖拽数据：属性特效库里的一个特效，带拖出时参数面板里的参数。 */
@@ -161,7 +165,9 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
   const load = useEffectLibraryStore((s) => s.load);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [paramsById, setParamsById] = useState<ReadonlyMap<string, EffectParams>>(new Map());
+  // 每个特效上次用的插入参数记在偏好里（下次打开软件仍在）
+  const stored = useEditorPrefsStore((s) => s.effectParams);
+  const remember = useEditorPrefsStore((s) => s.setEffectParams);
 
   useEffect(() => {
     if (useEffectLibraryStore.getState().status === "idle") void load();
@@ -170,14 +176,14 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
   const effects = useMemo(() => allEffects({ user }), [user]);
   const grouped = useMemo(() => groupEffects(effects), [effects]);
   const selected = effects.find((e) => e.id === selectedId) ?? null;
-  const paramsOf = (def: EffectDef) => paramsById.get(def.id) ?? defaultEffectParams(def);
-  const setParams = (def: EffectDef, patch: Partial<EffectParams> | null) =>
-    setParamsById((prev) => {
-      const next = new Map(prev);
-      if (patch === null) next.delete(def.id);
-      else next.set(def.id, { ...(prev.get(def.id) ?? defaultEffectParams(def)), ...patch });
-      return next;
-    });
+  const paramsOf = (def: EffectDef) => (stored[def.id] ? sanitizeEffectParams(def, stored[def.id]) : defaultEffectParams(def));
+  const setParams = (def: EffectDef, patch: Partial<EffectParams> | null) => {
+    if (patch === null) {
+      remember(def.id, null);
+      return;
+    }
+    remember(def.id, mergeEffectParams(def, paramsOf(def), patch));
+  };
   const groupLabel = (g: string) => ((EFFECT_GROUPS as readonly string[]).includes(g) ? t(`editor.effectLib.groups.${g}`) : g);
 
   const store = useEffectLibraryStore.getState;
@@ -251,7 +257,10 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
   return (
     <section data-tour="effects" aria-label={t("editor.attrEffects.title")} className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2 px-1">
-        <h3 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">{t("editor.attrEffects.title")}</h3>
+        <h3 className="flex items-center gap-1 text-xs font-medium tracking-wider text-muted-foreground uppercase">
+          {t("editor.attrEffects.title")}
+          <HelpTip topic="editor.help.effects" />
+        </h3>
         <div role="toolbar" aria-label={t("editor.effectLib.tools")} className="flex shrink-0 items-center">
           {tool(t("editor.effectLib.import"), <FileUp aria-hidden />, () => void onImport())}
           {tool(t("editor.effectLib.export"), <FileDown aria-hidden />, () => void onExport())}
@@ -310,6 +319,7 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
               <EffectParamsPanel
                 def={selected}
                 params={paramsOf(selected)}
+                showHint
                 onChange={(patch) => setParams(selected, patch)}
                 onReset={() => setParams(selected, null)}
                 onInsert={() => insertEffect(selected, paramsOf(selected), actions, t, i18n.language)}
@@ -424,154 +434,6 @@ function EffectItem({
         )}
       </ContextMenuContent>
     </ContextMenu>
-  );
-}
-
-/**
- * 插入前的参数面板：速度（拍 / 毫秒）、大小、相位扩散、分翼、方向、顺序。
- * 参数只影响接下来插入的片段；插入后可以在属性面板里继续改曲线和分布。
- */
-function EffectParamsPanel({
-  def,
-  params,
-  onChange,
-  onReset,
-  onInsert,
-}: {
-  def: EffectDef;
-  params: EffectParams;
-  onChange: (patch: Partial<EffectParams>) => void;
-  onReset: () => void;
-  onInsert: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const tempo = useProjectStore((s) => s.project.tempo);
-  const name = effectName(def, i18n.language);
-  const beats = params.period.kind === "beats";
-  const periodValue = params.period.kind === "beats" ? params.period.beats : params.period.ms;
-  // 大小统一按 0~100% 显示：幅度类 0.5 为满行程
-  const sizePct = def.scale === "fraction" ? Math.round(params.size * 200) : Math.round(params.size);
-  const num = (text: string) => {
-    const v = Number(text);
-    return Number.isFinite(v) ? v : null;
-  };
-  const switchUnit = (unit: "beats" | "ms") => {
-    if (unit === params.period.kind) return;
-    const ms = periodMs(params.period, tempo);
-    const beatMs = periodMs({ kind: "beats", beats: 1 }, tempo);
-    onChange({
-      period: unit === "ms" ? { kind: "ms", ms: Math.round(ms) } : { kind: "beats", beats: Math.max(0.25, Math.round((ms / beatMs) * 4) / 4) },
-    });
-  };
-  const row = "flex items-center gap-1.5";
-  const label = "w-14 shrink-0 text-xs text-muted-foreground";
-  const field = "num h-7 w-16 px-2 text-xs";
-
-  return (
-    <div role="group" aria-label={t("editor.effectLib.params", { name })} className="grid gap-2 rounded-md border border-primary/40 bg-surface-1 p-2">
-      <p className="text-xs text-muted-foreground">{localizedText(def.hint, i18n.language)}</p>
-      <div className={row}>
-        <span className={label}>{t("editor.effectLib.speed")}</span>
-        <CommitInput
-          className={field}
-          inputMode="numeric"
-          label={t("editor.effectLib.speedValue")}
-          value={periodValue}
-          onCommit={(v) => {
-            const n = num(v);
-            if (n === null || n <= 0) return;
-            onChange({ period: beats ? { kind: "beats", beats: Math.min(64, Math.max(0.125, n)) } : { kind: "ms", ms: Math.min(600_000, Math.max(33, Math.round(n))) } });
-          }}
-        />
-        <Segmented
-          size="xs"
-          ariaLabel={t("editor.effectLib.speedUnit")}
-          value={params.period.kind}
-          onChange={switchUnit}
-          options={[
-            { value: "beats", label: t("editor.effectLib.beats") },
-            { value: "ms", label: t("editor.effectLib.ms") },
-          ]}
-        />
-      </div>
-      <div className={row}>
-        <span className={label}>{t("editor.effectLib.size")}</span>
-        <CommitInput
-          className={field}
-          inputMode="numeric"
-          label={t("editor.effectLib.sizeValue")}
-          value={sizePct}
-          onCommit={(v) => {
-            const n = num(v);
-            if (n === null) return;
-            const pct = Math.min(100, Math.max(0, n));
-            onChange({ size: def.scale === "fraction" ? pct / 200 : pct });
-          }}
-        />
-        <span className="text-xs text-muted-foreground">%</span>
-      </div>
-      <div className={row}>
-        <span className={label}>{t("editor.effectLib.spread")}</span>
-        <CommitInput
-          className={field}
-          inputMode="numeric"
-          label={t("editor.effectLib.spreadValue")}
-          value={Math.round(params.spread * 100)}
-          onCommit={(v) => {
-            const n = num(v);
-            if (n !== null) onChange({ spread: Math.min(400, Math.max(0, n)) / 100 });
-          }}
-        />
-        <span className="text-xs text-muted-foreground">%</span>
-      </div>
-      <div className={row}>
-        <span className={label}>{t("editor.effectLib.wings")}</span>
-        <Segmented
-          size="xs"
-          ariaLabel={t("editor.effectLib.wings")}
-          value={String(params.wings)}
-          onChange={(v) => onChange({ wings: Number(v) })}
-          options={Array.from({ length: MAX_WINGS }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
-        />
-      </div>
-      <div className={row}>
-        <span className={label}>{t("editor.effectLib.direction")}</span>
-        <Segmented
-          size="xs"
-          ariaLabel={t("editor.effectLib.direction")}
-          value={params.direction > 0 ? "forward" : "reverse"}
-          onChange={(v) => onChange({ direction: v === "forward" ? 1 : -1 })}
-          options={[
-            { value: "forward", label: t("editor.effectLib.forward") },
-            { value: "reverse", label: t("editor.effectLib.reverse") },
-          ]}
-        />
-      </div>
-      <div className={row}>
-        <span className={label}>{t("editor.effectLib.order")}</span>
-        <Segmented
-          size="xs"
-          ariaLabel={t("editor.effectLib.order")}
-          value={params.order}
-          onChange={(v) => onChange({ order: v })}
-          options={[
-            { value: "members", label: t("editor.effectLib.orders.members") },
-            { value: "stageX", label: t("editor.effectLib.orders.stageX") },
-            { value: "stageY", label: t("editor.effectLib.orders.stageY") },
-          ]}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-2 pt-0.5">
-        <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={onReset}>
-          <RotateCcw aria-hidden />
-          {t("editor.effectLib.reset")}
-        </Button>
-        <Button type="button" size="sm" className="h-7 gap-1 px-3 text-xs" onClick={onInsert}>
-          <Plus aria-hidden />
-          {t("editor.effectLib.insertSelected")}
-        </Button>
-      </div>
-    </div>
   );
 }
 

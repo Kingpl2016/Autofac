@@ -89,7 +89,14 @@ describe("预览色块分区", () => {
       programSections: {},
       cueSections: {},
       programmerRecord: DEFAULT_EDITOR_PREFS.programmerRecord,
+      effectParams: {},
     });
+    // 记住的特效插入参数：只保留结构合法的条目
+    const good = { period: { kind: "beats", beats: 2 }, size: 50, spread: 1, wings: 1, direction: 1, order: "members" };
+    expect(
+      sanitizeEditorPrefs({ effectParams: { ok: good, "bad id!": good, broken: { size: "x" } } }, DEFAULT_EDITOR_PREFS).effectParams,
+    ).toEqual({ ok: good });
+    expect(sanitizeEditorPrefs({ effectParams: [1] }, DEFAULT_EDITOR_PREFS).effectParams).toEqual({});
     // 属性面板各页的分区展开状态：只保留本页认识的分区和布尔值；不是对象时保持当前值
     const current = { ...DEFAULT_EDITOR_PREFS, patchSections: { sync: true }, cueSections: { time: false } };
     expect(sanitizeEditorPrefs({ patchSections: { placement: false, sync: "yes", nope: true } }, current).patchSections).toEqual({ placement: false });

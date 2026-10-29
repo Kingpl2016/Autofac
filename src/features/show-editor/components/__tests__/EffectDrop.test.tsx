@@ -118,26 +118,20 @@ describe("灯具拖到时间线", () => {
 });
 
 describe("特效拖到时间线", () => {
-  it("经典特效：拖到轨道上生成特效片段", async () => {
-    renderView();
-    const classic = screen.getByRole("region", { name: "经典 RGB 特效" });
-    await dragToTimeline(within(classic).getByRole("button", { name: "彩虹" }));
-    await waitFor(() => expect(useProjectStore.getState().project.cues).toHaveLength(1));
-    expect(useProjectStore.getState().project.cues[0]).toMatchObject({ kind: "effect", effect: "rainbow" });
-  });
-
-  it("属性特效：拖到轨道上生成外观片段，名称为特效名", async () => {
+  it("属性特效：拖到轨道上生成外观片段，名称为特效名，带特效快照", async () => {
     renderView();
     const lib = await screen.findByRole("region", { name: "属性特效" });
     await dragToTimeline(within(lib).getByRole("button", { name: "双色交替" }));
     await waitFor(() => expect(useProjectStore.getState().project.cues).toHaveLength(1));
-    expect(useProjectStore.getState().project.cues[0]).toMatchObject({ kind: "look", label: "双色交替" });
+    const cue = useProjectStore.getState().project.cues[0];
+    expect(cue).toMatchObject({ kind: "look", label: "双色交替" });
+    expect(cue.kind === "look" && cue.fx?.def.id).toBe("twoColor");
   });
 
   it("放在轨道之外：给出提示，而不是没有反应", async () => {
     renderView();
-    const classic = screen.getByRole("region", { name: "经典 RGB 特效" });
-    const el = within(classic).getByRole("button", { name: "彩虹" });
+    const lib = await screen.findByRole("region", { name: "属性特效" });
+    const el = within(lib).getByRole("button", { name: "彩虹" });
     // 落在时间线区域里、但低于唯一一条轨道（第 2 行没有轨道）
     fireEvent.pointerDown(el, { button: 0, isPrimary: true, clientX: 30, clientY: 110, pointerId: 1 });
     await act(async () => {

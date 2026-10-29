@@ -22,7 +22,7 @@ vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 import { useAnnouncerStore } from "@/shared/stores/announcerStore";
 import { addEffectCue } from "../../lib/cueOps";
 import { addEffectDefCue, BUILTIN_EFFECTS, defaultEffectParams } from "../../lib/effectLibrary";
-import { EFFECT_PRESETS, presetOf } from "../../lib/effectPresets";
+import { presetOf } from "../../lib/effectPresets";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject, type EffectCue } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
@@ -62,7 +62,7 @@ beforeEach(async () => {
     }),
   );
   useEditorUiStore.setState({ selectedCueIds: [], selectedTrackId: null, playheadMs: 0, inspectorTab: "patch" });
-  useEditorPrefsStore.setState({ cueSections: {} });
+  useEditorPrefsStore.setState({ cueSections: {}, effectParams: {} });
   useAnnouncerStore.setState({ message: "", seq: 0 });
   backend.file = null;
   backend.writes = [];
@@ -79,45 +79,74 @@ describe("EffectsTab", () => {
       </DndContext>,
     );
 
-  const classic = () => screen.getByRole("region", { name: "经典 RGB 特效" });
-
-  it("列出 8 种经典特效与配置文件里的属性特效（按分组）", async () => {
+  it("列出配置文件里的属性特效（按分组），经典特效都有可配置的对应条目", async () => {
     renderTab();
     await waitFor(() => expect(useEffectLibraryStore.getState().status).toBe("ready"));
-    expect(within(classic()).getAllByRole("button")).toHaveLength(EFFECT_PRESETS.length);
-    for (const name of ["呼吸", "彩虹", "追逐", "擦除", "渐变", "脉冲", "闪烁", "频闪"]) {
-      expect(within(classic()).getByRole("button", { name })).toBeTruthy();
-    }
+    expect(screen.queryByRole("region", { name: "经典 RGB 特效" })).toBeNull();
     const lib = screen.getByRole("region", { name: "属性特效" });
     expect(lib.querySelectorAll("[data-effect-id]")).toHaveLength(BUILTIN_EFFECTS.length);
-    // 卡片上的色块与片段主体同一画法：彩虹为多色渐变，强度追逐（不改颜色）为斜纹
+    for (const id of ["breathe", "rainbow", "intensityChase", "wipe", "gradient", "pulse", "sparkle", "strobe"]) {
+      expect(lib.querySelector(`[data-effect-id="${id}"]`), id).not.toBeNull();
+    }
+    // 卡片上的色块与片段主体同一画法：彩虹为多色渐变，强度追逐（不改颜色）为斜纹；引用参数的颜色取默认值
     const swatchOf = (id: string) => lib.querySelector<HTMLElement>(`[data-effect-id="${id}"] [data-testid="effect-swatch"]`);
     expect(swatchOf("rainbow")?.style.background).toContain("linear-gradient");
     expect(swatchOf("intensityChase")?.hasAttribute("data-neutral")).toBe(true);
-    expect(within(classic()).getAllByTestId("effect-swatch")).toHaveLength(EFFECT_PRESETS.length);
+    expect(swatchOf("twoColor")?.style.background).toContain("linear-gradient");
+    expect(swatchOf("sparkle")?.style.background).toBe("rgb(255, 255, 255)");
     for (const name of ["位置特效", "强度特效", "颜色特效", "光束特效"]) expect(within(lib).getByRole("list", { name })).toBeTruthy();
   });
 
-  it("点击：加到所选轨道的播放头处，使用预设参数、选中并切到 Cue 属性页", () => {
-    renderTab();
+  it("可调参数：插入面板按特效声明生成控件，值写进新片段并记住", () => {
+    const { unmount } = renderTab();
     const trackId = project().tracks[1].id;
     act(() => {
       ui().selectTrack(trackId);
       ui().setPlayhead(3000);
     });
-    fireEvent.click(within(classic()).getByRole("button", { name: "彩虹" }));
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    fireEvent.click(within(lib).getByRole("button", { name: "星光闪烁" }));
+    const panel = within(lib).getByRole("group", { name: "星光闪烁 的参数" });
+    const density = within(panel).getByRole("textbox", { name: "星光闪烁 · 密度" });
+    fireEvent.change(density, { target: { value: "60" } });
+    fireEvent.blur(density);
+    expect(useEditorPrefsStore.getState().effectParams.sparkle?.values).toEqual({ density: 0.6 });
+    fireEvent.click(within(panel).getByRole("button", { name: "插入" }));
     const [cue] = project().cues;
-    expect(cue).toMatchObject({ kind: "effect", effect: "rainbow", trackId, startMs: 3000 });
-    expect(cue.endMs - cue.startMs).toBe(presetOf("rainbow").lengthMs);
-    expect(ui().selectedCueIds).toEqual([cue.id]);
+    expect(cue).toMatchObject({ kind: "look", trackId, startMs: 3000 });
+    expect(cue.kind === "look" && cue.look.intensity).toMatchObject({ curve: { shape: "random", duty: 0.6 } });
+    expect(cue.kind === "look" && cue.fx?.def.id).toBe("sparkle");
     expect(ui().inspectorTab).toBe("cue");
-    expect(useAnnouncerStore.getState().message).toBe("已添加特效");
+    // 重新打开：参数还在
+    unmount();
+    renderTab();
+    fireEvent.click(within(screen.getByRole("region", { name: "属性特效" })).getByRole("button", { name: "星光闪烁" }));
+    expect((screen.getByRole("textbox", { name: "星光闪烁 · 密度" }) as HTMLInputElement).value).toBe("60");
+    fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
+    expect(useEditorPrefsStore.getState().effectParams.sparkle).toBeUndefined();
   });
 
-  it("没有轨道时提示；放不下时提示", () => {
+  it("高级参数：成块、分组、打乱顺序、按节拍对齐", () => {
+    renderTab();
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    fireEvent.click(within(lib).getByRole("button", { name: "强度波浪" }));
+    const panel = within(lib).getByRole("group", { name: "强度波浪 的参数" });
+    fireEvent.click(within(panel).getByRole("button", { name: "高级" }));
+    const blocks = within(panel).getByRole("textbox", { name: "强度波浪 · 成块" });
+    fireEvent.change(blocks, { target: { value: "2" } });
+    fireEvent.blur(blocks);
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "强度波浪 · 打乱顺序" }));
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "强度波浪 · 按节拍对齐" }));
+    const stored = useEditorPrefsStore.getState().effectParams.intensityWave;
+    expect(stored).toMatchObject({ blocks: 2, sync: true });
+    expect(typeof stored?.shuffle).toBe("number");
+  });
+
+  it("没有轨道时提示", () => {
     useProjectStore.getState().load(createEmptyProject("empty"));
     renderTab();
-    fireEvent.click(within(classic()).getByRole("button", { name: "呼吸" }));
+    const lib = screen.getByRole("region", { name: "属性特效" });
+    fireEvent.doubleClick(within(lib).getByRole("button", { name: "呼吸" }));
     expect(useAnnouncerStore.getState().message).toContain("轨道");
   });
 
@@ -186,6 +215,70 @@ describe("属性特效库", () => {
     expect(within(lib).getByRole("alert").textContent).toContain("1 处问题");
   });
 });
+
+describe("特效片段：插入后改参数", () => {
+  const def = (id: string) => BUILTIN_EFFECTS.find((e) => e.id === id)!;
+  function setup(effect = "gradient") {
+    let id: string | null = null;
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        id = addEffectDefCue(d, d.tracks[0].id, 0, def(effect), defaultEffectParams(def(effect)), "流动渐变");
+      }),
+    );
+    act(() => ui().selectCues([id!]));
+    render(<CueInspector />);
+    const look = () => project().cues.find((c) => c.id === id) as Extract<ReturnType<typeof project>["cues"][number], { kind: "look" }>;
+    return { id: id!, look };
+  }
+
+  it("显示特效参数：改速度重新生成曲线，加颜色进入颜色序列；恢复默认", () => {
+    const { look } = setup();
+    const panel = screen.getByRole("group", { name: "流动渐变 的参数" });
+    const speed = within(panel).getByLabelText("一个周期的长度");
+    fireEvent.change(speed, { target: { value: "4000" } });
+    fireEvent.blur(speed);
+    expect(look().look.color).toMatchObject({ kind: "cycle", cycle: { period: { kind: "ms", ms: 4000 } } });
+    fireEvent.click(within(panel).getByRole("button", { name: "添加颜色" }));
+    const color = look().look.color;
+    expect(color?.kind === "cycle" && color.cycle.colors).toHaveLength(3);
+    expect(look().fx?.params.values?.colors).toHaveLength(3);
+    fireEvent.click(within(panel).getByRole("button", { name: "恢复默认" }));
+    expect(look().fx?.params).toEqual(defaultEffectParams(def("gradient")));
+  });
+
+  it("转为普通外观；手动改强度层也会转为普通外观并提示", () => {
+    const { look } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "转为普通外观" }));
+    expect(look().fx).toBeUndefined();
+    expect(screen.queryByRole("group", { name: "流动渐变 的参数" })).toBeNull();
+    act(() => useProjectStore.temporal.getState().undo());
+    expect(look().fx).toBeDefined();
+    setNumberIn(screen.getByRole("textbox", { name: "强度数值" }), "50");
+    expect(look().fx).toBeUndefined();
+    expect(useAnnouncerStore.getState().message).toContain("普通外观");
+  });
+
+  it("经典特效片段可以一键转换为可配置特效", () => {
+    let id = "";
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        id = addEffectCue(d, d.tracks[0].id, 0, presetOf("sparkle")) ?? "";
+      }),
+    );
+    act(() => ui().selectCues([id]));
+    render(<CueInspector />);
+    fireEvent.click(screen.getByRole("button", { name: "转换为可配置特效" }));
+    const cue = project().cues.find((c) => c.id === id);
+    expect(cue?.kind === "look" && cue.fx?.def.id).toBe("sparkle");
+    expect(useAnnouncerStore.getState().message).toBe("已转换 1 个特效");
+    expect(screen.getByRole("group", { name: "星光闪烁 的参数" })).toBeTruthy();
+  });
+});
+
+const setNumberIn = (input: HTMLElement, value: string) => {
+  fireEvent.change(input, { target: { value } });
+  fireEvent.blur(input);
+};
 
 describe("特效属性面板", () => {
   function setup(effect: Parameters<typeof presetOf>[0] = "strobe") {

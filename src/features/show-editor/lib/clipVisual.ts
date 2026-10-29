@@ -12,6 +12,7 @@ import {
   type Look,
   type Param,
   type Preset,
+  type Rgb,
   type Tempo,
 } from "./project";
 
@@ -196,20 +197,34 @@ export function clipFill(cue: Cue, presets: readonly Preset[], ctx: ClipFillCont
  * 属性特效在素材库卡片 / 拖动浮层上的色块：与放到时间线后的片段主体同一画法——
  * 固定颜色为纯色，颜色列表按顺序排开（“跳变”为硬边、“平滑”为渐变），没有颜色层为中性斜纹。
  *
+ * 引用可调参数的颜色取参数当前值（`values`）或声明里的默认值。
+ *
  * @param def 特效定义。
+ * @param values 可调参数的值（插入面板里的当前参数）；省略时用默认值。
  * @returns 填充。
  */
-export function effectDefSwatch(def: Pick<EffectDef, "look">): ClipFill {
+export function effectDefSwatch(def: Pick<EffectDef, "look" | "params">, values?: Readonly<Record<string, unknown>>): ClipFill {
   const c = def.look.color;
   if (!c) return { background: null, neutral: true };
-  if ("rgb" in c) return { background: cssColor(c.rgb), neutral: false };
-  if (c.colors.length === 0) return { background: null, neutral: true };
-  if (c.colors.length === 1) return { background: cssColor(c.colors[0]), neutral: false };
-  const n = c.colors.length;
+  const resolve = (v: unknown): unknown => {
+    if (typeof v !== "string" || !v.startsWith("$")) return v;
+    const id = v.slice(1);
+    return values?.[id] ?? def.params?.find((p) => p.id === id)?.default;
+  };
+  const isRgb = (v: unknown): v is Rgb => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
+  if ("rgb" in c) {
+    const rgb = resolve(c.rgb);
+    return isRgb(rgb) ? { background: cssColor(rgb), neutral: false } : { background: null, neutral: true };
+  }
+  const raw = resolve(c.colors);
+  const colors = Array.isArray(raw) ? raw.filter(isRgb) : [];
+  if (colors.length === 0) return { background: null, neutral: true };
+  if (colors.length === 1) return { background: cssColor(colors[0]), neutral: false };
+  const n = colors.length;
   const stops =
-    c.blend === "step"
-      ? c.colors.flatMap((rgb, i) => [`${cssColor(rgb)} ${pct((i / n) * 100)}`, `${cssColor(rgb)} ${pct(((i + 1) / n) * 100)}`])
-      : c.colors.map((rgb, i) => `${cssColor(rgb)} ${pct((i / (n - 1)) * 100)}`);
+    resolve(c.blend) === "step"
+      ? colors.flatMap((rgb, i) => [`${cssColor(rgb)} ${pct((i / n) * 100)}`, `${cssColor(rgb)} ${pct(((i + 1) / n) * 100)}`])
+      : colors.map((rgb, i) => `${cssColor(rgb)} ${pct((i / (n - 1)) * 100)}`);
   return { background: `linear-gradient(90deg, ${stops.join(", ")})`, neutral: false };
 }
 

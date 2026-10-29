@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
 import { DEFAULT_RECORD_PREFS, sanitizeRecordPrefs, type RecordPrefs } from "../lib/programmer";
 import { SWATCH_LABELS, type SwatchLabel, type SwatchSort } from "../lib/swatchGroups";
+import { effectParamsSchema, type EffectParams } from "../lib/effectDefSchema";
 
 /** 中间区域的视图：色块预览、舞台监视器、灯具表（色块为默认）。 */
 export const CENTER_VIEWS = ["swatches", "stage", "sheet"] as const;
@@ -102,13 +103,15 @@ export interface EditorPrefsData {
   programmerRecord: RecordPrefs;
   /** Cue 属性页各分区的展开状态（同名分区在各片段类型之间共用） */
   cueSections: SectionStates<"cue">;
+  /** 素材库里各属性特效上次用的插入参数（键为特效 `id`；用时再按特效规整） */
+  effectParams: Record<string, EffectParams>;
 }
 
 /** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
 export const INSPECTOR_SECTIONS = {
   patch: ["basic", "dmx", "placement", "sync", "groupsOf", "universes", "channels", "groups"],
   program: ["select", "intensity", "color", "attrs", "fan", "record"],
-  cue: ["color", "effect", "effectColors", "intensity", "layers", "spread", "clipboard", "scene", "fades", "time"],
+  cue: ["color", "effect", "effectColors", "fx", "intensity", "layers", "spread", "clipboard", "scene", "fades", "time"],
 } as const;
 
 /** 分区所在的页。 */
@@ -180,6 +183,13 @@ interface EditorPrefsState extends EditorPrefsData {
    * @param patch 要改的字段。
    */
   setFixtureAdd: (patch: Partial<FixtureAddPrefs>) => void;
+  /**
+   * 记住（或忘掉）某个属性特效的插入参数。
+   *
+   * @param id 特效 `id`。
+   * @param params 参数；`null` 为恢复默认。
+   */
+  setEffectParams: (id: string, params: EffectParams | null) => void;
   /**
    * 展开 / 收起输出设置的“高级”分区。
    *
@@ -259,7 +269,29 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   programSections: {},
   cueSections: {},
   programmerRecord: DEFAULT_RECORD_PREFS,
+  effectParams: {},
 };
+
+/** 最多记住多少个特效的插入参数。 */
+const MAX_EFFECT_PARAMS = 200;
+
+/**
+ * 规整记住的插入参数：只保留结构合法的条目（具体特效的可调参数在使用时再按特效规整）。
+ *
+ * @param raw 未知数据。
+ * @param fallback 兜底值（不是对象时用）。
+ * @returns 合法的参数表。
+ */
+export function sanitizeEffectParamsMap(raw: unknown, fallback: Record<string, EffectParams>): Record<string, EffectParams> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return fallback;
+  const out: Record<string, EffectParams> = {};
+  for (const [id, v] of Object.entries(raw).slice(0, MAX_EFFECT_PARAMS)) {
+    if (!/^[\w.-]{1,64}$/.test(id)) continue;
+    const parsed = effectParamsSchema.safeParse(v);
+    if (parsed.success) out[id] = parsed.data as EffectParams;
+  }
+  return out;
+}
 
 /**
  * 规整某一页的分区展开状态：只保留认识的分区、布尔值。
@@ -316,6 +348,7 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     programSections: sanitizeSections("program", r.programSections, current.programSections),
     cueSections: sanitizeSections("cue", r.cueSections, current.cueSections),
     programmerRecord: sanitizeRecordPrefs(r.programmerRecord, current.programmerRecord),
+    effectParams: sanitizeEffectParamsMap(r.effectParams, current.effectParams),
   };
 }
 
@@ -341,6 +374,13 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setRulerFormat: (rulerFormat) => set({ rulerFormat }),
       setProgrammerRecord: (patch) =>
         set((s) => ({ programmerRecord: sanitizeRecordPrefs({ ...s.programmerRecord, ...patch }, s.programmerRecord) })),
+      setEffectParams: (id, params) =>
+        set((s) => {
+          const next = { ...s.effectParams };
+          if (params === null) delete next[id];
+          else next[id] = structuredClone(params);
+          return { effectParams: next };
+        }),
       setSection: (scope, section, open) =>
         set((st) => {
           const field = SECTION_FIELDS[scope];
@@ -369,6 +409,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         programSections,
         cueSections,
         programmerRecord,
+        effectParams,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -387,6 +428,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         programSections,
         cueSections,
         programmerRecord,
+        effectParams,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },

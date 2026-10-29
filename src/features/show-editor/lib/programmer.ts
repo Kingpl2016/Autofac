@@ -556,6 +556,7 @@ export function updateCuesFromProgrammer(
       const source = membersOf(track).find(has);
       if (!source) continue;
       const look = structuredClone(values[source]);
+      delete cue.fx;
       if (mode === "replace") cue.look = look;
       else mergeLayers(cue.look, look);
       n += 1;

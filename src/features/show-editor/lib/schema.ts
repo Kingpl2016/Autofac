@@ -10,6 +10,7 @@ import {
   TRACK_HEIGHT_PX,
   type ShowProject,
 } from "./project";
+import { clipFxSchema } from "./effectDefSchema";
 import { prunePixelRefs, refExists } from "./fixtureRef";
 
 const finiteMs = z.number().int().min(0).max(24 * 3600 * 1000);
@@ -245,6 +246,7 @@ const lookClip = z.object({
   look,
   spread: spread.optional(),
   label: z.string().optional(),
+  fx: clipFxSchema.optional(),
 });
 
 const sceneClip = z.object({

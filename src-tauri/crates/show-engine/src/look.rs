@@ -390,7 +390,15 @@ fn sample_curve(c: &ValueCurve, ctx: &SampleCtx) -> f64 {
             }
         }
         WaveShape::Ramp => c.ease.map_or(progress, |e| e.apply(progress)),
-        WaveShape::Random => random_at(c.seed, ctx.index, step_of(x)),
+        WaveShape::Random => {
+            let r = random_at(c.seed, ctx.index, step_of(x));
+            // 带占空比时为“密度”：随机值低于它的周期点亮（有缓动时在过渡内衰减），其余熄灭（闪烁特效）
+            match c.duty {
+                None => r,
+                Some(d) if r < d.clamp(0.0, 1.0) => c.ease.map_or(1.0, |e| 1.0 - e.apply(transit(f, c.transition))),
+                Some(_) => 0.0,
+            }
+        }
         WaveShape::Noise => {
             let step = step_of(x);
             let a = random_at(c.seed, ctx.index, step);
@@ -1140,6 +1148,26 @@ mod tests {
         assert!((at(&noise, 249.999) - at(&noise, 250.001)).abs() < 0.01);
         let v = at(&noise, 400.0);
         assert!((0.0..=100.0).contains(&v));
+    }
+
+    #[test]
+    fn 随机带占空比_按密度点亮并可衰减() {
+        let density = |d: f64, ease: Option<Curve>| {
+            curve(WaveShape::Random, |c| {
+                c.cycles = 1000.0;
+                c.seed = Some(5);
+                c.duty = Some(d);
+                c.ease = ease;
+            })
+        };
+        let lit = |p: &NumParam| (0..1000).filter(|i| at(p, f64::from(*i) + 0.5) > 0.0).count();
+        let n = lit(&density(0.3, None));
+        assert!((220..380).contains(&n), "约 30% 的周期点亮：{n}");
+        assert_eq!(lit(&density(0.0, None)), 0);
+        assert_eq!(lit(&density(1.0, None)), 1000);
+        // 线性衰减：周期中点只剩一半
+        let decay = density(1.0, Some(Curve::Linear));
+        assert!(near(at(&decay, 0.5), 50.0));
     }
 
     #[test]

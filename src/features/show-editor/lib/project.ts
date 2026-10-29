@@ -1,4 +1,5 @@
 import type { FixtureModel } from "@/features/fixtures";
+import type { EffectDef, EffectParams } from "./effectDefSchema";
 
 /**
  * 节目工程（`ShowProject`）的数据模型。
@@ -290,6 +291,11 @@ export interface LookClip extends CueBase {
   spread?: Spread;
   /** 片段的名称（时间线上显示；Cue 模板 / 属性特效放下时写入，可在属性面板里改；不影响输出） */
   label?: string;
+  /**
+   * 特效快照：由属性特效生成的片段记住特效定义与参数，插入后仍可改参数（重新生成 `look` / `spread`）。
+   * 手动编辑外观层或分布时删除（片段变成普通外观）。只给编辑器用，引擎不读它。
+   */
+  fx?: { def: EffectDef; params: EffectParams };
 }
 
 /** 场景片段里一台灯具的外观。 */

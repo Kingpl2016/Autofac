@@ -22,12 +22,21 @@ const def = (id: string): EffectDef => {
   return d;
 };
 
-/** 解析 `linear-gradient(90deg, rgb(r g b) p%, …)`，取片段宽度 `x`% 处的颜色（同一位置两个色标为硬边）。 */
-function colorAt(css: string, x: number): Rgb {
+/**
+ * 解析 `linear-gradient(90deg, rgb(r g b) p%, …)`（或按周期重复的 `repeating-linear-gradient`），
+ * 取片段宽度 `x`% 处的颜色（同一位置两个色标为硬边）。
+ */
+function colorAt(css: string, xPct: number): Rgb {
   const stops = [...css.matchAll(/rgb\((\d+) (\d+) (\d+)\) (-?[\d.]+)%/g)].map((m) => ({
     rgb: [Number(m[1]), Number(m[2]), Number(m[3])] as Rgb,
     at: Number(m[4]),
   }));
+  let x = xPct;
+  if (css.startsWith("repeating-") && stops.length > 1) {
+    const [first, last] = [stops[0].at, stops[stops.length - 1].at];
+    const period = last - first;
+    if (period > 0) x = first + ((((x - first) % period) + period) % period);
+  }
   let i = 0;
   while (i + 1 < stops.length && stops[i + 1].at <= x) i += 1;
   const a = stops[i];
@@ -62,7 +71,7 @@ function output(p: ShowProject, tMs: number): Rgb {
 
 describe("片段主体填充与实际输出一致", () => {
   for (const id of ["rainbow", "twoColor", "colorChase"]) {
-    it(`属性特效 ${id}：颜色关键帧铺成渐变，各时刻与引擎输出相同`, () => {
+    it(`属性特效 ${id}：颜色序列铺成按周期重复的渐变，各时刻与引擎输出相同`, () => {
       const { p, cue } = withEffect(id);
       const fill = clipFill(cue, [], { tempo: p.tempo, members: 1, gamma: 1 });
       expect(fill.neutral).toBe(false);
