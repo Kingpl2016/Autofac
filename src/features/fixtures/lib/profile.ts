@@ -67,14 +67,19 @@ const BEAM: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
  *
  * @param model 模型；缺失时视为没有能力。
  * @param modeId 模式；省略时取默认模式。
+ * @param head 只看某个像素的通道（像素引用）；省略时看整灯的全部通道。
+ *   像素自己没有调光、但整灯有总调光时，像素也算能调亮度（亮度由总调光代管）。
  * @returns 类型与能力。
  */
-export function modelProfile(model: FixtureModel | undefined, modeId?: string): FixtureProfile {
-  const fns = new Set<ChannelFunction>((model ? (layoutOf(model, modeId) ?? []) : []).map((p) => p.function));
+export function modelProfile(model: FixtureModel | undefined, modeId?: string, head?: number): FixtureProfile {
+  const layout = model ? (layoutOf(model, modeId) ?? []) : [];
+  const own = head === undefined ? layout : layout.filter((p) => (p.head ?? 0) === head);
+  const fns = new Set<ChannelFunction>(own.map((p) => p.function));
   const caps = new Set<FixtureCapability>();
   const has = (...list: ChannelFunction[]) => list.some((f) => fns.has(f));
   const anyEmitter = [...fns].some(isEmitter);
-  if (anyEmitter || has("dimmer", "switch")) caps.add("intensity");
+  const masterDimmer = head !== undefined && layout.some((p) => (p.head ?? 0) === 0 && p.function === "dimmer");
+  if (anyEmitter || has("dimmer", "switch") || masterDimmer) caps.add("intensity");
   const mixing = has("red", "green", "blue") || has("cyan", "magenta", "yellow");
   if (mixing) caps.add("mixing");
   if (mixing || has("colorTemp") || (has("coolWhite") && has("warmWhite"))) caps.add("colorTemp");

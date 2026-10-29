@@ -5,6 +5,7 @@ import {
   type FixtureProfile,
   type FixtureType,
 } from "@/features/fixtures";
+import { parseRef } from "./fixtureRef";
 import { ATTR_KEYS, attrGroup, availableAttrs, type AttrInfo } from "./layers";
 import { trackFixtureIds } from "./ops";
 import type { AttrKey, Look, ShowProject, Track } from "./project";
@@ -25,6 +26,30 @@ export type { FixtureCapability, FixtureProfile, FixtureType };
  */
 export function fixtureProfile(model: FixtureModel | undefined, modeId?: string): FixtureProfile {
   return modelProfile(model, modeId);
+}
+
+/** 灯具引用解析出的模型、模式与像素号。 */
+interface ResolvedRef {
+  model: FixtureModel | undefined;
+  modeId: string | undefined;
+  /** 像素号；整灯为 `undefined` */
+  head: number | undefined;
+}
+
+/**
+ * 解析灯具引用（整灯或像素）。
+ *
+ * @returns 灯具不存在时为 `null`。
+ */
+function resolveRef(
+  project: Pick<ShowProject, "fixtures">,
+  models: ReadonlyMap<string, FixtureModel>,
+  ref: string,
+): ResolvedRef | null {
+  const { fixtureId, head } = parseRef(ref);
+  const f = project.fixtures.find((x) => x.id === fixtureId);
+  if (!f) return null;
+  return { model: models.get(f.modelId), modeId: f.modeId, head: head ?? undefined };
 }
 
 /** 一条轨道（其上全部灯具）的能力汇总。 */
@@ -57,10 +82,10 @@ export function fixturesCapabilities(
   const typeCounts = new Map<FixtureType, number>();
   let total = 0;
   for (const id of fixtureIds) {
-    const f = project.fixtures.find((x) => x.id === id);
-    if (!f) continue;
+    const r = resolveRef(project, models, id);
+    if (!r) continue;
     total += 1;
-    const p = fixtureProfile(models.get(f.modelId), f.modeId);
+    const p = modelProfile(r.model, r.modeId, r.head);
     for (const c of p.caps) counts.set(c, (counts.get(c) ?? 0) + 1);
     typeCounts.set(p.type, (typeCounts.get(p.type) ?? 0) + 1);
   }
@@ -128,9 +153,9 @@ export function layerSupport(
   const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
   const attrs = new Map<AttrKey, number>();
   for (const id of fixtureIds) {
-    const f = project.fixtures.find((x) => x.id === id);
-    if (!f) continue;
-    for (const a of availableAttrs(models.get(f.modelId), f.modeId)) attrs.set(a.key, (attrs.get(a.key) ?? 0) + 1);
+    const r = resolveRef(project, models, id);
+    if (!r) continue;
+    for (const a of availableAttrs(r.model, r.modeId, r.head)) attrs.set(a.key, (attrs.get(a.key) ?? 0) + 1);
   }
   return { caps: fixturesCapabilities(project, fixtureIds), attrs };
 }
@@ -187,9 +212,9 @@ export function availableAttrsOf(
   const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
   const byKey = new Map<AttrKey, AttrInfo & { supported: number }>();
   for (const id of fixtureIds) {
-    const f = project.fixtures.find((x) => x.id === id);
-    if (!f) continue;
-    for (const a of availableAttrs(models.get(f.modelId), f.modeId)) {
+    const r = resolveRef(project, models, id);
+    if (!r) continue;
+    for (const a of availableAttrs(r.model, r.modeId, r.head)) {
       const prev = byKey.get(a.key);
       if (prev) prev.supported += 1;
       else byKey.set(a.key, { ...a, supported: 1 });

@@ -9,6 +9,7 @@ import {
   PROJECT_VERSION,
   type ShowProject,
 } from "./project";
+import { prunePixelRefs, refExists } from "./fixtureRef";
 
 const finiteMs = z.number().int().min(0).max(24 * 3600 * 1000);
 const byte = z.number().int().min(0).max(255);
@@ -447,6 +448,8 @@ const MIGRATIONS: Record<number, (raw: RawProject) => RawProject> = {
     }
     return { ...raw, version: 3, mediaTracks, mediaClips };
   },
+  // v3 → v4：新增像素引用（`灯具id#像素号`），结构不变。
+  3: (raw) => ({ ...raw, version: 4 }),
 };
 
 /** 迁移结果。 */
@@ -538,14 +541,16 @@ export function projectIntegrityIssues(project: ShowProject): IntegrityIssue[] {
       issues.push({ code: "missingMode", id: f.id });
     }
   }
+  // 灯具引用：整灯 id 或像素引用（`灯具id#像素号`，像素号须在灯具当前模式里存在）
+  const known = (ref: string) => fixtures.has(ref) || refExists(project, ref);
   for (const g of project.groups) {
     for (const id of g.fixtureIds) {
-      if (!fixtures.has(id)) issues.push({ code: "missingFixture", id: g.id });
+      if (!known(id)) issues.push({ code: "missingFixture", id: g.id });
     }
   }
   for (const t of project.tracks) {
     const target = t.target;
-    if (target.kind === "fixture" && !fixtures.has(target.id)) issues.push({ code: "missingFixture", id: t.id });
+    if (target.kind === "fixture" && !known(target.id)) issues.push({ code: "missingFixture", id: t.id });
     if (target.kind === "group" && !groups.has(target.id)) issues.push({ code: "missingGroup", id: t.id });
   }
   const checkPreset = (presetId: string | undefined, owner: string) => {
@@ -563,7 +568,7 @@ export function projectIntegrityIssues(project: ShowProject): IntegrityIssue[] {
     if (c.kind === "look") checkPreset(c.look.presetId, c.id);
     if (c.kind === "scene") {
       for (const e of c.entries) {
-        if (!fixtures.has(e.fixtureId)) issues.push({ code: "missingFixture", id: c.id });
+        if (!known(e.fixtureId)) issues.push({ code: "missingFixture", id: c.id });
         checkPreset(e.look.presetId, c.id);
       }
     }
@@ -633,6 +638,8 @@ export function parseProject(text: string): ParseResult {
     };
   }
   const project = parsed.data as ShowProject;
+  // 兜底：模式或模型变化后失效的像素引用直接清理，不让整个工程打不开
+  prunePixelRefs(project);
   const issues = projectIntegrityIssues(project);
   if (issues.length > 0) {
     return { ok: false, reason: "integrity", detail: `${issues[0].code}: ${issues[0].id}` };

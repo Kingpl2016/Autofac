@@ -1,9 +1,11 @@
 import type { FixtureModel } from "@/features/fixtures";
 import { MAX_ADD_COUNT, applyAddPlan, planAddFixtures } from "./addPlan";
 import { newId } from "./ids";
+import { baseOf, isPixelRef, refExists, refName } from "./fixtureRef";
 import {
   DMX_CHANNELS,
   MAX_UNIVERSE,
+  MIN_GROUP_SIZE,
   type FixtureGroup,
   type MediaRef,
   type OutputSettings,
@@ -20,12 +22,11 @@ import { snapToFrame } from "./time";
  *
  * 所有函数都直接修改传入的 `draft`，调用方在 immer 的 `produce` / store 的 `set` 里使用，
  * 因此每次调用都会产生一个新的不可变快照，撤销重做按快照回退。
+ *
+ * 分组成员、灯具轨道与场景条目里的“灯具 id”是灯具引用：整灯 id 或像素引用 `灯具id#像素号`（见 `fixtureRef.ts`）。
  */
 
-export { MAX_ADD_COUNT };
-
-/** 分组的最少成员数。 */
-export const MIN_GROUP_SIZE = 2;
+export { MAX_ADD_COUNT, MIN_GROUP_SIZE };
 
 /**
  * 轨道显示名：取自它绑定的灯具或分组。
@@ -38,7 +39,7 @@ export function trackName(project: Pick<ShowProject, "fixtures" | "groups">, tra
   const target = track.target;
   switch (target.kind) {
     case "fixture":
-      return project.fixtures.find((f) => f.id === target.id)?.name ?? "";
+      return refName(project, target.id);
     case "group":
       return project.groups.find((g) => g.id === target.id)?.name ?? "";
     case "scene":
@@ -51,13 +52,18 @@ export function trackName(project: Pick<ShowProject, "fixtures" | "groups">, tra
  *
  * @param project 工程（只读）。
  * @param track 轨道。
- * @returns 灯具实例 id 列表（只含工程里存在的灯具）。
+ * @returns 灯具引用列表（整灯 id 或像素引用；只含工程里存在的灯具 / 像素）。
  */
 export function trackFixtureIds(
-  project: Pick<ShowProject, "fixtures" | "groups" | "cues">,
+  project: Pick<ShowProject, "fixtures" | "groups" | "cues"> & Partial<Pick<ShowProject, "fixtureModels">>,
   track: Track,
 ): string[] {
-  const known = new Set(project.fixtures.map((f) => f.id));
+  const ids0 = new Set(project.fixtures.map((f) => f.id));
+  // 有模型快照时核对像素号；没有时只要灯具存在即可
+  const known = {
+    has: (ref: string) =>
+      project.fixtureModels ? refExists({ fixtures: project.fixtures, fixtureModels: project.fixtureModels }, ref) : ids0.has(baseOf(ref)),
+  };
   const target = track.target;
   let ids: string[];
   switch (target.kind) {
@@ -137,12 +143,14 @@ export function removeGroup(draft: ShowProject, groupId: string): void {
  * @param ids 要删除的灯具 id。
  */
 export function removeFixtures(draft: ShowProject, ids: readonly string[]): void {
-  const gone = new Set(ids);
-  for (const t of draft.tracks.filter((x) => x.target.kind === "fixture" && gone.has(x.target.id))) {
+  // 只删除整灯（像素引用不是可删除的灯具，忽略）；按所属灯具匹配，像素轨道、像素分组成员与场景条目一并清理
+  const gone = new Set(ids.filter((id) => !isPixelRef(id)));
+  for (const t of draft.tracks.filter((x) => x.target.kind === "fixture" && gone.has(baseOf(x.target.id)))) {
     removeTrack(draft, t.id);
   }
   draft.fixtures = draft.fixtures.filter((f) => !gone.has(f.id));
-  for (const g of draft.groups) g.fixtureIds = g.fixtureIds.filter((id) => !gone.has(id));
+  for (const g of draft.groups) g.fixtureIds = g.fixtureIds.filter((id) => !gone.has(baseOf(id)));
+  for (const c of draft.cues) if (c.kind === "scene") c.entries = c.entries.filter((e) => !gone.has(baseOf(e.fixtureId)));
   // 分组的不变量：至少 2 个成员，否则分组及其轨道一并删除
   for (const g of draft.groups.filter((x) => x.fixtureIds.length < MIN_GROUP_SIZE)) {
     removeGroup(draft, g.id);
@@ -188,7 +196,7 @@ export function setFixtureAddress(
  *
  * @param draft 工程草稿。
  * @param name 分组名（界面传入本地化后的默认名）；为空时退化为 `G<序号>`。
- * @param fixtureIds 成员灯具 id（按给定顺序，忽略不存在的和重复的）。
+ * @param fixtureIds 成员灯具引用（整灯 id 或像素引用；按给定顺序，忽略不存在的和重复的）。
  * @returns 新分组的 id；有效成员不足 2 个时不创建并返回 `null`。
  */
 export function createGroup(
@@ -196,8 +204,7 @@ export function createGroup(
   name: string,
   fixtureIds: readonly string[],
 ): string | null {
-  const valid = new Set(draft.fixtures.map((f) => f.id));
-  const members = [...new Set(fixtureIds)].filter((id) => valid.has(id));
+  const members = [...new Set(fixtureIds)].filter((id) => refExists(draft, id));
   if (members.length < MIN_GROUP_SIZE) return null;
   const group: FixtureGroup = {
     id: newId(),

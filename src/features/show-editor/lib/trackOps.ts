@@ -1,3 +1,4 @@
+import { isPixelRef } from "./fixtureRef";
 import { removeFixtures, removeGroup } from "./ops";
 import type { ShowProject } from "./project";
 
@@ -51,10 +52,12 @@ export function removeTracks(d: ShowProject, trackIds: readonly string[], withMe
   const picked = d.tracks.filter((t) => wanted.has(t.id));
   const fixtureIds = new Set<string>();
   const groupIds = new Set<string>();
+  // 场景轨道与像素轨道只删轨道本身（像素不是可删除的灯具）
   const sceneTracks = new Set<string>();
   for (const t of picked) {
     const target = t.target;
-    if (target.kind === "fixture") fixtureIds.add(target.id);
+    if (target.kind === "fixture" && isPixelRef(target.id)) sceneTracks.add(t.id);
+    else if (target.kind === "fixture") fixtureIds.add(target.id);
     else if (target.kind === "group") {
       groupIds.add(target.id);
       if (withMembers) for (const id of d.groups.find((g) => g.id === target.id)?.fixtureIds ?? []) fixtureIds.add(id);

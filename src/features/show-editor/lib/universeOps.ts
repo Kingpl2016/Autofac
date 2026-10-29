@@ -1,5 +1,6 @@
 import type { Device } from "@/shared/domain/device";
 import { isUnspecifiedIpv4 } from "@/shared/lib/ip";
+import { prunePixelRefs } from "./fixtureRef";
 import { newId } from "./ids";
 import { footprintOf, sequentialAddresses, usedUniverses } from "./patch";
 import {
@@ -49,6 +50,8 @@ export function setFixtureMode(draft: ShowProject, fixtureId: string, modeId: st
   const model = draft.fixtureModels.find((m) => m.id === fixture.modelId);
   if (modeId && model?.modes?.some((m) => m.id === modeId)) fixture.modeId = modeId;
   else delete fixture.modeId;
+  // 新模式的像素可能更少：清理失效的像素引用（同一次撤销步骤）
+  prunePixelRefs(draft);
 }
 
 /** 把地址夹回合法范围。 */

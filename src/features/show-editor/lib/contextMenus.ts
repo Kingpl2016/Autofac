@@ -1,5 +1,6 @@
 import type { ContextTarget } from "../stores/useEditorUiStore";
 import { fixturesOfTracks } from "./fixtureBatch";
+import { isPixelRef } from "./fixtureRef";
 import { templateFromCue } from "./templateOps";
 import type { ShowProject } from "./project";
 
@@ -146,8 +147,16 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
       if (!track) return [];
       const many = ctx.selectedTrackIds.includes(track.id) && ctx.selectedTrackIds.length > 1;
       const count = many ? ctx.selectedTrackIds.length : 1;
+      // 像素轨道：删除的是轨道本身（像素不是可删除的灯具）
+      const pixelTrack = track.target.kind === "fixture" && isPixelRef(track.target.id);
       const deleteKey =
-        many ? "deleteTracks" : track.target.kind === "fixture" ? "deleteFixture" : track.target.kind === "group" ? "deleteGroup" : "deleteScene";
+        many || pixelTrack
+          ? "deleteTracks"
+          : track.target.kind === "fixture"
+            ? "deleteFixture"
+            : track.target.kind === "group"
+              ? "deleteGroup"
+              : "deleteScene";
       // 多台灯具的批量操作：右键的是灯具轨道时可用；选中的轨道里有两台以上灯具时可编组 / 同步
       const fixtureCount = many ? fixturesOfTracks(project, ctx.selectedTrackIds).length : 0;
       const batch: MenuEntry[] =

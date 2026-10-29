@@ -138,16 +138,19 @@ impl CompiledShow {
                     CompiledCue::Look { base, members, .. } => {
                         if t_ms < base.end_ms {
                             let count = members.len() as u32;
-                            for (pos, &fi) in members.iter().enumerate() {
-                                out.events.push(LayerEvent {
-                                    top: track.on_top,
-                                    start: base.start_ms,
-                                    track: ti as u32,
-                                    cue: ci,
-                                    fixture: fi as u32,
-                                    slot: pos as u32,
-                                    count,
-                                });
+                            // 同一成员（整灯与它的像素）共用分布位置
+                            for (pos, unit) in members.iter().enumerate() {
+                                for &fi in unit {
+                                    out.events.push(LayerEvent {
+                                        top: track.on_top,
+                                        start: base.start_ms,
+                                        track: ti as u32,
+                                        cue: ci,
+                                        fixture: fi as u32,
+                                        slot: pos as u32,
+                                        count,
+                                    });
+                                }
                             }
                         }
                         continue;
@@ -179,7 +182,7 @@ impl CompiledShow {
                         let rgb = linear(c.rgb.map(|v| f64::from(v) / 255.0));
                         let request = ColorRequest::Rgb { rgb, white: WhiteStrategy::Preserve };
                         let level = apply_gamma(level, g);
-                        for &fi in &track.fixtures {
+                        for &fi in track.units.iter().flatten() {
                             let mixed = self.fixtures[fi].mixer.mix(&request, level);
                             merge_max(&mut out.acc[fi], &mixed);
                         }
@@ -188,13 +191,15 @@ impl CompiledShow {
                         let (lo, hi) = (e.range[0].min(e.range[1]), e.range[0].max(e.range[1]));
                         let (lo, hi) = (lo.clamp(0.0, 100.0) / 100.0, hi.clamp(0.0, 100.0) / 100.0);
                         let elapsed = t_ms - e.base.start_ms;
-                        let count = track.fixtures.len();
-                        for (index, &fi) in track.fixtures.iter().enumerate() {
+                        let count = track.units.len();
+                        for (index, unit) in track.units.iter().enumerate() {
                             let s = effects::sample(e, self.tempo, elapsed, index, count);
                             let intensity = lo + (hi - lo) * s.modulation;
                             let request = ColorRequest::Rgb { rgb: linear(s.rgb), white: WhiteStrategy::Preserve };
-                            let mixed = self.fixtures[fi].mixer.mix(&request, apply_gamma(level * intensity, g));
-                            merge_max(&mut out.acc[fi], &mixed);
+                            for &fi in unit {
+                                let mixed = self.fixtures[fi].mixer.mix(&request, apply_gamma(level * intensity, g));
+                                merge_max(&mut out.acc[fi], &mixed);
+                            }
                         }
                     }
                     // 外观 / 场景片段已在上面转成分层贡献
@@ -203,7 +208,28 @@ impl CompiledShow {
             }
         }
         self.apply_layers(t_ms, out);
+        self.couple_pixels(out);
         self.write_driven(out);
+    }
+
+    /// 像素亮度耦合：整灯有总调光、像素只有发光体时，总调光取整灯与各像素级别的最大值，
+    /// 像素发光体按“像素级别 ÷ 总调光”缩放，亮度不重复计算。
+    ///
+    /// 整灯引用时整灯与像素级别相同，结果与不拆分像素时一致；单独控制某个像素时其余像素保持暗。
+    fn couple_pixels(&self, out: &mut FrameSet) {
+        for (body, pixels) in &self.couplings {
+            let master = pixels.iter().fold(out.acc[*body][DIM], |m, &p| m.max(out.acc[p][DIM]));
+            out.acc[*body][DIM] = master;
+            for &p in pixels {
+                let acc = &mut out.acc[p];
+                let scale = if master > 0.0 { (acc[DIM] / master).clamp(0.0, 1.0) } else { 0.0 };
+                for v in &mut acc[..EMITTERS] {
+                    *v *= scale;
+                }
+                // 像素的 DIM 分量没有通道；记下总调光，使预览色 = 发光体 × 缩放 × 总调光 = 发光体 × 像素级别
+                acc[DIM] = master;
+            }
+        }
     }
 
     /// 按片段起点（同起点按轨道、片段顺序）依次应用分层贡献，置顶层轨道的贡献排在最后：
@@ -319,8 +345,12 @@ impl CompiledShow {
             return false;
         };
         let request = ColorRequest::Rgb { rgb: [1.0; 3], white: WhiteStrategy::Preserve };
-        let mixed = self.fixtures[fi].mixer.mix(&request, 1.0);
-        merge_max(&mut out.acc[fi], &mixed);
+        // 整灯连同它的全部像素一起点亮
+        for i in std::iter::once(fi).chain(self.fixtures[fi].pixels.iter().copied()) {
+            let mixed = self.fixtures[i].mixer.mix(&request, 1.0);
+            merge_max(&mut out.acc[i], &mixed);
+        }
+        self.couple_pixels(out);
         self.write_driven(out);
         true
     }
@@ -350,7 +380,8 @@ impl CompiledShow {
     /// `(灯具实例编号, [r, g, b])`，顺序与编译后的灯具顺序一致。
     #[must_use]
     pub fn preview_colors<'a>(&'a self, out: &FrameSet) -> Vec<(&'a str, [u8; 3])> {
-        self.fixtures
+        let linear: Vec<[f64; 3]> = self
+            .fixtures
             .iter()
             .zip(&out.acc)
             .zip(&out.attrs)
@@ -363,8 +394,29 @@ impl CompiledShow {
                         *c *= s;
                     }
                 }
-                let rgb = rgb.map(|v| (encode_gamma(v, self.gamma) * 255.0).round() as u8);
-                (f.id.as_str(), rgb)
+                rgb
+            })
+            .collect();
+        self.fixtures
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                // 拆成像素的整灯：取各像素（以及整灯自己的发光体）的平均色
+                let rgb = if f.pixels.is_empty() {
+                    linear[i]
+                } else {
+                    let own = f.mixer.has_emitters().then_some(i);
+                    let parts: Vec<usize> = own.into_iter().chain(f.pixels.iter().copied()).collect();
+                    let n = parts.len() as f64;
+                    let mut sum = [0.0; 3];
+                    for p in parts {
+                        for (s, v) in sum.iter_mut().zip(linear[p]) {
+                            *s += v;
+                        }
+                    }
+                    sum.map(|v| v / n)
+                };
+                (f.id.as_str(), rgb.map(|v| (encode_gamma(v, self.gamma) * 255.0).round() as u8))
             })
             .collect()
     }
@@ -955,6 +1007,92 @@ mod tests {
         let d = frame_at(&set, 0);
         // 蓝 → M、C 满；但 C 显式 0.5、色轮显式 0；Y 由颜色派生为满
         assert_eq!(&d[1..5], &[128, 255, 0, 0]);
+    }
+
+    /// 一条 2 像素灯条（总调光 1；像素 1 RGB 2~4；像素 2 RGB 5~7），`tracks`、`groups` 与 `cues` 为 JSON 片段。
+    fn bar_project(tracks: &str, groups: &str, cues: &str) -> ShowProject {
+        let ch = |name: &str, f: &str, c: u16, h: u16| {
+            format!(r#"{{"name":"{name}","code":"{name}","function":"{f}","channel":{c},"width":1,"bigEndian":true,"defaultValue":0,"head":{h}}}"#)
+        };
+        let props = [
+            ch("D", "dimmer", 1, 0),
+            ch("R1", "red", 2, 1),
+            ch("G1", "green", 3, 1),
+            ch("B1", "blue", 4, 1),
+            ch("R2", "red", 5, 2),
+            ch("G2", "green", 6, 2),
+            ch("B2", "blue", 7, 2),
+        ]
+        .join(",");
+        let json = format!(
+            r#"{{"durationMs":10000,"fixtureModels":[{{"id":"bar","name":"bar","matrix":{{"cols":2,"rows":1}},"properties":[{props}]}}],
+               "fixtures":[{{"id":"f","modelId":"bar","universe":0,"address":1,"stage":{{"x":0,"y":0}}}}],
+               "groups":[{groups}],"tracks":[{tracks}],"cues":[{cues}],"output":{{"gamma":1}}}}"#
+        );
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("工程 JSON 应合法：{e}\n{json}"))
+    }
+
+    fn look_json(id: &str, track: &str, start: i64, look: &str) -> String {
+        format!(
+            r#"{{"kind":"look","id":"{id}","trackId":"{track}","startMs":{start},"endMs":5000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","look":{look}}}"#
+        )
+    }
+
+    const ORANGE_HALF: &str =
+        r#"{"intensity":{"kind":"value","value":50},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,128,0]}}}"#;
+
+    #[test]
+    fn 整灯引用时与不拆分像素的输出一致() {
+        let p = bar_project(r#"{"id":"t","target":{"kind":"fixture","id":"f"}}"#, "", &look_json("c", "t", 0, ORANGE_HALF));
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(100, &mut set);
+        // 总调光 50%，两个像素都是满色橙色（与拆分前“像素镜像 + 总调光”逐字节相同）
+        assert_eq!(&frame_at(&set, 0)[0..7], &[128, 255, 128, 0, 255, 128, 0]);
+        let preview: Vec<(&str, [u8; 3])> = c.preview_colors(&set);
+        assert_eq!(preview[0], ("f", [128, 64, 0]), "整灯预览为像素平均色 × 总调光");
+        assert_eq!(preview[2], ("f#2", [128, 64, 0]));
+        // 定位：整灯连同像素全亮
+        assert!(c.locate_into("f", &mut set));
+        assert_eq!(&frame_at(&set, 0)[0..7], &[255; 7]);
+    }
+
+    #[test]
+    fn 像素轨道只影响该像素_与整灯片段按_htp_ltp_合成_亮度不重复() {
+        let tracks = r#"{"id":"t","target":{"kind":"fixture","id":"f"}},{"id":"p1","target":{"kind":"fixture","id":"f#1"}}"#;
+        let red_full = r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,0,0]}}}"#;
+        // 只有像素 1 的片段
+        let p = bar_project(tracks, "", &look_json("a", "p1", 0, red_full));
+        let c = compile(&p);
+        let mut set = c.new_frames();
+        c.evaluate_into(100, &mut set);
+        assert_eq!(&frame_at(&set, 0)[0..7], &[255, 255, 0, 0, 0, 0, 0]);
+
+        // 整灯 50% 白 + 像素 1 后起的 100% 红：像素 1 红满、像素 2 白半亮，总调光取最大值
+        let white_half = r#"{"intensity":{"kind":"value","value":50},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,255,255]}}}"#;
+        let cues = format!("{},{}", look_json("w", "t", 0, white_half), look_json("r", "p1", 10, red_full));
+        let p = bar_project(tracks, "", &cues);
+        let c = compile(&p);
+        c.evaluate_into(100, &mut set);
+        assert_eq!(&frame_at(&set, 0)[0..7], &[255, 255, 0, 0, 128, 128, 128]);
+    }
+
+    #[test]
+    fn 像素组成分组时分布按像素铺开() {
+        let groups = r#"{"id":"g","fixtureIds":["f#1","f#2"]}"#;
+        let tracks = r#"{"id":"t","target":{"kind":"group","id":"g"}}"#;
+        // 强度分布 0% → 100%：像素 1 暗、像素 2 满
+        let look = r#"{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[0,0,255]}}}"#;
+        let cue = format!(
+            r#"{{"kind":"look","id":"c","trackId":"t","startMs":0,"endMs":5000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear","look":{look},
+                "spread":{{"values":{{"intensity":{{"from":0,"to":100}}}}}}}}"#
+        );
+        let p = bar_project(tracks, groups, &cue);
+        let c = compile(&p);
+        assert_eq!(c.tracks[0].units, vec![vec![1], vec![2]]);
+        let mut set = c.new_frames();
+        c.evaluate_into(100, &mut set);
+        assert_eq!(&frame_at(&set, 0)[0..7], &[255, 0, 0, 0, 0, 0, 255]);
     }
 
     /// 调光 + 快门（0~9 关光、10~249 频闪、250~255 开光）的摇头灯，一条外观片段写入 `look`。

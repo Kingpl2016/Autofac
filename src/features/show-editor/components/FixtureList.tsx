@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Crosshair, Search, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, Crosshair, Search, X } from "lucide-react";
 
 import { FixtureTypeIcon, modelType, type FixtureModel, type FixtureType } from "@/features/fixtures";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
+import { headsOf, refOf } from "../lib/fixtureRef";
 import { hasProblem, type PatchStatus } from "../lib/patch";
 import type { FixtureInstance } from "../lib/project";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -17,7 +18,7 @@ interface FixtureListProps {
   fixtures: readonly FixtureInstance[];
   models: readonly FixtureModel[];
   status: ReadonlyMap<string, PatchStatus>;
-  /** 当前选中的灯具（已按工程过滤） */
+  /** 当前选中的灯具与像素引用（已按工程过滤） */
   selected: readonly string[];
 }
 
@@ -25,7 +26,8 @@ interface FixtureListProps {
  * “灯具与 Patch”的灯具列表（grandMA3 Patch 式的紧凑行）：类型图标、名称、型号、Universe.通道范围、状态。
  *
  * - 单击单选，Ctrl / ⌘ 追加或取消，Shift 从上次点选的灯具连选；
- * - 键盘：↑ / ↓ 移动（Shift 扩展选择），空格切换选中，Ctrl+A 全选可见的灯具，Esc 取消选择；
+ * - 多头 / 像素灯可以展开出像素行，像素和灯具一样可以选中（选中的是像素引用 `灯具id#n`）；
+ * - 键盘：↑ / ↓ 移动（Shift 扩展选择），→ 展开像素、← 收起，空格切换选中，Ctrl+A 全选可见的灯具，Esc 取消选择；
  * - 悬停与舞台、Universe 视图共享高亮；
  * - 收到“在 Patch 中定位”的请求时滚动到第一台（被搜索 / 筛选挡住时先清掉筛选）。
  */
@@ -61,7 +63,28 @@ export function FixtureList({ fixtures, models, status, selected }: FixtureListP
   );
   const problems = useMemo(() => fixtures.filter((f) => hasProblem(status.get(f.id))).length, [fixtures, status]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const allSelected = fixtures.length > 0 && selected.length === fixtures.length;
+  const allSelected = fixtures.length > 0 && fixtures.every((f) => selectedSet.has(f.id));
+  // 多头 / 像素灯可以展开出像素行（像素引用 `灯具id#n`），像素可以单独选中、建组、建轨道
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const headsByFixture = useMemo(
+    () => new Map(fixtures.map((f) => [f.id, headsOf(modelById.get(f.modelId), f.modeId)])),
+    [fixtures, modelById],
+  );
+  const rows = useMemo(
+    () =>
+      visible.flatMap((f) => [
+        { id: f.id, fixture: f, head: null as number | null },
+        ...(expanded.has(f.id) ? (headsByFixture.get(f.id) ?? []).map((h) => ({ id: refOf(f.id, h), fixture: f, head: h as number | null })) : []),
+      ]),
+    [visible, expanded, headsByFixture],
+  );
+  const toggleExpanded = (id: string, open?: boolean) =>
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (open ?? !next.has(id)) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   // “在 Patch 中定位”：收到新请求时（渲染阶段）把目标设为当前项，被搜索 / 筛选挡住时清掉筛选；
   // 渲染出来之后（effect）再滚动到它并消费掉请求
@@ -96,7 +119,7 @@ export function FixtureList({ fixtures, models, status, selected }: FixtureListP
       return;
     }
     if (mode === "range" && anchor.current) {
-      const ids = visible.map((f) => f.id);
+      const ids = rows.map((r) => r.id);
       const a = ids.indexOf(anchor.current);
       const b = ids.indexOf(id);
       if (a >= 0 && b >= 0) {
@@ -111,17 +134,24 @@ export function FixtureList({ fixtures, models, status, selected }: FixtureListP
   const onRowClick = (e: MouseEvent, id: string) => pick(id, e.shiftKey ? "range" : e.ctrlKey || e.metaKey ? "toggle" : "single");
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
-    const ids = visible.map((f) => f.id);
+    const ids = rows.map((r) => r.id);
     if (ids.length === 0) return;
     const i = active ? ids.indexOf(active) : -1;
+    const activeRow = i >= 0 ? rows[i] : undefined;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       const next = ids[Math.min(ids.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))] ?? ids[0];
       pick(next, e.shiftKey ? "range" : "single");
       rowOf(listRef.current, next)?.scrollIntoView?.({ block: "nearest" });
+    } else if (e.key === "ArrowRight" && activeRow?.head === null && (headsByFixture.get(activeRow.id)?.length ?? 0) > 0) {
+      toggleExpanded(activeRow.id, true);
+    } else if (e.key === "ArrowLeft" && activeRow) {
+      // 在像素行上按 ← 回到所属灯具行；在灯具行上收起
+      if (activeRow.head !== null) setActive(activeRow.fixture.id);
+      else toggleExpanded(activeRow.id, false);
     } else if (e.key === " " && active) {
       pick(active, "toggle");
     } else if (e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey)) {
-      setSelected(ids);
+      setSelected(visible.map((f) => f.id));
     } else if (e.key === "Escape") {
       setSelected([]);
     } else {
@@ -201,13 +231,40 @@ export function FixtureList({ fixtures, models, status, selected }: FixtureListP
           role="listbox"
           aria-multiselectable
           aria-label={t("editor.patch.list")}
-          aria-activedescendant={active && visible.some((f) => f.id === active) ? optionId(active) : undefined}
+          aria-activedescendant={active && rows.some((r) => r.id === active) ? optionId(active) : undefined}
           tabIndex={0}
           onKeyDown={onKeyDown}
           onPointerLeave={() => setHover(null)}
           className="@container min-h-0 flex-1 overflow-auto p-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
-          {visible.map((f) => {
+          {rows.map((row) => {
+            const f = row.fixture;
+            if (row.head !== null) {
+              const isSelected = selectedSet.has(row.id);
+              return (
+                <li
+                  key={row.id}
+                  id={optionId(row.id)}
+                  role="option"
+                  aria-selected={isSelected}
+                  aria-label={`${f.name} · ${t("editor.patch.pixel", { n: row.head })}`}
+                  data-fixture-id={row.id}
+                  onClick={(e) => onRowClick(e, row.id)}
+                  onPointerEnter={() => setHover(f.id)}
+                  className={cn(
+                    "relative flex h-7 cursor-default items-center gap-2 rounded-sm pr-2 pl-8 text-xs select-none",
+                    isSelected ? "bg-primary/15 text-foreground" : "hover:bg-surface-3",
+                    active === row.id && "outline outline-1 -outline-offset-1 outline-ring/60",
+                  )}
+                >
+                  {isSelected && <span aria-hidden className="absolute inset-y-1 left-0.5 w-0.5 rounded-full bg-primary" />}
+                  <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                  <span className="min-w-0 flex-1 truncate">{t("editor.patch.pixel", { n: row.head })}</span>
+                </li>
+              );
+            }
+            const heads = headsByFixture.get(f.id) ?? [];
+            const open = expanded.has(f.id);
             const s = status.get(f.id);
             const isSelected = selectedSet.has(f.id);
             const problem = hasProblem(s);
@@ -238,6 +295,21 @@ export function FixtureList({ fixtures, models, status, selected }: FixtureListP
                 )}
               >
                 {isSelected && <span aria-hidden className="absolute inset-y-1 left-0.5 w-0.5 rounded-full bg-primary" />}
+                {heads.length > 0 ? (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-expanded={open}
+                    aria-label={t(open ? "editor.patch.collapsePixels" : "editor.patch.expandPixels", { name: f.name, count: heads.length })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpanded(f.id);
+                    }}
+                    className="-ml-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ChevronRight aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+                  </button>
+                ) : null}
                 <FixtureTypeIcon type={typeOf.get(f.modelId) ?? "other"} labelled={false} className="text-clip-light" />
                 <span className="min-w-0 flex-1 truncate font-medium" title={f.name}>
                   {f.name}

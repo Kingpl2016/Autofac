@@ -97,7 +97,7 @@ describe("parseProject", () => {
     expect(parsed).toMatchObject({ ok: true, migratedFrom: 2 });
     if (!parsed.ok) return;
     const p = parsed.project;
-    expect(p.version).toBe(3);
+    expect(p.version).toBe(4);
     expect(p.media[0]).toEqual({ id: "a", kind: "audio", path: "a.mp3", name: "a.mp3", durationMs: 60_000 });
     expect(p.mediaTracks.map((t) => [t.kind, t.name])).toEqual([
       ["audio", "a.mp3"],
@@ -134,7 +134,7 @@ describe("parseProject", () => {
     const parsed = parseProject(JSON.stringify(v1));
     expect(parsed).toMatchObject({ ok: true, migratedFrom: 1 });
     if (!parsed.ok) return;
-    expect(parsed.project.version).toBe(3);
+    expect(parsed.project.version).toBe(4);
     expect(parsed.project.mediaClips).toHaveLength(1);
     expect(parsed.project.cues).toEqual(current.cues);
     expect(parsed.project.presets).toEqual([]);

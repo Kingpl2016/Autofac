@@ -11,6 +11,7 @@ import { STAGE_DROP_ID, type StageDropData } from "../hooks/fixtureDrop";
 import { usePreviewProject } from "../hooks/usePreviewProject";
 import { createPreviewEvaluator } from "../lib/color";
 import { createDmxEvaluator } from "../lib/dmxPreview";
+import { baseOf } from "../lib/fixtureRef";
 import { buildSheet } from "../lib/fixtureSheet";
 import { analyzePatch } from "../lib/patch";
 import { moveFixtures, removeStageObject, snap, STAGE_SNAP_M, updateStageObject } from "../lib/stageOps";
@@ -156,7 +157,8 @@ export function StageMonitor() {
     },
     values,
   );
-  const selected = new Set(selectedIds);
+  // 选中像素时高亮它所属的灯具（舞台上每台灯只画一个点）
+  const selected = new Set(selectedIds.map(baseOf));
   const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
   const fixtures: StageFixture[] = project.fixtures.map((f, i) => {
     const place = placements.get(f.id) ?? { x: 0, y: 0 };

@@ -8,7 +8,8 @@ import i18n from "@/shared/i18n";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 
-import { DIMMER, fakeFile, RGBW } from "../../lib/__tests__/testkit";
+import { DIMMER, fakeFile, PIXEL_BAR, RGBW } from "../../lib/__tests__/testkit";
+import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
 import { DEFAULT_FIXTURE_ADD, useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
@@ -445,5 +446,71 @@ describe("多 Universe 配接与详情", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "要查看的通道号" }), { target: { value: "200" } });
     fireEvent.blur(screen.getByRole("textbox", { name: "要查看的通道号" }));
     expect(screen.getByText("通道 200 = 0，没有灯具占用")).toBeTruthy();
+  });
+});
+
+describe("像素行", () => {
+  /** 往工程里加 2 台 3 像素灯条，返回灯具 id。 */
+  function seedBars(): string[] {
+    let ids: string[] = [];
+    act(() => {
+      useProjectStore.getState().update((d) => {
+        ids = addFixtures(d, PIXEL_BAR, 2);
+      });
+    });
+    return ids;
+  }
+
+  it("展开像素行，像素可以单选 / Ctrl 追加；← 回到灯具行再收起", () => {
+    render(<InspectorPanel />);
+    const [a] = seedBars();
+    expect(within(list()).getAllByRole("option")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "展开 灯条 1 的 3 个像素" }));
+    expect(within(list()).getAllByRole("option").map((o) => o.getAttribute("aria-label"))).toEqual([
+      "灯条 1",
+      "灯条 1 · 像素 1",
+      "灯条 1 · 像素 2",
+      "灯条 1 · 像素 3",
+      "灯条 2",
+    ]);
+    // 点像素不会展开或选中灯具本身
+    fireEvent.click(option("灯条 1 · 像素 1"));
+    fireEvent.click(option("灯条 1 · 像素 3"), { ctrlKey: true });
+    expect(ui().selectedFixtureIds).toEqual([`${a}#1`, `${a}#3`]);
+    expect(within(detail()).getByText("已选 2 个像素")).toBeTruthy();
+    // Shift 连选按可见行的顺序
+    fireEvent.click(option("灯条 1"));
+    fireEvent.click(option("灯条 1 · 像素 2"), { shiftKey: true });
+    expect(ui().selectedFixtureIds).toEqual([a, `${a}#1`, `${a}#2`]);
+
+    // 键盘：↓ 到像素行，← 回到灯具行，再 ← 收起
+    fireEvent.click(option("灯条 1"));
+    fireEvent.keyDown(list(), { key: "ArrowDown" });
+    expect(ui().selectedFixtureIds).toEqual([`${a}#1`]);
+    fireEvent.keyDown(list(), { key: "ArrowLeft" });
+    fireEvent.keyDown(list(), { key: "ArrowLeft" });
+    expect(within(list()).getAllByRole("option")).toHaveLength(2);
+    fireEvent.keyDown(list(), { key: "ArrowRight" });
+    expect(within(list()).getAllByRole("option")).toHaveLength(5);
+  });
+
+  it("为所选像素建轨道（已有的不重复建）、用所选像素建组", () => {
+    render(<InspectorPanel />);
+    const [a] = seedBars();
+    fireEvent.click(screen.getByRole("button", { name: "展开 灯条 1 的 3 个像素" }));
+    fireEvent.click(option("灯条 1 · 像素 1"));
+    fireEvent.click(option("灯条 1 · 像素 2"), { ctrlKey: true });
+
+    const pixelTracks = () => project().tracks.filter((t) => t.target.kind === "fixture" && t.target.id.includes("#"));
+    fireEvent.click(screen.getByRole("button", { name: "为所选像素建轨道" }));
+    expect(pixelTracks().map((t) => (t.target.kind === "fixture" ? t.target.id : ""))).toEqual([`${a}#1`, `${a}#2`]);
+    fireEvent.click(screen.getByRole("button", { name: "为所选像素建轨道" }));
+    expect(pixelTracks()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "用所选像素建组" }));
+    const group = project().groups.at(-1);
+    expect(group?.name).toBe("像素组 1");
+    expect(group?.fixtureIds).toEqual([`${a}#1`, `${a}#2`]);
   });
 });

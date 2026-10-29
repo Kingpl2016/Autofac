@@ -1,4 +1,5 @@
 import { layoutOf, type FixtureModel } from "@/features/fixtures";
+import { prunePixelRefs } from "./fixtureRef";
 import type { ShowProject } from "./project";
 
 /**
@@ -104,6 +105,8 @@ export function replaceModelSnapshot(draft: ShowProject, model: FixtureModel): s
       reset.push(f.id);
     }
   }
+  // 新模型的像素可能更少：清理失效的像素引用
+  prunePixelRefs(draft);
   return reset;
 }
 

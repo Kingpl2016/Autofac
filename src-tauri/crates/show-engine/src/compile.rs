@@ -187,11 +187,20 @@ impl ColorAttrs {
     }
 }
 
-/// 一台已编译的灯具。
+/// 一个编译成员：一台灯具（整灯），或多头 / 像素灯的一个像素。
+///
+/// 有矩阵且布局里用到像素的灯具拆成“整灯 + 各像素”：整灯拥有像素 0 的通道（总调光、快门、Pan / Tilt…），
+/// 像素 `n` 的编号为 `灯具id#n`，拥有自己的发光体与属性通道，可以单独加入分组、建轨道、写进场景。
 #[derive(Debug, Clone)]
 pub struct CompiledFixture {
-    /// 灯具实例编号。
+    /// 编号：灯具实例编号，像素为 `灯具id#像素号`。
     pub id: String,
+    /// 像素所属整灯在编译成员列表里的下标；整灯为 `None`。
+    pub owner: Option<usize>,
+    /// 像素号（整灯为 0）。
+    pub head: u16,
+    /// 整灯的像素成员下标（不拆分或本身是像素时为空）。
+    pub pixels: Vec<usize>,
     /// 在 [`CompiledShow::universes`] 里的下标。
     pub universe_index: usize,
     /// 被驱动的通道（多头灯取每种功能第一次出现的通道，混色按它判断灯具能力）。
@@ -228,8 +237,8 @@ pub enum CompiledCue {
         look: Look,
         /// 分布（已解析键名）。
         spread: Option<CompiledSpread>,
-        /// 按分布顺序的成员（灯具下标）。
-        members: Vec<usize>,
+        /// 按分布顺序的成员；每个成员是一组编译成员下标（整灯引用展开为整灯与它的全部像素，共用分布位置）。
+        members: Vec<Vec<usize>>,
     },
     /// 场景片段：`(灯具下标, 外观)`。
     Scene {
@@ -296,8 +305,9 @@ impl CompiledSpread {
 pub struct CompiledTrack {
     /// 轨道编号。
     pub id: String,
-    /// 轨道驱动的灯具（下标指向已编译灯具列表，分组保持成员顺序；场景轨道为空）。
-    pub fixtures: Vec<usize>,
+    /// 轨道成员（分组保持成员顺序；场景轨道为空）。每个成员是一组编译成员下标：
+    /// 整灯引用为整灯与它的全部像素，像素引用（`灯具id#n`）只有这个像素。
+    pub units: Vec<Vec<usize>>,
     /// 按起点排序的片段。
     pub cues: Vec<CompiledCue>,
     /// 置顶层（见 [`crate::project::Track::on_top`]）。
@@ -339,6 +349,8 @@ pub struct CompiledShow {
     pub(crate) universes: Vec<u16>,
     pub(crate) base: Vec<DmxData>,
     pub(crate) fixtures: Vec<CompiledFixture>,
+    /// 像素亮度耦合：`(整灯, 由整灯调光代管亮度的像素)`。
+    pub(crate) couplings: Vec<(usize, Vec<usize>)>,
     pub(crate) tracks: Vec<CompiledTrack>,
     pub(crate) warnings: Vec<CompileWarning>,
     /// 通道锁定：`(Universe 下标, 偏移, 值)`，最后写入。
@@ -442,41 +454,82 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
     let mut base: Vec<DmxData> = vec![[0u8; DMX_CHANNELS as usize]; universes.len()];
 
     // 底图只含不受驱动通道的默认值；被驱动的通道在求值时才写入。
-    let fixtures: Vec<CompiledFixture> = accepted
-        .iter()
-        .map(|a| {
-            let universe_index = index_of(a.universe);
-            let (driven, mirrors, attrs) = layout_fixture(a, &mut base[universe_index]);
-            let color_attrs = color_attrs_of(a.layout, &attrs, gamma);
-            let shutter_gate = shutter_gate_of(a.layout, &attrs);
-            let origin = a.address - 1;
-            let span = (origin, footprint(a.layout));
-            let copies: Vec<(usize, u16)> = a.copies.iter().map(|&(u, addr)| (index_of(u), addr - 1)).collect();
-            // 多重配接的副本也带上默认值
-            for &(ui, dest) in &copies {
-                let (src, dst) = split_pair(&mut base, universe_index, ui);
-                let (s, n) = (usize::from(span.0), usize::from(span.1));
-                let d = usize::from(dest);
-                match dst {
-                    Some(dst) => dst[d..d + n].copy_from_slice(&src[s..s + n]),
-                    None => src.copy_within(s..s + n, d),
-                }
+    let mut fixtures: Vec<CompiledFixture> = Vec::new();
+    let mut couplings: Vec<(usize, Vec<usize>)> = Vec::new();
+    for a in &accepted {
+        let universe_index = index_of(a.universe);
+        let origin = a.address - 1;
+        let emitters = Emitters::from_model(a.model, gamma);
+        // 有矩阵且布局里用到像素的灯具：整灯（像素 0）与每个像素各是一个编译成员
+        let heads: BTreeSet<u16> = if a.model.head_count() > 0 {
+            a.layout.iter().map(|p| p.head).filter(|h| *h > 0).collect()
+        } else {
+            BTreeSet::new()
+        };
+        let body_props: Vec<&FixtureProperty> = a.layout.iter().filter(|p| heads.is_empty() || p.head == 0).collect();
+        let (driven, mirrors, attrs) = layout_fixture(origin, &body_props, &mut base[universe_index]);
+        let body = fixtures.len();
+        let body_has_dimmer = driven.dimmer.is_some();
+        fixtures.push(CompiledFixture {
+            id: a.id.to_owned(),
+            owner: None,
+            head: 0,
+            pixels: Vec::new(),
+            universe_index,
+            mixer: ColorMixer::for_fixture(&driven, emitters),
+            color_attrs: color_attrs_of(a.layout, &attrs, gamma),
+            shutter_gate: shutter_gate_of(a.layout, &attrs),
+            driven,
+            mirrors,
+            attrs,
+            span: (origin, footprint(a.layout)),
+            copies: a.copies.iter().map(|&(u, addr)| (index_of(u), addr - 1)).collect(),
+            stage: a.stage,
+        });
+        let mut coupled = Vec::new();
+        for h in heads {
+            let props: Vec<&FixtureProperty> = a.layout.iter().filter(|p| p.head == h).collect();
+            let (driven, mirrors, attrs) = layout_fixture(origin, &props, &mut base[universe_index]);
+            let mut mixer = ColorMixer::for_fixture(&driven, emitters);
+            // 整灯有调光、像素只有发光体：像素颜色保持满值，亮度交给整灯调光（见 eval 的像素耦合）
+            if body_has_dimmer && driven.dimmer.is_none() && mixer.has_emitters() {
+                mixer = mixer.with_external_dimmer();
+                coupled.push(fixtures.len());
             }
-            CompiledFixture {
-                id: a.id.to_owned(),
+            let index = fixtures.len();
+            fixtures[body].pixels.push(index);
+            fixtures.push(CompiledFixture {
+                id: format!("{}#{h}", a.id),
+                owner: Some(body),
+                head: h,
+                pixels: Vec::new(),
                 universe_index,
-                mixer: ColorMixer::for_fixture(&driven, Emitters::from_model(a.model, gamma)),
+                mixer,
+                color_attrs: color_attrs_of(a.layout, &attrs, gamma),
+                shutter_gate: shutter_gate_of(a.layout, &attrs),
                 driven,
                 mirrors,
                 attrs,
-                color_attrs,
-                shutter_gate,
-                span,
-                copies,
-                stage: a.stage,
+                span: (origin, 0),
+                copies: Vec::new(),
+                stage: a.stage.map(|s| pixel_stage(s, a.model.matrix, h)),
+            });
+        }
+        if !coupled.is_empty() {
+            couplings.push((body, coupled));
+        }
+        // 多重配接的副本也带上默认值（整段，含像素通道）
+        let span = fixtures[body].span;
+        for &(ui, dest) in &fixtures[body].copies.clone() {
+            let (src, dst) = split_pair(&mut base, universe_index, ui);
+            let (s, n) = (usize::from(span.0), usize::from(span.1));
+            let d = usize::from(dest);
+            match dst {
+                Some(dst) => dst[d..d + n].copy_from_slice(&src[s..s + n]),
+                None => src.copy_within(s..s + n, d),
             }
-        })
-        .collect();
+        }
+    }
 
     let park: Vec<(usize, u16, u8)> =
         park_entries.iter().map(|p| (index_of(p.universe), p.channel - 1, p.value)).collect();
@@ -492,10 +545,26 @@ pub fn compile(project: &ShowProject) -> CompiledShow {
         base,
         tracks: build_tracks(project, &fixtures),
         fixtures,
+        couplings,
         warnings,
         park,
     }
 }
+
+/// 像素的舞台位置：整灯位置加上像素在矩阵里的偏移（每格 [`PIXEL_PITCH_M`]，以矩阵中心为原点）。
+fn pixel_stage((x, y): (f64, f64), matrix: Option<crate::fixture::MatrixLayout>, head: u16) -> (f64, f64) {
+    let Some(m) = matrix.filter(|m| m.cols > 0) else { return (x, y) };
+    let i = f64::from(head.saturating_sub(1));
+    let cols = f64::from(m.cols);
+    let (col, row) = (i % cols, (i / cols).floor());
+    (
+        x + (col - (cols - 1.0) / 2.0) * PIXEL_PITCH_M,
+        y + (row - (f64::from(m.rows) - 1.0) / 2.0) * PIXEL_PITCH_M,
+    )
+}
+
+/// 像素在舞台上的间距（米），只用于按舞台位置排序的分布。
+const PIXEL_PITCH_M: f64 = 0.1;
 
 /// 同时借出两个 Universe 的数据（相同下标时只借一个）。
 pub(crate) fn split_pair(base: &mut [DmxData], a: usize, b: usize) -> (&mut DmxData, Option<&mut DmxData>) {
@@ -579,14 +648,19 @@ fn accept_fixtures<'a>(
 
 /// 确定灯具被驱动的通道位置，并把其余通道的默认值写进 `base`。
 ///
-/// 同一发光体 / 调光功能出现多次（多头灯的各像素）时，第一次出现的进入 [`Driven`]，其余作为镜像通道，
+/// 同一发光体 / 调光功能出现多次时（没有拆成像素成员的灯具），第一次出现的进入 [`Driven`]，其余作为镜像通道，
 /// 输出与第一次相同的值。其余功能（`Other` 除外）成为属性通道。
-fn layout_fixture(a: &Accepted<'_>, base: &mut DmxData) -> (Driven, Vec<(usize, Slot)>, Vec<AttrSlot>) {
-    let origin = a.address - 1;
+///
+/// # Arguments
+///
+/// * `origin` - 灯具起始地址的 0 起偏移。
+/// * `props` - 这个编译成员拥有的通道（整灯或某个像素的通道）。
+/// * `base` - 底图（写入不受驱动通道的默认值）。
+fn layout_fixture(origin: u16, props: &[&FixtureProperty], base: &mut DmxData) -> (Driven, Vec<(usize, Slot)>, Vec<AttrSlot>) {
     let mut driven = Driven::default();
     let mut mirrors = Vec::new();
     let mut attrs = Vec::new();
-    for p in a.layout {
+    for &p in props {
         let slot = Slot {
             offset: origin + p.channel - 1,
             width: p.width,
@@ -680,11 +754,14 @@ fn shutter_gate_of(layout: &[FixtureProperty], attrs: &[AttrSlot]) -> Option<(us
 
 /// 展开轨道绑定（灯具、分组或场景），应用静音 / 独奏，并为每条轨道编译排好序的片段。
 fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<CompiledTrack> {
-    let index_of: HashMap<&str, usize> = fixtures
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.id.as_str(), i))
-        .collect();
+    // 引用 → 编译成员：整灯编号展开为整灯与它的全部像素，`灯具id#n` 只有这个像素
+    let mut index_of: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, f) in fixtures.iter().enumerate() {
+        index_of.entry(f.id.as_str()).or_default().push(i);
+        if let Some(owner) = f.owner {
+            index_of.entry(fixtures[owner].id.as_str()).or_default().push(i);
+        }
+    }
     let presets: HashMap<&str, &Look> = project.presets.iter().map(|p| (p.id.as_str(), &p.look)).collect();
     let resolve = |look: &Look| -> Look {
         match look.preset_id.as_deref().and_then(|id| presets.get(id)) {
@@ -701,8 +778,8 @@ fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<Comp
             continue;
         }
         let scene = matches!(t.target, TrackTarget::Scene);
-        let members: Vec<usize> = match &t.target {
-            TrackTarget::Fixture { id } => index_of.get(id.as_str()).copied().into_iter().collect(),
+        let members: Vec<Vec<usize>> = match &t.target {
+            TrackTarget::Fixture { id } => index_of.get(id.as_str()).cloned().into_iter().collect(),
             TrackTarget::Group { id } => project
                 .groups
                 .iter()
@@ -710,7 +787,7 @@ fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<Comp
                 .map(|g| {
                     g.fixture_ids
                         .iter()
-                        .filter_map(|fid| index_of.get(fid.as_str()).copied())
+                        .filter_map(|fid| index_of.get(fid.as_str()).cloned())
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -728,7 +805,15 @@ fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<Comp
                     entries: s
                         .entries
                         .iter()
-                        .filter_map(|e| index_of.get(e.fixture_id.as_str()).map(|&i| (i, resolve(&e.look))))
+                        .flat_map(|e| {
+                            let look = resolve(&e.look);
+                            index_of
+                                .get(e.fixture_id.as_str())
+                                .into_iter()
+                                .flatten()
+                                .map(move |&i| (i, look.clone()))
+                                .collect::<Vec<_>>()
+                        })
                         .collect(),
                 }),
                 Cue::Look(l) if !scene => Some(CompiledCue::Look {
@@ -744,7 +829,7 @@ fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<Comp
         cues.sort_by_key(|c| c.base().start_ms);
         tracks.push(CompiledTrack {
             id: t.id.clone(),
-            fixtures: members,
+            units: members,
             cues,
             on_top: t.on_top,
         });
@@ -753,16 +838,19 @@ fn build_tracks(project: &ShowProject, fixtures: &[CompiledFixture]) -> Vec<Comp
 }
 
 /// 按分布顺序排列成员。
-fn ordered(members: &[usize], spread: Option<&Spread>, fixtures: &[CompiledFixture]) -> Vec<usize> {
+fn ordered(members: &[Vec<usize>], spread: Option<&Spread>, fixtures: &[CompiledFixture]) -> Vec<Vec<usize>> {
     let mut out = members.to_vec();
-    let key = |i: usize, axis: usize| {
-        fixtures[i].stage.map_or(f64::INFINITY, |(x, y)| if axis == 0 { x } else { y })
+    // 成员的位置取它第一个编译成员（整灯或像素）的舞台位置
+    let key = |unit: &[usize], axis: usize| {
+        unit.first()
+            .and_then(|&i| fixtures[i].stage)
+            .map_or(f64::INFINITY, |(x, y)| if axis == 0 { x } else { y })
     };
     match spread.and_then(|s| s.order).unwrap_or_default() {
         SpreadOrder::Members => {}
         SpreadOrder::Reverse => out.reverse(),
-        SpreadOrder::StageX => out.sort_by(|a, b| key(*a, 0).total_cmp(&key(*b, 0))),
-        SpreadOrder::StageY => out.sort_by(|a, b| key(*a, 1).total_cmp(&key(*b, 1))),
+        SpreadOrder::StageX => out.sort_by(|a, b| key(a, 0).total_cmp(&key(b, 0))),
+        SpreadOrder::StageY => out.sort_by(|a, b| key(a, 1).total_cmp(&key(b, 1))),
     }
     out
 }
@@ -933,7 +1021,7 @@ mod tests {
             on_top: false,
         });
         let c = compile(&p);
-        assert_eq!(c.tracks[0].fixtures, vec![2, 0]);
+        assert_eq!(c.tracks[0].units, vec![vec![2], vec![0]]);
     }
 
     #[test]
@@ -976,7 +1064,7 @@ mod tests {
     }
 
     #[test]
-    fn 多头灯的其余像素成为镜像通道() {
+    fn 多头灯拆成整灯与各像素成员() {
         use crate::fixture::{FixtureProperty, MatrixLayout};
         let p = |function, channel: u16, head| FixtureProperty {
             code: format!("P{channel}"),
@@ -999,12 +1087,27 @@ mod tests {
             ..FixtureModel::default()
         };
         let mut proj = project_with(&[("9.3.1.1", 0, 1)]);
-        proj.fixture_models.push(bar);
+        proj.fixture_models.push(bar.clone());
         let c = compile(&proj);
-        let f = &c.fixtures[0];
-        assert_eq!(f.driven.red.map(|s| s.offset), Some(1));
-        let offsets: Vec<(usize, u16)> = f.mirrors.iter().map(|(k, s)| (*k, s.offset)).collect();
-        assert_eq!(offsets, vec![(R, 2), (R, 3)]);
+        // 整灯拥有像素 0 的调光，三个像素各自一个编译成员，编号 f0#n
+        let ids: Vec<&str> = c.fixture_ids().collect();
+        assert_eq!(ids, vec!["f0", "f0#1", "f0#2", "f0#3"]);
+        let body = &c.fixtures[0];
+        assert_eq!((body.driven.dimmer.map(|s| s.offset), body.driven.red), (Some(0), None));
+        assert_eq!(body.pixels, vec![1, 2, 3]);
+        let reds: Vec<Option<u16>> = c.fixtures[1..].iter().map(|f| f.driven.red.map(|s| s.offset)).collect();
+        assert_eq!(reds, vec![Some(1), Some(2), Some(3)]);
+        assert!(c.fixtures[1..].iter().all(|f| f.owner == Some(0) && f.mirrors.is_empty()));
+        assert_eq!(c.couplings, vec![(0, vec![1, 2, 3])]);
+
+        // 声明了矩阵、但所选布局没有用到像素的模型不拆分
+        let mut flat = bar;
+        flat.properties.truncate(2);
+        flat.properties[1].head = 0;
+        proj.fixture_models[6] = flat;
+        let c = compile(&proj);
+        assert_eq!(c.fixture_ids().collect::<Vec<_>>(), vec!["f0"]);
+        assert!(c.couplings.is_empty());
     }
 
     #[test]

@@ -64,11 +64,14 @@ export interface AttrInfo {
  *
  * @param model 模型。
  * @param modeId 模式。
+ * @param head 只看某个像素的通道（像素引用）；省略时看整灯的全部通道。
  * @returns 按功能表顺序的属性（同一功能只列一次，整灯优先）。
  */
-export function availableAttrs(model: FixtureModel | undefined, modeId?: string): AttrInfo[] {
+export function availableAttrs(model: FixtureModel | undefined, modeId?: string, head?: number): AttrInfo[] {
   if (!model) return [];
-  const layout = [...(layoutOf(model, modeId) ?? [])].sort((a, b) => (a.head ?? 0) - (b.head ?? 0));
+  const all = layoutOf(model, modeId) ?? [];
+  const own = head === undefined ? all : all.filter((p) => (p.head ?? 0) === head);
+  const layout = [...own].sort((a, b) => (a.head ?? 0) - (b.head ?? 0));
   const out: AttrInfo[] = [];
   for (const key of ATTR_KEYS) {
     const p = layout.find((x) => x.function === key);

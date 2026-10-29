@@ -69,6 +69,31 @@ export const HEAD16: FixtureModel = {
   ],
 };
 
+/** 像素灯条：总调光 + 3 个 RGB 像素；附加模式 `2px` 只有 2 个像素。 */
+export const PIXEL_BAR: FixtureModel = {
+  id: "ofl:acme/bar",
+  name: "灯条",
+  system: "OFL",
+  productType: "Pixel Bar",
+  builtin: false,
+  matrix: { cols: 3, rows: 1 },
+  properties: [
+    prop("Dim", "dimmer", 1),
+    ...[1, 2, 3].flatMap((h) => [
+      { ...prop(`R${h}`, "red", 2 + (h - 1) * 3), head: h },
+      { ...prop(`G${h}`, "green", 3 + (h - 1) * 3), head: h },
+      { ...prop(`B${h}`, "blue", 4 + (h - 1) * 3), head: h },
+    ]),
+  ],
+  modes: [
+    {
+      id: "2px",
+      name: "2 像素",
+      properties: [prop("Dim", "dimmer", 1), { ...prop("R1", "red", 2), head: 1 }, { ...prop("R2", "red", 3), head: 2 }],
+    },
+  ],
+};
+
 /**
  * 文件操作控制器的替身：所有动作都是 `vi.fn()`，对话框关闭，没有未保存修改。
  *

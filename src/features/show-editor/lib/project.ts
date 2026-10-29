@@ -17,11 +17,16 @@ import type { FixtureModel } from "@/features/fixtures";
  *   v1 文件经 `migrateProject` 无损升级（旧 Cue 在 v2 里仍然合法）。
  * - v3：多媒体轨道：素材库（`media`）与时间线上的媒体片段（`mediaTracks` / `mediaClips`）分开，
  *   同一素材可以放多次，片段可裁剪入出点、调音量与淡入淡出。v2 的“素材偏移”迁移成每个素材一条轨道一个片段。
+ * - v4：像素引用：分组成员、灯具轨道与场景条目可以引用多头 / 像素灯的单个像素（`灯具id#像素号`，见 `fixtureRef.ts`）。
+ *   结构不变，v3 文件原样升级；递增版本是为了让旧版软件打开新文件时提示“文件来自新版本”。
  */
-export const PROJECT_VERSION = 3;
+export const PROJECT_VERSION = 4;
 
 /** 输出帧率（固定）。 */
 export const OUTPUT_FPS = 30;
+
+/** 分组的最少成员数。 */
+export const MIN_GROUP_SIZE = 2;
 
 /** 一个 Universe 的 DMX 通道数。 */
 export const DMX_CHANNELS = 512;

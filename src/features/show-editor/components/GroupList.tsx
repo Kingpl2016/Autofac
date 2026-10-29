@@ -9,6 +9,7 @@ import {
   removeGroupMember,
   renameGroup,
 } from "../lib/ops";
+import { refName } from "../lib/fixtureRef";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { CommitInput } from "./CommitInput";
@@ -28,7 +29,7 @@ export function GroupList() {
   if (groups.length === 0) {
     return <p className="text-xs text-muted-foreground">{t("editor.patch.noGroups")}</p>;
   }
-  const nameOf = (id: string) => fixtures.find((f) => f.id === id)?.name ?? id;
+  const nameOf = (id: string) => refName({ fixtures }, id) || id;
 
   return (
     <ul className="flex flex-col gap-2">

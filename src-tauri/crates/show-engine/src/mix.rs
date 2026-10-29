@@ -416,6 +416,8 @@ pub struct ColorMixer {
     strategy: Strategy,
     present: Present,
     emitters: Emitters,
+    /// 亮度由外部调光代管（像素灯的像素，整灯有总调光）：发光体保持满色，级别记在 `DIM` 分量里但不输出。
+    external_dimmer: bool,
 }
 
 /// 策略的枚举分发（避免每台灯具一次堆分配，也便于克隆编译结果）。
@@ -450,7 +452,18 @@ impl ColorMixer {
         } else {
             Strategy::None(NoEmitter)
         };
-        Self { strategy, present, emitters }
+        Self { strategy, present, emitters, external_dimmer: false }
+    }
+
+    /// 改为由外部调光代管亮度：[`ColorMixer::mix`] 不再按级别缩放发光体，而是把级别写进 `DIM` 分量
+    /// （该分量没有通道，不会输出），由求值器按整灯调光换算（见 `eval` 的像素亮度耦合）。
+    ///
+    /// # Returns
+    ///
+    /// 新的混色器。
+    #[must_use]
+    pub fn with_external_dimmer(self) -> Self {
+        Self { external_dimmer: true, ..self }
     }
 
     /// 灯具具备的分量。
@@ -497,7 +510,7 @@ impl ColorMixer {
         };
         let has_emitters = !matches!(self.strategy, Strategy::None(_));
         let peak = request_peak(request);
-        if self.present.has(DIM) {
+        if self.present.has(DIM) || self.external_dimmer {
             out[DIM] = if has_emitters { level } else { level * peak };
         } else {
             for v in &mut out[..EMITTERS] {
@@ -508,7 +521,8 @@ impl ColorMixer {
             out[SW] = 1.0;
         }
         for (k, v) in out.iter_mut().enumerate() {
-            if !self.present.has(k) {
+            // 外部调光（像素成员）时 DIM 分量保留，交给 `couple_pixels` 合成主调光
+            if !(self.present.has(k) || k == DIM && self.external_dimmer) {
                 *v = 0.0;
             }
         }
@@ -526,7 +540,7 @@ impl ColorMixer {
     /// 线性 RGB，各分量 `0..=1`（超出时整体压缩，保持色相）。
     #[must_use]
     pub fn emitted_rgb(&self, c: &Components) -> [f64; 3] {
-        let dim = if self.present.has(DIM) { c[DIM] } else { 1.0 };
+        let dim = if self.present.has(DIM) || self.external_dimmer { c[DIM] } else { 1.0 };
         let mut rgb = [0.0; 3];
         if matches!(self.strategy, Strategy::None(_)) {
             // 仅调光 / 开关灯：按白光显示
