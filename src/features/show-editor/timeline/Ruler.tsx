@@ -40,6 +40,10 @@ export function Ruler() {
   const ref = useRef<HTMLDivElement>(null);
   const { width } = useElementSize(ref);
   const seeking = useRef(false);
+  /** Shift + 拖动选时间范围时的起点 */
+  const rangeFrom = useRef<number | null>(null);
+  const timeRange = useEditorUiStore((s) => s.timeRange);
+  const setTimeRange = useEditorUiStore((s) => s.setTimeRange);
   /** 拖动循环端点时的预览（松手才写入工程，一次手势一步撤销） */
   const [edgeDrag, setEdgeDrag] = useState<{ edge: "in" | "out"; ms: number } | null>(null);
   /** 指针悬停处的时刻：画一条“幽灵线”，预示点下去播放头落在哪 */
@@ -63,17 +67,25 @@ export function Ruler() {
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    seeking.current = true;
     e.currentTarget.setPointerCapture?.(e.pointerId);
+    // Shift + 拖动：选出一段时间（跨轨道剪切 / 删除 / 插入空白用），不移动播放头
+    if (e.shiftKey) {
+      rangeFrom.current = msAt(e.clientX);
+      setTimeRange(null);
+      return;
+    }
+    seeking.current = true;
     setPlayhead(msAt(e.clientX));
   };
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
     const ms = msAt(e.clientX);
-    if (seeking.current) setPlayhead(ms);
+    if (rangeFrom.current !== null) setTimeRange({ startMs: rangeFrom.current, endMs: ms });
+    else if (seeking.current) setPlayhead(ms);
     setHoverMs(ms);
   };
   const onUp = () => {
     seeking.current = false;
+    rangeFrom.current = null;
   };
 
   const range = loop
@@ -185,6 +197,16 @@ export function Ruler() {
             </button>
           )}
         </div>
+      )}
+      {timeRange && (
+        <div
+          data-time-range
+          role="img"
+          aria-label={t("editor.range.label", { from: formatTimecode(timeRange.startMs), to: formatTimecode(timeRange.endMs) })}
+          title={t("editor.range.hint")}
+          className="absolute inset-y-0 z-[4] border-x border-primary bg-primary/25"
+          style={{ left: xOf(timeRange.startMs), width: Math.max(1, xOf(timeRange.endMs) - xOf(timeRange.startMs)) }}
+        />
       )}
       <svg aria-hidden className="absolute inset-0 h-full w-full text-muted-foreground">
         {ticks.minor.map((ms) => (

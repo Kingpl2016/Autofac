@@ -25,6 +25,7 @@ import { announce } from "@/shared/stores/announcerStore";
 import type { Command } from "../lib/commands";
 import { trackCapabilities } from "../lib/fixtureProfile";
 import { removeTracks } from "../lib/trackOps";
+import { moveTracks } from "../lib/timelineEdit";
 import { EmptyHint } from "./EmptyHint";
 import { TimelineContextMenu } from "./TimelineContextMenu";
 import { PanelFrame } from "./PanelFrame";
@@ -181,7 +182,7 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
       noScroll
       actions={
         <>
-          <PlayheadTimecode label={t("editor.timeline.playhead")} className="num mr-2 text-xs text-muted-foreground" />
+          <PlayheadTimecode editable label={t("editor.timeline.playhead")} className="num mr-2 text-xs text-muted-foreground" />
           {iconButton(t("editor.mediaTracks.addAudio"), () => addMediaTrackOf("audio"), <Music aria-hidden />)}
           {iconButton(t("editor.mediaTracks.addVideo"), () => addMediaTrackOf("video"), <Film aria-hidden />)}
           <span aria-hidden className="mx-1 h-4 w-px bg-border" />
@@ -224,6 +225,13 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
               update((d) => setTrackView(d, trackId, { height: next }));
             }}
             onWheelScroll={(dy) => bodyRef.current?.setScrollTop((bodyRef.current?.scrollTop() ?? 0) + dy)}
+            onReorder={(trackId, toIndex) => {
+              const ui = useEditorUiStore.getState();
+              // 抓住的轨道在多选里时整组移动
+              const ids = ui.selectedTrackIds.includes(trackId) && ui.selectedTrackIds.length > 1 ? ui.selectedTrackIds : [trackId];
+              update((d) => void moveTracks(d, ids, toIndex));
+            }}
+            onResizeHeight={(trackId, heightPx) => update((d) => setTrackView(d, trackId, { heightPx }))}
             topSlot={<MediaTrackHeaders />}
           />
           <div className="relative flex min-w-0 flex-1 flex-col">

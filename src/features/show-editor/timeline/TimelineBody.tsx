@@ -22,7 +22,8 @@ import { layerSupport, lookBadges, unsupportedLayers, type LayerBadge, type Laye
 import { trackFixtureIds } from "../lib/ops";
 import type { Cue, ShowProject, Track } from "../lib/project";
 import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX } from "../lib/snap";
-import { snapToFrame } from "../lib/time";
+import { formatTimecode, snapToFrame } from "../lib/time";
+import { keyMoveRange, moveLookKey, shiftTimelineObjects } from "../lib/timelineEdit";
 import { zoomPxPerSec } from "../lib/zoom";
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -135,6 +136,24 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   const marqueeRef = useRef<MarqueeState | null>(null);
   /** Ctrl 按下时推迟的取消选择（松手且没有拖动时才执行） */
   const pendingToggle = useRef<string | null>(null);
+  /** 进行中的关键帧拖动 */
+  const keyDrag = useRef<{
+    cueId: string;
+    fromMs: number;
+    startX: number;
+    active: boolean;
+    locked: boolean;
+    targets: number[];
+  } | null>(null);
+  /** 关键帧拖动的预览位置（片段内时刻） */
+  const [keyPreview, setKeyPreviewState] = useState<{ cueId: string; uMs: number } | null>(null);
+  const keyPreviewRef = useRef<{ cueId: string; uMs: number } | null>(null);
+  const setKeyPreview = (v: { cueId: string; uMs: number } | null) => {
+    keyPreviewRef.current = v;
+    setKeyPreviewState(v);
+  };
+  const timeRange = useEditorUiStore((s) => s.timeRange);
+  const tagFilter = useEditorUiStore((s) => s.tagFilter);
 
   const layout: RowLayout = useMemo(() => rowLayout(tracks), [tracks]);
   const selected = useMemo(() => new Set(selectedCueIds), [selectedCueIds]);
@@ -347,12 +366,20 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       if (!cue) return;
       // 灯具选择跟着片段所在的轨道（右侧保持 / 切到 Cue 属性）
       selectTracksWithFixtures([cue.trackId], cue.trackId);
-      // 点在关键帧 ◆ 上：选中片段并把播放头移到这个关键帧，不开始拖动
+      // 点在关键帧 ◆ 上：选中片段；不拖动时把播放头移到这个关键帧，拖动时移动关键帧（Ctrl 复制）
       const keyEl = target.closest<HTMLElement>("[data-key-ms]");
       if (keyEl) {
         if (!ui.selectedCueIds.includes(id)) ui.selectCues([id]);
-        ui.setPlayhead(cue.startMs + Number(keyEl.dataset.keyMs ?? 0));
         onPickCue();
+        const locked = current.tracks.find((t) => t.id === cue.trackId)?.lock === true;
+        keyDrag.current = {
+          cueId: id,
+          fromMs: Number(keyEl.dataset.keyMs ?? 0),
+          startX: p.x,
+          active: false,
+          locked,
+          targets: collectSnapTargets(current, ui.playheadMs, new Set([id]), useEditorPrefsStore.getState().snapKinds),
+        };
         return;
       }
       const additive = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -407,6 +434,28 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     const m = marqueeRef.current;
+    const k = keyDrag.current;
+    // 记下指针所在的时刻（“粘贴到鼠标位置”用）
+    useEditorUiStore.getState().setPointerTime(timeAt(contentPoint(e).x));
+    if (k) {
+      const p = contentPoint(e);
+      if (!k.active && Math.abs(p.x - k.startX) < DRAG_THRESHOLD_PX) return;
+      if (k.locked) return;
+      k.active = true;
+      const ui = useEditorUiStore.getState();
+      const cue = useProjectStore.getState().project.cues.find((c) => c.id === k.cueId);
+      if (!cue || cue.kind !== "look") return;
+      let abs = cue.startMs + k.fromMs + pxToMs(p.x - k.startX, ui.pxPerSec);
+      if (ui.snapEnabled && !e.altKey) {
+        const threshold = pxToMs(SNAP_THRESHOLD_PX, ui.pxPerSec);
+        const near = k.targets.reduce<number | null>((best, t) => (Math.abs(t - abs) <= threshold && (best === null || Math.abs(t - abs) < Math.abs(best - abs)) ? t : best), null);
+        if (near !== null) abs = near;
+      }
+      const length = cue.endMs - cue.startMs;
+      const [lo, hi] = e.ctrlKey || e.metaKey ? [0, length] : keyMoveRange(cue.look, k.fromMs, length);
+      setKeyPreview({ cueId: k.cueId, uMs: Math.round(Math.min(hi, Math.max(lo, abs - cue.startMs))) });
+      return;
+    }
     if (!d && !m) return;
     const p = contentPoint(e);
     if (d) {
@@ -416,13 +465,16 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       const ui = useEditorUiStore.getState();
       const snapOn = ui.snapEnabled && !e.altKey;
       const row = rowAt(layout, Math.max(0, Math.min(layout.total - 1, p.y)));
+      // 波纹编辑：拖动 / 拉右边缘时后面的片段跟着移；按住 Alt 时全部轨道（与标记点等）一起移
+      const ripple = useEditorPrefsStore.getState().rippleEdit && d.kind !== "trimStart" ? { allTracks: e.altKey } : null;
       d.result = computeDrag(d.project, {
         kind: d.kind,
         ids: d.ids,
         deltaMs: pxToMs(p.x - d.startX, ui.pxPerSec),
-        rowDelta: d.kind === "move" && row >= 0 && d.startRow >= 0 ? row - d.startRow : 0,
+        rowDelta: d.kind === "move" && row >= 0 && d.startRow >= 0 && !ripple ? row - d.startRow : 0,
         snapTargets: snapOn ? d.targets : null,
         thresholdMs: pxToMs(SNAP_THRESHOLD_PX, ui.pxPerSec),
+        ripple,
       });
       setPreview(d.result);
       return;
@@ -450,8 +502,28 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   const onPointerUp = (e?: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     const m = marqueeRef.current;
+    const k = keyDrag.current;
     drag.current = null;
     marqueeRef.current = null;
+    keyDrag.current = null;
+    if (k) {
+      const preview = keyPreviewRef.current;
+      setKeyPreview(null);
+      const cue = useProjectStore.getState().project.cues.find((c) => c.id === k.cueId);
+      if (!k.active || !preview || !cue) {
+        // 只是点了一下：播放头移到这个关键帧
+        if (cue) useEditorUiStore.getState().setPlayhead(cue.startMs + k.fromMs);
+        return;
+      }
+      if (preview.uMs === k.fromMs) return;
+      const copy = e?.ctrlKey === true || e?.metaKey === true;
+      update((draft) => {
+        const c = draft.cues.find((x) => x.id === k.cueId);
+        if (c?.kind === "look") moveLookKey(c.look, k.fromMs, preview.uMs, c.endMs - c.startMs, copy);
+      });
+      useEditorUiStore.getState().setPlayhead(cue.startMs + preview.uMs);
+      return;
+    }
     const toggle = pendingToggle.current;
     pendingToggle.current = null;
     if (toggle && !d?.active) useEditorUiStore.getState().toggleCue(toggle);
@@ -473,7 +545,14 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
           const before = d.project.cues.find((c) => c.id === pl.id);
           return !before || before.startMs !== pl.startMs || before.endMs !== pl.endMs || before.trackId !== pl.trackId;
         });
-        if (changed) update((draft) => void placeCues(draft, result.placements));
+        if (changed) {
+          update((draft) => {
+            // 波纹：往后推时延长节目；全局波纹时标记点、段落、循环区与媒体也一起移
+            if (result.ripple) draft.durationMs = Math.max(draft.durationMs, ...result.placements.map((p) => p.endMs));
+            placeCues(draft, result.placements);
+            if (result.ripple?.allTracks) shiftTimelineObjects(draft, result.ripple.fromMs, result.ripple.deltaMs);
+          });
+        }
       }
       return;
     }
@@ -525,6 +604,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onPointerLeave={() => useEditorUiStore.getState().setPointerTime(null)}
         onDoubleClick={onDoubleClick}
       >
         {/* 轨道底纹（只画可见行） */}
@@ -545,6 +625,30 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
           className="hatch-removed pointer-events-none absolute inset-y-0 opacity-40"
           style={{ left: xOf(project.durationMs), right: 0 }}
         />
+        {/* 时间范围选择（标尺上 Shift + 拖动）：贯穿全部轨道的半透明色带 */}
+        {timeRange && (
+          <div
+            aria-hidden
+            data-testid="time-range-band"
+            className="pointer-events-none absolute inset-y-0 z-[1] border-x border-primary/60 bg-primary/10"
+            style={{ left: xOf(timeRange.startMs), width: Math.max(1, xOf(timeRange.endMs) - xOf(timeRange.startMs)) }}
+          />
+        )}
+        {/* 关键帧拖动的预览：目标位置的竖线与时刻 */}
+        {keyPreview &&
+          (() => {
+            const cue = cueById.get(keyPreview.cueId);
+            const row = cue ? trackIndex.get(cue.trackId) : undefined;
+            if (!cue || row === undefined) return null;
+            const x = xOf(cue.startMs + keyPreview.uMs);
+            return (
+              <div aria-hidden className="pointer-events-none absolute z-20 w-px bg-keyframe" style={{ left: x, top: layout.tops[row], height: layout.heights[row] }}>
+                <span className="num absolute -top-4 left-1 whitespace-nowrap rounded bg-popover/90 px-1 text-[10px] text-foreground shadow-sm">
+                  {formatTimecode(cue.startMs + keyPreview.uMs)}
+                </span>
+              </div>
+            );
+          })()}
         {clips.map((c) => {
           const track = tracks[c.row];
           return (
@@ -558,7 +662,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
               height={c.height}
               selected={selected.has(c.cue.id)}
               locked={track?.lock ?? false}
-              dimmed={track?.mute ?? false}
+              // 静音轨道、或按颜色标签筛选时其它标签的片段变暗
+              dimmed={(track?.mute ?? false) || (tagFilter !== null && c.cue.tag !== tagFilter)}
               collapsed={track?.collapsed ?? false}
               dragging={c.dragging}
               invalid={c.dragging && preview !== null && !preview.valid}

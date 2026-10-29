@@ -1764,7 +1764,11 @@
       "clipKindNamed": "{{kind}} “{{name}}”",
       "clipLayers": "Uses: {{layers}}",
       "headerWidth": "Track name column width",
-      "headerWidthHint": "Drag to resize the track name column, double-click to reset; arrow keys adjust when focused"
+      "headerWidthHint": "Drag to resize the track name column, double-click to reset; arrow keys adjust when focused",
+      "reorder": "Drag to reorder {{name}}",
+      "reorderHint": "Drag up or down to reorder tracks; selected tracks move together",
+      "resizeHeight": "Resize {{name}}",
+      "resizeHeightHint": "Drag up or down to resize this track; double-click to reset"
     },
     "ruler": {
       "label": "Time ruler",
@@ -1909,7 +1913,27 @@
       "programmerKnockout": "Programmer: remove selected fixtures",
       "programmerHighlight": "Programmer: toggle highlight",
       "programmerUndo": "Programmer: undo",
-      "programmerRedo": "Programmer: redo"
+      "programmerRedo": "Programmer: redo",
+      "selectSameTag": "Select cues with the same colour tag",
+      "rangeDeleteAll": "Delete time range (all tracks, close the gap)",
+      "rangeInsertGap": "Insert gap at time range (selected tracks)",
+      "rangeInsertGapAll": "Insert gap at time range (all tracks)",
+      "rangeClear": "Clear time range",
+      "alignStart": "Align starts to the earliest cue",
+      "alignPlayhead": "Align starts to the playhead",
+      "chain": "Chain end to start",
+      "space": "Space evenly by beat (by second without tempo)",
+      "quantize": "Quantize starts to beats",
+      "repeat": "Repeat…",
+      "pasteAtPointer": "Paste at mouse position",
+      "pasted": "Pasted {{count}} cue(s)",
+      "tracksMoveUp": "Move track up",
+      "tracksMoveDown": "Move track down",
+      "tracksMoveTop": "Move track to top",
+      "tracksMoveBottom": "Move track to bottom",
+      "prevMarker": "Previous marker",
+      "nextMarker": "Next marker",
+      "zoomRange": "Zoom to time range / selection"
     },
     "unsaved": "Unsaved changes",
     "toolbarUndo": "Undo",
@@ -2681,7 +2705,9 @@
       "deleteKey": "Delete this keyframe",
       "clearKeys": "Delete all keyframes in this clip",
       "clearTempo": "Clear beat grid",
-      "saveAsTemplate": "Save as cue template"
+      "saveAsTemplate": "Save as cue template",
+      "arrange": "Arrange",
+      "moveTrack": "Move track"
     },
     "tags": {
       "red": "Red",
@@ -3092,6 +3118,13 @@
         "body": "Each swatch shows the color the fixture actually emits at the playhead (programmer and highlight included).\n• Click to select, Ctrl to add, Shift to select a range in screen order, drag on empty space to marquee-select;\n• Arrow keys move, Shift+arrows extend, Ctrl+A selects all visible swatches, Esc clears the selection;\n• Search by name, model or address (@12 is address 12, 1.12 is universe 1 address 12); filter to selected, programmed or conflicting fixtures;\n• Pixel fixtures show segments in the lower half; click a segment to select that pixel;\n• Badges: dot = programmer value, red frame = address conflict, hatch = mirror address, ⚡ = strobing, P = parked channel, crosshair = locating;\n• The context menu reveals in patch, locates, clears programmer values and creates tracks; dragging swatches onto the timeline creates tracks too.",
         "keys": "Arrows move · Shift+arrows extend · Ctrl+A select all · Esc clear",
         "term": "Fixture sheet / Layout view"
+      },
+      "timeline": {
+        "title": "Timeline",
+        "short": "Arrange cues, edit by time range and organise tracks.",
+        "body": "Cues can be dragged, trimmed and split; everything is undoable.\n• Time range: Shift + drag on the ruler to select a span; right-click to delete it (closing the gap), insert a gap or copy. With no cue selected, Ctrl+C / Ctrl+X / Delete act on the range and Z zooms to it;\n• Ripple edit: when on, deleting or dragging a cue moves later cues on the same track; hold Alt while dragging to affect all tracks plus markers, sections, the loop and media;\n• Arrange: select several cues and right-click Arrange to align starts, chain, space by beat, quantize or repeat;\n• Tracks: drag the grip on the track header to reorder, drag the bottom edge to resize (double-click resets);\n• Keyframes: drag a keyframe on a cue to retime it, hold Ctrl to copy;\n• Click the playhead timecode in the toolbar to type a time to jump to (e.g. 1:23.10, +2s, 12f);\n• The colour tag filter dims other cues and can select every cue with that tag.",
+        "keys": "Shift+drag ruler select range · Z zoom to range · Alt+Shift+Delete delete range · Alt+Shift+G insert gap · Ctrl+Shift+V paste at mouse · Alt+Shift+↑/↓ move track · Shift+↑/↓ previous / next marker",
+        "term": "Time Range · Ripple · Align / Quantize · Insert Time"
       }
     },
     "shortcutSheet": {
@@ -3181,7 +3214,7 @@
         "playhead": "Playhead"
       },
       "snapHint": "Show start and end always snap; hold Alt while dragging to bypass snapping.",
-      "ripple": "Ripple edit: deleting clips closes the gap",
+      "ripple": "Ripple edit: deleting or dragging a cue moves the cues after it (hold Alt while dragging to affect all tracks)",
       "rippleOn": "Ripple edit on",
       "rippleOff": "Ripple edit off",
       "follow": "Follow playhead during playback",
@@ -3202,7 +3235,10 @@
       "needTempo": "Set a tempo (BPM) to show bars",
       "zoom": "Timeline zoom",
       "zoomValue": "{{value}} pixels per second",
-      "fit": "Fit to window (Shift+Z)"
+      "fit": "Fit to window (Shift+Z)",
+      "tagFilter": "Filter by colour tag",
+      "tagAll": "Show all",
+      "selectTagged": "Select cues with this tag"
     },
     "fan": {
       "title": "Fan",
@@ -3230,6 +3266,35 @@
       "apply": "Apply to {{count}}",
       "applied": "Fanned {{name}} across {{count}} fixtures",
       "needTwo": "Select at least two fixtures to fan."
+    },
+    "jump": {
+      "invalid": "Unrecognised time. Examples: 1:23.10, 83s, 12f, +2s",
+      "input": "Jump to time",
+      "hint": "Type a timecode (1:23.10), seconds (83s), milliseconds (1500ms) or frames (12f); prefix + / - to jump relative to now. Enter jumps, Esc cancels",
+      "click": "click to type a time to jump to"
+    },
+    "range": {
+      "copied": "Copied {{count}} cue(s) in the time range",
+      "deleted": "Cleared {{count}} cue(s) in the time range",
+      "deletedClosed": "Deleted the time range ({{count}} cue(s)); later content moved back",
+      "gapInserted": "Inserted a gap; later content pushed out",
+      "nothingMoved": "Nothing after this time range to move",
+      "label": "Time range {{from}} – {{to}}",
+      "hint": "Shift + drag on the ruler to reselect; right-click to delete, insert a gap or copy; Esc clears"
+    },
+    "arrange": {
+      "done": "Arranged the selected cues",
+      "failed": "Could not arrange: cues would overlap, run past the show end, or sit on a locked track"
+    },
+    "repeat": {
+      "title": "Repeat",
+      "description": "Copy the selected cues as a block, each copy right after the previous one, with an optional gap.",
+      "count": "Copies",
+      "gap": "Gap between copies",
+      "unit": "Gap unit",
+      "apply": "Make {{count}} copies",
+      "done": "Made {{count}} copies",
+      "partial": "Made only {{count}} of {{total}} copies: no room for the rest"
     }
   },
   "fixtures": {

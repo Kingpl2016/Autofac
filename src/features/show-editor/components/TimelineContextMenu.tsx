@@ -58,6 +58,12 @@ export function TimelineContextMenu({ commands, children }: { commands: readonly
       e.preventDefault();
       return;
     }
+    // 在时间范围选择里的空白处右键：给出时间范围的菜单
+    const range = ui.timeRange;
+    if (next.kind === "empty" && range && next.timeMs >= range.startMs && next.timeMs <= range.endMs) {
+      setTarget({ kind: "range", timeMs: next.timeMs });
+      return;
+    }
     // 先选中右键的对象（还没选中时）
     if (next.kind === "cue" && !ui.selectedCueIds.includes(next.id)) {
       ui.selectCues([next.id]);
@@ -147,6 +153,16 @@ export function TimelineContextMenu({ commands, children }: { commands: readonly
             </ContextMenuSubContent>
           </ContextMenuSub>
         );
+      case "submenu": {
+        const items = visible(entry.items);
+        if (items.length === 0) return null;
+        return (
+          <ContextMenuSub key={`sub-${entry.labelKey}`}>
+            <ContextMenuSubTrigger>{t(entry.labelKey)}</ContextMenuSubTrigger>
+            <ContextMenuSubContent>{items.map(renderEntry)}</ContextMenuSubContent>
+          </ContextMenuSub>
+        );
+      }
       case "sectionColors":
         return (
           <ContextMenuSub key="sectionColors">

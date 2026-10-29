@@ -22,9 +22,9 @@ export const BODY_BOTTOM_PAD = 40;
  * @param track 轨道。
  * @returns 像素。
  */
-export function trackHeight(track: Pick<Track, "height" | "collapsed">): number {
+export function trackHeight(track: Pick<Track, "height" | "collapsed" | "heightPx">): number {
   if (track.collapsed) return COLLAPSED_HEIGHT;
-  return TRACK_HEIGHTS[track.height ?? "normal"];
+  return track.heightPx ?? TRACK_HEIGHTS[track.height ?? "normal"];
 }
 
 /** 全部轨道的纵向排布。 */
@@ -43,7 +43,7 @@ export interface RowLayout {
  * @param tracks 轨道（显示顺序）。
  * @returns 排布。
  */
-export function rowLayout(tracks: readonly Pick<Track, "height" | "collapsed">[]): RowLayout {
+export function rowLayout(tracks: readonly Pick<Track, "height" | "collapsed" | "heightPx">[]): RowLayout {
   const tops: number[] = [];
   const heights: number[] = [];
   let y = 0;

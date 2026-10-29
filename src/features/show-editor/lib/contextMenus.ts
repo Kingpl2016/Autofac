@@ -73,7 +73,9 @@ export type MenuEntry =
   /** 颜色标签子菜单（作用于选中的片段） */
   | { kind: "tags" }
   /** 段落颜色子菜单 */
-  | { kind: "sectionColors" };
+  | { kind: "sectionColors" }
+  /** 命令子菜单（例如“排列”） */
+  | { kind: "submenu"; labelKey: string; items: MenuEntry[] };
 
 /** 生成菜单需要的界面状态。 */
 export interface MenuContext {
@@ -123,11 +125,41 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
           : []),
         cmd("select.after"),
         act("selectTrackCues", "selectTrackCues"),
+        ...(cue.tag ? [cmd("select.sameTag")] : []),
+        {
+          kind: "submenu",
+          labelKey: "editor.context.arrange",
+          items: [
+            cmd("arrange.alignStart"),
+            cmd("arrange.alignPlayhead"),
+            cmd("arrange.chain"),
+            cmd("arrange.space"),
+            cmd("arrange.quantize"),
+            sep,
+            cmd("edit.repeat"),
+          ],
+        },
         sep,
         cmd("edit.delete"),
         cmd("edit.rippleDelete"),
       ];
     }
+    case "range":
+      return [
+        cmd("edit.cut"),
+        cmd("edit.copy"),
+        cmd("edit.paste"),
+        sep,
+        cmd("edit.delete"),
+        cmd("edit.rippleDelete"),
+        cmd("range.deleteAll"),
+        sep,
+        cmd("range.insertGap"),
+        cmd("range.insertGapAll"),
+        sep,
+        cmd("view.zoomRange"),
+        cmd("range.clear"),
+      ];
     case "mediaClip": {
       const clip = project.mediaClips.find((c) => c.id === target.id);
       if (!clip) return [];
@@ -182,6 +214,11 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
         act("toggleLock", "lock", { checked: track.lock }),
         act("toggleCollapse", "collapse", { checked: track.collapsed === true }),
         act("cycleHeight", "cycleHeight"),
+        {
+          kind: "submenu",
+          labelKey: "editor.context.moveTrack",
+          items: [cmd("tracks.moveUp"), cmd("tracks.moveDown"), cmd("tracks.moveTop"), cmd("tracks.moveBottom")],
+        },
         ...batch,
         sep,
         act("deleteTracks", deleteKey, { labelArgs: { count }, destructive: true }),

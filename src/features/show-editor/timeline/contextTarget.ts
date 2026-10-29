@@ -42,6 +42,7 @@ export function resolveContextTarget(
   if (marker) return { kind: "marker", id: marker };
   const section = pick("data-section-id");
   if (section) return { kind: "section", id: section };
+  if (el.closest("[data-time-range]")) return { kind: "range", timeMs: timeAt() };
   if (el.closest("[data-loop]")) return { kind: "loop", timeMs: timeAt() };
   if (el.closest("[data-timeline-ruler], [data-marker-strip]")) return { kind: "ruler", timeMs: timeAt() };
   if (el.closest("#timeline-body")) {

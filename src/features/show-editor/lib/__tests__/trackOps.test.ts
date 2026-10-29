@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { produce } from "immer";
 
 import { addStaticCue } from "../cueOps";
-import { addFixtures, createGroup } from "../ops";
-import { createEmptyProject, type ShowProject } from "../project";
+import { addFixtures, createGroup, setTrackView } from "../ops";
+import { createEmptyProject, TRACK_HEIGHT_PX, type ShowProject } from "../project";
+import { COLLAPSED_HEIGHT, TRACK_HEIGHTS, trackHeight } from "../../timeline/timelineLayout";
 import { parseProject } from "../schema";
 import { previewRemoveTracks, removeTracks } from "../trackOps";
 import { RGBW } from "./testkit";
@@ -67,5 +68,35 @@ describe("删除轨道与灯具", () => {
     expect(q.cues.some((c) => c.id === "sc")).toBe(false);
     expect(q.groups).toEqual([]);
     expect(q.fixtures).toHaveLength(2);
+  });
+});
+
+describe("轨道自定义高度", () => {
+  it("setTrackView：heightPx 取整并夹到 24~160，null 清除，换档位时也清除", () => {
+    const p = base();
+    const id = p.tracks[0].id;
+    const h = (q: ShowProject) => q.tracks[0].heightPx;
+    expect(h(produce(p, (d) => setTrackView(d, id, { heightPx: 60.4 })))).toBe(60);
+    expect(h(produce(p, (d) => setTrackView(d, id, { heightPx: 5 })))).toBe(TRACK_HEIGHT_PX.min);
+    expect(h(produce(p, (d) => setTrackView(d, id, { heightPx: 999 })))).toBe(TRACK_HEIGHT_PX.max);
+    const custom = produce(p, (d) => setTrackView(d, id, { heightPx: 90 }));
+    expect(h(produce(custom, (d) => setTrackView(d, id, { heightPx: null })))).toBeUndefined();
+    const tall = produce(custom, (d) => setTrackView(d, id, { height: "tall" }));
+    expect(h(tall)).toBeUndefined();
+    expect(tall.tracks[0].height).toBe("tall");
+  });
+
+  it("显示高度：自定义高度优先于档位，折叠时仍是折叠高度", () => {
+    expect(trackHeight({ height: "tall", heightPx: 50 })).toBe(50);
+    expect(trackHeight({ height: "tall" })).toBe(TRACK_HEIGHTS.tall);
+    expect(trackHeight({ collapsed: true, heightPx: 50 })).toBe(COLLAPSED_HEIGHT);
+  });
+
+  it("工程文件：heightPx 往返保留，超出范围拒绝", () => {
+    const p = produce(base(), (d) => setTrackView(d, d.tracks[0].id, { heightPx: 90 }));
+    const ok = parseProject(JSON.stringify(p));
+    expect(ok.ok && ok.project.tracks[0].heightPx).toBe(90);
+    const bad = produce(p, (d) => void (d.tracks[0].heightPx = 500));
+    expect(parseProject(JSON.stringify(bad)).ok).toBe(false);
   });
 });

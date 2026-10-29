@@ -1764,7 +1764,11 @@
       "clipKindNamed": "{{kind}}「{{name}}」",
       "clipLayers": "用到：{{layers}}",
       "headerWidth": "轨道名称列宽度",
-      "headerWidthHint": "拖动调整轨道名称列的宽度，双击恢复默认；聚焦后可用 ←/→ 调整"
+      "headerWidthHint": "拖动调整轨道名称列的宽度，双击恢复默认；聚焦后可用 ←/→ 调整",
+      "reorder": "拖动调整 {{name}} 的顺序",
+      "reorderHint": "上下拖动调整轨道顺序；选中多条时一起移动",
+      "resizeHeight": "调整 {{name}} 的高度",
+      "resizeHeightHint": "上下拖动调整这条轨道的高度，双击恢复默认"
     },
     "ruler": {
       "label": "时间标尺",
@@ -1909,7 +1913,27 @@
       "programmerKnockout": "编程器：移出所选灯具",
       "programmerHighlight": "编程器：开关高亮",
       "programmerUndo": "编程器：撤销",
-      "programmerRedo": "编程器：重做"
+      "programmerRedo": "编程器：重做",
+      "selectSameTag": "选中同颜色标签的 Cue",
+      "rangeDeleteAll": "删除这段时间（全部轨道，后面前移）",
+      "rangeInsertGap": "在时间范围处插入空白（所选轨道）",
+      "rangeInsertGapAll": "在时间范围处插入空白（全部轨道）",
+      "rangeClear": "取消时间范围",
+      "alignStart": "起点对齐到最早的片段",
+      "alignPlayhead": "起点对齐到播放头",
+      "chain": "首尾相接",
+      "space": "按拍等距排开（无节拍时每秒）",
+      "quantize": "起点量化到节拍",
+      "repeat": "复制多份…",
+      "pasteAtPointer": "粘贴到鼠标位置",
+      "pasted": "已粘贴 {{count}} 个 Cue",
+      "tracksMoveUp": "轨道上移",
+      "tracksMoveDown": "轨道下移",
+      "tracksMoveTop": "轨道移到最上",
+      "tracksMoveBottom": "轨道移到最下",
+      "prevMarker": "跳到上一个标记点",
+      "nextMarker": "跳到下一个标记点",
+      "zoomRange": "缩放到时间范围 / 所选片段"
     },
     "unsaved": "有未保存的修改",
     "toolbarUndo": "撤销",
@@ -2681,7 +2705,9 @@
       "deleteKey": "删除这个关键帧",
       "clearKeys": "删除本片段全部关键帧",
       "clearTempo": "清除节拍网格",
-      "saveAsTemplate": "存为 Cue 模板"
+      "saveAsTemplate": "存为 Cue 模板",
+      "arrange": "排列",
+      "moveTrack": "移动轨道"
     },
     "tags": {
       "red": "红",
@@ -3092,6 +3118,13 @@
         "body": "色块的颜色就是灯在播放头处实际发出的颜色（已叠加编程器与高亮）。\n• 单击单选，Ctrl 追加，Shift 按屏幕顺序连选，空白处拖动框选；\n• 方向键移动，Shift + 方向键扩展选择，Ctrl+A 全选看得见的色块，Esc 取消选择；\n• 搜索支持名称、型号与地址（@12 表示地址 12，1.12 表示 Universe 1 地址 12），筛选可只看选中、编程中或有冲突的灯；\n• 像素灯在色块下半部分显示分段，点某一段选中这个像素；\n• 角标：圆点 = 编程器里有值，红框 = 地址冲突，斜纹 = 镜像地址，⚡ = 正在频闪，P = 通道锁定，准星 = 正在找灯；\n• 右键菜单可以在 Patch 中定位、Locate、清除编程器值、为所选灯建轨道；把色块拖到时间线也会建轨道。",
         "keys": "方向键 移动 · Shift+方向键 扩展 · Ctrl+A 全选 · Esc 取消",
         "term": "Fixture Sheet / Layout View（灯具视图）"
+      },
+      "timeline": {
+        "title": "时间轴",
+        "short": "排列片段、按时间范围剪辑、整理轨道。",
+        "body": "片段可以拖动、裁剪、分割，所有操作都能撤销。\n• 时间范围：Shift + 在标尺上拖动选一段时间，右键可删除（后面前移）、插入空白、复制；没有选中片段时 Ctrl+C / Ctrl+X / Delete 作用于这段时间，Z 缩放到它；\n• 波纹编辑：开启后删除或拖动片段时，同一条轨道后面的片段跟着移动；拖动时按住 Alt 作用于全部轨道，标记点、段落、循环区与媒体一起移动；\n• 排列：选中多个片段后右键“排列”，可起点对齐、首尾相接、按拍等距、量化到节拍、复制多份；\n• 轨道：拖轨道头左侧的把手调整顺序，拖底边调整高度（双击恢复）；\n• 关键帧：在片段上拖动关键帧改时刻，按住 Ctrl 复制；\n• 点工具条上的播放头时间码可以直接输入时间跳转（例如 1:23.10、+2s、12f）；\n• 颜色标签筛选会淡化其他片段，可一键选中这个标签的全部片段。",
+        "keys": "Shift+拖动标尺 选时间范围 · Z 缩放到范围 · Alt+Shift+Delete 删除这段时间 · Alt+Shift+G 插入空白 · Ctrl+Shift+V 粘贴到鼠标处 · Alt+Shift+↑/↓ 移动轨道 · Shift+↑/↓ 上 / 下一个标记点",
+        "term": "Time Range（时间范围）· Ripple（波纹）· Align / Quantize（对齐 / 量化）· Insert Time（插入时间）"
       }
     },
     "shortcutSheet": {
@@ -3181,7 +3214,7 @@
         "playhead": "播放头"
       },
       "snapHint": "节目起止始终可吸附；拖动时按住 Alt 临时关闭吸附。",
-      "ripple": "波纹编辑：删除片段时后面的片段前移补齐",
+      "ripple": "波纹编辑：删除或拖动片段时，后面的片段跟着移动（拖动时按住 Alt 作用于全部轨道）",
       "rippleOn": "波纹编辑已开启",
       "rippleOff": "波纹编辑已关闭",
       "follow": "播放时跟随播放头",
@@ -3202,7 +3235,10 @@
       "needTempo": "先设置节拍（BPM）才能按小节显示",
       "zoom": "时间轴缩放",
       "zoomValue": "每秒 {{value}} 像素",
-      "fit": "适应窗口（Shift+Z）"
+      "fit": "适应窗口（Shift+Z）",
+      "tagFilter": "按颜色标签筛选",
+      "tagAll": "全部显示",
+      "selectTagged": "选中这个标签的 Cue"
     },
     "fan": {
       "title": "分布",
@@ -3230,6 +3266,35 @@
       "apply": "应用到 {{count}} 台",
       "applied": "已把{{name}}分布到 {{count}} 台灯",
       "needTwo": "选中两台以上的灯才能分布。"
+    },
+    "jump": {
+      "invalid": "无法识别的时间，示例：1:23.10、83s、12f、+2s",
+      "input": "跳转到时间",
+      "hint": "输入时间码（1:23.10）、秒（83s）、毫秒（1500ms）或帧（12f）；前面加 + / - 为相对当前位置。Enter 跳转，Esc 取消",
+      "click": "点击输入时间跳转"
+    },
+    "range": {
+      "copied": "已复制时间范围内的 {{count}} 个片段",
+      "deleted": "已清空时间范围内的 {{count}} 个片段",
+      "deletedClosed": "已删除这段时间（{{count}} 个片段），后面的内容前移合拢",
+      "gapInserted": "已插入空白，后面的内容往后推",
+      "nothingMoved": "这段时间后面没有可移动的内容",
+      "label": "时间范围 {{from}} – {{to}}",
+      "hint": "Shift + 在标尺上拖动重新选择；右键可删除、插入空白、复制；Esc 取消"
+    },
+    "arrange": {
+      "done": "已排列所选片段",
+      "failed": "无法排列：片段会重叠、超出节目时长或位于锁定轨道"
+    },
+    "repeat": {
+      "title": "复制多份",
+      "description": "把所选片段整组往后复制，每份接在上一份之后，可以留间隔。",
+      "count": "份数",
+      "gap": "每份间隔",
+      "unit": "间隔单位",
+      "apply": "复制 {{count}} 份",
+      "done": "已复制 {{count}} 份",
+      "partial": "只复制了 {{count}} / {{total}} 份：后面放不下"
     }
   },
   "fixtures": {

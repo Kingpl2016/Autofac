@@ -46,3 +46,32 @@ export function snapToFrame(ms: number): number {
   const frameMs = 1000 / OUTPUT_FPS;
   return Math.round(Math.round(ms / frameMs) * frameMs);
 }
+
+/**
+ * 解析“跳转到”的输入（点播放头时间码后输入）：
+ *
+ * - 时间码：`1:23.10`、`1:02:03`、`83`（秒）；
+ * - 带单位：`83s`、`1.5s`、`1500ms`、`12f`（帧）；
+ * - 相对当前位置：前面加 `+` / `-`，例如 `+2s`、`-10f`、`+0:30`。
+ *
+ * @param text 用户输入。
+ * @param currentMs 当前播放头（相对跳转用）。
+ * @returns 目标毫秒（不小于 0）；无法解析时为 `null`。
+ */
+export function parseJumpTime(text: string, currentMs: number): number | null {
+  const raw = text.trim().toLowerCase().replace(/\s+/g, "");
+  if (raw === "") return null;
+  const sign = raw.startsWith("+") ? 1 : raw.startsWith("-") ? -1 : 0;
+  const body = sign === 0 ? raw : raw.slice(1);
+  let ms: number | null;
+  const unit = /^(\d+(?:\.\d+)?)(ms|s|f)$/.exec(body);
+  if (unit) {
+    const n = Number(unit[1]);
+    ms = unit[2] === "ms" ? n : unit[2] === "s" ? n * 1000 : (n / OUTPUT_FPS) * 1000;
+  } else {
+    ms = parseTimecode(body);
+  }
+  if (ms === null || !Number.isFinite(ms)) return null;
+  const target = sign === 0 ? ms : currentMs + sign * ms;
+  return Math.max(0, Math.round(target));
+}

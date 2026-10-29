@@ -11,6 +11,8 @@ import { updateSection } from "../lib/sections";
 import { formatTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
+import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX } from "../lib/snap";
 import { CommitInput } from "../components/CommitInput";
 import { START_LEFT } from "./timelineData";
 import { useTimelineScrollStore } from "./timelineScrollStore";
@@ -66,7 +68,7 @@ function MarkerFlag({ marker, left }: MarkerFlagProps) {
   const setRenaming = useEditorUiStore((s) => s.setRenamingObject);
   const update = useProjectStore((s) => s.update);
   const [dragTime, setDragTime] = useState<number | null>(null);
-  const start = useRef<{ x: number; time: number; moved: boolean } | null>(null);
+  const start = useRef<{ x: number; time: number; moved: boolean; targets: number[] } | null>(null);
 
   const shownLeft = dragTime === null ? left : left + ((dragTime - marker.timeMs) / 1000) * pxPerSec;
   const remove = () => void deleteObject({ kind: "marker", id: marker.id });
@@ -74,14 +76,26 @@ function MarkerFlag({ marker, left }: MarkerFlagProps) {
   const onDown = (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    start.current = { x: e.clientX, time: marker.timeMs, moved: false };
+    // 吸附目标（节拍、片段边缘、播放头……）在拖动开始时收集一次；标记点自己不算
+    const { project } = useProjectStore.getState();
+    const others = { ...project, markers: project.markers.filter((m) => m.id !== marker.id) };
+    const targets = collectSnapTargets(others, useEditorUiStore.getState().playheadMs, new Set(), useEditorPrefsStore.getState().snapKinds);
+    start.current = { x: e.clientX, time: marker.timeMs, moved: false, targets };
   };
   const onMove = (e: PointerEvent<HTMLButtonElement>) => {
     const s = start.current;
     if (!s) return;
     if (!s.moved && Math.abs(e.clientX - s.x) < DRAG_THRESHOLD_PX) return;
     s.moved = true;
-    setDragTime(Math.max(0, s.time + ((e.clientX - s.x) / pxPerSec) * 1000));
+    let time = Math.max(0, s.time + ((e.clientX - s.x) / pxPerSec) * 1000);
+    // 与片段拖动一致：吸附开着、没按 Alt 时吸到最近的目标
+    if (useEditorUiStore.getState().snapEnabled && !e.altKey) {
+      const threshold = pxToMs(SNAP_THRESHOLD_PX, pxPerSec);
+      let best: number | null = null;
+      for (const t of s.targets) if (Math.abs(t - time) <= threshold && (best === null || Math.abs(t - time) < Math.abs(best - time))) best = t;
+      if (best !== null) time = best;
+    }
+    setDragTime(time);
   };
   const onUp = () => {
     const s = start.current;

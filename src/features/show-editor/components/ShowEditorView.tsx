@@ -58,6 +58,7 @@ import { RadialMenu } from "./RadialMenu";
 import { ShortcutSheetDialog } from "./ShortcutSheetDialog";
 import { TemplateChip, type TemplateDragData } from "./TemplatesTab";
 import type { FixtureInstanceDragData } from "./SwatchView";
+import { RepeatDialog } from "./RepeatDialog";
 import { ensureRefTracks } from "../lib/ops";
 import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 
@@ -297,6 +298,7 @@ export function ShowEditorView() {
       <RadialMenu commands={commands} />
       <AutoDraftDialog />
       <DurationConfirmDialog />
+      <RepeatDialog />
       <KeymapDialog commands={commands} />
       <ShortcutSheetDialog commands={commands} />
       <OnboardingRuntime />

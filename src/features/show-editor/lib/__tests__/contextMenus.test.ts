@@ -20,7 +20,10 @@ function base(): ShowProject {
 
 const ctx = { selectedTrackIds: [] as string[], hasClipboard: false };
 /** 菜单项的简写：命令 id / 动作 id / `-` / `tags` */
-const ids = (m: MenuEntry[]) => m.map((e) => (e.kind === "separator" ? "-" : e.kind === "tags" || e.kind === "sectionColors" ? e.kind : e.id));
+const ids = (m: MenuEntry[]) =>
+  m.map((e) =>
+    e.kind === "separator" ? "-" : e.kind === "tags" || e.kind === "sectionColors" ? e.kind : e.kind === "submenu" ? `[${e.labelKey}]` : e.id,
+  );
 const action = (m: MenuEntry[], id: string) => m.find((e) => e.kind === "action" && e.id === id) as Extract<MenuEntry, { kind: "action" }>;
 
 describe("右键菜单内容", () => {

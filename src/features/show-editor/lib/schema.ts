@@ -7,6 +7,7 @@ import {
   DMX_CHANNELS,
   MAX_UNIVERSE,
   PROJECT_VERSION,
+  TRACK_HEIGHT_PX,
   type ShowProject,
 } from "./project";
 import { prunePixelRefs, refExists } from "./fixtureRef";
@@ -352,6 +353,7 @@ export const projectSchema = z.object({
       name: z.string().optional(),
       collapsed: z.boolean().optional(),
       height: z.enum(["compact", "normal", "tall"]).optional(),
+      heightPx: z.number().int().min(TRACK_HEIGHT_PX.min).max(TRACK_HEIGHT_PX.max).optional(),
       onTop: z.boolean().optional(),
     }),
   ),

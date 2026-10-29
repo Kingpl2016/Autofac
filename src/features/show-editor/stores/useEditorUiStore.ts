@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import type { ClipCue } from "../lib/cueOps";
-import type { Look } from "../lib/project";
+import type { CueTag, Look } from "../lib/project";
 import { DEFAULT_PX_PER_SEC } from "../lib/zoom";
 
 /** 时间线右键菜单的目标。 */
@@ -17,6 +17,8 @@ export type ContextTarget =
   | { kind: "section"; id: string }
   /** 标尺上的 A-B 循环区间 */
   | { kind: "loop"; timeMs: number }
+  /** 时间范围选择（标尺上 Shift + 拖动选出的一段时间） */
+  | { kind: "range"; timeMs: number }
   /** 片段上的关键帧 ◆：所在片段与片段内时刻 */
   | { kind: "keyframe"; cueId: string; uMs: number };
 
@@ -131,6 +133,38 @@ interface EditorUiState {
   setContextTarget: (target: ContextTarget | null) => void;
   /** 播放头位置（毫秒）；播放引擎接入后由后端状态驱动 */
   playheadMs: number;
+  /** 时间范围选择（在标尺上 Shift + 拖动）：跨轨道剪切 / 复制 / 删除 / 插入空白用；与 A-B 循环区无关 */
+  timeRange: { startMs: number; endMs: number } | null;
+  /**
+   * 设置时间范围选择。
+   *
+   * @param range 范围（起止自动排序，长度为 0 时清除）；`null` 清除。
+   */
+  setTimeRange: (range: { startMs: number; endMs: number } | null) => void;
+  /** “复制 N 份”对话框是否打开 */
+  repeatOpen: boolean;
+  /**
+   * 打开 / 关闭“复制 N 份”对话框。
+   *
+   * @param open 是否打开。
+   */
+  setRepeatOpen: (open: boolean) => void;
+  /** 时间线按颜色标签筛选：其它片段变暗；`null` 为不筛选 */
+  tagFilter: CueTag | null;
+  /**
+   * 设置颜色标签筛选。
+   *
+   * @param tag 标签；`null` 不筛选。
+   */
+  setTagFilter: (tag: CueTag | null) => void;
+  /** 指针最后停在时间线上的时刻（“粘贴到鼠标位置”用）；不在时间线上时为 `null` */
+  pointerTimeMs: number | null;
+  /**
+   * 记录指针所在的时刻。
+   *
+   * @param ms 时刻；离开时间线时为 `null`。
+   */
+  setPointerTime: (ms: number | null) => void;
   /** 剪贴板里复制的 Cue */
   clipboard: ClipCue[];
   /** 右侧属性区当前的标签页 */
@@ -401,6 +435,19 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   contextTarget: null,
   setContextTarget: (contextTarget) => set({ contextTarget }),
   setPlayhead: (ms) => set({ playheadMs: Math.max(0, Math.round(ms)) }),
+  timeRange: null,
+  setTimeRange: (range) => {
+    if (!range) return set({ timeRange: null });
+    const startMs = Math.max(0, Math.round(Math.min(range.startMs, range.endMs)));
+    const endMs = Math.max(0, Math.round(Math.max(range.startMs, range.endMs)));
+    set({ timeRange: endMs > startMs ? { startMs, endMs } : null });
+  },
+  repeatOpen: false,
+  setRepeatOpen: (repeatOpen) => set({ repeatOpen }),
+  tagFilter: null,
+  setTagFilter: (tagFilter) => set({ tagFilter }),
+  pointerTimeMs: null,
+  setPointerTime: (ms) => set({ pointerTimeMs: ms === null ? null : Math.max(0, Math.round(ms)) }),
   setClipboard: (clip) => set({ clipboard: clip }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setPxPerSec: (px) => set({ pxPerSec: px }),
@@ -415,5 +462,6 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
       selectedTrackIds: [],
       selectedMediaClipIds: [],
       selectedTimelineObject: null,
+      timeRange: null,
     }),
 }));

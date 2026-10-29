@@ -21,6 +21,7 @@ import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { START_LEFT } from "../../timeline/timelineData";
 import { useTimelineScrollStore } from "../../timeline/timelineScrollStore";
+import { RepeatDialog } from "../RepeatDialog";
 import { TimelinePanel } from "../TimelinePanel";
 
 const project = () => useProjectStore.getState().project;
@@ -60,6 +61,9 @@ beforeEach(async () => {
     clipboard: [],
     pxPerSec: 100,
     snapEnabled: false,
+    timeRange: null,
+    repeatOpen: false,
+    tagFilter: null,
   });
   useTimelineScrollStore.setState({ left: 0, top: 0 });
 });
@@ -222,7 +226,7 @@ describe("TimelinePanel（自研时间线）", () => {
     const ruler = screen.getByRole("group", { name: "时间标尺" });
     fireEvent.pointerDown(ruler, { button: 0, clientX: x(12_500), pointerId: 1 });
     expect(ui().playheadMs).toBe(12_500);
-    expect(screen.getByLabelText("播放头位置").textContent).toBe("00:12.15");
+    expect(screen.getByRole("button", { name: /^播放头位置/ }).textContent).toBe("00:12.15");
     fireEvent.pointerMove(ruler, { clientX: x(20_000), pointerId: 1 });
     fireEvent.pointerUp(ruler, { clientX: x(20_000), pointerId: 1 });
     expect(ui().playheadMs).toBe(20_000);
@@ -625,7 +629,7 @@ describe("时间线标记类对象的删除", () => {
     expect(project().loopRange).toBeNull();
   });
 
-  it("片段上的关键帧：点击只移播放头不拖动；右键删除这个关键帧", () => {
+  it("片段上的关键帧：点击移播放头；拖动移动关键帧（不越过相邻关键帧），Ctrl 拖动复制；右键删除这个关键帧", () => {
     const { a } = loadSample();
     let id = "";
     act(() =>
@@ -651,18 +655,35 @@ describe("时间线标记类对象的删除", () => {
     );
     renderFull();
     const keys = () => screen.getAllByTestId("clip-key").filter((k) => k.closest(`[data-cue-id="${id}"]`));
-    const second = keys()[1];
-    fireEvent.pointerDown(second, { button: 0, clientX: x(11_000), clientY: y(0), pointerId: 1 });
-    fireEvent.pointerMove(second, { clientX: x(15_000), clientY: y(0), pointerId: 1 });
-    fireEvent.pointerUp(second, { clientX: x(15_000), clientY: y(0), pointerId: 1 });
-    expect(project().cues.find((c) => c.id === id)?.startMs).toBe(10_000);
+    const keyTimes = () => {
+      const cue = project().cues.find((c) => c.id === id);
+      return cue?.kind === "look" && cue.look.intensity?.kind === "keys" ? cue.look.intensity.keys.map((k) => k.tMs) : null;
+    };
+
+    // 只点一下：播放头移到关键帧，片段与关键帧都不动
+    fireEvent.pointerDown(keys()[1], { button: 0, clientX: x(11_000), clientY: y(0), pointerId: 1 });
+    fireEvent.pointerUp(keys()[1], { clientX: x(11_000), clientY: y(0), pointerId: 1 });
     expect(ui().playheadMs).toBe(11_000);
     expect(ui().selectedCueIds).toEqual([id]);
+    expect(keyTimes()).toEqual([0, 1000, 2000]);
+
+    // 拖动：关键帧跟着走，被夹在下一个关键帧之前；片段本身不移动（Alt 关吸附）
+    fireEvent.pointerDown(keys()[1], { button: 0, clientX: x(11_000), clientY: y(0), pointerId: 1 });
+    fireEvent.pointerMove(keys()[1], { clientX: x(15_000), clientY: y(0), pointerId: 1, altKey: true });
+    fireEvent.pointerUp(keys()[1], { clientX: x(15_000), clientY: y(0), pointerId: 1, altKey: true });
+    expect(project().cues.find((c) => c.id === id)?.startMs).toBe(10_000);
+    expect(keyTimes()).toEqual([0, 1999, 2000]);
+    expect(ui().playheadMs).toBe(11_999);
+
+    // Ctrl 拖动：复制一份，原关键帧保留
+    fireEvent.pointerDown(keys()[1], { button: 0, clientX: x(11_999), clientY: y(0), pointerId: 1, ctrlKey: true });
+    fireEvent.pointerMove(keys()[1], { clientX: x(10_500), clientY: y(0), pointerId: 1, ctrlKey: true, altKey: true });
+    fireEvent.pointerUp(keys()[1], { clientX: x(10_500), clientY: y(0), pointerId: 1, ctrlKey: true, altKey: true });
+    expect(keyTimes()).toEqual([0, 500, 1999, 2000]);
 
     fireEvent.contextMenu(keys()[1]);
     fireEvent.click(within(menu()).getByRole("menuitem", { name: "删除这个关键帧" }));
-    const cue = project().cues.find((c) => c.id === id);
-    expect(cue?.kind === "look" && cue.look.intensity?.kind === "keys" && cue.look.intensity.keys.map((k) => k.tMs)).toEqual([0, 2000]);
+    expect(keyTimes()).toEqual([0, 1999, 2000]);
   });
 });
 
@@ -779,5 +800,89 @@ describe("片段的类别、名称与颜色", () => {
 
     act(() => useProjectStore.getState().update((d) => void (d.presets[0].name = "琥珀")));
     expect(clipOf(/预设「琥珀」/)).toBeTruthy();
+  });
+});
+
+describe("时间轴增强：时间范围、跳转、轨道排序与高度、复制多份", () => {
+  const renderFull = () =>
+    render(
+      <DndContext>
+        <WithCommands />
+      </DndContext>,
+    );
+  const menu = () => screen.getByRole("menu", { name: "右键菜单" });
+
+  it("Shift + 拖动标尺选出时间范围，不移动播放头；右键范围删除这段时间，后面前移", () => {
+    loadSample();
+    act(() => useProjectStore.getState().update((d) => void addStaticCue(d, d.tracks[1].id, 5000, { lengthMs: 1000 })));
+    renderFull();
+    const ruler = screen.getByRole("group", { name: "时间标尺" });
+    fireEvent.pointerDown(ruler, { button: 0, clientX: x(4000), pointerId: 1, shiftKey: true });
+    fireEvent.pointerMove(ruler, { clientX: x(3000), pointerId: 1, shiftKey: true });
+    fireEvent.pointerUp(ruler, { clientX: x(3000), pointerId: 1 });
+    expect(ui().timeRange).toEqual({ startMs: 3000, endMs: 4000 });
+    expect(ui().playheadMs).toBe(0);
+    const band = screen.getByRole("img", { name: "时间范围 00:03.00 – 00:04.00" });
+
+    fireEvent.contextMenu(band);
+    fireEvent.click(within(menu()).getByRole("menuitem", { name: /删除这段时间/ }));
+    expect(project().cues.map((c) => [c.startMs, c.endMs]).sort((p, q) => p[0] - q[0])).toEqual([
+      [1000, 3000],
+      [4000, 5000],
+    ]);
+  });
+
+  it("点播放头时间码输入时间跳转：支持相对时间；无法识别时不动", () => {
+    loadSample();
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: /^播放头位置/ }));
+    const input = screen.getByRole("textbox", { name: "跳转到时间" });
+    fireEvent.change(input, { target: { value: "0:12.15" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(ui().playheadMs).toBe(12_500);
+
+    fireEvent.click(screen.getByRole("button", { name: /^播放头位置/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "跳转到时间" }), { target: { value: "+2s" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "跳转到时间" }), { key: "Enter" });
+    expect(ui().playheadMs).toBe(14_500);
+
+    fireEvent.click(screen.getByRole("button", { name: /^播放头位置/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "跳转到时间" }), { target: { value: "abc" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "跳转到时间" }), { key: "Enter" });
+    expect(ui().playheadMs).toBe(14_500);
+    // Esc 放弃，回到按钮
+    fireEvent.click(screen.getByRole("button", { name: /^播放头位置/ }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "跳转到时间" }), { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "跳转到时间" })).toBeNull();
+  });
+
+  it("轨道头把手用方向键调整顺序（可撤销）；拖下边缘调高度，双击恢复", () => {
+    const { a, b } = loadSample();
+    renderPanel();
+    fireEvent.keyDown(screen.getByRole("button", { name: "拖动调整 RGBW全彩灯 1 的顺序" }), { key: "ArrowDown" });
+    expect(project().tracks.map((t) => t.id)).toEqual([b, a]);
+    act(() => useProjectStore.temporal.getState().undo());
+    expect(project().tracks.map((t) => t.id)).toEqual([a, b]);
+
+    const handle = screen.getByRole("separator", { name: "调整 RGBW全彩灯 1 的高度" });
+    fireEvent.pointerDown(handle, { button: 0, clientY: 44, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 80, pointerId: 1 });
+    expect(project().tracks[0].heightPx).toBe(80);
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "调整 RGBW全彩灯 1 的高度" }));
+    expect(project().tracks[0].heightPx).toBeUndefined();
+  });
+
+  it("复制多份对话框：按份数往后复制所选片段，并选中原片段与副本", async () => {
+    const { cueA } = loadSample();
+    act(() => {
+      ui().selectCues([cueA]);
+      ui().setRepeatOpen(true);
+    });
+    render(<RepeatDialog />);
+    fireEvent.click(await screen.findByRole("button", { name: "复制 4 份" }));
+    expect(project().cues.map((c) => c.startMs).sort((p, q) => p - q)).toEqual([1000, 3000, 5000, 7000, 9000]);
+    expect(ui().selectedCueIds).toHaveLength(5);
+    expect(ui().repeatOpen).toBe(false);
   });
 });

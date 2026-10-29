@@ -177,3 +177,56 @@ describe("marqueeHits", () => {
     expect(marqueeHits(spans, { left: 60, top: 60, width: 10, height: 10 })).toEqual([]);
   });
 });
+
+describe("波纹拖动", () => {
+  it("同轨移动：其后的片段跟着平移，结果带上波纹信息", () => {
+    const { project, ids, a } = sample();
+    const r = computeDrag(project, input({ ids: [ids[0]], deltaMs: 1000, ripple: { allTracks: false } }));
+    expect(r.valid).toBe(true);
+    expect(r.placements).toEqual([
+      { id: ids[0], trackId: a, startMs: 2000, endMs: 4000 },
+      { id: ids[1], trackId: a, startMs: 6000, endMs: 7000 },
+    ]);
+    expect(r.ripple).toEqual({ fromMs: 3000, deltaMs: 1000, allTracks: false });
+  });
+
+  it("全部轨道：别的轨道上其后的片段也跟着移；只看同轨时不动", () => {
+    const { project, ids } = sample();
+    const all = computeDrag(project, input({ ids: [ids[2]], deltaMs: 500, ripple: { allTracks: true } }));
+    expect(all.placements.map((p) => p.id)).toEqual([ids[2], ids[1]]);
+    expect(all.placements[1]).toMatchObject({ startMs: 5500, endMs: 6500 });
+    const same = computeDrag(project, input({ ids: [ids[2]], deltaMs: 500, ripple: { allTracks: false } }));
+    expect(same.placements.map((p) => p.id)).toEqual([ids[2]]);
+  });
+
+  it("往左只受左边邻居限制；往右可以超出节目时长（松手时延长）", () => {
+    const { project, ids } = sample();
+    const left = computeDrag(project, input({ ids: [ids[1]], deltaMs: -5000, ripple: { allTracks: false } }));
+    expect(left.placements[0]).toMatchObject({ startMs: 3000, endMs: 4000 });
+    expect(left.ripple?.deltaMs).toBe(-2000);
+    const right = computeDrag(project, input({ ids: [ids[1]], deltaMs: 15_000, ripple: { allTracks: false } }));
+    expect(right.valid).toBe(true);
+    expect(right.placements[0]).toMatchObject({ startMs: 20_000, endMs: 21_000 });
+  });
+
+  it("拉右边缘：后面的片段被推开，不再被它挡住", () => {
+    const { project, ids } = sample();
+    const plain = computeDrag(project, input({ kind: "trimEnd", ids: [ids[0]], deltaMs: 3000 }));
+    expect(plain.placements).toHaveLength(1);
+    expect(plain.placements[0]).toMatchObject({ endMs: 5000 });
+    const r = computeDrag(project, input({ kind: "trimEnd", ids: [ids[0]], deltaMs: 3000, ripple: { allTracks: false } }));
+    expect(r.valid).toBe(true);
+    expect(r.placements.map((p) => [p.startMs, p.endMs])).toEqual([
+      [1000, 6000],
+      [8000, 9000],
+    ]);
+    expect(r.ripple).toEqual({ fromMs: 3000, deltaMs: 3000, allTracks: false });
+  });
+
+  it("换轨时不做波纹", () => {
+    const { project, ids } = sample();
+    const r = computeDrag(project, input({ ids: [ids[1]], rowDelta: 1, ripple: { allTracks: false } }));
+    expect(r.rowDelta).toBe(1);
+    expect(r.ripple).toBeUndefined();
+  });
+});

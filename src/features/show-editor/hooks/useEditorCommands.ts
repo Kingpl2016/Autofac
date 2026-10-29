@@ -12,8 +12,22 @@ import { addSection, sectionAt } from "../lib/sections";
 import { hasProgrammerValues, knockout, recordLengthMs, recordLooks, recordScene } from "../lib/programmer";
 import { setLoopEdge, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
-import { clamp } from "@/shared/lib/math";
-import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, zoomPxPerSec } from "../lib/zoom";
+import { normalizeZoom, zoomPxPerSec, zoomToRange } from "../lib/zoom";
+import {
+  alignCueStarts,
+  chainCues,
+  copyRange,
+  deleteRange,
+  insertGap,
+  moveTracks,
+  moveTracksBy,
+  quantizeCues,
+  spaceCues,
+  type EditScope,
+} from "../lib/timelineEdit";
+import { pasteCuesToTracks } from "../lib/cueOps";
+import { START_LEFT } from "../timeline/timelineData";
+import type { ShowProject } from "../lib/project";
 import { CENTER_VIEWS, useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { LIBRARY_TABS, useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProgrammerStore } from "../stores/useProgrammerStore";
@@ -57,6 +71,57 @@ export function useEditorCommands(onSave?: () => void): Command[] {
     const allFixtures = () => project().fixtures.map((f) => f.id);
     const programmer = () => useProgrammerStore.getState();
 
+    // ---- 时间范围（标尺上 Shift + 拖动选出的一段时间） ----
+    const rangeActive = () => ui().timeRange !== null;
+    /** 影响范围：默认是选中的轨道（没有时为全部轨道）；`all` 时全部轨道，标记、段落、循环区、媒体一起移动。 */
+    const scopeOf = (all: boolean): EditScope =>
+      all ? { trackIds: null, objects: true } : { trackIds: ui().selectedTrackIds.length > 0 ? ui().selectedTrackIds : null, objects: false };
+    const copyTimeRange = () => {
+      const range = ui().timeRange;
+      if (!range) return;
+      const clip = copyRange(project(), range, scopeOf(false).trackIds);
+      ui().setClipboard(clip);
+      announce(t("editor.range.copied", { count: clip.length }));
+    };
+    const deleteTimeRange = (close: boolean, all: boolean) => {
+      const range = ui().timeRange;
+      if (!range) return;
+      let n = 0;
+      update((d) => {
+        n = deleteRange(d, range, scopeOf(all), close);
+      });
+      if (close) ui().setTimeRange(null);
+      announce(t(close ? "editor.range.deletedClosed" : "editor.range.deleted", { count: n }));
+    };
+    const insertRangeGap = (all: boolean) => {
+      const range = ui().timeRange;
+      if (!range) return;
+      let ok = false;
+      update((d) => {
+        ok = insertGap(d, range.startMs, range.endMs - range.startMs, scopeOf(all));
+      });
+      announce(t(ok ? "editor.range.gapInserted" : "editor.range.nothingMoved"));
+    };
+    /** 一组片段的时间跨度。 */
+    const cueSpan = (ids: readonly string[]) => {
+      const cues = project().cues.filter((c) => ids.includes(c.id));
+      return cues.length > 0 ? { startMs: Math.min(...cues.map((c) => c.startMs)), endMs: Math.max(...cues.map((c) => c.endMs)) } : null;
+    };
+    /** 排列片段（一步撤销；放不下时整次放弃并说明）。 */
+    const arrange = (fn: (d: ShowProject, ids: string[]) => boolean) => {
+      let ok = false;
+      update((d) => {
+        ok = fn(d, alive());
+      });
+      announce(t(ok ? "editor.arrange.done" : "editor.arrange.failed"));
+    };
+    const moveSelectedTracks = (fn: (d: ShowProject, ids: string[]) => boolean) => {
+      const ids = ui().selectedTrackIds.length > 0 ? ui().selectedTrackIds : ui().selectedTrackId ? [ui().selectedTrackId as string] : [];
+      if (ids.length === 0) return;
+      update((d) => void fn(d, ids));
+    };
+    const hasTracksSelected = () => ui().selectedTrackIds.length > 0 || ui().selectedTrackId !== null;
+
     const commands: Command[] = [
       { id: "file.save", titleKey: "editor.commands.save", category: "file", keys: ["mod+s"], global: true, run: () => onSave?.() },
       { id: "edit.undo", titleKey: "editor.commands.undo", category: "edit", keys: ["mod+z"], enabled: () => temporal().pastStates.length > 0, run: () => temporal().undo() },
@@ -66,13 +131,25 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         titleKey: "editor.commands.cut",
         category: "edit",
         keys: ["mod+x"],
-        enabled: hasSelection,
+        enabled: () => hasSelection() || rangeActive(),
         run: () => {
+          if (!hasSelection() && rangeActive()) {
+            copyTimeRange();
+            deleteTimeRange(useEditorPrefsStore.getState().rippleEdit, false);
+            return;
+          }
           actions.copySelected();
           actions.removeSelected();
         },
       },
-      { id: "edit.copy", titleKey: "editor.commands.copy", category: "edit", keys: ["mod+c"], enabled: hasSelection, run: actions.copySelected },
+      {
+        id: "edit.copy",
+        titleKey: "editor.commands.copy",
+        category: "edit",
+        keys: ["mod+c"],
+        enabled: () => hasSelection() || rangeActive(),
+        run: () => (!hasSelection() && rangeActive() ? copyTimeRange() : actions.copySelected()),
+      },
       { id: "edit.paste", titleKey: "editor.commands.paste", category: "edit", keys: ["mod+v"], enabled: () => ui().clipboard.length > 0, run: actions.pasteAtPlayhead },
       { id: "edit.duplicate", titleKey: "editor.commands.duplicate", category: "edit", keys: ["mod+d"], enabled: hasSelection, run: actions.duplicateSelected },
       {
@@ -80,11 +157,16 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         titleKey: "editor.commands.delete",
         category: "edit",
         keys: ["delete", "backspace"],
-        enabled: () => hasSelection() || aliveMedia().length > 0 || ui().selectedTimelineObject !== null,
+        enabled: () => hasSelection() || aliveMedia().length > 0 || ui().selectedTimelineObject !== null || rangeActive(),
         run: () => {
           // 最后点选的是标记点 / 段落时删它（与片段选择互斥）
           if (deleteSelectedObject()) return;
           const media = aliveMedia();
+          // 没有选中的片段、有时间范围：删除这段时间（波纹编辑开着时合拢）
+          if (media.length === 0 && !hasSelection() && rangeActive()) {
+            deleteTimeRange(useEditorPrefsStore.getState().rippleEdit, false);
+            return;
+          }
           if (media.length === 0) {
             // 波纹编辑开着时，删除片段等同于波纹删除（后面的片段前移补齐）
             if (useEditorPrefsStore.getState().rippleEdit && hasSelection()) {
@@ -109,8 +191,12 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         titleKey: "editor.commands.rippleDelete",
         category: "edit",
         keys: ["shift+delete", "shift+backspace"],
-        enabled: hasSelection,
+        enabled: () => hasSelection() || rangeActive(),
         run: () => {
+          if (!hasSelection() && rangeActive()) {
+            deleteTimeRange(true, false);
+            return;
+          }
           let removed = 0;
           update((d) => {
             removed = rippleDeleteCues(d, alive());
@@ -305,6 +391,117 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         run: () => ui().selectCues(cuesAfter(project(), ui().playheadMs, ui().selectedTrackId)),
       },
       { id: "select.none", titleKey: "editor.commands.selectNone", category: "select", keys: ["escape"], run: () => ui().clearSelection() },
+      {
+        id: "select.sameTag",
+        titleKey: "editor.commands.selectSameTag",
+        category: "select",
+        enabled: () => alive().some((id) => project().cues.find((c) => c.id === id)?.tag),
+        run: () => {
+          const tags = new Set(alive().flatMap((id) => project().cues.find((c) => c.id === id)?.tag ?? []));
+          ui().selectCues(project().cues.filter((c) => c.tag && tags.has(c.tag)).map((c) => c.id));
+        },
+      },
+      // ---- 时间范围 ----
+      {
+        id: "range.deleteAll",
+        titleKey: "editor.commands.rangeDeleteAll",
+        category: "timeline",
+        keys: ["alt+shift+delete", "alt+shift+backspace"],
+        enabled: rangeActive,
+        run: () => deleteTimeRange(true, true),
+      },
+      { id: "range.insertGap", titleKey: "editor.commands.rangeInsertGap", category: "timeline", enabled: rangeActive, run: () => insertRangeGap(false) },
+      {
+        id: "range.insertGapAll",
+        titleKey: "editor.commands.rangeInsertGapAll",
+        category: "timeline",
+        keys: ["alt+shift+g"],
+        enabled: rangeActive,
+        run: () => insertRangeGap(true),
+      },
+      { id: "range.clear", titleKey: "editor.commands.rangeClear", category: "timeline", enabled: rangeActive, run: () => ui().setTimeRange(null) },
+      // ---- 片段排列 ----
+      { id: "arrange.alignStart", titleKey: "editor.commands.alignStart", category: "timeline", enabled: () => alive().length > 1, run: () => arrange((d, ids) => alignCueStarts(d, ids)) },
+      {
+        id: "arrange.alignPlayhead",
+        titleKey: "editor.commands.alignPlayhead",
+        category: "timeline",
+        enabled: hasSelection,
+        run: () => arrange((d, ids) => alignCueStarts(d, ids, ui().playheadMs)),
+      },
+      { id: "arrange.chain", titleKey: "editor.commands.chain", category: "timeline", enabled: () => alive().length > 1, run: () => arrange((d, ids) => chainCues(d, ids)) },
+      {
+        id: "arrange.space",
+        titleKey: "editor.commands.space",
+        category: "timeline",
+        enabled: () => alive().length > 1,
+        // 有节拍时每拍一个，否则每秒一个
+        run: () => arrange((d, ids) => spaceCues(d, ids, d.tempo ? 60_000 / d.tempo.bpm : 1000)),
+      },
+      {
+        id: "arrange.quantize",
+        titleKey: "editor.commands.quantize",
+        category: "timeline",
+        enabled: () => hasSelection() && project().tempo !== null,
+        run: () => arrange((d, ids) => (d.tempo ? quantizeCues(d, ids, d.tempo, 1) : false)),
+      },
+      { id: "edit.repeat", titleKey: "editor.commands.repeat", category: "edit", enabled: hasSelection, run: () => ui().setRepeatOpen(true) },
+      {
+        id: "edit.pasteAtPointer",
+        titleKey: "editor.commands.pasteAtPointer",
+        category: "edit",
+        keys: ["mod+shift+v"],
+        enabled: () => ui().clipboard.length > 0 && ui().pointerTimeMs !== null,
+        run: () => {
+          const at = ui().pointerTimeMs;
+          if (at === null) return;
+          let created: string[] = [];
+          update((d) => {
+            created = pasteCuesToTracks(d, ui().clipboard, at, ui().selectedTrackIds);
+          });
+          if (created.length > 0) ui().selectCues(created);
+          announce(t(created.length > 0 ? "editor.commands.pasted" : "editor.templates.noRoom", { count: created.length }));
+        },
+      },
+      // ---- 轨道排序 ----
+      { id: "tracks.moveUp", titleKey: "editor.commands.tracksMoveUp", category: "timeline", keys: ["alt+shift+arrowup"], enabled: hasTracksSelected, run: () => moveSelectedTracks((d, ids) => moveTracksBy(d, ids, -1)) },
+      { id: "tracks.moveDown", titleKey: "editor.commands.tracksMoveDown", category: "timeline", keys: ["alt+shift+arrowdown"], enabled: hasTracksSelected, run: () => moveSelectedTracks((d, ids) => moveTracksBy(d, ids, 1)) },
+      { id: "tracks.moveTop", titleKey: "editor.commands.tracksMoveTop", category: "timeline", enabled: hasTracksSelected, run: () => moveSelectedTracks((d, ids) => moveTracks(d, ids, 0)) },
+      { id: "tracks.moveBottom", titleKey: "editor.commands.tracksMoveBottom", category: "timeline", enabled: hasTracksSelected, run: () => moveSelectedTracks((d, ids) => moveTracks(d, ids, d.tracks.length)) },
+      // ---- 标记导航与缩放 ----
+      ...([-1, 1] as const).map(
+        (dir): Command => ({
+          id: dir < 0 ? "transport.prevMarker" : "transport.nextMarker",
+          titleKey: dir < 0 ? "editor.commands.prevMarker" : "editor.commands.nextMarker",
+          category: "transport",
+          keys: [dir < 0 ? "shift+arrowup" : "shift+arrowdown"],
+          enabled: () => project().markers.length > 0,
+          run: () => {
+            const at = ui().playheadMs;
+            const times = project().markers.map((m) => m.timeMs).sort((a, b) => a - b);
+            const next = dir > 0 ? times.find((m) => m > at) : [...times].reverse().find((m) => m < at);
+            if (next !== undefined) void seekTo(next);
+          },
+        }),
+      ),
+      {
+        id: "view.zoomRange",
+        titleKey: "editor.commands.zoomRange",
+        category: "view",
+        keys: ["z"],
+        enabled: () => rangeActive() || hasSelection() || project().loopRange !== null,
+        run: () => {
+          const target = ui().timeRange ?? cueSpan(alive()) ?? project().loopRange;
+          const vp = readTimelineViewport();
+          if (!target) return;
+          const { pxPerSec, scrollLeft } = zoomToRange(target, vp?.rect.width ?? 1000, START_LEFT);
+          ui().setPxPerSec(pxPerSec);
+          requestAnimationFrame(() => {
+            const el = document.getElementById("timeline-body");
+            if (el) el.scrollLeft = scrollLeft;
+          });
+        },
+      },
       { id: "view.zoomIn", titleKey: "editor.commands.zoomIn", category: "view", keys: ["+", "mod++"], run: () => ui().setPxPerSec(zoomPxPerSec(ui().pxPerSec, 1)) },
       { id: "view.zoomOut", titleKey: "editor.commands.zoomOut", category: "view", keys: ["-", "mod+-"], run: () => ui().setPxPerSec(zoomPxPerSec(ui().pxPerSec, -1)) },
       {
@@ -315,7 +512,12 @@ export function useEditorCommands(onSave?: () => void): Command[] {
         run: () => {
           const width = readTimelineViewport()?.rect.width ?? 1000;
           const seconds = Math.max(1, project().durationMs / 1000);
-          ui().setPxPerSec(Math.round(clamp((width - 40) / seconds, MIN_PX_PER_SEC, MAX_PX_PER_SEC)));
+          // 下限足够小：几个小时的节目也能整场放进一屏
+          ui().setPxPerSec(normalizeZoom((width - 40) / seconds));
+          requestAnimationFrame(() => {
+            const el = document.getElementById("timeline-body");
+            if (el) el.scrollLeft = 0;
+          });
         },
       },
       { id: "view.palette", titleKey: "editor.commands.palette", category: "view", keys: ["mod+k", "mod+shift+k"], global: true, run: () => ui().setPaletteOpen(true) },

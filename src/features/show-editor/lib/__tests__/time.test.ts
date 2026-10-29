@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { clamp } from "@/shared/lib/math";
-import { formatTimecode, parseTimecode, snapToFrame } from "../time";
+import { formatTimecode, parseJumpTime, parseTimecode, snapToFrame } from "../time";
 
 describe("formatTimecode", () => {
   it("分:秒.帧，帧按 30 FPS", () => {
@@ -38,6 +38,30 @@ describe("parseTimecode", () => {
   it("非法输入返回 null", () => {
     for (const bad of ["", "abc", "1:", ":10", "1.2.3", "00:00.30", "-5", "1:2:3:4", "00:xx"]) {
       expect(parseTimecode(bad), bad).toBeNull();
+    }
+  });
+});
+
+describe("parseJumpTime", () => {
+  it("时间码与带单位的数值（秒 / 毫秒 / 帧），不区分大小写、忽略空格", () => {
+    expect(parseJumpTime("1:23.10", 0)).toBe(83_333);
+    expect(parseJumpTime("83", 0)).toBe(83_000);
+    expect(parseJumpTime("83s", 0)).toBe(83_000);
+    expect(parseJumpTime("1.5S", 0)).toBe(1500);
+    expect(parseJumpTime(" 1500 ms ", 0)).toBe(1500);
+    expect(parseJumpTime("12f", 0)).toBe(400);
+  });
+
+  it("+ / - 相对当前位置，结果不小于 0", () => {
+    expect(parseJumpTime("+2s", 5000)).toBe(7000);
+    expect(parseJumpTime("-10f", 1000)).toBe(667);
+    expect(parseJumpTime("+0:30", 1000)).toBe(31_000);
+    expect(parseJumpTime("-10s", 1000)).toBe(0);
+  });
+
+  it("无法解析时为 null", () => {
+    for (const bad of ["", "  ", "abc", "1x", "+", "--1", "1.2.3s", "00:00.30"]) {
+      expect(parseJumpTime(bad, 1000), bad).toBeNull();
     }
   });
 });

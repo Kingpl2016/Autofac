@@ -12,6 +12,7 @@ import {
   type ShowProject,
   type Tempo,
   type Track,
+  TRACK_HEIGHT_PX,
 } from "./project";
 import { MAX_BPM, MIN_BPM } from "./tempo";
 import { clamp } from "@/shared/lib/math";
@@ -449,12 +450,12 @@ export const TRACK_HEIGHT_ORDER = ["compact", "normal", "tall"] as const;
  *
  * @param draft 工程草稿。
  * @param trackId 轨道 id。
- * @param view 要改的字段。
+ * @param view 要改的字段：`heightPx` 为自定义高度（夹到 24~160），`null` 清除（回到档位）；改 `height` 档位时清除自定义高度。
  */
 export function setTrackView(
   draft: ShowProject,
   trackId: string,
-  view: { collapsed?: boolean; height?: (typeof TRACK_HEIGHT_ORDER)[number] },
+  view: { collapsed?: boolean; height?: (typeof TRACK_HEIGHT_ORDER)[number]; heightPx?: number | null },
 ): void {
   const track = draft.tracks.find((t) => t.id === trackId);
   if (!track) return;
@@ -465,7 +466,11 @@ export function setTrackView(
   if (view.height !== undefined) {
     if (view.height === "normal") delete track.height;
     else track.height = view.height;
+    // 换档位时清掉自定义高度
+    delete track.heightPx;
   }
+  if (view.heightPx === null) delete track.heightPx;
+  else if (view.heightPx !== undefined) track.heightPx = Math.round(clamp(view.heightPx, TRACK_HEIGHT_PX.min, TRACK_HEIGHT_PX.max));
 }
 
 /**

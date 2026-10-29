@@ -25,6 +25,11 @@ export interface DragInput {
   snapTargets: readonly number[] | null;
   /** 吸附距离（毫秒） */
   thresholdMs: number;
+  /**
+   * 波纹编辑：移动或拉右边缘时，其后的片段跟着平移（只对同轨道移动与右边缘裁剪生效）。
+   * `allTracks` 时全部轨道其后的片段都跟着移（标记点等由调用方按 `DragResult.ripple` 平移）。
+   */
+  ripple?: { allTracks: boolean } | null;
 }
 
 /** 一次拖动的结果。 */
@@ -36,6 +41,31 @@ export interface DragResult {
   valid: boolean;
   /** 实际采用的换轨行数（目标轨道不可用时退回 0） */
   rowDelta: number;
+  /** 波纹编辑的平移：从 `fromMs` 起的内容平移了 `deltaMs`（没有波纹时省略） */
+  ripple?: { fromMs: number; deltaMs: number; allTracks: boolean };
+}
+
+/**
+ * 波纹编辑里跟着平移的片段：起点不早于 `fromMs`、不在拖动的片段里、所在轨道未锁定；
+ * 只看同轨道（`allTracks` 时看全部轨道）。
+ */
+function rippleFollowers(
+  project: Pick<ShowProject, "cues" | "tracks">,
+  moving: ReadonlySet<string>,
+  trackIds: ReadonlySet<string>,
+  fromMs: number,
+  allTracks: boolean,
+) {
+  const locked = new Set(project.tracks.filter((t) => t.lock).map((t) => t.id));
+  return project.cues.filter(
+    (c) => !moving.has(c.id) && c.startMs >= fromMs && !locked.has(c.trackId) && (allTracks || trackIds.has(c.trackId)),
+  );
+}
+
+/** 校验位置时允许波纹把节目往后延长（松手时由调用方延长节目时长）。 */
+function withRoom<P extends Pick<ShowProject, "durationMs">>(project: P, placements: readonly CuePlacement[]): P {
+  const end = Math.max(project.durationMs, ...placements.map((p) => p.endMs));
+  return end === project.durationMs ? project : { ...project, durationMs: end };
 }
 
 /**
@@ -99,6 +129,24 @@ export function computeDrag(
       end += snap.adjust;
       guideMs = snap.target;
     }
+    if (input.ripple) {
+      // 波纹：右边的片段跟着推开 / 拉回，不受后一个片段限制
+      end = snapToFrame(Math.max(cue.startMs + MIN_CUE_MS, end));
+      if (guideMs !== null && end !== guideMs) guideMs = null;
+      const shift = end - cue.endMs;
+      const followers = rippleFollowers(project, ids, new Set([cue.trackId]), cue.endMs, input.ripple.allTracks);
+      const placements = [
+        { id: cue.id, trackId: cue.trackId, startMs: cue.startMs, endMs: end },
+        ...followers.map((f) => ({ id: f.id, trackId: f.trackId, startMs: f.startMs + shift, endMs: f.endMs + shift })),
+      ];
+      return {
+        placements,
+        guideMs,
+        valid: checkPlacements(withRoom(project, placements), placements) !== null,
+        rowDelta: 0,
+        ripple: { fromMs: cue.endMs, deltaMs: shift, allTracks: input.ripple.allTracks },
+      };
+    }
     end = snapToFrame(clamp(end, cue.startMs + MIN_CUE_MS, gap[1]));
     if (guideMs !== null && end !== guideMs) guideMs = null;
     const placements = [{ id: cue.id, trackId: cue.trackId, startMs: cue.startMs, endMs: end }];
@@ -136,6 +184,31 @@ export function computeDrag(
       const startMs = snapToFrame(c.startMs + d);
       return { id: c.id, trackId: targetTrack(c.trackId)?.id ?? c.trackId, startMs, endMs: startMs + (c.endMs - c.startMs) };
     });
+
+  if (input.ripple && rowDelta === 0) {
+    // 波纹移动：其后的片段整体跟着平移；只受左边邻居限制
+    const trackIds = new Set(cues.map((c) => c.trackId));
+    const followers = rippleFollowers(project, ids, trackIds, maxEnd, input.ripple.allTracks);
+    let lo = -minStart;
+    for (const c of cues) {
+      const gap = gapAround(project, c.trackId, c.startMs, ids) ?? [c.startMs, c.endMs];
+      lo = Math.max(lo, gap[0] - c.startMs);
+    }
+    const clamped = Math.max(lo, input.deltaMs + (snap?.adjust ?? 0));
+    if (clamped !== delta) guideMs = null;
+    const shift = snapToFrame(clamped);
+    const all = [
+      ...place(shift),
+      ...followers.map((f) => ({ id: f.id, trackId: f.trackId, startMs: f.startMs + shift, endMs: f.endMs + shift })),
+    ];
+    return {
+      placements: all,
+      guideMs,
+      valid: checkPlacements(withRoom(project, all), all) !== null,
+      rowDelta,
+      ripple: { fromMs: maxEnd, deltaMs: shift, allTracks: input.ripple.allTracks },
+    };
+  }
 
   let placements = place(delta);
   let valid = checkPlacements(project, placements) !== null;

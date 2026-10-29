@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Crosshair, Magnet, Maximize2, Rows3, ArrowLeftToLine, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronDown, Crosshair, Magnet, Maximize2, Rows3, ArrowLeftToLine, Tag, ZoomIn, ZoomOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +20,12 @@ import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
 import type { Command } from "../lib/commands";
 import { setTrackView, TRACK_HEIGHT_ORDER } from "../lib/ops";
+import { CUE_TAG_COLORS, CUE_TAGS, type CueTag } from "../lib/project";
 import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, sliderToZoom, ZOOM_SLIDER_STEPS, zoomPxPerSec, zoomToSlider } from "../lib/zoom";
 import { SNAP_KINDS, useEditorPrefsStore, type RulerFormat } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { HelpTip } from "./HelpTip";
 import { TimelineLegend } from "./TimelineLegend";
 
 /** 工具条上的小图标按钮（按下态用 `aria-pressed`，不只靠颜色）。 */
@@ -78,6 +80,8 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
   const hasTempo = useProjectStore((s) => s.project.tempo !== null);
   const update = useProjectStore((s) => s.update);
   const tracks = useProjectStore((s) => s.project.tracks);
+  const tagFilter = useEditorUiStore((s) => s.tagFilter);
+  const setTagFilter = useEditorUiStore((s) => s.setTagFilter);
 
   const zoomFit = () => commands.find((c) => c.id === "view.zoomFit")?.run();
   // 全部轨道的高度：取第一条轨道的档位作为当前值
@@ -131,6 +135,58 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
       <ToolButton label={t("editor.timelineTools.follow")} pressed={follow} onClick={() => setFollow(!follow)}>
         <Crosshair aria-hidden />
       </ToolButton>
+      {/* 按颜色标签筛选：其它标签的片段变暗 */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn("size-6", tagFilter && "bg-primary/20 text-primary")}
+            aria-label={t("editor.timelineTools.tagFilter")}
+            aria-pressed={tagFilter !== null}
+            title={t("editor.timelineTools.tagFilter")}
+          >
+            {tagFilter ? (
+              <span
+                aria-hidden
+                className="size-3 rounded-full bg-(--tag)"
+                style={{ "--tag": `rgb(${CUE_TAG_COLORS[tagFilter].join(" ")})` } as CSSProperties}
+              />
+            ) : (
+              <Tag aria-hidden />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" aria-label={t("editor.timelineTools.tagFilter")}>
+          <DropdownMenuRadioGroup value={tagFilter ?? "none"} onValueChange={(v) => setTagFilter(v === "none" ? null : (v as CueTag))}>
+            <DropdownMenuRadioItem value="none">{t("editor.timelineTools.tagAll")}</DropdownMenuRadioItem>
+            {CUE_TAGS.map((tag) => (
+              <DropdownMenuRadioItem key={tag} value={tag}>
+                <span
+                  aria-hidden
+                  className="size-3 rounded-full bg-(--tag)"
+                  style={{ "--tag": `rgb(${CUE_TAG_COLORS[tag].join(" ")})` } as CSSProperties}
+                />
+                {t(`editor.tags.${tag}`)}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          {tagFilter && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  const ids = useProjectStore.getState().project.cues.filter((c) => c.tag === tagFilter).map((c) => c.id);
+                  useEditorUiStore.getState().selectCues(ids);
+                }}
+              >
+                {t("editor.timelineTools.selectTagged")}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="icon" className="size-6" aria-label={t("editor.timelineTools.trackHeight")} title={t("editor.timelineTools.trackHeight")} disabled={tracks.length === 0}>
@@ -183,6 +239,7 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
         <Maximize2 aria-hidden />
       </ToolButton>
       <TimelineLegend />
+      <HelpTip topic="editor.help.timeline" />
     </div>
   );
 }

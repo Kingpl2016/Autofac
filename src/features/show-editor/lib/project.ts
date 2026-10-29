@@ -94,6 +94,9 @@ export type TrackTarget =
   | { kind: "group"; id: string }
   | { kind: "scene" };
 
+/** 轨道自定义高度（拖动轨道头下边缘）的范围（像素）。 */
+export const TRACK_HEIGHT_PX = { min: 24, max: 160 } as const;
+
 /** 时间线轨道。灯具 / 分组轨道的名字取自绑定对象；场景轨道用 `name`。 */
 export interface Track {
   id: string;
@@ -107,6 +110,8 @@ export interface Track {
   collapsed?: boolean;
   /** 轨道高度档位，省略为标准 */
   height?: "compact" | "normal" | "tall";
+  /** 拖动轨道头下边缘得到的自定义高度（像素，24~160）；有值时优先于 `height` */
+  heightPx?: number;
   /** 置顶层：颜色 / 属性在所有其它轨道之后应用（编辑器的编程器预览用，与后端 `Track::on_top` 一致） */
   onTop?: boolean;
 }

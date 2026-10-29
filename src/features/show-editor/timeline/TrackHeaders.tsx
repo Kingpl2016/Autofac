@@ -1,4 +1,4 @@
-import { forwardRef, useState, type ReactNode } from "react";
+import { forwardRef, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Boxes,
@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ChevronsUpDown,
   Clapperboard,
+  GripVertical,
   Headphones,
   Lamp,
   Lock,
@@ -18,7 +19,7 @@ import {
 import { FIXTURE_TYPE_ICONS } from "@/features/fixtures";
 import { cn } from "@/lib/utils";
 import type { FixtureType } from "../lib/fixtureProfile";
-import type { Track } from "../lib/project";
+import { TRACK_HEIGHT_PX, type Track } from "../lib/project";
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { HeaderResizer } from "./HeaderResizer";
 import { MARKER_STRIP_HEIGHT } from "./MarkerStrip";
@@ -77,6 +78,20 @@ interface TrackHeadersProps {
   onCycleHeight?: (trackId: string) => void;
   /** 在轨道头上滚轮时，把纵向滚动交给时间线 */
   onWheelScroll: (deltaY: number) => void;
+  /**
+   * 拖动轨道头的抓手调整顺序（多选时整组移动）。
+   *
+   * @param trackId 抓住的轨道。
+   * @param toIndex 放到第几条轨道之前（按移动前的顺序，等于轨道数时放到最后）。
+   */
+  onReorder?: (trackId: string, toIndex: number) => void;
+  /**
+   * 拖动轨道头下边缘调整高度；双击下边缘恢复档位高度。
+   *
+   * @param trackId 轨道。
+   * @param heightPx 新高度（像素）；`null` 恢复档位。
+   */
+  onResizeHeight?: (trackId: string, heightPx: number | null) => void;
   /** 标尺与灯光轨道之间的固定内容（媒体轨道头），与时间线右侧的媒体轨道区对齐 */
   topSlot?: ReactNode;
 }
@@ -88,7 +103,22 @@ interface TrackHeadersProps {
  * 纵向滚动位置由时间线同步（见 ref）。
  */
 export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(function TrackHeaders(
-  { tracks, names, selectedTrackId, selectedTrackIds, fixtureTypes, onSelect, onDelete, onToggle, onCollapse, onCycleHeight, onWheelScroll, topSlot },
+  {
+    tracks,
+    names,
+    selectedTrackId,
+    selectedTrackIds,
+    fixtureTypes,
+    onSelect,
+    onDelete,
+    onToggle,
+    onCollapse,
+    onCycleHeight,
+    onWheelScroll,
+    onReorder,
+    onResizeHeight,
+    topSlot,
+  },
   ref,
 ) {
   const { t } = useTranslation();
@@ -97,6 +127,21 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
   // 拖动中只改本地预览，松手才保存
   const [preview, setPreview] = useState<number | null>(null);
   const width = preview ?? savedWidth;
+  const listRef = useRef<HTMLUListElement>(null);
+  /** 拖动排序：抓住的轨道与插入位置（第几条之前） */
+  const [reorder, setReorder] = useState<{ trackId: string; toIndex: number } | null>(null);
+  /** 拖动下边缘调高度的预览 */
+  const [resize, setResize] = useState<{ trackId: string; startY: number; from: number; px: number } | null>(null);
+  const heightOf = (track: Track) => (resize?.trackId === track.id ? resize.px : trackHeight(track));
+  /** 指针纵坐标落在哪个插入位置（行的上半在它之前，下半在它之后）。 */
+  const insertIndexAt = (clientY: number): number => {
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>("li[data-track-header-id]") ?? []);
+    for (let i = 0; i < rows.length; i += 1) {
+      const r = rows[i].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) return i;
+    }
+    return rows.length;
+  };
   return (
     <div
       data-tour="track-headers"
@@ -114,7 +159,15 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
       <div style={{ height: MARKER_STRIP_HEIGHT + RULER_HEIGHT }} className="shrink-0 border-b border-border" aria-hidden />
       {topSlot}
       <div ref={ref} className="min-h-0 flex-1 overflow-hidden" onWheel={(e) => onWheelScroll(e.deltaY)}>
-      <ul style={{ paddingBottom: BODY_BOTTOM_PAD + SCROLLBAR_ALLOWANCE }}>
+      <ul ref={listRef} className="relative" style={{ paddingBottom: BODY_BOTTOM_PAD + SCROLLBAR_ALLOWANCE }}>
+        {reorder && (
+          <li
+            aria-hidden
+            data-testid="track-insert-line"
+            className="pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-primary"
+            style={{ top: tracks.slice(0, reorder.toIndex).reduce((y, tr) => y + heightOf(tr), 0) - 1 }}
+          />
+        )}
         {tracks.map((track, i) => {
           const name = names[i] || t("editor.timeline.missingTarget");
           const flags: { flag: TrackFlag; on: boolean; label: string; icon: React.ReactNode }[] = [
@@ -143,13 +196,73 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
             <li
               key={track.id}
               data-track-header-id={track.id}
-              style={{ height: trackHeight(track) }}
+              style={{ height: heightOf(track) }}
               className={cn(
-                "group/track flex items-center gap-1 border-b border-border px-1",
+                "group/track relative flex items-center gap-1 border-b border-border px-1",
                 (selectedTrackIds ?? (selectedTrackId ? [selectedTrackId] : [])).includes(track.id) && "bg-accent",
                 track.id === selectedTrackId && "shadow-[inset_2px_0_0_var(--primary)]",
+                reorder?.trackId === track.id && "opacity-60",
               )}
             >
+              {onReorder && (
+                <button
+                  type="button"
+                  aria-label={t("editor.timeline.reorder", { name })}
+                  title={t("editor.timeline.reorderHint")}
+                  className={cn(small, "size-4 cursor-grab touch-none opacity-0 group-hover/track:opacity-100 focus-visible:opacity-100 active:cursor-grabbing [&_svg]:size-3")}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                    setReorder({ trackId: track.id, toIndex: i });
+                  }}
+                  onPointerMove={(e) => {
+                    if (reorder?.trackId === track.id) setReorder({ trackId: track.id, toIndex: insertIndexAt(e.clientY) });
+                  }}
+                  onPointerUp={() => {
+                    if (reorder?.trackId === track.id && reorder.toIndex !== i && reorder.toIndex !== i + 1) onReorder(track.id, reorder.toIndex);
+                    setReorder(null);
+                  }}
+                  onPointerCancel={() => setReorder(null)}
+                  onKeyDown={(e) => {
+                    // 键盘：Alt+Shift+↑ / ↓ 由命令处理；这里支持 ↑ / ↓ 直接移动一位
+                    if (e.key === "ArrowUp" && i > 0) onReorder(track.id, i - 1);
+                    else if (e.key === "ArrowDown" && i < tracks.length - 1) onReorder(track.id, i + 2);
+                    else return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                >
+                  <GripVertical aria-hidden />
+                </button>
+              )}
+              {onResizeHeight && !collapsed && (
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label={t("editor.timeline.resizeHeight", { name })}
+                  title={t("editor.timeline.resizeHeightHint")}
+                  data-testid="track-resize"
+                  className="absolute inset-x-0 -bottom-0.5 z-10 h-1.5 cursor-row-resize touch-none hover:bg-primary/40"
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.stopPropagation();
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                    const from = trackHeight(track);
+                    setResize({ trackId: track.id, startY: e.clientY, from, px: from });
+                  }}
+                  onPointerMove={(e) => {
+                    if (resize?.trackId !== track.id) return;
+                    const px = Math.round(Math.min(TRACK_HEIGHT_PX.max, Math.max(TRACK_HEIGHT_PX.min, resize.from + e.clientY - resize.startY)));
+                    setResize({ ...resize, px });
+                  }}
+                  onPointerUp={() => {
+                    if (resize?.trackId === track.id && resize.px !== resize.from) onResizeHeight(track.id, resize.px);
+                    setResize(null);
+                  }}
+                  onPointerCancel={() => setResize(null)}
+                  onDoubleClick={() => onResizeHeight(track.id, null)}
+                />
+              )}
               {onCollapse && (
                 <button
                   type="button"
