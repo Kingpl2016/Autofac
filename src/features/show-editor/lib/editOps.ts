@@ -180,6 +180,29 @@ export function duplicateCuesTo(d: ShowProject, placements: readonly CuePlacemen
 }
 
 /**
+ * 把片段的淡入、淡出设成同样的时长（片段太短时各取一半长度）。
+ *
+ * @param d 工程草稿。
+ * @param ids 片段（锁定轨道上的跳过）。
+ * @param ms 淡入 / 淡出时长（毫秒）；`0` 为去掉淡入淡出。
+ * @returns 修改的片段数。
+ */
+export function setSymmetricFades(d: ShowProject, ids: readonly string[], ms: number): number {
+  const wanted = new Set(ids);
+  const fade = Math.max(0, Math.round(ms));
+  let n = 0;
+  for (const c of d.cues) {
+    if (!wanted.has(c.id) || d.tracks.find((t) => t.id === c.trackId)?.lock) continue;
+    const v = Math.min(fade, Math.floor((c.endMs - c.startMs) / 2));
+    if (c.fadeInMs === v && c.fadeOutMs === v) continue;
+    c.fadeInMs = v;
+    c.fadeOutMs = v;
+    n += 1;
+  }
+  return n;
+}
+
+/**
  * 设置 / 清除片段的颜色标签。
  *
  * @param d 工程草稿。

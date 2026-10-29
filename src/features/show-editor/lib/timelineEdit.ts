@@ -1,6 +1,6 @@
 import { produce } from "immer";
 
-import { MIN_CUE_MS, normalizeFades, placeCues, splitCues, type ClipCue, type CuePlacement } from "./cueOps";
+import { gapAround, MIN_CUE_MS, normalizeFades, placeCues, splitCues, type ClipCue, type CuePlacement } from "./cueOps";
 import { duplicateCuesTo } from "./editOps";
 import type { CycleParam, Look, Param, ShowProject, Tempo } from "./project";
 import { clamp } from "@/shared/lib/math";
@@ -149,6 +149,66 @@ export function quantizeCues(draft: ShowProject, ids: readonly string[], tempo: 
   const starts = new Map(cues.map((c) => [c.id, Math.max(0, tempo.offsetMs + Math.round((c.startMs - tempo.offsetMs) / grid) * grid)]));
   if (cues.every((c) => snapToFrame(starts.get(c.id) ?? c.startMs) === c.startMs)) return false;
   return placeStarts(draft, starts);
+}
+
+/**
+ * 把片段的一端延伸到最近的“停靠点”：同轨相邻片段的边缘（没有时为节目起点 / 结尾），
+ * 或播放头（在延伸方向上、且比相邻片段更近时）。
+ *
+ * @param draft 工程草稿。
+ * @param id 片段。
+ * @param side `start` 向前延伸起点，`end` 向后延伸终点。
+ * @param playheadMs 播放头。
+ * @returns 是否修改（片段不存在、轨道锁定、已经贴住停靠点时为 `false`）。
+ */
+export function extendCue(draft: ShowProject, id: string, side: "start" | "end", playheadMs: number): boolean {
+  const cue = draft.cues.find((c) => c.id === id);
+  const track = cue ? draft.tracks.find((t) => t.id === cue.trackId) : undefined;
+  if (!cue || !track || track.lock) return false;
+  // 片段之外的空隙：起点之前的空隙下界、终点之后的空隙上界
+  const before = gapAround(draft, cue.trackId, Math.max(0, cue.startMs - 1), new Set([id]));
+  const after = gapAround(draft, cue.trackId, cue.endMs, new Set([id]));
+  if (side === "end") {
+    const limit = after ? after[1] : cue.endMs;
+    const stop = playheadMs > cue.endMs && playheadMs < limit ? playheadMs : limit;
+    const end = snapToFrame(stop);
+    if (end <= cue.endMs) return false;
+    cue.endMs = end;
+  } else {
+    const limit = before ? before[0] : cue.startMs;
+    const stop = playheadMs < cue.startMs && playheadMs > limit ? playheadMs : limit;
+    const start = snapToFrame(stop);
+    if (start >= cue.startMs) return false;
+    cue.startMs = start;
+  }
+  normalizeFades(cue);
+  return true;
+}
+
+/**
+ * 合拢空隙：每条轨道上的片段按起点顺序依次前移，紧接在前一个片段之后（第一个不动，长度不变）。
+ *
+ * @param draft 工程草稿。
+ * @param trackIds 作用的轨道；`null` 为全部轨道（锁定的轨道跳过）。
+ * @returns 移动的片段数。
+ */
+export function closeGaps(draft: ShowProject, trackIds: readonly string[] | null): number {
+  const scope = trackIds ? new Set(trackIds) : null;
+  let moved = 0;
+  for (const track of draft.tracks) {
+    if (track.lock || (scope && !scope.has(track.id))) continue;
+    const list = draft.cues.filter((c) => c.trackId === track.id).sort((a, b) => a.startMs - b.startMs);
+    for (let i = 1; i < list.length; i += 1) {
+      const prevEnd = list[i - 1].endMs;
+      const c = list[i];
+      const delta = c.startMs - prevEnd;
+      if (delta <= 0) continue;
+      c.startMs -= delta;
+      c.endMs -= delta;
+      moved += 1;
+    }
+  }
+  return moved;
 }
 
 /**

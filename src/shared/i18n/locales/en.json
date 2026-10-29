@@ -1916,7 +1916,14 @@
       "reorder": "Drag to reorder {{name}}",
       "reorderHint": "Drag up or down to reorder tracks; selected tracks move together",
       "resizeHeight": "Resize {{name}}",
-      "resizeHeightHint": "Drag up or down to resize this track; double-click to reset"
+      "resizeHeightHint": "Drag up or down to resize this track; double-click to reset",
+      "drawOn": "Draw mode on: drag on an empty track to draw a clip",
+      "drawOff": "Draw mode off",
+      "extended": "Clip extended",
+      "extendNone": "No gap to extend into",
+      "gapsClosed": "Closed {{count}} gap(s)",
+      "lengthBeats": "Set {{count}} clip(s) to {{n}} beat(s)",
+      "lengthSeconds": "Set {{count}} clip(s) to {{n}} s"
     },
     "ruler": {
       "label": "Time ruler",
@@ -2090,7 +2097,21 @@
       "fileExportArtrec": "Export ArtRec playback file",
       "fileReload": "Reload",
       "fileReveal": "Show in file manager",
-      "fileInfo": "Show info"
+      "fileInfo": "Show info",
+      "drawMode": "Toggle draw mode",
+      "extendStart": "Extend start to the neighbour or playhead",
+      "extendEnd": "Extend end to the neighbour or playhead",
+      "closeGaps": "Close gaps on selected tracks",
+      "closeGapsAll": "Close gaps on all tracks",
+      "length1": "Set clip length to 1 beat (1 s without tempo)",
+      "length2": "Set clip length to 2 beats (2 s without tempo)",
+      "length3": "Set clip length to 3 beats (3 s without tempo)",
+      "length4": "Set clip length to 4 beats (4 s without tempo)",
+      "length5": "Set clip length to 5 beats (5 s without tempo)",
+      "length6": "Set clip length to 6 beats (6 s without tempo)",
+      "length7": "Set clip length to 7 beats (7 s without tempo)",
+      "length8": "Set clip length to 8 beats (8 s without tempo)",
+      "length9": "Set clip length to 9 beats (9 s without tempo)"
     },
     "unsaved": "Unsaved changes",
     "toolbarUndo": "Undo",
@@ -2902,7 +2923,9 @@
       "clearTempo": "Clear beat grid",
       "saveAsTemplate": "Save as cue template",
       "arrange": "Arrange",
-      "moveTrack": "Move track"
+      "moveTrack": "Move track",
+      "insertTemplate": "Insert template",
+      "insertEffect": "Insert effect"
     },
     "tags": {
       "red": "Red",
@@ -3472,7 +3495,8 @@
       "fit": "Fit to window (Shift+Z)",
       "tagFilter": "Filter by colour tag",
       "tagAll": "Show all",
-      "selectTagged": "Select cues with this tag"
+      "selectTagged": "Select cues with this tag",
+      "draw": "Draw mode (D): drag on empty space to draw a clip, click to add one"
     },
     "fan": {
       "title": "Fan",
@@ -3749,6 +3773,14 @@
       "duration": "Duration",
       "content": "Content",
       "universes": "Universes used"
+    },
+    "quickBar": {
+      "label": "Clip quick actions",
+      "fades": "Fades",
+      "noFade": "No fades",
+      "fadeSeconds": "Fade {{seconds}} s",
+      "fadesSet": "Fades set to {{seconds}} s",
+      "toggleDisabled": "Disable / enable"
     }
   },
   "fixtures": {

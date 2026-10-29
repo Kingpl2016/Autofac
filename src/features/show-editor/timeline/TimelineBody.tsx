@@ -12,23 +12,26 @@ import {
 import { compileCached } from "../engine/compiledCache";
 import { useEngine } from "../engine/useEngine";
 import { sampleLanes, stripGradient } from "../lib/colorLanes";
+import { cn } from "@/lib/utils";
 import i18n from "@/shared/i18n";
 import { useElementSize } from "@/shared/hooks/useElementSize";
 import { announce } from "@/shared/stores/announcerStore";
-import { placeCues } from "../lib/cueOps";
+import type { Command } from "../lib/commands";
+import { gapAround, MIN_CUE_MS, placeCues } from "../lib/cueOps";
 import { duplicateCuesTo } from "../lib/editOps";
 import { selectTracksWithFixtures } from "../hooks/selectionActions";
 import { layerSupport, lookBadges, unsupportedLayers, type LayerBadge, type LayerSupport } from "../lib/fixtureProfile";
 import { trackFixtureIds } from "../lib/ops";
 import type { Cue, ShowProject, Track } from "../lib/project";
-import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX } from "../lib/snap";
+import { collectSnapTargets, pxToMs, SNAP_THRESHOLD_PX, snapValue } from "../lib/snap";
 import { formatTimecode, snapToFrame } from "../lib/time";
-import { keyMoveRange, moveLookKey, shiftTimelineObjects } from "../lib/timelineEdit";
+import { extendCue, keyMoveRange, moveLookKey, shiftTimelineObjects } from "../lib/timelineEdit";
 import { zoomPxPerSec } from "../lib/zoom";
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { ClipQuickBar } from "./ClipQuickBar";
 import { ClipView } from "./ClipView";
 import { computeDrag, marqueeHits, type DragKind, type DragResult } from "./dragModel";
 import { anchoredScrollLeft } from "./geometry";
@@ -55,6 +58,8 @@ const EDGE_SCROLL_STEP = 16;
 const STRIP_COLUMN_PX = 6;
 /** 一帧的毫秒数。 */
 const FRAME_MS = 1000 / 30;
+/** 片段快捷条占用的高度（含与片段的间距，像素）。 */
+const QUICK_BAR_SPACE = 30;
 
 /** 时间线轨道区的命令式句柄。 */
 export interface TimelineBodyHandle {
@@ -72,10 +77,28 @@ interface TimelineBodyProps {
   names: readonly string[];
   /** 纵向滚动变化（同步轨道头） */
   onScrollTop: (top: number) => void;
-  /** 双击轨道空白处新建片段 */
-  onCreate: (trackId: string, timeMs: number) => void;
+  /** 双击轨道空白处（或绘制模式下画出）新建片段；`lengthMs` 省略为默认长度 */
+  onCreate: (trackId: string, timeMs: number, lengthMs?: number) => void;
   /** 选中片段后切到属性页 */
   onPickCue: () => void;
+  /** 编辑器命令（片段快捷条复用：复制、禁用、删除）；省略时不显示快捷条 */
+  commands?: readonly Command[];
+}
+
+/** 绘制模式下进行中的“画片段”。 */
+interface DrawState {
+  trackId: string;
+  row: number;
+  startX: number;
+  /** 按下处的时刻（已吸附） */
+  anchorMs: number;
+  /** 当前另一端的时刻（已吸附、夹在空隙内） */
+  endMs: number;
+  /** 按下处所在的空隙：画出的片段不越过相邻片段 */
+  lo: number;
+  hi: number;
+  targets: number[];
+  active: boolean;
 }
 
 /** 进行中的拖动。 */
@@ -111,12 +134,22 @@ interface MarqueeState {
  * - 拖动片段：多选整体移动、上下换轨（目标轨道锁定或类型不符时不换轨），左右边缘裁剪；松手时按住 Ctrl 复制；
  *   拖动中实时吸附（播放头、标记点、其它片段边缘、节拍）并画黄色吸附线，按住 Alt 临时关闭；
  * - 空白处拖动框选（Ctrl / Shift 追加），单击空白选中轨道并清空选择，双击新建片段；
+ *   绘制模式下空白处拖动直接画出片段（吸附同上，不越过相邻片段），单击新建默认长度的片段；
+ * - 双击片段的左 / 右边缘：延伸到相邻片段或播放头（取较近的）；
+ * - 选中片段上方浮出快捷条（淡入淡出、颜色标签、复制、禁用、删除）；
  * - Ctrl+滚轮以指针为中心缩放；播放时播放头出界自动翻页；拖动中按 Esc 取消。
  */
 export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(function TimelineBody(
-  { tracks, names, onScrollTop, onCreate, onPickCue },
+  { tracks, names, onScrollTop, onCreate, onPickCue, commands },
   ref,
 ) {
+  const drawMode = useEditorUiStore((s) => s.drawMode);
+  const drawRef = useRef<DrawState | null>(null);
+  const [draw, setDrawState] = useState<DrawState | null>(null);
+  const setDraw = (v: DrawState | null) => {
+    drawRef.current = v;
+    setDrawState(v);
+  };
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const pxPerSec = useEditorUiStore((s) => s.pxPerSec);
@@ -242,14 +275,16 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   // 拖动 / 框选中按 Esc 取消（捕获阶段，先于全局快捷键的“取消选择”）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || (!drag.current?.active && !marqueeRef.current?.active)) return;
+      if (e.key !== "Escape" || (!drag.current?.active && !marqueeRef.current?.active && !drawRef.current)) return;
       e.preventDefault();
       e.stopPropagation();
       if (marqueeRef.current) useEditorUiStore.getState().selectCues(marqueeRef.current.base);
       drag.current = null;
       marqueeRef.current = null;
+      drawRef.current = null;
       setPreview(null);
       setMarquee(null);
+      setDrawState(null);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -265,6 +300,12 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     };
   };
   const timeAt = (x: number) => Math.max(0, ((x - START_LEFT) / useEditorUiStore.getState().pxPerSec) * 1000);
+  /** 吸附到吸附点（吸附开着且没按 Alt 时），再对齐到帧。 */
+  const snapTime = (ms: number, targets: readonly number[], alt: boolean) => {
+    const ui = useEditorUiStore.getState();
+    const v = ui.snapEnabled && !alt ? snapValue(ms, targets, pxToMs(SNAP_THRESHOLD_PX, ui.pxPerSec)) : ms;
+    return snapToFrame(v);
+  };
 
   // ---- 可见范围 ----
   const [rowFrom, rowTo] = visibleRows(layout, scrollTop, size.height || 600);
@@ -410,6 +451,17 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     }
 
     const row = rowAt(layout, p.y);
+    // 绘制模式：在可编辑的轨道空白处按下开始画片段（场景轨道只放场景片段，不画）
+    const drawTrack = ui.drawMode && row >= 0 ? tracks[row] : undefined;
+    if (drawTrack && !drawTrack.lock && drawTrack.target.kind !== "scene") {
+      const targets = collectSnapTargets(current, ui.playheadMs, new Set(), useEditorPrefsStore.getState().snapKinds);
+      const anchor = snapTime(timeAt(p.x), targets, e.altKey);
+      const gap = gapAround(current, drawTrack.id, anchor);
+      if (gap) {
+        setDraw({ trackId: drawTrack.id, row, startX: p.x, anchorMs: anchor, endMs: anchor, lo: gap[0], hi: gap[1], targets, active: false });
+        return;
+      }
+    }
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     marqueeRef.current = {
       x0: p.x,
@@ -437,6 +489,15 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     const k = keyDrag.current;
     // 记下指针所在的时刻（“粘贴到鼠标位置”用）
     useEditorUiStore.getState().setPointerTime(timeAt(contentPoint(e).x));
+    const dr = drawRef.current;
+    if (dr) {
+      const p = contentPoint(e);
+      if (!dr.active && Math.abs(p.x - dr.startX) < DRAG_THRESHOLD_PX) return;
+      edgeScroll(e);
+      const end = Math.min(dr.hi, Math.max(dr.lo, snapTime(timeAt(p.x), dr.targets, e.altKey)));
+      setDraw({ ...dr, endMs: end, active: true });
+      return;
+    }
     if (k) {
       const p = contentPoint(e);
       if (!k.active && Math.abs(p.x - k.startX) < DRAG_THRESHOLD_PX) return;
@@ -506,6 +567,19 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     drag.current = null;
     marqueeRef.current = null;
     keyDrag.current = null;
+    const dr = drawRef.current;
+    if (dr) {
+      setDraw(null);
+      if (!dr.active) {
+        // 绘制模式下单击：在这里新建默认长度的片段
+        onCreate(dr.trackId, dr.anchorMs);
+        return;
+      }
+      const from = Math.min(dr.anchorMs, dr.endMs);
+      const to = Math.max(dr.anchorMs, dr.endMs);
+      if (to - from >= MIN_CUE_MS) onCreate(dr.trackId, from, to - from);
+      return;
+    }
     if (k) {
       const preview = keyPreviewRef.current;
       setKeyPreview(null);
@@ -570,7 +644,22 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   };
 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("[data-cue-id]")) return;
+    const target = e.target as HTMLElement;
+    const clipEl = target.closest<HTMLElement>("[data-cue-id]");
+    if (clipEl) {
+      // 双击左 / 右边缘：延伸到相邻片段或播放头
+      const side = target.closest<HTMLElement>("[data-edge]")?.dataset.edge;
+      const id = clipEl.dataset.cueId;
+      if (!id || (side !== "start" && side !== "end")) return;
+      let ok = false;
+      update((d) => {
+        ok = extendCue(d, id, side, useEditorUiStore.getState().playheadMs);
+      });
+      announce(i18n.t(ok ? "editor.timeline.extended" : "editor.timeline.extendNone"));
+      return;
+    }
+    // 绘制模式下单击已经新建了片段，双击不再重复新建
+    if (useEditorUiStore.getState().drawMode) return;
     const p = contentPoint(e);
     const row = rowAt(layout, p.y);
     const track = tracks[row];
@@ -598,7 +687,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
       onScroll={onScroll}
     >
       <div
-        className="relative select-none"
+        className={cn("relative select-none", drawMode && "cursor-crosshair")}
+        data-draw-mode={drawMode || undefined}
         style={{ width, height }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -679,6 +769,49 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
             />
           );
         })}
+        {/* 绘制模式：正在画的片段（虚线框 + 长度） */}
+        {draw?.active &&
+          (() => {
+            const from = Math.min(draw.anchorMs, draw.endMs);
+            const to = Math.max(draw.anchorMs, draw.endMs);
+            return (
+              <div
+                aria-hidden
+                data-testid="draw-preview"
+                className={cn(
+                  "pointer-events-none absolute z-20 rounded-sm border-2 border-dashed",
+                  to - from >= MIN_CUE_MS ? "border-primary bg-primary/15" : "border-destructive bg-destructive/10",
+                )}
+                style={{ left: xOf(from), width: Math.max(2, xOf(to) - xOf(from)), top: layout.tops[draw.row] + 2, height: layout.heights[draw.row] - 4 }}
+              >
+                <span className="num absolute -top-4 left-0 whitespace-nowrap rounded bg-popover/90 px-1 text-[10px] text-foreground shadow-sm">
+                  {formatTimecode(to - from)}
+                </span>
+              </div>
+            );
+          })()}
+        {/* 选中片段的快捷条：拖动 / 框选 / 绘制时隐藏 */}
+        {commands &&
+          commands.length > 0 &&
+          !preview &&
+          !marquee?.active &&
+          !draw &&
+          (() => {
+            const anchorId = selectedCueIds.at(-1);
+            const anchor = anchorId ? clips.find((c) => c.cue.id === anchorId) : undefined;
+            if (!anchor) return null;
+            const locked = tracks[anchor.row]?.lock ?? false;
+            return (
+              <ClipQuickBar
+                commands={commands}
+                ids={selectedCueIds}
+                locked={locked}
+                left={Math.max(scrollLeft + 4, anchor.left)}
+                // 上方放不下（第一条轨道）时放到片段下方
+                top={anchor.top >= QUICK_BAR_SPACE ? anchor.top - QUICK_BAR_SPACE : anchor.top + anchor.height + 4}
+              />
+            );
+          })()}
         {preview?.guideMs !== null && preview?.guideMs !== undefined && (
           <div
             aria-hidden

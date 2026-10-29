@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
 import { produce } from "immer";
 
@@ -884,5 +884,111 @@ describe("时间轴增强：时间范围、跳转、轨道排序与高度、复�
     expect(project().cues.map((c) => c.startMs).sort((p, q) => p - q)).toEqual([1000, 3000, 5000, 7000, 9000]);
     expect(ui().selectedCueIds).toHaveLength(5);
     expect(ui().repeatOpen).toBe(false);
+  });
+});
+
+describe("时间轴快捷操作", () => {
+  const group = () => screen.getByRole("group", { name: "轨道与 Cue" });
+  const renderWithCommands = () =>
+    render(
+      <DndContext>
+        <WithCommands />
+      </DndContext>,
+    );
+
+  beforeEach(async () => {
+    useEditorUiStore.setState({ drawMode: false });
+    await act(async () => {
+      await useEditorPrefsStore.setState({ rippleEdit: false });
+    });
+  });
+
+  it("绘制模式：D 键或工具条开关；空白处拖动画出片段（不越过相邻片段），单击新建默认长度", () => {
+    const { a, cueA } = loadSample();
+    renderWithCommands();
+    fireEvent.keyDown(group(), { key: "d" });
+    expect(ui().drawMode).toBe(true);
+    expect(screen.getByRole("button", { name: /绘制模式/, pressed: true })).toBeTruthy();
+
+    drag(body(), { x: x(5000), y: y(0) }, { x: x(8000), y: y(0) });
+    const drawn = project().cues.find((c) => c.id !== cueA);
+    expect(drawn).toMatchObject({ trackId: a, startMs: 5000, endMs: 8000 });
+    expect(ui().selectedCueIds).toEqual([drawn?.id]);
+
+    // jsdom 里视口宽度为 0，拖动会触发边缘自动滚动：每次拖动前回到最左
+    const resetScroll = () => void (screen.getByTestId("timeline-body").scrollLeft = 0);
+    resetScroll();
+    // 往回画越过已有片段：停在它的终点
+    drag(body(), { x: x(4500), y: y(0) }, { x: x(500), y: y(0) });
+    expect(project().cues.find((c) => c.startMs === 3000)).toMatchObject({ endMs: 4500 });
+
+    resetScroll();
+    fireEvent.pointerDown(body(), { button: 0, clientX: x(20_000), clientY: y(1), pointerId: 1 });
+    fireEvent.pointerUp(body(), { clientX: x(20_000), clientY: y(1), pointerId: 1 });
+    expect(project().cues.find((c) => c.startMs === 20_000)).toMatchObject({ endMs: 22_000 });
+
+    fireEvent.click(screen.getByRole("button", { name: /绘制模式/ }));
+    expect(ui().drawMode).toBe(false);
+  });
+
+  it("双击片段右边缘：延伸到下一个片段，播放头更近时停在播放头", () => {
+    const { a, cueA } = loadSample();
+    act(() => useProjectStore.getState().update((d) => void addStaticCue(d, a, 8000, { lengthMs: 1000 })));
+    renderWithCommands();
+    const edge = () => clip(/00:01\.00/).querySelector('[data-edge="end"]') as HTMLElement;
+    act(() => ui().setPlayhead(5000));
+    fireEvent.doubleClick(edge(), { clientX: x(3000), clientY: y(0) });
+    expect(project().cues.find((c) => c.id === cueA)).toMatchObject({ startMs: 1000, endMs: 5000 });
+    fireEvent.doubleClick(edge(), { clientX: x(5000), clientY: y(0) });
+    expect(project().cues.find((c) => c.id === cueA)).toMatchObject({ endMs: 8000 });
+  });
+
+  it("数字键设长度：没有节拍时按秒，有节拍时按拍", () => {
+    const { cueA } = loadSample();
+    renderWithCommands();
+    act(() => ui().selectCues([cueA]));
+    fireEvent.keyDown(group(), { key: "3" });
+    expect(project().cues.find((c) => c.id === cueA)).toMatchObject({ startMs: 1000, endMs: 4000 });
+    act(() =>
+      useProjectStore.getState().update((d) => {
+        d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 };
+      }),
+    );
+    fireEvent.keyDown(group(), { key: "2" });
+    expect(project().cues.find((c) => c.id === cueA)).toMatchObject({ startMs: 1000, endMs: 2000 });
+  });
+
+  it("选中片段上方的快捷条：淡入淡出预设、删除", async () => {
+    const { cueA } = loadSample();
+    renderWithCommands();
+    expect(screen.queryByTestId("clip-quick-bar")).toBeNull();
+    act(() => ui().selectCues([cueA]));
+    const bar = screen.getByRole("toolbar", { name: "片段快捷操作" });
+    const fades = within(bar).getByRole("button", { name: "淡入淡出" });
+    fireEvent.keyDown(fades, { key: "Enter" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "淡入淡出 0.5 秒" }));
+    expect(project().cues.find((c) => c.id === cueA)).toMatchObject({ fadeInMs: 500, fadeOutMs: 500 });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.click(within(screen.getByRole("toolbar", { name: "片段快捷操作" })).getByRole("button", { name: "删除所选 Cue" }));
+    expect(project().cues).toHaveLength(0);
+    expect(screen.queryByTestId("clip-quick-bar")).toBeNull();
+  });
+
+  it("右键轨道空白处“插入模板 ▸ 分组 ▸ 模板”：插到右键的位置并带上模板名", () => {
+    const { a } = loadSample();
+    renderWithCommands();
+    // 右键位置按视口矩形换算到轨道与时刻：jsdom 里矩形为 0，给轨道区一个真实大小
+    screen.getByTestId("timeline-body").getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 4000, height: 600, right: 4000, bottom: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    fireEvent.contextMenu(body(), { clientX: x(10_000), clientY: y(0) });
+    const menu = screen.getByRole("menu", { name: "右键菜单" });
+    const insert = within(menu).getByRole("menuitem", { name: "插入模板" });
+    fireEvent.keyDown(insert, { key: "ArrowRight" });
+    const sub = screen.getByRole("menu", { name: "插入模板" });
+    fireEvent.keyDown(within(sub).getByRole("menuitem", { name: "基础色" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "红" }));
+    const added = project().cues.find((c) => c.startMs === 10_000);
+    expect(added).toMatchObject({ trackId: a, kind: "look", label: "红" });
+    expect(ui().selectedCueIds).toEqual([added?.id]);
   });
 });

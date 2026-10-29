@@ -173,6 +173,8 @@ interface EditorUiState {
   pxPerSec: number;
   /** 是否吸附（网格 / 其他 Cue 边缘 / 标记点 / 播放头 / 节拍） */
   snapEnabled: boolean;
+  /** 绘制模式：在轨道空白处拖动直接画出片段（关闭时空白处拖动为框选） */
+  drawMode: boolean;
   /** 音视频素材是否静音（只影响本机监听，不进工程） */
   mediaMuted: boolean;
   /** 命令面板（Ctrl+K）是否打开 */
@@ -294,6 +296,8 @@ interface EditorUiState {
   setPxPerSec: (px: number) => void;
   /** 切换吸附开关。 */
   toggleSnap: () => void;
+  /** 切换绘制模式。 */
+  toggleDrawMode: () => void;
   /** 切换素材静音。 */
   toggleMuted: () => void;
   /** 清空全部选择（不影响播放头和剪贴板）。 */
@@ -355,6 +359,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   inspectorTab: "patch",
   pxPerSec: DEFAULT_PX_PER_SEC,
   snapEnabled: true,
+  drawMode: false,
   mediaMuted: false,
   paletteOpen: false,
   // 默认打开图标栏最上面的分区
@@ -452,6 +457,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setPxPerSec: (px) => set({ pxPerSec: px }),
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
+  toggleDrawMode: () => set((s) => ({ drawMode: !s.drawMode })),
   toggleMuted: () => set((s) => ({ mediaMuted: !s.mediaMuted })),
   clearSelection: () =>
     set({

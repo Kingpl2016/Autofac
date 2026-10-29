@@ -75,7 +75,11 @@ export type MenuEntry =
   /** 段落颜色子菜单 */
   | { kind: "sectionColors" }
   /** 命令子菜单（例如“排列”） */
-  | { kind: "submenu"; labelKey: string; items: MenuEntry[] };
+  | { kind: "submenu"; labelKey: string; items: MenuEntry[] }
+  /** “插入模板 ▸”：按分组列出全部 Cue 模板，插到右键的轨道与时刻 */
+  | { kind: "insertTemplates"; disabled: boolean }
+  /** “插入特效 ▸”：按分组列出全部属性特效 */
+  | { kind: "insertEffects"; disabled: boolean };
 
 /** 生成菜单需要的界面状态。 */
 export interface MenuContext {
@@ -240,9 +244,14 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
     }
     case "empty": {
       const track = target.trackId ? project.tracks.find((t) => t.id === target.trackId) : undefined;
+      // 模板与特效都是外观片段：场景轨道上不能插
+      const noInsert = !track || track.lock || track.target.kind === "scene";
       return [
         act("addCueHere", "addCueHere", { disabled: !track || track.lock }),
+        { kind: "insertTemplates", disabled: noInsert },
+        { kind: "insertEffects", disabled: noInsert },
         act("pasteHere", "pasteHere", { disabled: !ctx.hasClipboard }),
+        sep,
         act("markerHere", "markerHere"),
         act("playheadHere", "playheadHere"),
       ];

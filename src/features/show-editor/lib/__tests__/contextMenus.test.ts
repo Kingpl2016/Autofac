@@ -22,7 +22,13 @@ const ctx = { selectedTrackIds: [] as string[], hasClipboard: false };
 /** 菜单项的简写：命令 id / 动作 id / `-` / `tags` */
 const ids = (m: MenuEntry[]) =>
   m.map((e) =>
-    e.kind === "separator" ? "-" : e.kind === "tags" || e.kind === "sectionColors" ? e.kind : e.kind === "submenu" ? `[${e.labelKey}]` : e.id,
+    e.kind === "separator"
+      ? "-"
+      : e.kind === "tags" || e.kind === "sectionColors" || e.kind === "insertTemplates" || e.kind === "insertEffects"
+        ? e.kind
+        : e.kind === "submenu"
+          ? `[${e.labelKey}]`
+          : e.id,
   );
 const action = (m: MenuEntry[], id: string) => m.find((e) => e.kind === "action" && e.id === id) as Extract<MenuEntry, { kind: "action" }>;
 
@@ -80,6 +86,14 @@ describe("右键菜单内容", () => {
     expect(action(buildContextMenu({ kind: "empty", trackId: null, timeMs: 0 }, p, ctx), "addCueHere").disabled).toBe(true);
     expect(action(buildContextMenu({ kind: "empty", trackId: p.tracks[0].id, timeMs: 0 }, p, ctx), "addCueHere").disabled).toBe(true);
     expect(action(buildContextMenu({ kind: "empty", trackId: p.tracks[1].id, timeMs: 0 }, p, ctx), "addCueHere").disabled).toBe(false);
+    // 空白处还能直接插入模板 / 特效（锁定或没有轨道时不可用）
+    const empty = buildContextMenu({ kind: "empty", trackId: p.tracks[1].id, timeMs: 0 }, p, ctx);
+    expect(ids(empty).slice(0, 3)).toEqual(["addCueHere", "insertTemplates", "insertEffects"]);
+    expect(empty.find((e) => e.kind === "insertTemplates")).toEqual({ kind: "insertTemplates", disabled: false });
+    expect(buildContextMenu({ kind: "empty", trackId: p.tracks[0].id, timeMs: 0 }, p, ctx).find((e) => e.kind === "insertEffects")).toEqual({
+      kind: "insertEffects",
+      disabled: true,
+    });
     expect(action(buildContextMenu({ kind: "ruler", timeMs: 0 }, p, ctx), "endHere").disabled).toBe(true);
     expect(action(buildContextMenu({ kind: "ruler", timeMs: 5000 }, p, ctx), "endHere").disabled).toBe(false);
   });

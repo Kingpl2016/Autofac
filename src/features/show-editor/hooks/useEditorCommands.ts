@@ -7,7 +7,7 @@ import { FILE_COMMANDS, type FileCommandHandlers, type FileCommandId } from "../
 import { useDocumentStore } from "../stores/useDocumentStore";
 import { cuesAfter, cuesAt, rippleDeleteCues, splitCues } from "../lib/cueOps";
 import { applyPattern, invertSelection, stepSelection } from "../lib/fixtureSelection";
-import { adjacentCue, adjacentEditPoint, editPoints, toggleCuesDisabled, trimCuesAt, trimMediaAt } from "../lib/editOps";
+import { adjacentCue, adjacentEditPoint, editPoints, setCueLengths, toggleCuesDisabled, trimCuesAt, trimMediaAt } from "../lib/editOps";
 import { removeMediaClips, splitMediaClips } from "../lib/mediaClips";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { addSection, sectionAt } from "../lib/sections";
@@ -15,11 +15,14 @@ import { hasProgrammerValues, knockout, recordLengthMs, recordLooks, recordScene
 import { setLoopEdge, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
 import { normalizeZoom, zoomPxPerSec, zoomToRange } from "../lib/zoom";
+import { beatsToMs } from "../lib/tempo";
 import {
   alignCueStarts,
   chainCues,
+  closeGaps,
   copyRange,
   deleteRange,
+  extendCue,
   insertGap,
   moveTracks,
   moveTracksBy,
@@ -418,6 +421,74 @@ export function useEditorCommands(onSave?: () => void, file?: FileCommandHandler
         run: () => void requestShowDuration(ui().playheadMs),
       },
       { id: "timeline.loopClear", titleKey: "editor.commands.loopClear", category: "timeline", keys: ["alt+x"], enabled: () => project().loopRange !== null, run: clearLoop },
+      // ---- 快捷操作：绘制模式、延伸、合拢空隙、数字键设长度 ----
+      {
+        id: "timeline.drawMode",
+        titleKey: "editor.commands.drawMode",
+        category: "timeline",
+        keys: ["d"],
+        run: () => {
+          ui().toggleDrawMode();
+          announce(t(ui().drawMode ? "editor.timeline.drawOn" : "editor.timeline.drawOff"));
+        },
+      },
+      ...(["start", "end"] as const).map(
+        (side): Command => ({
+          id: side === "start" ? "timeline.extendStart" : "timeline.extendEnd",
+          titleKey: side === "start" ? "editor.commands.extendStart" : "editor.commands.extendEnd",
+          category: "timeline",
+          enabled: hasSelection,
+          run: () => {
+            let n = 0;
+            update((d) => {
+              for (const id of alive()) if (extendCue(d, id, side, ui().playheadMs)) n += 1;
+            });
+            announce(t(n > 0 ? "editor.timeline.extended" : "editor.timeline.extendNone"));
+          },
+        }),
+      ),
+      ...([false, true] as const).map(
+        (all): Command => ({
+          id: all ? "timeline.closeGapsAll" : "timeline.closeGaps",
+          titleKey: all ? "editor.commands.closeGapsAll" : "editor.commands.closeGaps",
+          category: "timeline",
+          // 不是“全部轨道”时：选中的轨道，没有时为选中片段所在的轨道
+          enabled: () => all || hasTracksSelected() || hasSelection(),
+          run: () => {
+            const trackIds = all
+              ? null
+              : hasTracksSelected()
+                ? ui().selectedTrackIds.length > 0
+                  ? ui().selectedTrackIds
+                  : [ui().selectedTrackId as string]
+                : [...new Set(project().cues.filter((c) => alive().includes(c.id)).map((c) => c.trackId))];
+            let n = 0;
+            update((d) => {
+              n = closeGaps(d, trackIds);
+            });
+            announce(t("editor.timeline.gapsClosed", { count: n }));
+          },
+        }),
+      ),
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(
+        (n): Command => ({
+          id: `timeline.length${n}`,
+          titleKey: `editor.commands.length${n}`,
+          category: "timeline",
+          keys: [String(n)],
+          enabled: hasSelection,
+          run: () => {
+            // 有节拍网格时按拍，没有时按秒
+            const tempo = project().tempo;
+            const lengthMs = tempo ? beatsToMs(n, tempo.bpm) : n * 1000;
+            let changed = 0;
+            update((d) => {
+              changed = setCueLengths(d, alive(), lengthMs);
+            });
+            announce(t(tempo ? "editor.timeline.lengthBeats" : "editor.timeline.lengthSeconds", { n, count: changed }));
+          },
+        }),
+      ),
       { id: "select.all", titleKey: "editor.commands.selectAll", category: "select", keys: ["mod+a"], run: () => ui().selectCues(project().cues.map((c) => c.id)) },
       {
         id: "select.after",

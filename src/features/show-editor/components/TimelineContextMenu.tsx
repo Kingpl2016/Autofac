@@ -17,6 +17,7 @@ import { useContextActions } from "../hooks/useContextActions";
 import { formatChord } from "@/shared/lib/keyboard";
 import { effectiveKeys, type Command } from "../lib/commands";
 import { buildContextMenu, type MenuEntry } from "../lib/contextMenus";
+import { InsertEffectsSub, InsertTemplatesSub } from "./ContextInsertMenus";
 import { CUE_TAG_COLORS, CUE_TAGS } from "../lib/project";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useKeymapStore } from "../stores/useKeymapStore";
@@ -162,6 +163,12 @@ export function TimelineContextMenu({ commands, children }: { commands: readonly
             <ContextMenuSubContent>{items.map(renderEntry)}</ContextMenuSubContent>
           </ContextMenuSub>
         );
+      }
+      case "insertTemplates":
+      case "insertEffects": {
+        if (target?.kind !== "empty") return null;
+        const Sub = entry.kind === "insertTemplates" ? InsertTemplatesSub : InsertEffectsSub;
+        return <Sub key={entry.kind} trackId={target.trackId} timeMs={target.timeMs} disabled={entry.disabled} />;
       }
       case "sectionColors":
         return (

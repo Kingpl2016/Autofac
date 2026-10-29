@@ -94,19 +94,21 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
   }, []);
 
   const onCreate = useCallback(
-    (trackId: string, timeMs: number) => {
+    (trackId: string, timeMs: number, lengthMs?: number) => {
       const ui = useEditorUiStore.getState();
+      // 绘制模式画出的长度；省略时为默认长度
+      const style = lengthMs !== undefined ? { lengthMs } : undefined;
       // 双击多选轨道中的一条：在每条选中的轨道上各建一个（一步撤销）
       if (ui.selectedTrackIds.length > 1 && ui.selectedTrackIds.includes(trackId)) {
         const ids = useProjectStore
           .getState()
           .project.tracks.filter((tr) => ui.selectedTrackIds.includes(tr.id))
           .map((tr) => tr.id);
-        if (actions.addAtTracks(ids, timeMs).length > 0) setInspectorTab("cue");
+        if (actions.addAtTracks(ids, timeMs, style).length > 0) setInspectorTab("cue");
         return;
       }
       selectTrack(trackId);
-      const id = actions.addAt(trackId, timeMs);
+      const id = actions.addAt(trackId, timeMs, style);
       if (id) {
         selectCues([id]);
         setInspectorTab("cue");
@@ -252,6 +254,7 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
                 onScrollTop={onScrollTop}
                 onCreate={onCreate}
                 onPickCue={onPickCue}
+                commands={commands}
               />
             </div>
             <OverviewBar onScrollTo={(left) => bodyRef.current?.setScrollLeft(left)} />

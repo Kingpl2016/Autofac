@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Crosshair, Magnet, Maximize2, Rows3, ArrowLeftToLine, Tag, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronDown, Crosshair, Magnet, Maximize2, Pencil, Rows3, ArrowLeftToLine, Tag, ZoomIn, ZoomOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +68,7 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
   const pxPerSec = useEditorUiStore((s) => s.pxPerSec);
   const setPxPerSec = useEditorUiStore((s) => s.setPxPerSec);
   const snapEnabled = useEditorUiStore((s) => s.snapEnabled);
+  const drawMode = useEditorUiStore((s) => s.drawMode);
   const toggleSnap = useEditorUiStore((s) => s.toggleSnap);
   const snapKinds = useEditorPrefsStore((s) => s.snapKinds);
   const setSnapKind = useEditorPrefsStore((s) => s.setSnapKind);
@@ -131,6 +132,14 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
         }}
       >
         <ArrowLeftToLine aria-hidden />
+      </ToolButton>
+      {/* 绘制模式：空白处拖动直接画片段（快捷键 D） */}
+      <ToolButton
+        label={t("editor.timelineTools.draw")}
+        pressed={drawMode}
+        onClick={() => commands.find((c) => c.id === "timeline.drawMode")?.run()}
+      >
+        <Pencil aria-hidden />
       </ToolButton>
       <ToolButton label={t("editor.timelineTools.follow")} pressed={follow} onClick={() => setFollow(!follow)}>
         <Crosshair aria-hidden />

@@ -1916,7 +1916,14 @@
       "reorder": "拖动调整 {{name}} 的顺序",
       "reorderHint": "上下拖动调整轨道顺序；选中多条时一起移动",
       "resizeHeight": "调整 {{name}} 的高度",
-      "resizeHeightHint": "上下拖动调整这条轨道的高度，双击恢复默认"
+      "resizeHeightHint": "上下拖动调整这条轨道的高度，双击恢复默认",
+      "drawOn": "绘制模式已开启：在轨道空白处拖动画出片段",
+      "drawOff": "绘制模式已关闭",
+      "extended": "已延伸片段",
+      "extendNone": "没有可以延伸的空隙",
+      "gapsClosed": "已合拢 {{count}} 处空隙",
+      "lengthBeats": "已把 {{count}} 个片段设为 {{n}} 拍",
+      "lengthSeconds": "已把 {{count}} 个片段设为 {{n}} 秒"
     },
     "ruler": {
       "label": "时间标尺",
@@ -2090,7 +2097,21 @@
       "fileExportArtrec": "导出 ArtRec 回放文件",
       "fileReload": "重新载入",
       "fileReveal": "在文件管理器中显示",
-      "fileInfo": "节目信息"
+      "fileInfo": "节目信息",
+      "drawMode": "切换绘制模式",
+      "extendStart": "起点延伸到相邻片段或播放头",
+      "extendEnd": "终点延伸到相邻片段或播放头",
+      "closeGaps": "合拢所选轨道的空隙",
+      "closeGapsAll": "合拢全部轨道的空隙",
+      "length1": "片段长度设为 1 拍（无节拍时 1 秒）",
+      "length2": "片段长度设为 2 拍（无节拍时 2 秒）",
+      "length3": "片段长度设为 3 拍（无节拍时 3 秒）",
+      "length4": "片段长度设为 4 拍（无节拍时 4 秒）",
+      "length5": "片段长度设为 5 拍（无节拍时 5 秒）",
+      "length6": "片段长度设为 6 拍（无节拍时 6 秒）",
+      "length7": "片段长度设为 7 拍（无节拍时 7 秒）",
+      "length8": "片段长度设为 8 拍（无节拍时 8 秒）",
+      "length9": "片段长度设为 9 拍（无节拍时 9 秒）"
     },
     "unsaved": "有未保存的修改",
     "toolbarUndo": "撤销",
@@ -2902,7 +2923,9 @@
       "clearTempo": "清除节拍网格",
       "saveAsTemplate": "存为 Cue 模板",
       "arrange": "排列",
-      "moveTrack": "移动轨道"
+      "moveTrack": "移动轨道",
+      "insertTemplate": "插入模板",
+      "insertEffect": "插入特效"
     },
     "tags": {
       "red": "红",
@@ -3472,7 +3495,8 @@
       "fit": "适应窗口（Shift+Z）",
       "tagFilter": "按颜色标签筛选",
       "tagAll": "全部显示",
-      "selectTagged": "选中这个标签的 Cue"
+      "selectTagged": "选中这个标签的 Cue",
+      "draw": "绘制模式（D）：空白处拖动画出片段，单击新建"
     },
     "fan": {
       "title": "分布",
@@ -3749,6 +3773,14 @@
       "duration": "时长",
       "content": "内容",
       "universes": "用到的 Universe"
+    },
+    "quickBar": {
+      "label": "片段快捷操作",
+      "fades": "淡入淡出",
+      "noFade": "无淡入淡出",
+      "fadeSeconds": "淡入淡出 {{seconds}} 秒",
+      "fadesSet": "淡入淡出设为 {{seconds}} 秒",
+      "toggleDisabled": "禁用 / 启用"
     }
   },
   "fixtures": {
