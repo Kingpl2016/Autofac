@@ -24,8 +24,14 @@ export type { Physical } from "@/bindings/Physical";
 export type { FixtureModel } from "@/bindings/FixtureModel";
 /** 一条导入警告。 */
 export type { ImportWarning } from "@/bindings/ImportWarning";
-/** Excel 导入结果。 */
+/** 导入结果（Excel / OFL 单文件 / OFL 整库）。 */
 export type { ImportOutcome } from "@/bindings/ImportOutcome";
+/** OFL 整库目录：概况、查询条件、一页结果、一项与状态。 */
+export type { CatalogSummary } from "@/bindings/CatalogSummary";
+export type { CatalogQuery } from "@/bindings/CatalogQuery";
+export type { CatalogPage } from "@/bindings/CatalogPage";
+export type { CatalogItem } from "@/bindings/CatalogItem";
+export type { CatalogStatus } from "@/bindings/CatalogStatus";
 
 /** 通道属性的功能；编辑器按功能把“颜色 + 亮度”映射到通道。顺序即下拉菜单里的顺序。 */
 export const CHANNEL_FUNCTIONS = [

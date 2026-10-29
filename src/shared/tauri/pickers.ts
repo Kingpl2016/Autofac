@@ -96,6 +96,38 @@ export async function pickJsonFile(name: string): Promise<string | null> {
 }
 
 /**
+ * 让用户选择一个 zip 压缩包（例如 Open Fixture Library 的整库下载）。
+ *
+ * # Arguments
+ *
+ * * `name` - 文件对话框里显示的类型名称。
+ *
+ * # Returns
+ *
+ * 所选文件的本地路径；用户取消时返回 `null`。
+ */
+export async function pickZipFile(name: string): Promise<string | null> {
+  const picked = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name, extensions: ["zip"] }],
+  });
+  return typeof picked === "string" ? picked : null;
+}
+
+/**
+ * 让用户选择一个文件夹。
+ *
+ * # Returns
+ *
+ * 所选文件夹的本地路径；用户取消时返回 `null`。
+ */
+export async function pickDirectory(): Promise<string | null> {
+  const picked = await open({ multiple: false, directory: true });
+  return typeof picked === "string" ? picked : null;
+}
+
+/**
  * 让用户选择一个节目编辑器工程文件（`.artshow`）。
  *
  * # Arguments

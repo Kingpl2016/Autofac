@@ -58,14 +58,14 @@ impl FixtureState {
     /// # Returns
     ///
     /// `f` 的返回值。
-    fn with<T>(&self, f: impl FnOnce(&mut FixtureLibrary) -> T) -> T {
+    pub(crate) fn with<T>(&self, f: impl FnOnce(&mut FixtureLibrary) -> T) -> T {
         // parking_lot 锁不毒化；库总是整体替换，即便某次操作 panic 数据也保持一致
         let mut guard = self.library.lock();
         f(&mut guard)
     }
 }
 
-/// Excel 导入的结果：合并统计 + 解析警告。
+/// 导入（Excel / OFL 单文件 / OFL 整库）的结果：合并统计 + 解析警告 + 失败的灯具。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -75,6 +75,21 @@ pub struct ImportOutcome {
     pub merge: MergeOutcome,
     /// 解析过程中的警告。
     pub warnings: Vec<ImportWarning>,
+    /// 整库导入时无法导入的灯具（单文件导入失败直接返回错误，这里为空）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
+    pub failed: Vec<ImportFailure>,
+}
+
+/// 整库导入时一个失败的灯具。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct ImportFailure {
+    /// 灯具标识（`制造商/灯具`）。
+    pub key: String,
+    /// 错误码（例如 `import_failed:no_models`）。
+    pub code: String,
 }
 
 /// 列出全部灯具模型：内置模型在前，用户模型在后。
@@ -152,6 +167,7 @@ pub async fn fixture_import_xlsx(
     Ok(ImportOutcome {
         merge,
         warnings: report.warnings,
+        failed: Vec::new(),
     })
 }
 
@@ -229,6 +245,7 @@ pub async fn fixture_import_ofl(
     Ok(ImportOutcome {
         merge,
         warnings: report.warnings,
+        failed: Vec::new(),
     })
 }
 

@@ -77,6 +77,7 @@ const fixtureModel = z.object({
       beamMaxDeg: z.number().positive().optional(),
     })
     .optional(),
+  source: z.object({ kind: z.string(), key: z.string(), recognizer: z.number().int().min(0) }).optional(),
 });
 
 // ---- 参数（固定值 / 关键帧 / 数值曲线） ----

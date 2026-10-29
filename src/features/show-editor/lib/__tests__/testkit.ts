@@ -7,7 +7,15 @@ import type { ShowFileController } from "../../hooks/useShowFile";
  * 测试用的模型与工具：不依赖素材库的真实数据，通道布局与内置标准模型一致。
  */
 
-function prop(code: string, fn: FixtureProperty["function"], channel: number, width: 1 | 2 = 1): FixtureProperty {
+/**
+ * 构造一个通道对象。
+ *
+ * @param code 英文代码（也作名称）。
+ * @param fn 功能。
+ * @param channel 起始通道。
+ * @param width 位宽（通道数）。
+ */
+export function prop(code: string, fn: FixtureProperty["function"], channel: number, width: 1 | 2 = 1): FixtureProperty {
   return {
     name: code,
     code,

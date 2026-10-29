@@ -1,5 +1,6 @@
 import type { FixtureModel } from "@/features/fixtures";
 import { newId } from "./ids";
+import { replaceModelSnapshot } from "./modelUpdates";
 import { footprintOf, spansByUniverse } from "./patch";
 import { DMX_CHANNELS, MAX_UNIVERSE, type FixtureInstance, type PatchAddress, type ShowProject } from "./project";
 import { clampToStage, materializePlacements } from "./stageOps";
@@ -193,10 +194,8 @@ function mergeRanges(items: readonly AddPlanItem[], width: number): AddPlanRange
  * @param model 素材库里的模型。
  */
 export function upsertModel(draft: ShowProject, model: FixtureModel): void {
-  const copy = structuredClone(model);
-  const index = draft.fixtureModels.findIndex((m) => m.id === model.id);
-  if (index >= 0) draft.fixtureModels[index] = copy;
-  else draft.fixtureModels.push(copy);
+  // 与“更新模型快照”同一套替换逻辑：已有灯具的模式在新模型里不存在时回到默认模式
+  replaceModelSnapshot(draft, model);
 }
 
 /**

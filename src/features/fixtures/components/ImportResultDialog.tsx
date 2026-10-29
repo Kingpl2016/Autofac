@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { fixtureErrorText } from "../lib/errors";
 import { warningParams } from "../lib/format";
 import type { ImportOutcome, ImportWarning } from "../lib/types";
 
@@ -51,6 +52,7 @@ export function ImportResultDialog({ outcome, onClose }: ImportResultDialogProps
   const { t } = useTranslation();
   if (!outcome) return null;
   const { added, updated, skipped, warnings } = outcome;
+  const failed = outcome.failed ?? [];
   const text = (w: ImportWarning) => t(`fixtures.import.warning.${warningKey(w)}`, warningParams(w));
   const groups = groupByModel(warnings);
 
@@ -81,6 +83,19 @@ export function ImportResultDialog({ outcome, onClose }: ImportResultDialogProps
           <p className="text-sm text-muted-foreground">
             {t("fixtures.import.skipped", { ids: skipped.join("、") })}
           </p>
+        )}
+
+        {failed.length > 0 && (
+          <section aria-label={t("fixtures.import.failedTitle", { count: failed.length })}>
+            <h3 className="mb-2 text-sm font-medium text-destructive">{t("fixtures.import.failedTitle", { count: failed.length })}</h3>
+            <ul className="grid gap-1 text-sm">
+              {failed.slice(0, MAX_PER_GROUP).map((f) => (
+                <li key={f.key} className="rounded-md bg-destructive/10 px-3 py-1.5">
+                  <span className="num">{f.key}</span>：{fixtureErrorText(t, f.code)}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {warnings.length > 0 && (

@@ -4500,6 +4500,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "ts-rs",
+ "zip 9.1.2",
 ]
 
 [[package]]

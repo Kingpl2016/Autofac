@@ -30,6 +30,13 @@ export function fixtureErrorText(t: TFunction, error: unknown): string {
       return t("fixtures.errors.importOpen");
     case "import_failed:no_models":
       return t("fixtures.errors.importNoModels");
+    case "bundle_open":
+    case "bundle_empty":
+    case "bundle_too_large":
+    case "bundle_not_found":
+    case "catalog_stale":
+    case "catalog_missing":
+      return t(`fixtures.errors.${raw}`);
     default:
       return t("common.unknownError");
   }

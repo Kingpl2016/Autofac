@@ -8,9 +8,11 @@ description = "节目编辑引擎：灯具物模型、Excel 导入、工程编�
 workspace = true
 [features]
 ts = ["dep:ts-rs"]
-default = ["xlsx", "media"]
+default = ["xlsx", "media", "ofl-bundle"]
 # 物模型 Excel 导入（calamine）。
 xlsx = ["dep:calamine"]
+# OFL 整库（zip / 文件夹）读取与目录索引（zip）。
+ofl-bundle = ["dep:zip"]
 # 音视频探测与波形（symphonia）。
 media = ["dep:symphonia"]
 
@@ -24,4 +26,6 @@ tracing = { workspace = true }
 fsutil = { path = "../fsutil" }
 regex-lite = { workspace = true }
 calamine = { workspace = true, optional = true }
+# 与 calamine 用同一个版本与压缩特性，避免重复编译。
+zip = { version = "=9.1.2", optional = true, default-features = false, features = ["deflate"] }
 symphonia = { version = "=0.5.5", optional = true, default-features = false, features = ["mp3", "wav", "flac", "aac", "isomp4", "ogg", "vorbis", "pcm", "alac", "adpcm", "mkv"] }

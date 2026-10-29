@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { FileJson, FileSpreadsheet, Loader2, Plus } from "lucide-react";
+import { FileJson, FileSpreadsheet, Library, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,9 @@ import { FixtureDetail } from "./FixtureDetail";
 import { FixtureEditorDialog } from "./FixtureEditorDialog";
 import { FixtureList } from "./FixtureList";
 import { ImportResultDialog } from "./ImportResultDialog";
+
+/** OFL 整库浏览对话框按需加载（含虚拟列表），不进素材库页面的首屏代码。 */
+const OflCatalogDialog = lazy(() => import("./OflCatalogDialog").then((m) => ({ default: m.OflCatalogDialog })));
 
 /** 正在编辑的内容：新建 / 复制（编号可改）或编辑现有自定义模型（编号锁定）。 */
 interface EditingState {
@@ -46,6 +49,7 @@ export function FixtureLibraryView() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [importing, setImporting] = useState(false);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   useEffect(() => {
     void load();
@@ -104,6 +108,10 @@ export function FixtureLibraryView() {
             <Button type="button" variant="outline" onClick={() => void onImport("ofl")} disabled={importing}>
               <FileJson aria-hidden />
               {t("fixtures.import.oflButton")}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setCatalogOpen(true)} disabled={importing}>
+              <Library aria-hidden />
+              {t("fixtures.catalog.button")}
             </Button>
             <Button
               type="button"
@@ -171,6 +179,19 @@ export function FixtureLibraryView() {
         onConfirm={() => void onDelete()}
       />
       <ImportResultDialog outcome={outcome} onClose={() => setOutcome(null)} />
+      {catalogOpen && (
+        <Suspense fallback={null}>
+          <OflCatalogDialog
+            open={catalogOpen}
+            onOpenChange={setCatalogOpen}
+            onImported={(result) => {
+              setOutcome(result);
+              const first = result.added[0] ?? result.updated[0];
+              if (first) setSelectedId(first);
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { Emitter } from "./Emitter";
 import type { FixtureMode } from "./FixtureMode";
 import type { FixtureProperty } from "./FixtureProperty";
 import type { MatrixLayout } from "./MatrixLayout";
+import type { ModelSource } from "./ModelSource";
 import type { Physical } from "./Physical";
 
 /**
@@ -56,4 +57,8 @@ emitters?: Array<Emitter>,
 /**
  * 物理参数。
  */
-physical?: Physical, };
+physical?: Physical, 
+/**
+ * 模型来源（OFL 导入时记录灯具标识与识别规则版本，用于判断是否需要重新导入）。
+ */
+source?: ModelSource, };

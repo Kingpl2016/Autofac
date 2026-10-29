@@ -645,6 +645,23 @@ pub struct FixtureModel {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub physical: Option<Physical>,
+    /// 模型来源（OFL 导入时记录灯具标识与识别规则版本，用于判断是否需要重新导入）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub source: Option<ModelSource>,
+}
+
+/// 模型来源。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct ModelSource {
+    /// 来源库：目前只有 `ofl`。
+    pub kind: String,
+    /// 来源里的标识，例如 OFL 的 `制造商/灯具`。
+    pub key: String,
+    /// 导入时的识别规则版本（见 `OFL_RECOGNIZER_VERSION`）；比当前版本旧时可重新导入。
+    pub recognizer: u32,
 }
 
 impl FixtureModel {

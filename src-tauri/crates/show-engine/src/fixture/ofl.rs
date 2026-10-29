@@ -27,7 +27,7 @@ use serde_json::{Map, Value};
 use super::import::{ImportError, ImportReport, ImportWarning, ImportWarningKind};
 use super::model::{
     validate_layout, Capability, CapabilityTag, ChannelFunction, Emitter, FixtureMode, FixtureModel,
-    FixtureProperty, MatrixLayout, Physical, Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS,
+    FixtureProperty, MatrixLayout, ModelSource, Physical, Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS,
     MAX_ID_LEN, MAX_MODES,
 };
 
@@ -174,6 +174,7 @@ pub fn import_ofl_as(text: &str, key: &str, manufacturer: Option<&str>) -> Resul
         matrix,
         emitters,
         physical: physical_of(root),
+        source: Some(ModelSource { kind: "ofl".into(), key: key.to_owned(), recognizer: OFL_RECOGNIZER_VERSION }),
     };
     let mut report = ImportReport { models: Vec::new(), warnings: ctx.into_warnings() };
     match model.validate() {
@@ -1243,7 +1244,24 @@ fn name_function(name: &str) -> Option<ChannelFunction> {
     if matches!(normalized.as_str(), "color" | "colour" | "speed") {
         return None;
     }
-    Some(ChannelFunction::from_code(name)).filter(|f| *f != ChannelFunction::Other)
+    if let Some(f) = Some(ChannelFunction::from_code(name)).filter(|f| *f != ChannelFunction::Other) {
+        return Some(f);
+    }
+    // 常见的 OFL 通道名片段（整库统计里最常见的未识别通道）
+    let has = |s: &str| normalized.contains(s);
+    Some(if has("framing") || has("blade") {
+        if has("rot") || has("swivel") { ChannelFunction::BladeRotate } else { ChannelFunction::Blade }
+    } else if has("fog") || has("haze") {
+        ChannelFunction::Fog
+    } else if has("crossfade") || has("fadetime") {
+        ChannelFunction::EffectSpeed
+    } else if has("curve") || has("tuning") || has("outputtype") || has("lamp") {
+        ChannelFunction::Maintenance
+    } else if has("program") || has("macro") || has("modeselection") {
+        ChannelFunction::Macro
+    } else {
+        return None;
+    })
 }
 
 /// 用像素 / 像素组名替换 `$pixelKey`。
@@ -1345,6 +1363,20 @@ fn hex_color(s: &str) -> Option<[u8; 3]> {
     }
     let p = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
     Some([p(0)?, p(2)?, p(4)?])
+}
+
+/// OFL 灯具标识（`制造商/灯具`）对应的模型编号。
+///
+/// # Arguments
+///
+/// * `key` - 灯具标识。
+///
+/// # Returns
+///
+/// `ofl:` + 规整后的标识（截断到 [`MAX_ID_LEN`]），与导入时生成的编号一致。
+#[must_use]
+pub fn ofl_model_id(key: &str) -> String {
+    model_id(key, key)
 }
 
 /// 生成模型编号：`ofl:` + 规整后的标识，截断到 [`MAX_ID_LEN`]。

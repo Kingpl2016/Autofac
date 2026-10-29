@@ -6,6 +6,7 @@ import {
   fixtureImportXlsx,
   fixtureList,
   fixtureSave,
+  oflCatalogImport,
 } from "../lib/api";
 import type { FixtureModel, ImportOutcome } from "../lib/types";
 
@@ -24,6 +25,8 @@ interface FixtureState {
   importXlsx: (path: string) => Promise<ImportOutcome>;
   /** 导入 OFL 灯具 JSON，成功后刷新列表。 */
   importOfl: (path: string) => Promise<ImportOutcome>;
+  /** 从 OFL 整库目录导入勾选的灯具，成功后刷新列表。 */
+  importCatalog: (keys: readonly string[]) => Promise<ImportOutcome>;
   /** 新增 / 更新自定义模型，成功后刷新列表，返回保存后的模型。 */
   save: (model: FixtureModel) => Promise<FixtureModel>;
   /** 删除自定义模型，成功后刷新列表。 */
@@ -55,6 +58,12 @@ export const useFixtureStore = create<FixtureState>((set, get) => ({
 
   importOfl: async (path) => {
     const outcome = await fixtureImportOfl(path);
+    set({ models: await fixtureList() });
+    return outcome;
+  },
+
+  importCatalog: async (keys) => {
+    const outcome = await oflCatalogImport(keys);
     set({ models: await fixtureList() });
     return outcome;
   },

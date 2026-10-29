@@ -42,6 +42,7 @@ import { CommandPalette } from "./CommandPalette";
 import { DurationConfirmDialog } from "./DurationConfirmDialog";
 import { EditorColumns } from "./EditorColumns";
 import { EditorToolbar } from "./EditorToolbar";
+import { ModelUpdatesBanner } from "./ModelUpdatesBanner";
 import { EffectDefChip, type EffectDefDragData } from "./EffectLibrarySection";
 import { EffectChip, type EffectDragData } from "./EffectsTab";
 import { FileDialogs } from "./FileDialogs";
@@ -238,6 +239,7 @@ export function ShowEditorView() {
     >
       <div className="flex h-full min-h-0 flex-col bg-background">
         <EditorToolbar file={file} />
+        <ModelUpdatesBanner />
         <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
           <ResizablePanel defaultSize="62%" minSize="30%">
             <div className="flex h-full min-h-0">

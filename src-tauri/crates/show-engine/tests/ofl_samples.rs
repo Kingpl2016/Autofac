@@ -226,3 +226,67 @@ fn 双光源摇头灯_重复功能降级() {
     assert_eq!(find(&ext.properties, "Aura dimmer").function, ChannelFunction::Other);
     assert!(has_kind(&r, ImportWarningKind::DuplicateFunctionDemoted));
 }
+
+/// 整库回归（手动运行）：`OFL_ZIP=<官方仓库 zip 路径> cargo test -p show-engine --release --test ofl_samples -- --ignored --nocapture`。
+///
+/// 逐个导入库里的全部灯具，统计失败与各类警告，要求所有非重定向灯具都能导入。
+#[test]
+#[ignore = "需要 OFL_ZIP 环境变量指向官方仓库 zip"]
+fn 整库导入统计() {
+    use show_engine::fixture::{build_catalog, import_from_bundle, OflBundle};
+    let Ok(path) = std::env::var("OFL_ZIP") else { return };
+    let started = std::time::Instant::now();
+    let mut bundle = OflBundle::open(std::path::Path::new(&path)).expect("应能打开 OFL 包");
+    let catalog = build_catalog(&mut bundle, &path, &mut |_, _| {});
+    println!(
+        "目录：{} 个灯具，{} 个制造商，{} 个损坏，用时 {:?}",
+        catalog.entries.len(),
+        catalog.manufacturers.len(),
+        catalog.broken.len(),
+        started.elapsed()
+    );
+    let keys: Vec<String> = catalog.entries.iter().filter(|e| e.redirect_to.is_none()).map(|e| e.key.clone()).collect();
+    let started = std::time::Instant::now();
+    let result = import_from_bundle(&mut bundle, &catalog, &keys, &mut |_, _| {});
+    println!("导入：{} 个模型，{} 个失败，用时 {:?}", result.report.models.len(), result.failed.len(), started.elapsed());
+    for (k, code) in &result.failed {
+        println!("  失败 {k}: {code}");
+    }
+    let mut kinds: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for w in &result.report.warnings {
+        *kinds.entry(format!("{:?}", w.kind)).or_default() += 1;
+    }
+    println!("警告：{kinds:?}");
+    let mut details: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for w in result.report.warnings.iter().filter(|w| matches!(w.kind, ImportWarningKind::UnsupportedFeature | ImportWarningKind::ModeSkipped)) {
+        *details.entry(format!("{:?} {}", w.kind, w.detail.clone().unwrap_or_default())).or_default() += 1;
+    }
+    println!("不支持 / 跳过：{details:?}");
+    let other = result
+        .report
+        .models
+        .iter()
+        .flat_map(|m| m.properties.iter())
+        .filter(|p| p.function == ChannelFunction::Other)
+        .count();
+    let total: usize = result.report.models.iter().map(|m| m.properties.len()).sum();
+    println!("默认模式通道：{total} 个，其中“其他” {other} 个");
+    let mut unknown: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for w in result.report.warnings.iter().filter(|w| w.kind == ImportWarningKind::UnknownFunction) {
+        *unknown.entry(w.detail.clone().unwrap_or_default().to_lowercase()).or_default() += 1;
+    }
+    let mut top: Vec<(String, usize)> = unknown.into_iter().collect();
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
+    println!("最常见的未识别通道：{:?}", &top[..top.len().min(40)]);
+    let mut demoted: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for w in result.report.warnings.iter().filter(|w| w.kind == ImportWarningKind::DuplicateFunctionDemoted) {
+        *demoted.entry(w.detail.clone().unwrap_or_default().to_lowercase()).or_default() += 1;
+    }
+    let mut top: Vec<(String, usize)> = demoted.into_iter().collect();
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
+    println!("最常见的降级通道：{:?}", &top[..top.len().min(40)]);
+    for m in &result.report.models {
+        assert_eq!(m.validate(), Ok(()), "{}", m.id);
+    }
+    assert!(result.failed.is_empty(), "有灯具导入失败");
+}

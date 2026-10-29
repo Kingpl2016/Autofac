@@ -14,6 +14,7 @@ mod fixture_commands;
 mod library_commands;
 mod media_commands;
 mod netdev_commands;
+mod ofl_catalog_commands;
 mod playback_commands;
 mod recording_commands;
 mod show_bake;
@@ -109,6 +110,8 @@ pub fn run() {
             ));
             // 灯具素材库：内置模型 + 用户模型（app_data_dir/fixtures.json）。
             app.manage(fixture_commands::FixtureState::new(app.handle()));
+            // OFL 整库目录（数据根目录/ofl-catalog.json，首次使用时读取）。
+            app.manage(ofl_catalog_commands::OflCatalogState::new(app.handle()));
             // 节目预览引擎：30 FPS 灯光输出会话按需创建。
             app.manage(show_runtime::ShowRuntime::new());
             // 保存时的后台烘焙（.artrec）：串行调度。
@@ -269,6 +272,11 @@ pub fn run() {
             fixture_commands::fixture_import_ofl,
             fixture_commands::fixture_save,
             fixture_commands::fixture_delete,
+            ofl_catalog_commands::ofl_catalog_open,
+            ofl_catalog_commands::ofl_catalog_summary,
+            ofl_catalog_commands::ofl_catalog_search,
+            ofl_catalog_commands::ofl_catalog_keys,
+            ofl_catalog_commands::ofl_catalog_import,
             netdev_commands::netdev_list,
             netdev_commands::netdev_save,
             netdev_commands::netdev_remove,
