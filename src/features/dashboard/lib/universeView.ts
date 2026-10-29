@@ -1,9 +1,6 @@
 import type { UniverseSnapshot, UniverseSource } from "@/shared/domain/engine";
 import { compareIp } from "@/shared/lib/ip";
 
-// 冲突级别逻辑已提升到共享库（信号流页也要用），这里再导出以保持既有引用路径可用
-export { conflictLevel, type ConflictLevel, type MergeModeName } from "@/shared/lib/conflict";
-
 /** 活动宇宙的展示形式。 */
 export type UniverseViewMode = "cards" | "table";
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { clamp, formatTimecode, parseTimecode, snapToFrame } from "../time";
+import { clamp } from "@/shared/lib/math";
+import { formatTimecode, parseTimecode, snapToFrame } from "../time";
 
 describe("formatTimecode", () => {
   it("分:秒.帧，帧按 30 FPS", () => {

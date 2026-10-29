@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { produce } from "immer";
 
 import i18n from "@/shared/i18n";
+import { stubResizeObserver } from "@/test/mockTauriEvents";
 import { useEditorHotkeys } from "../../hooks/useEditorHotkeys";
 import { addStaticCue } from "../../lib/cueOps";
 import { addFixtures } from "../../lib/ops";
@@ -15,14 +16,9 @@ import { useProjectStore } from "../../stores/useProjectStore";
 import { CommandPalette } from "../CommandPalette";
 
 beforeAll(() => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
+  stubResizeObserver();
+  // cmdk 会把选中项滚动到可见范围，jsdom 没有实现 scrollIntoView
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
 const project = () => useProjectStore.getState().project;

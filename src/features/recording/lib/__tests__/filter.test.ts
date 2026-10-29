@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { UniverseSnapshot } from "@/shared/domain/engine";
+import { formatBytesIec } from "@/shared/lib/format";
 import {
   EMPTY_FILTER,
   buildFileStem,
   expandRanges,
-  formatBytes,
   formatDurationUs,
   matchesParts,
   parseUniverseRanges,
@@ -113,8 +113,8 @@ describe("格式化", () => {
     expect(formatDurationUs(0)).toBe("0:00.0");
     expect(formatDurationUs(65_300_000)).toBe("1:05.3");
     expect(formatDurationUs(3_725_000_000)).toBe("1:02:05.0");
-    expect(formatBytes(512)).toBe("512 B");
-    expect(formatBytes(1536)).toBe("1.5 KiB");
-    expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MiB");
+    expect(formatBytesIec(512)).toBe("512 B");
+    expect(formatBytesIec(1536)).toBe("1.5 KiB");
+    expect(formatBytesIec(5 * 1024 * 1024)).toBe("5.0 MiB");
   });
 });

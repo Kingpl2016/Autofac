@@ -1,6 +1,7 @@
 import { newId } from "./ids";
 import type { MediaClip, MediaRef, MediaTrack, ShowProject } from "./project";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 媒体轨道与媒体片段（剪映式多轨音视频）：增删轨道、放置 / 移动 / 裁剪 / 分割片段、音量与淡入淡出。

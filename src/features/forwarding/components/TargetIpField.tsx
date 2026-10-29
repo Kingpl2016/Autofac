@@ -12,8 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { displayName } from "@/features/discovery/lib/filters";
-import type { Device } from "@/shared/domain/device";
+import { displayName, type Device } from "@/shared/domain/device";
 import { groupOnlineDevices } from "../lib/deviceOptions";
 
 /** 下拉里“手动输入”项的占位值（不会与真实 IP 冲突）。 */

@@ -4,11 +4,10 @@ import { StatusPill } from "@/shared/components/StatusPill";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import type { OutputPayload } from "@/shared/domain/engine";
 import { useNow } from "@/shared/hooks/useNow";
-import { formatCount, formatDuration } from "@/shared/lib/format";
+import { formatCount, formatDuration, formatPacketRate } from "@/shared/lib/format";
 import { useOutputStore } from "@/shared/stores/outputStore";
 import { ageNow, isOutputStale } from "@/shared/lib/outputFreshness";
 import { outputTone } from "../lib/outputHealth";
-import { formatPacketRate } from "../lib/format";
 
 interface OutputHealthViewProps {
   /** 最近一次输出统计；`null` 表示还没收到。 */

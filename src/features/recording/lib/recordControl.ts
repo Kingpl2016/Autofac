@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { getRecordingPreset, useRecordingPresetStore } from "../stores/useRecordingPresetStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import { recordingStart, recordingStop } from "./api";
@@ -94,7 +95,7 @@ export function describeRecordingError(
   t: TFunction,
   fallbackKey: string,
 ): string {
-  const raw = e instanceof Error ? e.message : String(e);
+  const raw = errorMessage(e);
   if (raw === REC_ERR_NO_UNIVERSES) return t("recording.errNoUniverses");
   if (raw === REC_ERR_ALREADY) return t("recording.errAlready");
   if (raw === PLAYER_ERR_PLAYBACK_ACTIVE) return t("recording.errPlaybackActive");

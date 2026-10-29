@@ -25,6 +25,7 @@ pub enum SeriesError {
 /// 一个降采样点：该时间桶内通道值的最小 / 最大值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SeriesPoint {
     /// 桶起始时间（微秒）。
     pub t_us: u64,
@@ -37,6 +38,7 @@ pub struct SeriesPoint {
 /// 一个通道的曲线。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ChannelSeries {
     /// 通道号（0 起）。
     pub channel: u16,

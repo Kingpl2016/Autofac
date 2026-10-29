@@ -1,7 +1,7 @@
 import type { UniverseSnapshot } from "@/shared/domain/engine";
-import type { ForwardDestination } from "@/features/forwarding/lib/types";
+import type { ForwardDestination } from "@/features/forwarding";
 import type { PlaybackStatus } from "@/features/recording";
-import { PLAYER_SOURCE_ID } from "./graphModel";
+import { PLAYER_SOURCE_ID } from "./activity";
 
 /** 回放直发目标在图中使用的目的地 ID。 */
 export const PLAYER_DIRECT_ID = "player-direct";

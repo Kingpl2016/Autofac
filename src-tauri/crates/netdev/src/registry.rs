@@ -17,6 +17,7 @@ const MAX_NAME_CHARS: usize = 40;
 
 /// 已保存的设备（不含 Token）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SavedDevice {
     /// 稳定 id（UUID）。
@@ -31,6 +32,7 @@ pub struct SavedDevice {
 
 /// 返回给前端的设备视图：设备信息加"是否已保存 Token"。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceView {
     /// 设备信息。
@@ -42,10 +44,12 @@ pub struct DeviceView {
 
 /// 新增 / 更新设备的输入。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceInput {
     /// 已有设备 id；新增时为空。
     #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub id: Option<String>,
     /// 显示名称；为空时用主机代替。
     #[serde(default)]

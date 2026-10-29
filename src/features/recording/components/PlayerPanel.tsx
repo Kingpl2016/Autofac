@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, Film, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsQuery } from "@/features/settings";
 import { ChannelGrid, UniversePicker } from "@/features/universes";
-import { SurfacePanel } from "../../../shared/components/SurfacePanel";
+import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { ChannelCurves } from "./ChannelCurves";
 import { PlayerTargetPicker } from "./PlayerTargetPicker";
 import { TimelineHeatmap } from "./TimelineHeatmap";
@@ -38,10 +39,6 @@ interface PlayerPanelProps {
   active?: boolean;
 }
 
-/** 把任意异常规整为字符串。 */
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /**
  * 回放面板：传输台、时间线、通道曲线、输出目标与被查看 Universe 的 512 通道栅格。
@@ -74,7 +71,7 @@ export function PlayerPanel({ active = true }: PlayerPanelProps) {
       try {
         await action();
       } catch (e: unknown) {
-        const raw = messageOf(e);
+        const raw = errorMessage(e);
         if (raw === PLAYER_ERR_NO_PLAYER) toast.error(t("player.errNoPlayer"));
         else if (raw === PLAYER_ERR_BAD_TARGET) toast.error(t("player.errBadTarget"));
         else toast.error(raw);

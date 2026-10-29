@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Copy } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { copyText } from "@/shared/lib/clipboard";
 import type { AppInfo } from "../lib/api";
 import { buildDiagnostics } from "../lib/format";
 
@@ -20,11 +20,7 @@ export function EnvironmentSection({ info }: EnvironmentSectionProps) {
   const { t } = useTranslation();
 
   const copy = () => {
-    if (!info) return;
-    void navigator.clipboard
-      ?.writeText(buildDiagnostics(info))
-      .then(() => toast.success(t("about.copied")))
-      .catch(() => undefined);
+    if (info) void copyText(buildDiagnostics(info), { success: t("about.copied") });
   };
 
   const rows: { label: string; value: string | undefined }[] = [

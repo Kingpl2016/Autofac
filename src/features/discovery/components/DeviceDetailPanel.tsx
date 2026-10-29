@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { Device, DeviceStyle } from "@/shared/domain/device";
+import { displayName, type Device, type DeviceStyle } from "@/shared/domain/device";
+import { intlLocale } from "@/shared/lib/locale";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
-import { displayName } from "../lib/filters";
 import { lastSeenAsClock } from "../lib/format";
 import { formatUniverse } from "../lib/ports";
 import { CategoryBadge } from "./CategoryBadge";
@@ -89,7 +89,7 @@ export function DeviceDetailPanel({
   const { t, i18n } = useTranslation();
   const [draft, setDraft] = useState(device.customName ?? "");
   const nowMs = useEngineDataStore((s) => s.stats.uptimeSec) * 1000;
-  const locale = i18n.language.startsWith("zh") ? "zh-CN" : "en";
+  const locale = intlLocale(i18n.language);
 
   const name = displayName(device);
   const ports = device.ports ?? [];

@@ -2,7 +2,8 @@ import { MIN_CUE_MS, normalizeFades } from "./cueOps";
 import { MIN_MEDIA_CLIP_MS } from "./mediaClips";
 import { MAX_DURATION_MS, setLoopRange } from "./ops";
 import type { ShowProject } from "./project";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 节目时长：直接设置、适配内容长度；缩短时裁掉超出新结尾的片段 / 媒体 / 段落 / 标记点。

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { UniverseSnapshot } from "@/shared/domain/engine";
 import { newDestination, type ForwardDestination } from "@/features/forwarding/lib/types";
+import { PLAYER_SOURCE_ID } from "../activity";
 import {
-  PLAYER_SOURCE_ID,
   buildGraph,
   type DestinationNodeData,
   type FlowEdgeData,

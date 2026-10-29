@@ -3,8 +3,8 @@
 /** 媒体类型：每种类型只保留一份，上传新文件会替换旧文件，不会越攒越多 */
 export type MediaKind = "image" | "video";
 
-/** 存储后端；默认是 idb-keyval，测试里可以替换为内存实现 */
-export interface MediaBackend {
+/** 存储后端 */
+interface MediaBackend {
   /** 读取文件，不存在时为 undefined */
   get: (key: string) => Promise<Blob | undefined>;
   /** 写入文件 */
@@ -13,23 +13,12 @@ export interface MediaBackend {
   del: (key: string) => Promise<void>;
 }
 
-/** 默认后端：idb-keyval 按需动态加载，没有用到背景媒体的用户不会下载它 */
-const idbBackend: MediaBackend = {
+/** idb-keyval 按需动态加载，没有用到背景媒体的用户不会下载它 */
+const backend: MediaBackend = {
   get: async (key) => (await import("idb-keyval")).get<Blob>(key),
   set: async (key, blob) => (await import("idb-keyval")).set(key, blob),
   del: async (key) => (await import("idb-keyval")).del(key),
 };
-
-let backend: MediaBackend = idbBackend;
-
-/**
- * 替换存储后端（仅供测试使用）。
- *
- * @param next - 新后端；省略时恢复默认后端
- */
-export function setMediaBackend(next?: MediaBackend): void {
-  backend = next ?? idbBackend;
-}
 
 /**
  * 计算某类媒体在 IndexedDB 里的键。

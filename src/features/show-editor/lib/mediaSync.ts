@@ -1,3 +1,4 @@
+import { clamp } from "@/shared/lib/math";
 import type { Transport } from "./playbackApi";
 
 /**
@@ -53,7 +54,6 @@ export interface SyncPlan {
   rate: number;
 }
 
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /**
  * 计算一个素材元素此刻该做什么。

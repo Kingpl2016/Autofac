@@ -17,11 +17,6 @@ export function importSettings(json: string): Promise<AppSettings> {
   return invoke<AppSettings>("import_settings", { json });
 }
 
-/** 导出当前配置为 JSON 文本。 */
-export function exportSettings(): Promise<string> {
-  return invoke<string>("export_settings");
-}
-
 /** 枚举本机网络接口。 */
 export function listNetworkInterfaces(): Promise<NetworkInterface[]> {
   return invoke<NetworkInterface[]>("list_network_interfaces");

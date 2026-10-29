@@ -1,3 +1,4 @@
+import { clamp01 } from "@/shared/lib/math";
 import { MAX_SAFE_STROBE_HZ, periodMs } from "./effects";
 import type { ColorValue, EffectCue, Keyframe, Look, Rgb, Spread, Tempo, ValueCurve } from "./project";
 
@@ -68,7 +69,6 @@ function cyclesFor(lengthMs: number, period: EffectCue["period"], tempo: Tempo |
 }
 
 const curve = (c: ValueCurve) => ({ kind: "curve" as const, curve: c });
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 /** 彩虹的关键帧：沿色相走一圈（R → Y → G → C → B → M → R），每个周期一圈。 */
 function rainbowKeys(lengthMs: number, cycles: number): Keyframe<ColorValue>[] {

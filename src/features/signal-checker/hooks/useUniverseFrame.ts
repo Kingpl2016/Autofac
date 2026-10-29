@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { checkerKeys } from "../lib/queries";
 import { getFrame } from "../lib/api";
 import { useSenderStore } from "../stores/useSenderStore";
 
-/** 帧查询的缓存键前缀；手动设值后失效它即可立刻刷新栅格。 */
-export const FRAME_QUERY_KEY = ["signal-checker", "frame"] as const;
 
 /**
  * 读取某个 Universe 当前会发出的 512 通道内容。
@@ -27,7 +26,7 @@ export function useUniverseFrame(universe: number | null): number[] | undefined 
   const preview = useSenderStore((s) => s.preview);
 
   const query = useQuery({
-    queryKey: [...FRAME_QUERY_KEY, universe, mode, pattern, running],
+    queryKey: [...checkerKeys.frame, universe, mode, pattern, running],
     queryFn: () => getFrame(universe as number),
     enabled: universe !== null,
     staleTime: 0,

@@ -39,6 +39,7 @@ pub const MAX_CAPABILITIES: usize = 64;
 /// 属性功能组：检查器按组分区显示控件，合成与预设也按组进行。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum AttributeGroup {
     /// 强度：开关、调光、频闪。
     Intensity,
@@ -57,6 +58,7 @@ pub enum AttributeGroup {
 /// 多个片段写同一通道时的合成规则。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Precedence {
     /// 取最大值（Highest Takes Precedence），用于亮度类通道。
     Htp,
@@ -70,6 +72,7 @@ pub enum Precedence {
 /// 片段不涉及的通道输出默认值（见 [`ChannelFunction::default_value`]）。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ChannelFunction {
     /// 开关（0 关，1~255 开）。
     Switch,
@@ -314,6 +317,7 @@ impl ChannelFunction {
 /// 例如“Pan 0°~540°”）。比例区间用 `physical` 记录起止物理量，单位见 `unit`。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Capability {
     /// DMX 起止值（均含），按所属通道对象的位宽（8 位 0~255，16 位 0~65535）。
     pub range: [u16; 2],
@@ -322,21 +326,26 @@ pub struct Capability {
     pub label: String,
     /// 是否为比例区间。
     #[serde(default, skip_serializing_if = "is_false")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub proportional: bool,
     /// 比例区间的起止物理量（例如 `[0.0, 540.0]`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub physical: Option<[f64; 2]>,
     /// 物理量单位，例如 `deg`、`Hz`、`%`、`K`；没有单位为空串。
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub unit: String,
     /// 颜色轮槽位等的代表色（sRGB）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub color: Option<[u8; 3]>,
 }
 
 /// 灯具的一个通道对象。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct FixtureProperty {
     /// 属性的中文显示名，例如 `红光`。
     pub name: String,
@@ -347,6 +356,7 @@ pub struct FixtureProperty {
     /// 起始通道，取值 1~512（相对灯具起始地址，从 1 开始）。
     pub channel: u16,
     /// 占用的连续通道数：1 为 8 位，2 为 16 位。
+    #[cfg_attr(feature = "ts", ts(type = "1 | 2"))]
     pub width: u8,
     /// 多通道属性的字节序：`true` 为大端（低通道放高字节）。单通道属性忽略。
     pub big_endian: bool,
@@ -360,18 +370,23 @@ pub struct FixtureProperty {
     pub description: String,
     /// 高亮值：编程器“高亮”所选灯具时输出的值；`None` 为最大值。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub highlight_value: Option<u16>,
     /// 合成规则；`None` 时取 [`ChannelFunction::default_precedence`]。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub precedence: Option<Precedence>,
     /// 是否反向（输出 `max - 值`），用于倒装的摇头灯等。
     #[serde(default, skip_serializing_if = "is_false")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub invert: bool,
     /// 所属像素头：`0` 为整灯（主控），`1..=n` 为 `matrix` 里按行优先编号的像素。
     #[serde(default, skip_serializing_if = "is_zero")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub head: u16,
     /// 能力区间，按 DMX 值升序且互不重叠；为空表示整段线性。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub capabilities: Vec<Capability>,
 }
 
@@ -431,6 +446,7 @@ impl FixtureProperty {
 /// 灯具的一个附加通道模式（例如 6ch、9ch），带完整的通道布局。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct FixtureMode {
     /// 模式编号，在模型内唯一，不能是空串（空串保留给默认模式）。
     pub id: String,
@@ -443,6 +459,7 @@ pub struct FixtureMode {
 /// 多头 / 像素灯的像素排布（行优先编号，从 1 开始）。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct MatrixLayout {
     /// 列数（横向像素数），至少 1。
     pub cols: u16,
@@ -465,41 +482,51 @@ impl MatrixLayout {
 /// 一路发光体的实际颜色，供混色引擎校准（未声明的发光体按理想颜色计算）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Emitter {
     /// 对应的功能（必须是加色发光体，见 [`ChannelFunction::is_emitter`]）。
     pub function: ChannelFunction,
     /// 满亮时的显示颜色（sRGB）；`None` 时按功能的理想颜色或 `kelvin` 推算。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub rgb: Option<[u8; 3]>,
     /// 白光类发光体的色温（K）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub kelvin: Option<u16>,
     /// 相对亮度权重（1.0 为与红绿蓝同等亮度）。
     #[serde(default = "one", skip_serializing_if = "is_one")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub intensity: f64,
 }
 
 /// 灯具的物理参数（舞台预览据此计算光束）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Physical {
     /// Pan 总行程（度），例如 540。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub pan_range_deg: Option<f64>,
     /// Tilt 总行程（度），例如 270。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub tilt_range_deg: Option<f64>,
     /// 最小光束角（度）；没有变焦时即光束角。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub beam_min_deg: Option<f64>,
     /// 最大光束角（度）；没有变焦时与最小值相同或省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub beam_max_deg: Option<f64>,
 }
 
 /// 灯具物模型（一类灯具的模板）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct FixtureModel {
     /// 模型编号，格式 `[表号].[序号].[系统].[类型]`，全库唯一。
     pub id: String,
@@ -518,21 +545,27 @@ pub struct FixtureModel {
     pub properties: Vec<FixtureProperty>,
     /// 制造商。
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub manufacturer: String,
     /// 默认模式的显示名；空串时界面显示“默认”。
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub default_mode_name: String,
     /// 附加通道模式。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub modes: Vec<FixtureMode>,
     /// 多头 / 像素排布；单头灯为 `None`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub matrix: Option<MatrixLayout>,
     /// 发光体校准。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<_>", optional))]
     pub emitters: Vec<Emitter>,
     /// 物理参数。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub physical: Option<Physical>,
 }
 

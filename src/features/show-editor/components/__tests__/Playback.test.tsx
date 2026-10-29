@@ -7,19 +7,10 @@ import type { ShowState } from "../../lib/playbackApi";
 
 const invoke = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-const bus = vi.hoisted(() => ({
-  handler: null as null | ((s: unknown) => void),
-  unlisten: vi.fn(),
-  fail: false,
-}));
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 vi.mock("sonner", () => ({ toast }));
-vi.mock("@/shared/tauri/events", () => ({
-  onEvent: (_event: string, handler: (s: unknown) => void) => {
-    bus.handler = handler;
-    return bus.fail ? Promise.reject(new Error("no tauri")) : Promise.resolve(bus.unlisten);
-  },
-}));
+vi.mock("@/shared/tauri/events", async () => (await import("@/test/mockTauriEvents")).tauriEventsModule);
+import { tauriEvents } from "@/test/mockTauriEvents";
 
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { useEditorHotkeys } from "../../hooks/useEditorHotkeys";
@@ -116,9 +107,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh");
   invoke.mockReset();
   toast.error.mockReset();
-  bus.handler = null;
-  bus.fail = false;
-  bus.unlisten.mockReset();
+  tauriEvents.reset();
   useProjectStore.getState().load(createEmptyProject("t"));
   useEditorUiStore.setState({ playheadMs: 0, selectedCueIds: [] });
   useEditorPrefsStore.setState({ centerView: "swatches" });
@@ -177,9 +166,9 @@ describe("TransportBar 与后端播放引擎", () => {
     installBackend();
     render(<Harness />);
     await settle();
-    await waitFor(() => expect(bus.handler).not.toBeNull());
+    await waitFor(() => expect(tauriEvents.has("show:state")).toBe(true));
     invoke.mockClear();
-    act(() => bus.handler?.(state({ transport: "playing", outputting: true, positionMs: 1234 })));
+    act(() => tauriEvents.emit("show:state", state({ transport: "playing", outputting: true, positionMs: 1234 })));
     expect(useEditorUiStore.getState().playheadMs).toBe(1234);
     expect(usePlaybackStore.getState().state?.transport).toBe("playing");
     await new Promise((r) => setTimeout(r, 80));
@@ -190,7 +179,7 @@ describe("TransportBar 与后端播放引擎", () => {
     installBackend();
     render(<Harness />);
     await settle();
-    await waitFor(() => expect(bus.handler).not.toBeNull());
+    await waitFor(() => expect(tauriEvents.has("show:state")).toBe(true));
     invoke.mockClear();
     act(() => useEditorUiStore.getState().setPlayhead(7000));
     await waitFor(() => expect(calls("show_seek")).toHaveLength(1));
@@ -240,16 +229,16 @@ describe("TransportBar 与后端播放引擎", () => {
     installBackend();
     const view = render(<Harness />);
     await settle();
-    await waitFor(() => expect(bus.handler).not.toBeNull());
+    await waitFor(() => expect(tauriEvents.has("show:state")).toBe(true));
     invoke.mockClear();
     view.unmount();
     expect(calls("show_stop")).toHaveLength(1);
-    await waitFor(() => expect(bus.unlisten).toHaveBeenCalled());
+    await waitFor(() => expect(tauriEvents.has("show:state")).toBe(false));
   });
 
   it("订阅事件失败不影响编辑器", async () => {
     installBackend();
-    bus.fail = true;
+    tauriEvents.failWith(new Error("no tauri"));
     render(<Harness />);
     await settle();
     // 状态未知，但按钮仍可操作

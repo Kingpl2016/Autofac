@@ -5,13 +5,14 @@ import { Pipette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
+import { canPickScreenColor, pickScreenColor } from "@/shared/lib/eyeDropper";
 import { isEmitter, layoutOf, type FixtureModel } from "@/features/fixtures";
 import { useEngine } from "../engine/useEngine";
 import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
 import { mixPreview } from "../lib/mixPreview";
 import { DEFAULT_GAMMA, type ColorValue, type EmitterKey, type Rgb, type WhiteStrategy } from "../lib/project";
-import { clamp } from "../lib/time";
+import { clamp } from "@/shared/lib/math";
 import { COLOR_INPUTS, useColorInputStore, type ColorInput } from "../stores/useColorInputStore";
 import { useRecentColorsStore } from "../stores/useRecentColorsStore";
 import { CommitInput } from "./CommitInput";
@@ -288,7 +289,6 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
     </label>
   );
 
-  const EyeDropperCtor = typeof window !== "undefined" ? (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper : undefined;
 
   return (
     // 取色器是一组控件（不是页面区域）：外层分区（“颜色”）才是区域，避免两个同名区域嵌套
@@ -473,7 +473,7 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-muted-foreground">{t("editor.color.palette")}</span>
-          {EyeDropperCtor && (
+          {canPickScreenColor() && (
             <Button
               type="button"
               variant="ghost"
@@ -482,15 +482,10 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
               aria-label={t("editor.color.eyedropper")}
               title={t("editor.color.eyedropper")}
               onClick={() => {
-                void new EyeDropperCtor()
-                  .open()
-                  .then((r) => {
-                    const parsed = hexToRgb(r.sRGBHex);
-                    if (parsed) {
-                      commit({ kind: "rgb", rgb: parsed });
-                    }
-                  })
-                  .catch(() => undefined);
+                void pickScreenColor().then((hex) => {
+                  const parsed = hex ? hexToRgb(hex) : null;
+                  if (parsed) commit({ kind: "rgb", rgb: parsed });
+                });
               }}
             >
               <Pipette aria-hidden />

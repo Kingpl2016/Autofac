@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
 import { listenFileDrop } from "@/shared/tauri/dragDrop";
 import { pickArtrecFiles } from "@/shared/tauri/pickers";
 import { cn } from "@/lib/utils";
@@ -27,7 +28,7 @@ import { useProgramDraft } from "../../hooks/useProgramDraft";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { errorText } from "../../lib/errors";
 import { activeProgramNo, filePlayState, planReorder, sortFiles } from "../../lib/files";
-import { formatBytes } from "../../lib/format";
+import { formatBytes } from "@/shared/lib/format";
 import type { NetDevice, NetFile } from "../../lib/types";
 import { FileRow } from "./FileRow";
 import { SortableFileRow } from "./SortableFileRow";
@@ -127,17 +128,13 @@ export function FilesTab({ device, access }: FilesTabProps) {
   }, [canWrite]);
 
   // Ctrl+F：聚焦筛选框（文件 Tab 可见时）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        filterRef.current?.focus();
-        filterRef.current?.select();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useWindowKeydown((e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      filterRef.current?.focus();
+      filterRef.current?.select();
+    }
+  });
 
   /** 每一行共用的属性（行内按钮的动作都接到 `actions`）。 */
   const rowProps = (file: NetFile) => ({

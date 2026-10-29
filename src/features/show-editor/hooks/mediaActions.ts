@@ -2,6 +2,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import type { TFunction } from "i18next";
 
+import { errorMessage } from "@/shared/lib/errors";
 import i18n from "@/shared/i18n";
 import { announce } from "@/shared/stores/announcerStore";
 import { newId } from "../lib/ids";
@@ -32,7 +33,7 @@ const METADATA_TIMEOUT_MS = 8000;
  * @param name 素材文件名。
  */
 export function mediaErrorText(t: TFunction, error: unknown, name: string): string {
-  const raw = typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
+  const raw = errorMessage(error);
   switch (raw) {
     case MEDIA_ERR.notFound:
       return t("editor.media.errors.notFound", { name });

@@ -11,7 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Update } from "@/shared/tauri/updater";
-import { formatBytes, formatPublishDate } from "../lib/format";
+import { formatBytes } from "@/shared/lib/format";
+import { intlLocale } from "@/shared/lib/locale";
+import { formatPublishDate } from "../lib/format";
 import type { UpdateState } from "../lib/updateMachine";
 
 interface UpdateSectionProps {
@@ -49,7 +51,7 @@ interface StatusLine {
  */
 export function UpdateSection({ state, onCheck, onInstall }: UpdateSectionProps) {
   const { t, i18n } = useTranslation();
-  const locale = i18n.language.startsWith("zh") ? "zh-CN" : "en";
+  const locale = intlLocale(i18n.language);
 
   const line = describe(state, t, locale);
   const Icon = line.icon;

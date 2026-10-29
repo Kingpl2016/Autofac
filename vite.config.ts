@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -23,6 +24,12 @@ export default defineConfig(() => {
           "signal-checker": path.resolve(import.meta.dirname, "signal-checker.html"),
         },
       },
+    },
+    // 只收集前端测试；tools/artnet_sim 的 JS 测试用 node:test 编写，由它自己的脚本运行
+    test: {
+      include: ["src/**/*.{test,spec}.{ts,tsx}"],
+      // 编辑器的集成测试要加载 WASM 引擎，全量并发跑时单个用例偶尔超过默认的 5 秒
+      testTimeout: 15_000,
     },
     // Tauri 期望固定端口，失败则直接报错
     clearScreen: false,

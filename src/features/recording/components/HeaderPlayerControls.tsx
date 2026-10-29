@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Pause, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
@@ -32,7 +33,7 @@ export function HeaderPlayerControls() {
 
   const run = (action: () => Promise<void>) => {
     void action().catch((e: unknown) => {
-      const raw = e instanceof Error ? e.message : String(e);
+      const raw = errorMessage(e);
       toast.error(raw === PLAYER_ERR_NO_PLAYER ? t("player.errNoPlayer") : raw);
     });
   };

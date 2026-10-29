@@ -1,10 +1,10 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
+import { useTauriEvent } from "@/shared/events/useObservable";
 import i18n from "@/shared/i18n";
 import { announce } from "@/shared/stores/announcerStore";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
-import { onEvent } from "@/shared/tauri/events";
 import { appModeGet, appModeSet } from "../lib/api";
 import type { ModeStatus } from "../lib/types";
 
@@ -22,8 +22,8 @@ const RECEIVERS_TOAST_ID = "receivers-failed";
 export function useAppModeListeners() {
   const patch = useEngineStatusStore((s) => s.patch);
 
-  useEffect(() => {
-    const apply = (s: ModeStatus) => {
+  const apply = useCallback(
+    (s: ModeStatus) => {
       const prev = useEngineStatusStore.getState();
       patch({ appMode: s.mode, receivers: s.receivers, sender: s.sender });
 
@@ -46,14 +46,14 @@ export function useAppModeListeners() {
       if (s.mode === "player" && s.sender !== prev.sender) {
         announce(i18n.t(`mode.sender.${s.sender}`));
       }
-    };
+    },
+    [patch],
+  );
 
-    const unlisten = onEvent<ModeStatus>("app:mode", apply);
+  useTauriEvent<ModeStatus>("app:mode", apply);
+  useEffect(() => {
     void appModeGet()
       .then(apply)
       .catch(() => {});
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, [patch]);
+  }, [apply]);
 }

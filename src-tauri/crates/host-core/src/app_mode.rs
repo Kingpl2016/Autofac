@@ -28,6 +28,7 @@ pub const ERR_TRANSITION_IN_PROGRESS: &str = "transition_in_progress";
 /// 应用运行模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum AppMode {
     /// 实时模式：接收、合并、转发、录制全部可用。
     #[default]
@@ -39,6 +40,7 @@ pub enum AppMode {
 /// 接收任务的状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ReceiversState {
     /// 接收套接字已绑定（或按配置本就关闭，无需绑定）。
     #[default]
@@ -52,6 +54,7 @@ pub enum ReceiversState {
 /// 模式状态快照（`app:mode` 事件载荷与 `app_mode_get` 返回值）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ModeStatus {
     /// 当前模式。
     pub mode: AppMode,

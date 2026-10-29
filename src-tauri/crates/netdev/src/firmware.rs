@@ -23,6 +23,7 @@ pub const OTA_SLOT_BYTES: u64 = 0x40_0000;
 
 /// 固件预检结果。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FirmwareInfo {
     /// 文件名。

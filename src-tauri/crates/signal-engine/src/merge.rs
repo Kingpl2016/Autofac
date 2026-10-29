@@ -17,6 +17,7 @@ const CONFLICT_CHUNK: usize = 128;
 /// 全工程唯一定义：配置层（settings）与引擎层共用此类型，避免重复定义与手工转换。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum MergeMode {
     /// 最高值优先（逐通道取最大）。
     Htp,

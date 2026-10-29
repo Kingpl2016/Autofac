@@ -62,6 +62,7 @@ impl LibraryError {
 /// 合并导入结果后的统计。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct MergeOutcome {
     /// 新增的模型编号。
     pub added: Vec<String>,

@@ -11,14 +11,9 @@ const toast = vi.hoisted(() => ({
   warning: vi.fn(),
   info: vi.fn(),
 }));
-const bus = vi.hoisted(() => ({ handler: null as null | ((e: unknown) => void), unlisten: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
-vi.mock("@/shared/tauri/events", () => ({
-  onEvent: (_event: string, handler: (e: unknown) => void) => {
-    bus.handler = handler;
-    return Promise.resolve(bus.unlisten);
-  },
-}));
+vi.mock("@/shared/tauri/events", async () => (await import("@/test/mockTauriEvents")).tauriEventsModule);
+import { tauriEvents } from "@/test/mockTauriEvents";
 
 import { useBakeEvents } from "../../hooks/useBakeEvents";
 import type { BakeEvent } from "../../stores/useBakeStore";
@@ -42,13 +37,12 @@ const event = (over: Partial<BakeEvent>): BakeEvent => ({
   ...over,
 });
 
-const emit = (e: BakeEvent) => act(async () => void bus.handler?.(e));
+const emit = (e: BakeEvent) => act(async () => void tauriEvents.emit("show:bake", e));
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
   for (const fn of Object.values(toast)) fn.mockReset();
-  bus.handler = null;
-  bus.unlisten.mockReset();
+  tauriEvents.reset();
   useBakeStore.getState().reset();
   client = new QueryClient();
   vi.spyOn(client, "invalidateQueries");
@@ -98,7 +92,8 @@ describe("保存后的后台烘焙事件", () => {
 
   it("卸载时取消订阅", async () => {
     await act(async () => void (await Promise.resolve()));
+    expect(tauriEvents.has("show:bake")).toBe(true);
     cleanup();
-    expect(bus.unlisten).toHaveBeenCalled();
+    expect(tauriEvents.has("show:bake")).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { recordingDiskInfo } from "../lib/api";
-import type { DiskInfo } from "../../../shared/domain/disk";
+import type { DiskInfo } from "@/shared/domain/disk";
 
 /** 空闲时刷新磁盘空间的间隔（毫秒）。 */
 const REFRESH_MS = 15_000;

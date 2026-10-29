@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 /// 转发目的地集合（持久化单元）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ForwardingTable {
     /// 目的地列表。
     pub destinations: Vec<ForwardDestination>,

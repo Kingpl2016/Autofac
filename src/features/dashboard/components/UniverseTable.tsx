@@ -2,9 +2,9 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import type { UniverseSnapshot } from "@/shared/domain/engine";
-import { formatCount } from "@/shared/lib/format";
-import { conflictLevel, sourcesOf, type MergeModeName } from "../lib/universeView";
-import { formatPacketRate } from "../lib/format";
+import { conflictLevel, type MergeModeName } from "@/shared/lib/conflict";
+import { formatCount, formatPacketRate } from "@/shared/lib/format";
+import { sourcesOf } from "../lib/universeView";
 import { ConflictBadge } from "@/shared/components/ConflictBadge";
 
 interface UniverseTableProps {

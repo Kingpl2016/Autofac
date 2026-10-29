@@ -3,7 +3,7 @@ import { mediaClipEndMs } from "./mediaClips";
 import type { BeatAnalysis } from "./mediaApi";
 import { setTempo } from "./ops";
 import type { MediaClip, Rgb, Section, ShowProject, Tempo } from "./project";
-import { clamp } from "./time";
+import { clamp } from "@/shared/lib/math";
 
 /**
  * 歌曲段落（前奏 / 主歌 / 副歌…）的编辑，以及把后端的节拍分析结果换算到时间线上（速度网格 + 段落）。

@@ -686,6 +686,7 @@ impl FileRecorder {
 /// 一次孤立录制的恢复结果。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum RecoveryOutcome {
     /// 已恢复为可播放的 `.artrec`。
     #[serde(rename_all = "camelCase")]

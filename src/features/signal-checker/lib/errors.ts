@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 
+import { errorMessage } from "@/shared/lib/errors";
 import type { ConfigError, ManualError, SenderError, SignalProtocol } from "./types";
 
 const CONFIG_CODES = new Set<ConfigError["code"]>([
@@ -83,5 +84,5 @@ export function describeError(e: unknown, t: TFunction, protocol: SignalProtocol
   if (isConfigError(e)) return describeConfigError(e, t, protocol);
   if (isSenderError(e)) return t("signalChecker.errSocket", { message: e.message });
   if (isManualError(e)) return t("signalChecker.errChannel", { channel: e.channel });
-  return e instanceof Error ? e.message : String(e);
+  return errorMessage(e);
 }

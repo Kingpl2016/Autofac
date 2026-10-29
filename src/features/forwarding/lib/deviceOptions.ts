@@ -1,6 +1,5 @@
-import type { Device } from "@/shared/domain/device";
+import { displayName, type Device } from "@/shared/domain/device";
 import { compareIp } from "@/shared/lib/ip";
-import { displayName } from "@/features/discovery/lib/filters";
 import type { ForwardDestination, ForwardProtocol } from "./types";
 
 /** 目标设备下拉里的分组。 */

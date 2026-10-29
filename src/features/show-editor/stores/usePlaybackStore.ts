@@ -21,10 +21,3 @@ export const usePlaybackStore = create<PlaybackStoreState>((set) => ({
   setState: (state) => set({ state }),
   reset: () => set({ state: null }),
 }));
-
-/**
- * 是否正在播放。
- *
- * @param s 后端状态。
- */
-export const selectPlaying = (s: PlaybackStoreState): boolean => s.state?.transport === "playing";

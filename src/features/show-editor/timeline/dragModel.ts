@@ -1,6 +1,7 @@
 import { checkPlacements, gapAround, MIN_CUE_MS, trackAccepts, type CuePlacement } from "../lib/cueOps";
 import type { ShowProject } from "../lib/project";
-import { clamp, snapToFrame } from "../lib/time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "../lib/time";
 
 /**
  * 时间线拖动的纯计算（剪映式）：移动（可多选、可换轨）、左右裁剪，实时吸附并给出吸附线位置。

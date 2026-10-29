@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 播放摘要（`GET /api/status` 内嵌）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct PlayerBrief {
     /// 0 空闲 / 1 已停止 / 2 播放中 / 3 暂停。
@@ -18,6 +19,7 @@ pub struct PlayerBrief {
 
 /// 设备状态（`GET /api/status`）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct DeviceStatus {
     /// 固件版本。
@@ -46,6 +48,7 @@ pub struct DeviceStatus {
 
 /// 播放器详细状态（`GET /api/player`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct PlayerStatus {
     /// 0 空闲 / 1 已停止 / 2 播放中 / 3 暂停。
@@ -70,6 +73,7 @@ pub struct PlayerStatus {
 
 /// SD 卡上的一个文件条目（`GET /files`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {
     /// 文件名。
@@ -87,6 +91,7 @@ pub struct FileEntry {
 
 /// 节目映射条目（`GET /api/programs`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProgramEntry {
     /// 节目号 1~255。
@@ -100,6 +105,7 @@ pub struct ProgramEntry {
 
 /// 一条节目号分配：把 `no` 指到 `file`（`PUT /api/programs/{no}`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProgramAssign {
     /// 目标节目号 1~255。
@@ -110,6 +116,7 @@ pub struct ProgramAssign {
 
 /// 文件上传成功后的设备回执（`PUT /files/{name}`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct UploadReceipt {
     /// 设备保存的文件名。
@@ -123,6 +130,7 @@ pub struct UploadReceipt {
 /// 设备配置（`GET /api/config`）。
 #[expect(clippy::struct_excessive_bools, reason = "与固件 JSON 一一对应，布尔字段多属正常")]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct DeviceConfig {
     /// 启用 Art-Net 输出。
@@ -167,7 +175,9 @@ pub struct DeviceConfig {
 
 /// 配置补丁：只提交改动过的字段（`PUT /api/config`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", ts(optional_fields))]
 pub struct ConfigPatch {
     /// 启用 Art-Net 输出。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -230,6 +240,7 @@ pub struct ConfigPatch {
 
 /// 配置写入结果。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct ConfigResult {
     /// 是否成功。
@@ -240,6 +251,7 @@ pub struct ConfigResult {
 
 /// 堆内存诊断。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct HeapDiag {
     /// 当前空闲字节。
@@ -254,6 +266,7 @@ pub struct HeapDiag {
 
 /// 任务诊断。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct TaskDiag {
     /// 任务名。
@@ -272,6 +285,7 @@ pub struct TaskDiag {
 
 /// DMX UART 诊断。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct DmxUartDiag {
     /// 口数。
@@ -282,6 +296,7 @@ pub struct DmxUartDiag {
 
 /// 播放诊断摘要。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct PlayerDiag {
     /// 播放状态。
@@ -292,6 +307,7 @@ pub struct PlayerDiag {
 
 /// 运行期诊断（`GET /api/diag`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct Diag {
     /// 堆信息。
@@ -306,6 +322,7 @@ pub struct Diag {
 
 /// OTA 状态（`GET /api/ota/status`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct OtaStatus {
     /// 当前运行分区。
@@ -322,6 +339,7 @@ pub struct OtaStatus {
 
 /// OTA 上传完成的回执（`POST /api/ota`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase", default)]
 pub struct OtaReceipt {
     /// 新固件版本。

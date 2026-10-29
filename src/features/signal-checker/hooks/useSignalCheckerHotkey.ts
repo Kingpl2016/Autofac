@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-
+import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
 import { openSignalChecker } from "../lib/api";
 
 /** 打开信号检测器的快捷键（仅主窗口内生效，不是全局快捷键）。 */
@@ -12,14 +11,10 @@ export const SIGNAL_CHECKER_HOTKEY = "Ctrl+Shift+T";
  * 按住不放产生的重复按键事件会被忽略。在主布局挂载一次。
  */
 export function useSignalCheckerHotkey(): void {
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat || e.altKey || !e.shiftKey || !(e.ctrlKey || e.metaKey)) return;
-      if (e.key.toLowerCase() !== "t") return;
-      e.preventDefault();
-      void openSignalChecker();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  useWindowKeydown((e) => {
+    if (e.repeat || e.altKey || !e.shiftKey || !(e.ctrlKey || e.metaKey)) return;
+    if (e.key.toLowerCase() !== "t") return;
+    e.preventDefault();
+    void openSignalChecker();
+  });
 }

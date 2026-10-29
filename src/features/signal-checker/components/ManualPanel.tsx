@@ -10,7 +10,8 @@ import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { cn } from "@/lib/utils";
 import { useSettingsQuery } from "@/features/settings";
 import { ChannelGrid } from "@/features/universes";
-import { FRAME_QUERY_KEY, useUniverseFrame } from "../hooks/useUniverseFrame";
+import { checkerKeys } from "../lib/queries";
+import { useUniverseFrame } from "../hooks/useUniverseFrame";
 import { useViewedUniverse } from "../hooks/useViewedUniverse";
 import { clearManual, setAllChannels, setChannel } from "../lib/api";
 import { describeError } from "../lib/errors";
@@ -68,8 +69,8 @@ export function ManualPanel() {
     setError(null);
     try {
       await action();
-      await client.cancelQueries({ queryKey: FRAME_QUERY_KEY });
-      await client.invalidateQueries({ queryKey: FRAME_QUERY_KEY });
+      await client.cancelQueries({ queryKey: checkerKeys.frame });
+      await client.invalidateQueries({ queryKey: checkerKeys.frame });
     } catch (e: unknown) {
       setError(describeError(e, t, protocol));
     }

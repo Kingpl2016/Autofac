@@ -1,23 +1,5 @@
 import type { AppInfo } from "./api";
 
-const UNITS = ["B", "KB", "MB", "GB"] as const;
-
-/**
- * 把字节数格式化为易读文本，如 `1.5 MB`。
- *
- * @param bytes 字节数；负数与非有限值按 0 处理。
- * @returns 带单位的字符串，`B` 级取整，其余保留一位小数。
- */
-export function formatBytes(bytes: number): string {
-  let value = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
-  let unit = 0;
-  while (value >= 1024 && unit < UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${unit === 0 ? Math.round(value) : value.toFixed(1)} ${UNITS[unit]}`;
-}
-
 /**
  * 把 RFC 3339 时间转为本地日期文本；无法解析时返回 `null`（调用方据此隐藏该行）。
  *

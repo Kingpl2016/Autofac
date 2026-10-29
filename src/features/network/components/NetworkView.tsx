@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { MEDIA_LG } from "@/shared/lib/breakpoints";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { StatusDot } from "@/shared/components/StatusDot";
@@ -48,9 +49,6 @@ type FormState = { open: false } | { open: true; device: NetDevice | null; draft
 /** 设备栏：默认 / 最小 / 最大 / 折叠后的宽度（像素）。 */
 const RAIL = { default: 288, min: 232, max: 400, collapsed: 64 } as const;
 
-/** 宽屏阈值：低于它时设备栏收进抽屉。 */
-const WIDE_QUERY = "(min-width: 1024px)";
-
 /**
  * 网络设备页（主从布局）：左侧设备栏（可拖动宽度、可折叠成图标栏），右侧当前设备的
  * 吸顶设备头、关键指标、“正在播放”条与 5 个功能 Tab（文件 / 播放控制 / 配置 / 诊断与日志 / 固件）。
@@ -80,7 +78,7 @@ export function NetworkView() {
       ),
     [deviceId],
   );
-  const wide = useMediaQuery(WIDE_QUERY, true);
+  const wide = useMediaQuery(MEDIA_LG, true);
 
   const candidates = discovered.filter(
     (d) => d.category === "artNet" && d.online && !devices.some((s) => s.host === d.ip),

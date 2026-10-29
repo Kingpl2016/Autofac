@@ -24,6 +24,7 @@ pub const MAX_BUCKETS: u32 = 4096;
 /// 时间线概览。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Overview {
     /// 概览格式版本。
     pub version: u32,
@@ -35,9 +36,11 @@ pub struct Overview {
     pub universes: Vec<u16>,
     /// 变化强度矩阵：`change[universe 行][桶]`，0 = 无变化，255 = 变化最密集（平方根刻度）。
     #[serde(with = "crate::b64::rows")]
+    #[cfg_attr(feature = "ts", ts(type = "Array<string>"))]
     pub change: Vec<Vec<u8>>,
     /// 最大电平矩阵：`level[universe 行][桶]`，该桶内该 Universe 出现过的最大通道值。
     #[serde(with = "crate::b64::rows")]
+    #[cfg_attr(feature = "ts", ts(type = "Array<string>"))]
     pub level: Vec<Vec<u8>>,
     /// 节目帧数。
     pub frames: u64,

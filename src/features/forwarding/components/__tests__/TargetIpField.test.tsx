@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 
 import i18n from "@/shared/i18n";
 import type { Device } from "@/shared/domain/device";
+import { makeDevice } from "@/test/factories";
 
 const flags = vi.hoisted(() => ({ sacnEnabled: false }));
 vi.mock("@/features/settings", () => ({
@@ -14,17 +15,7 @@ import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { newDestination } from "../../lib/types";
 import { DestinationDialog } from "../DestinationDialog";
 
-const dev = (ip: string, over: Partial<Device> = {}): Device => ({
-  ip,
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: null,
-  online: true,
-  lastSeenMs: 0,
-  ...over,
-});
+const dev = (ip: string, over: Partial<Device> = {}): Device => makeDevice({ ip, ...over });
 
 beforeAll(() => {
   // Radix Select 在 jsdom 里需要这几个浏览器 API

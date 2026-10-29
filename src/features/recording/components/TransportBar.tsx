@@ -14,7 +14,8 @@ import { MetricChip } from "./console/MetricChip";
 import { PulseRing } from "./console/PulseRing";
 import { TimeCode } from "./console/TimeCode";
 import { sessionBase, useRecordingClock } from "../hooks/useRecordingClock";
-import { formatBytes, formatDurationUs } from "../lib/filter";
+import { formatBytesIec } from "@/shared/lib/format";
+import { formatDurationUs } from "../lib/filter";
 import type { RecordingResult, RecordingStatus } from "../lib/types";
 
 /** 磁盘不足说明的元素 id（开始按钮经 `aria-describedby` 关联）。 */
@@ -125,7 +126,7 @@ export function TransportBar({
           {recording ? (
             <>
               <MetricChip label={t("recording.statFrames")} value={String(status.stats.frames)} />
-              <MetricChip label={t("recording.statSize")} value={formatBytes(status.stats.bytes)} />
+              <MetricChip label={t("recording.statSize")} value={formatBytesIec(status.stats.bytes)} />
               <MetricChip
                 label={t("recording.statDropped")}
                 value={String(status.dropped)}

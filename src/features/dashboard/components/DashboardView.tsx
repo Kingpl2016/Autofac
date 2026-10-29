@@ -15,7 +15,9 @@ import { StatCard } from "./StatCard";
 import { ActiveUniverseList } from "./ActiveUniverseList";
 import { OutputHealthStrip } from "./OutputHealthStrip";
 import { countDestinations, countDevices } from "../lib/counts";
-import { formatMemory, formatPacketRate, formatUptime } from "../lib/format";
+import { formatPacketRate } from "@/shared/lib/format";
+import { formatUptime } from "@/shared/lib/uptime";
+import { formatMemory } from "../lib/format";
 
 /**
  * 仪表盘：6 张统计卡 + 输出健康条 + 活跃 Universe。系统日志见底部状态条。

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+
+import { copyText } from "@/shared/lib/clipboard";
 
 /**
  * 返回“复制到剪贴板并提示”的稳定回调。
@@ -9,13 +10,5 @@ import { toast } from "sonner";
  */
 export function useCopyToClipboard(): (value: string) => void {
   const { t } = useTranslation();
-  return useCallback(
-    (value: string) => {
-      void navigator.clipboard
-        ?.writeText(value)
-        .then(() => toast.success(t("discovery.copied", { value })))
-        .catch(() => undefined);
-    },
-    [t],
-  );
+  return useCallback((value: string) => void copyText(value, { success: t("discovery.copied", { value }) }), [t]);
 }

@@ -8,6 +8,7 @@ use super::model::FixtureModel;
 /// 导入过程中的警告类别。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ImportWarningKind {
     /// 同一模型的属性通道重叠（或全部写成 1），已按行顺序重新排布。
     ChannelsReassigned,
@@ -28,6 +29,7 @@ pub enum ImportWarningKind {
 /// 一条导入警告。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ImportWarning {
     /// 警告类别。
     pub kind: ImportWarningKind,

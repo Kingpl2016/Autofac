@@ -3,7 +3,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { UniverseSnapshot } from "@/shared/domain/engine";
 import { conflictLevel, type ConflictLevel, type MergeModeName } from "@/shared/lib/conflict";
 import { compareIp } from "@/shared/lib/ip";
-import type { ForwardDestination } from "@/features/forwarding/lib/types";
+import type { ForwardDestination } from "@/features/forwarding";
 import {
   PLAYER_SOURCE_ID,
   linkActive,
@@ -13,9 +13,6 @@ import {
   universeActive,
   type FlowProtocol,
 } from "./activity";
-
-// 回放伪源与协议类型定义在 activity.ts，这里再导出，保持既有引用路径可用
-export { PLAYER_SOURCE_ID, type FlowProtocol } from "./activity";
 
 /** 列 x 坐标。 */
 export const COL_X = { source: 0, universe: 380, destination: 760 };

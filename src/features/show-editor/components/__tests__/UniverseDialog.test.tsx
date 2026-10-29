@@ -12,6 +12,7 @@ import { addMirror } from "../../lib/universeOps";
 import { RGBW } from "../../lib/__tests__/testkit";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { UniverseDialog } from "../UniverseDialog";
+import { makeDevice } from "@/test/factories";
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -40,20 +41,15 @@ beforeEach(async () => {
 
 afterEach(() => cleanup());
 
-const node: Device = {
+const node: Device = makeDevice({
   ip: "10.0.0.9",
-  hostname: null,
   customName: "舞台节点",
-  mac: null,
-  category: "artNet",
   artnetPorts: 2,
-  online: true,
-  lastSeenMs: 0,
   ports: [
     { index: 0, direction: "output", universe: 32, active: false },
     { index: 1, direction: "output", universe: 33, active: false },
   ],
-};
+});
 
 describe("UniverseDialog", () => {
   it("空表时提示；补全用到的 Universe 后列出容量，打开按表路由", () => {

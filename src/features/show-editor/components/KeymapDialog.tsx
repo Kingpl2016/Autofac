@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { chordOf, effectiveKeys, findConflicts, formatChord, rankCommands, type Command } from "../lib/commands";
+import { chordOf, formatChord } from "@/shared/lib/keyboard";
+import { effectiveKeys, findConflicts, rankCommands, type Command } from "../lib/commands";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useKeymapStore } from "../stores/useKeymapStore";
 

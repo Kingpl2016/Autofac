@@ -4,12 +4,13 @@ import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
+import { useElementSize } from "@/shared/hooks/useElementSize";
 import { useOverview } from "../hooks/useOverview";
 import { useScrubSeek } from "../hooks/useScrubSeek";
 import { formatDurationUs } from "../lib/filter";
 import { drawHeatmap, heatmapCells, rowHeightFor, summarizeOverview } from "../lib/heatmap";
 import { timeToX, xToTimeUs } from "../lib/overview";
-import { themeColor } from "../lib/themeColor";
+import { themeColor } from "@/shared/lib/canvas";
 
 /** 键盘左右键每次移动的时长占比。 */
 const KEY_STEP_RATIO = 0.01;
@@ -61,7 +62,6 @@ export function TimelineHeatmap({
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [width, setWidth] = useState(0);
   /** 指针悬停位置占宽度的比例（0..1），用于标尺上的时间气泡 */
   const [hover, setHover] = useState<number | null>(null);
 
@@ -69,18 +69,9 @@ export function TimelineHeatmap({
   const rows = data?.universes.length ?? 0;
   const rowHeight = rowHeightFor(rows);
   const height = rows * rowHeight;
+  // 跟踪容器宽度（数据到达后容器才渲染：随数据重新观测）
+  const { width } = useElementSize(wrapRef, { key: data });
 
-  // 跟踪容器宽度
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const update = () => setWidth(Math.floor(el.clientWidth));
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [data]);
 
   const cells = useMemo(
     () => (data && width > 0 ? heatmapCells(data, width) : []),

@@ -1,12 +1,9 @@
 import { useCallback, useReducer } from "react";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { checkForUpdate, type Update } from "@/shared/tauri/updater";
 import { INITIAL_UPDATE_STATE, updateReducer } from "../lib/updateMachine";
 
-/** 把任意抛出值转成可展示的文本。 */
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /**
  * 软件更新流程：检查 → 发现 → 下载（带进度）→ 安装。
@@ -25,7 +22,7 @@ export function useUpdater() {
       const found = await checkForUpdate();
       dispatch(found ? { type: "found", update: found } : { type: "upToDate" });
     } catch (e) {
-      dispatch({ type: "failed", message: messageOf(e) });
+      dispatch({ type: "failed", message: errorMessage(e) });
     }
   }, []);
 
@@ -35,7 +32,7 @@ export function useUpdater() {
       await update.downloadAndInstall((event) => dispatch({ type: "download", event }));
       dispatch({ type: "installed" });
     } catch (e) {
-      dispatch({ type: "failed", message: messageOf(e) });
+      dispatch({ type: "failed", message: errorMessage(e) });
     }
   }, []);
 

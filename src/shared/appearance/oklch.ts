@@ -2,6 +2,7 @@
  * OKLCH 色彩数学：十六进制转换与格式化（无第三方依赖）。
  * 用于把用户选的主色折算成应用 CSS 里的 `--accent-h` / `--accent-c`。
  */
+import { clamp } from "@/shared/lib/math";
 
 /** OKLCH 颜色：l 为 0 到 1 的亮度，c 为色度，h 为 0 到 360 的色相角。 */
 export interface Oklch {
@@ -21,11 +22,6 @@ export interface Rgb {
   g: number;
   /** 蓝。 */
   b: number;
-}
-
-/** 限制数值范围。 */
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 /** 四舍五入到指定小数位。 */

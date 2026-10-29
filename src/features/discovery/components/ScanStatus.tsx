@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Circle, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { intlLocale } from "@/shared/lib/locale";
 import type { LastScan } from "../stores/useScanSession";
 
 interface ScanStatusProps {
@@ -21,7 +22,7 @@ export function ScanStatus({ scanning, last }: ScanStatusProps) {
     status = t("discovery.scanStatusScanning");
   } else if (last) {
     status = t("discovery.scanStatusDone", {
-      time: new Date(last.at).toLocaleTimeString(i18n.language.startsWith("zh") ? "zh-CN" : "en"),
+      time: new Date(last.at).toLocaleTimeString(intlLocale(i18n.language)),
       responded: last.responded,
       total: last.total,
       added: last.added,

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import i18n from "@/shared/i18n";
+import { renderWithProviders } from "@/test/renderWithProviders";
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 const api = vi.hoisted(() => ({
@@ -50,12 +50,7 @@ const access: DeviceAccess = {
 };
 
 function renderTab() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <FirmwareTab device={main} devices={[main, side, backup]} access={access} />
-    </QueryClientProvider>,
-  );
+  return renderWithProviders(<FirmwareTab device={main} devices={[main, side, backup]} access={access} />);
 }
 
 const status = (version: string) => ({ version }) as DeviceStatus;
@@ -167,12 +162,7 @@ describe("FirmwareTab 目标设备", () => {
       if (id === "d2" && sideOnline) return status("1.4.0");
       throw { code: "network", message: "offline" };
     });
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <FirmwareTab device={main} devices={[main, side, backup]} access={access} />
-      </QueryClientProvider>,
-    );
+    const { client } = renderTab();
     await chooseFirmware();
     await waitFor(() => expect(screen.getAllByText("可升级").length).toBe(2));
     sideOnline = false;

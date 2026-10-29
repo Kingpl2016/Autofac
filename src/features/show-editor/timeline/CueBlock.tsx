@@ -6,7 +6,7 @@ import { clipCategory, clipFill, clipName } from "../lib/clipVisual";
 import { updateCues } from "../lib/cueOps";
 import { trackFixtureIds } from "../lib/ops";
 import type { Cue } from "../lib/project";
-import { clamp } from "../lib/time";
+import { clamp } from "@/shared/lib/math";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { CLIP_CATEGORY_ICONS } from "./clipCategoryStyle";

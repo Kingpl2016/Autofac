@@ -4,7 +4,8 @@ import { Activity, Film, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
-import { drawHeatmap, heatmapCells, themeColor, type Overview } from "@/features/recording";
+import { themeColor } from "@/shared/lib/canvas";
+import { drawHeatmap, heatmapCells, type Overview } from "@/features/recording";
 import { gapsOf, type Segment } from "../../lib/segments";
 import { formatTimecode } from "../../lib/timecode";
 

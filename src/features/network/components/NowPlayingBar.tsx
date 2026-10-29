@@ -1,5 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { Pause, Play, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +9,7 @@ import { usePlayer } from "../hooks/useDeviceStatus";
 import { netdevProgramOp, netdevSpeed } from "../lib/api";
 import { formatClock } from "../lib/format";
 import { netKeys } from "../lib/queryKeys";
-import { runCommand } from "../lib/run";
+import { useNetCommand } from "../hooks/useNetCommand";
 import { PlayState, ProgramAction, type NetDevice } from "../lib/types";
 import { SpeedMenu } from "./SpeedMenu";
 
@@ -26,12 +24,15 @@ interface NowPlayingBarProps {
  */
 export function NowPlayingBar({ device, access }: NowPlayingBarProps) {
   const { t } = useTranslation();
-  const client = useQueryClient();
+  // 无论成败都以设备实际状态为准：结束后刷新播放器与状态
+  const command = useNetCommand<() => Promise<unknown>>({
+    run: (fn) => fn(),
+    invalidate: [netKeys.player(device.id), netKeys.status(device.id)],
+  });
   const brief = access.status.status?.player;
   const active = access.canRead && (brief?.state === PlayState.Playing || brief?.state === PlayState.Paused);
   const player = usePlayer(device.id, active);
   const { files } = useDeviceFiles(device.id, active);
-  const [busy, setBusy] = useState(false);
 
   if (!active || !brief) return null;
 
@@ -43,17 +44,8 @@ export function NowPlayingBar({ device, access }: NowPlayingBarProps) {
   const dur = player?.durMs ?? brief.durMs;
   const ratio = dur > 0 ? Math.min(1, pos / dur) : 0;
   const fileName = files.find((f) => f.program === programNo)?.name;
-  const disabled = !access.canWrite || busy;
-
-  const act = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    await runCommand(t, fn);
-    await Promise.all([
-      client.invalidateQueries({ queryKey: netKeys.player(device.id) }),
-      client.invalidateQueries({ queryKey: netKeys.status(device.id) }),
-    ]);
-    setBusy(false);
-  };
+  const disabled = !access.canWrite || command.pending;
+  const act = (fn: () => Promise<unknown>) => command.run(fn);
 
   return (
     <section

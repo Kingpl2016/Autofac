@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isValidIpv4 } from "../ip";
+import { isValidIpv4 } from "@/shared/lib/ip";
 import { base64ToBytes, cellIntensity, decodeOverview, timeToX, xToTimeUs } from "../overview";
 
 describe("isValidIpv4", () => {

@@ -1,4 +1,4 @@
-import { DEFAULT_GAMMA, type ColorValue, type Cue, type Look, type Param, type Preset, type Rgb } from "./project";
+import { DEFAULT_GAMMA, type ColorValue, type Look, type Param, type Preset, type Rgb } from "./project";
 
 /**
  * 外观（Look）与参数（Param）的界面辅助：取代表值、合并预设、判断参与的层。
@@ -106,32 +106,6 @@ export function colorValueRgb(c: ColorValue, gamma: number = DEFAULT_GAMMA): Rgb
       // 超过 1 时整体压缩（保持色相），与引擎 `emitted_rgb` 一致
       const peak = Math.max(1, ...acc);
       return acc.map((v) => Math.round((v / peak) ** (1 / g) * 255)) as Rgb;
-    }
-  }
-}
-
-/**
- * 片段在时间线上的代表色：静态色 / 特效第一色 / 外观颜色层（没有颜色层时为中性灰）。
- *
- * @param cue 片段。
- * @param presets 预设库（外观引用预设时用）。
- * @param gamma 工程 Gamma（手动覆盖的颜色合成用）。
- * @returns sRGB。
- */
-export function clipColor(cue: Cue, presets: readonly Preset[], gamma: number = DEFAULT_GAMMA): Rgb {
-  switch (cue.kind) {
-    case "static":
-      return cue.rgb;
-    case "effect":
-      return cue.colors[0] ?? [255, 255, 255];
-    case "look": {
-      const color = paramHead(resolveLook(cue.look, presets).color);
-      return color ? colorValueRgb(color, gamma) : [160, 160, 160];
-    }
-    case "scene": {
-      const first = cue.entries.find((e) => resolveLook(e.look, presets).color);
-      const color = first ? paramHead(resolveLook(first.look, presets).color) : undefined;
-      return color ? colorValueRgb(color, gamma) : [160, 160, 160];
     }
   }
 }

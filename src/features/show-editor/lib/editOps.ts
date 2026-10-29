@@ -4,7 +4,8 @@ import { gapAround, MIN_CUE_MS, normalizeFades, splitCues, type CuePlacement } f
 import { newId } from "./ids";
 import { MIN_MEDIA_CLIP_MS, splitMediaClips } from "./mediaClips";
 import type { Cue, CueTag, ShowProject } from "./project";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 剪辑类快捷操作（剪映 / Premiere 的常用操作）：

@@ -1,5 +1,5 @@
 import type { Protocol, UniverseSnapshot } from "@/shared/domain/engine";
-import type { ForwardDestination } from "@/features/forwarding/lib/types";
+import type { ForwardDestination } from "@/features/forwarding";
 
 /** 回放源在图中使用的伪 IP（真实 IP 不会是这个值）。 */
 export const PLAYER_SOURCE_ID = "__player__";

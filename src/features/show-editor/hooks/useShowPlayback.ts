@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { onShowState, showLoad, showSeek, showSetOutputEnabled, showStop } from "../lib/playbackApi";
+import { showLoad, showSeek, showSetOutputEnabled, showState$, showStop } from "../lib/playbackApi";
 import { blackoutProject, withProgrammer } from "../lib/programmer";
 import { createSyncer, throttle } from "../lib/syncer";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -57,20 +57,17 @@ export function useShowPlayback(): void {
       if (s.playheadMs !== prev.playheadMs && s.playheadMs !== fromBackend) seek(s.playheadMs);
     });
 
-    let unlisten: (() => void) | null = null;
-    void onShowState((state) => {
-      usePlaybackStore.getState().setState(state);
-      if (useEditorUiStore.getState().playheadMs !== state.positionMs) {
-        fromBackend = state.positionMs;
-        useEditorUiStore.getState().setPlayhead(state.positionMs);
-      }
-    })
-      .then((off) => {
-        if (alive) unlisten = off;
-        else off();
-      })
+    const stateSubscription = showState$.subscribe({
+      next: (state) => {
+        usePlaybackStore.getState().setState(state);
+        if (useEditorUiStore.getState().playheadMs !== state.positionMs) {
+          fromBackend = state.positionMs;
+          useEditorUiStore.getState().setPlayhead(state.positionMs);
+        }
+      },
       // 订阅失败（例如没有 Tauri 运行时）时，播放状态保持为“未知”，编辑功能不受影响
-      .catch(() => undefined);
+      error: () => undefined,
+    });
 
     // 每次打开编辑器，“输出到网络”都从开启开始（开关不存进工程，避免关着输出却找不到原因）
     void showSetOutputEnabled(true).catch(() => undefined);
@@ -92,7 +89,7 @@ export function useShowPlayback(): void {
       unsubscribeProgrammer();
       unsubscribeBlackout();
       unsubscribePlayhead();
-      unlisten?.();
+      stateSubscription.unsubscribe();
       usePlaybackStore.getState().reset();
       void showStop().catch(() => undefined);
     };

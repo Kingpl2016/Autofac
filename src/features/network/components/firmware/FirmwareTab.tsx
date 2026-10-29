@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { netdevInspectFirmware, netdevStatus } from "../../lib/api";
 import { errorText, toNetError } from "../../lib/errors";
-import { formatBytes } from "../../lib/format";
+import { formatBytes } from "@/shared/lib/format";
 import { netKeys, STATUS_POLL_MS } from "../../lib/queryKeys";
 import type { DeviceStatus, NetDevice } from "../../lib/types";
 import { compareVersion, type VersionRelation } from "../../lib/upgrade";

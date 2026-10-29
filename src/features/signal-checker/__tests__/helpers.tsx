@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
 
+import { createTauriEventBus } from "@/test/mockTauriEvents";
+import { renderWithProviders } from "@/test/renderWithProviders";
 import type { PatternGroup, PatternId, PatternInfo, SenderStatus } from "../lib/types";
 
 /** 构造一份发送器状态，默认是"空闲、本机回环、Art-Net、Universe 0"。 */
@@ -24,24 +24,11 @@ export function makeStatus(over: Partial<SenderStatus> = {}): SenderStatus {
 
 /** 带查询客户端（关闭重试）的渲染。 */
 export function renderWithQuery(ui: ReactElement) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return renderWithProviders(ui);
 }
 
-/** 模拟 Tauri 事件总线：记录各事件的处理器，测试里手动派发。 */
-export function createEventBus() {
-  const handlers = new Map<string, (payload: unknown) => void>();
-  return {
-    onEvent: (name: string, cb: (payload: unknown) => void) => {
-      handlers.set(name, cb);
-      return Promise.resolve(() => {
-        handlers.delete(name);
-      });
-    },
-    emit: (name: string, payload: unknown) => handlers.get(name)?.(payload),
-    has: (name: string) => handlers.has(name),
-  };
-}
+/** 模拟 Tauri 事件总线（见 `@/test/mockTauriEvents`）。 */
+export const createEventBus = createTauriEventBus;
 
 /** 与后端 `PatternId::ALL` 相同的分组和顺序。 */
 const GROUPS: Record<PatternGroup, PatternId[]> = {

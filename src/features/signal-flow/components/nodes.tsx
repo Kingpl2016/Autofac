@@ -8,10 +8,10 @@ import { cn } from "@/lib/utils";
 import { ConflictBadge } from "@/shared/components/ConflictBadge";
 import { formatPacketRate } from "@/shared/lib/format";
 import { useProtocolFlags } from "@/features/settings";
+import type { FlowProtocol } from "../lib/activity";
 import { FlowDisplayContext } from "../lib/flowContext";
 import type {
   DestinationNodeData,
-  FlowProtocol,
   PlayerNodeData,
   SourceNodeData,
   UniverseNodeData,

@@ -1,5 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -9,7 +9,7 @@ import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { netdevOtaConfirm, netdevOtaStatus } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { netKeys } from "../../lib/queryKeys";
-import { runCommand } from "../../lib/run";
+import { useNetCommand } from "../../hooks/useNetCommand";
 import type { NetDevice } from "../../lib/types";
 
 interface OtaStatusCardProps {
@@ -23,7 +23,6 @@ interface OtaStatusCardProps {
  */
 export function OtaStatusCard({ device, access }: OtaStatusCardProps) {
   const { t } = useTranslation();
-  const client = useQueryClient();
   const query = useQuery({
     queryKey: netKeys.ota(device.id),
     queryFn: () => netdevOtaStatus(device.id),
@@ -32,10 +31,13 @@ export function OtaStatusCard({ device, access }: OtaStatusCardProps) {
   });
   const ota = query.data;
 
-  const confirm = async () => {
-    const ok = await runCommand(t, () => netdevOtaConfirm(device.id), t("network.fw.confirmed"));
-    if (ok) await client.invalidateQueries({ queryKey: netKeys.ota(device.id) });
-  };
+  const confirmCommand = useNetCommand({
+    run: () => netdevOtaConfirm(device.id),
+    success: t("network.fw.confirmed"),
+    invalidate: [netKeys.ota(device.id)],
+    invalidateOn: "success",
+  });
+  const confirm = () => confirmCommand.run();
 
   return (
     <SurfacePanel title={t("network.fw.currentTitle")}>

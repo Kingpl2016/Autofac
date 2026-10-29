@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { MODE_ERR_BUSY, MODE_ERR_RECORDING_ACTIVE } from "./types";
 
 /**
@@ -10,7 +11,7 @@ import { MODE_ERR_BUSY, MODE_ERR_RECORDING_ACTIVE } from "./types";
  * @returns 可直接展示的文案；未知错误原样带上原因。
  */
 export function describeModeError(e: unknown, t: TFunction): string {
-  const raw = e instanceof Error ? e.message : String(e);
+  const raw = errorMessage(e);
   if (raw === MODE_ERR_RECORDING_ACTIVE) return t("mode.errRecordingActive");
   if (raw === MODE_ERR_BUSY) return t("mode.errBusy");
   return t("mode.errGeneric", { reason: raw });

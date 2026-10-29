@@ -5,7 +5,8 @@ import { Keyboard, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { effectiveKeys, formatChord, rankCommands, type Command, type CommandCategory } from "../lib/commands";
+import { formatChord } from "@/shared/lib/keyboard";
+import { effectiveKeys, rankCommands, type Command, type CommandCategory } from "../lib/commands";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useKeymapStore } from "../stores/useKeymapStore";
 

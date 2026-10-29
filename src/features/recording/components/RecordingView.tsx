@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ModeGuardNotice } from "@/features/app-mode";
+import { MEDIA_XL } from "@/shared/lib/breakpoints";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
@@ -18,9 +19,6 @@ import { LibraryPanel } from "./LibraryPanel";
 import { RecordPanel } from "./RecordPanel";
 import type { RecordingResult } from "../lib/types";
 import { useRecordingStore } from "../stores/useRecordingStore";
-
-/** 节目库常驻侧栏所需的最小窗口宽度（Tailwind `xl`）。 */
-const WIDE_QUERY = "(min-width: 80rem)";
 
 /**
  * 录制页：走带条 + 录制设置 + 实时监看，右侧常驻节目库（与播放器页同一套栅格）。
@@ -36,7 +34,7 @@ const WIDE_QUERY = "(min-width: 80rem)";
 export function RecordingView() {
   const { t } = useTranslation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const wide = useMediaQuery(WIDE_QUERY);
+  const wide = useMediaQuery(MEDIA_XL);
 
   const last = useRecordingStore((s) => s.last);
   const playerMode = useEngineStatusStore((s) => s.appMode === "player");

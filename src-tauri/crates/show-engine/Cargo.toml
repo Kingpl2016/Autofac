@@ -7,6 +7,7 @@ description = "节目编辑引擎：灯具物模型、Excel 导入、工程编�
 [lints]
 workspace = true
 [features]
+ts = ["dep:ts-rs"]
 default = ["xlsx", "media"]
 # 物模型 Excel 导入（calamine）。
 xlsx = ["dep:calamine"]
@@ -14,6 +15,8 @@ xlsx = ["dep:calamine"]
 media = ["dep:symphonia"]
 
 [dependencies]
+# 由 DTO 生成前端 TypeScript 类型（仅 `ts` feature；见根目录 package.json 的 gen:types）。
+ts-rs = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

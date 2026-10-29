@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// 转发使用的协议。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ForwardProtocol {
     /// Art-Net。
     ArtNet,
@@ -15,6 +16,7 @@ pub enum ForwardProtocol {
 /// 转发模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ForwardMode {
     /// 转发全部 Universe（可被 Exclude 覆盖排除）。
     All,
@@ -25,6 +27,7 @@ pub enum ForwardMode {
 /// 覆盖动作。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum OverrideAction {
     /// 转发。
     Forward,
@@ -35,6 +38,7 @@ pub enum OverrideAction {
 /// per-universe 覆盖规则。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UniverseOverride {
     /// 本规则对应的源 Universe。
     pub source_universe: u16,
@@ -42,15 +46,18 @@ pub struct UniverseOverride {
     pub action: OverrideAction,
     /// 单独指定的目标 Universe；省略时套用偏移。
     #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub target_universe: Option<u16>,
     /// 单独延迟（毫秒）；省略时套用默认延迟。
     #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub delay_ms: Option<u16>,
 }
 
 /// 一个转发目的地。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ForwardDestination {
     /// 唯一 ID。
     pub id: String,

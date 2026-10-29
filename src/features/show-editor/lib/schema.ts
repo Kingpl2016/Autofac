@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { CHANNEL_FUNCTIONS } from "@/features/fixtures";
 import {
   CUE_TAGS,
@@ -601,7 +602,7 @@ export function parseProject(text: string): ParseResult {
   try {
     raw = JSON.parse(text);
   } catch (e) {
-    return { ok: false, reason: "invalidJson", detail: e instanceof Error ? e.message : String(e) };
+    return { ok: false, reason: "invalidJson", detail: errorMessage(e) };
   }
   const migrated = migrateProject(raw);
   if (!migrated.ok) {

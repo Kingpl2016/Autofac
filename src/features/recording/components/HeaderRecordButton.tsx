@@ -12,7 +12,8 @@ import { formatDiskBytes } from "@/shared/domain/disk";
 import { cn } from "@/lib/utils";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
-import { formatBytes, formatDurationUs } from "../lib/filter";
+import { formatBytesIec } from "@/shared/lib/format";
+import { formatDurationUs } from "../lib/filter";
 import { startRecording, stopRecordingWithToast } from "../lib/recordControl";
 import { describePreset, isPresetFiltered, renderNameTemplate } from "../lib/recordingPreset";
 import { useRecordingPreset, useRecordingPresetStore } from "../stores/useRecordingPresetStore";
@@ -248,7 +249,7 @@ function RecordStats({ sessionUs, partUs, presetText }: RecordStatsProps) {
     ...durationRows,
     { label: t("recording.statFrames"), value: String(s.stats.frames) },
     { label: t("recording.statDropped"), value: String(s.dropped), warn: s.dropped > 0 },
-    { label: t("recording.statSize"), value: formatBytes(s.stats.bytes) },
+    { label: t("recording.statSize"), value: formatBytesIec(s.stats.bytes) },
     { label: t("recording.statUniverses"), value: String(s.universes.length) },
   ];
   if (s.diskFreeBytes !== null) {

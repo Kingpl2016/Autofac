@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, Play, RefreshCw, Square } from "lucide-react";
 
@@ -12,7 +12,8 @@ import { useConfigValidation } from "../hooks/useConfigValidation";
 import { useStartGuard } from "../hooks/useStartGuard";
 import { configure, getStatus, startSending, stopSending } from "../lib/api";
 import { draftToConfig, sameConfig, type Draft } from "../lib/draft";
-import { isInteractiveTarget } from "../lib/dom";
+import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
+import { isInteractiveTarget } from "@/shared/lib/keyboard";
 import { describeConfigError, describeError, protocolLabel } from "../lib/errors";
 import type { StartReason } from "../lib/guard";
 import {
@@ -128,21 +129,13 @@ export function ConnectionCard() {
 
   // 空格键开始 / 停止。监听器只在挂载时注册一次，通过 ref 读取最新的 toggle，避免每次渲染重新绑定。
   // 焦点在输入框、按钮、单选、对话框等自己处理按键的元素上时不抢。
-  const toggleRef = useRef(toggle);
-  useEffect(() => {
-    toggleRef.current = toggle;
+  useWindowKeydown((e) => {
+    if (e.key !== " " || e.repeat || e.defaultPrevented) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (isInteractiveTarget(e.target)) return;
+    e.preventDefault();
+    toggle();
   });
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== " " || e.repeat || e.defaultPrevented) return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (isInteractiveTarget(e.target)) return;
-      e.preventDefault();
-      toggleRef.current();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
   const apply = () => {
     if (config) void run("apply", () => configure(config));
   };

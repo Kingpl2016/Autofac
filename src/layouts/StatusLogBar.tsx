@@ -1,10 +1,11 @@
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Activity, ChevronDown, ChevronUp, GripHorizontal, Terminal, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LogList } from "@/shared/components/LogList";
+import { ResizeSeparator } from "@/shared/components/ResizeSeparator";
 import { useLogStore } from "@/shared/stores/logStore";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { UptimeBadge } from "./UptimeBadge";
@@ -31,58 +32,31 @@ export function StatusLogBar() {
   const [open, setOpen] = useState(false);
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   const [resizing, setResizing] = useState(false);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const entries = useLogStore((s) => s.entries);
   const clear = useLogStore((s) => s.clear);
   const packetRate = useEngineStatusStore((s) => s.packetRate);
-
-  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { startY: e.clientY, startHeight: height };
-    setResizing(true);
-  };
-  // 向上拖 = 鼠标 y 变小 = 面板变高
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (d) setHeight(clampHeight(d.startHeight + (d.startY - e.clientY)));
-  };
-  const endDrag = () => {
-    dragRef.current = null;
-    setResizing(false);
-  };
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const next: Partial<Record<string, number>> = {
-      ArrowUp: height + KEY_STEP,
-      ArrowDown: height - KEY_STEP,
-      Home: maxHeight(),
-      End: MIN_HEIGHT,
-    };
-    const h = next[e.key];
-    if (h === undefined) return;
-    e.preventDefault();
-    setHeight(clampHeight(h));
-  };
 
   return (
     <div data-layout="status-bar" className="shrink-0 border-t border-border bg-card">
       {open && (
         // 拖动把手：压在面板顶边上，热区比视觉上的细线更宽，方便抓取
-        <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={t("statusBar.resizeLog")}
-          aria-valuemin={MIN_HEIGHT}
-          aria-valuemax={maxHeight()}
-          aria-valuenow={height}
-          tabIndex={0}
+        <ResizeSeparator
+          orientation="horizontal"
+          value={height}
+          min={MIN_HEIGHT}
+          max={maxHeight()}
+          label={t("statusBar.resizeLog")}
           title={t("statusBar.resizeLog")}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onLostPointerCapture={endDrag}
-          onKeyDown={onKeyDown}
-          onDoubleClick={() => setHeight(DEFAULT_HEIGHT)}
+          step={KEY_STEP}
+          increaseKey="ArrowUp"
+          // 保持原有习惯：Home 到最高、End 到最矮
+          homeTo="max"
+          // 向上拖 = 鼠标 y 变小 = 面板变高
+          dragValue={(start, p) => start.value + (start.y - p.clientY)}
+          normalize={clampHeight}
+          onCommit={setHeight}
+          defaultValue={DEFAULT_HEIGHT}
+          onDraggingChange={setResizing}
           className={cn(
             "group relative z-10 -mb-px flex h-2 cursor-row-resize touch-none items-center justify-center",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -96,7 +70,7 @@ export function StatusLogBar() {
             )}
             aria-hidden
           />
-        </div>
+        </ResizeSeparator>
       )}
 
       {open && (

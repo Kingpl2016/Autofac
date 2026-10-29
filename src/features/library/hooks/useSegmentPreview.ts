@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { enterPlayerModeNow } from "@/features/app-mode";
 import {
-  messageOf,
   playerClose,
   playerOpen,
   playerPause,
@@ -125,7 +125,7 @@ export function useSegmentPreview(
       // 播放器模式由页面负责进入；万一还在实时模式（例如自动进入失败后重试），先不确认地进入
       void enterPlayerModeNow()
         .then((ok) => (ok ? begin() : undefined))
-        .catch((e: unknown) => toast.error(messageOf(e)));
+        .catch((e: unknown) => toast.error(errorMessage(e)));
     },
     [ownLoaded, path],
   );
@@ -139,7 +139,7 @@ export function useSegmentPreview(
       if (!ok || useEngineStatusStore.getState().appMode !== "player") return;
       const s = usePlayerStore.getState().status;
       if ((s.loaded && s.path === path) || (s.loaded && s.state === "playing")) return;
-      return playerOpen(path).catch((e: unknown) => toast.error(messageOf(e)));
+      return playerOpen(path).catch((e: unknown) => toast.error(errorMessage(e)));
     });
   }, [path]);
 

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { FolderOpen, FolderSearch, OctagonAlert, RotateCcw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,7 +65,7 @@ export function RecordingDirField({ value, onChange }: RecordingDirFieldProps) {
     try {
       await recordingOpenDir(value);
     } catch (e: unknown) {
-      const raw = e instanceof Error ? e.message : String(e);
+      const raw = errorMessage(e);
       toast.error(
         raw === "not_a_directory"
           ? t("settings.recordingDirNotFolder")

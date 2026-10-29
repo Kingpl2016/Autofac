@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMemory, formatPacketRate, formatUptime } from "../format";
+import { formatPacketRate } from "@/shared/lib/format";
+import { formatUptime } from "@/shared/lib/uptime";
+import { formatMemory } from "../format";
 
 describe("formatUptime", () => {
   it("小于 1 小时用 mm:ss，否则 h:mm:ss", () => {

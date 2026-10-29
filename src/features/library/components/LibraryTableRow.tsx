@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { formatBytesIec } from "@/shared/lib/format";
 import {
-  formatBytes,
   formatDurationUs,
   ProgramActionsMenu,
   ProgramPlayButton,
@@ -15,7 +15,7 @@ import {
   type LibraryEntry,
   type ProgramActions,
 } from "@/features/recording";
-import { formatRelativeTime } from "../lib/relativeTime";
+import { formatRelativeTime, WEEK_MS } from "@/shared/lib/relativeTime";
 
 interface LibraryTableRowProps {
   entry: LibraryEntry;
@@ -74,7 +74,7 @@ function LibraryTableRowImpl({
   const isLoaded = e.path === actions.loadedPath;
   const state = isLoaded ? actions.loadedState : null;
   const isPlaying = state === "playing";
-  const summary = `${formatDurationUs(e.durationUs)} · ${t("recording.libUniverses", { n: e.universes.length })} · ${formatBytes(e.bytes)}`;
+  const summary = `${formatDurationUs(e.durationUs)} · ${t("recording.libUniverses", { n: e.universes.length })} · ${formatBytesIec(e.bytes)}`;
   const when = new Date(e.modifiedUnixMs);
   const tab = active ? 0 : -1;
 
@@ -171,11 +171,11 @@ function LibraryTableRowImpl({
       {!compact && (
         <>
           <td className="num whitespace-nowrap px-3 text-right text-muted-foreground">{e.universes.length}</td>
-          <td className="num whitespace-nowrap px-3 text-right text-muted-foreground">{formatBytes(e.bytes)}</td>
+          <td className="num whitespace-nowrap px-3 text-right text-muted-foreground">{formatBytesIec(e.bytes)}</td>
         </>
       )}
       <td className="whitespace-nowrap px-3 text-muted-foreground" title={when.toLocaleString(i18n.language)}>
-        <time dateTime={when.toISOString()}>{formatRelativeTime(e.modifiedUnixMs, nowMs, i18n.language)}</time>
+        <time dateTime={when.toISOString()}>{formatRelativeTime(e.modifiedUnixMs, nowMs, i18n.language, { dateAfterMs: WEEK_MS })}</time>
       </td>
       <td className="px-2" onClick={(ev) => ev.stopPropagation()}>
         {!renaming && (

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { useElementSize } from "@/shared/hooks/useElementSize";
 import { useHeatCanvas } from "../hooks/useHeatCanvas";
 import { useRecordingClock } from "../hooks/useRecordingClock";
 import { formatDurationUs } from "../lib/filter";
@@ -33,22 +34,13 @@ export function RecordTimeline() {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
 
   const visible = recording || (hasLast && activity !== null && activity.len > 0);
   const rows = activity?.universes.length ?? 0;
+  // 画布随 visible / rows 条件渲染：变化时重新观测
+  const { width } = useElementSize(wrapRef, { key: `${visible}:${rows}` });
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const update = () => setWidth(Math.floor(el.clientWidth));
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [visible, rows]);
 
   // 停止后录制头停在数据末端
   const elapsedUs = recording

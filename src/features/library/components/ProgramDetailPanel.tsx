@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { formatBytesIec } from "@/shared/lib/format";
 import {
-  formatBytes,
   formatDurationUs,
   ProgramHeaderTags,
   ProgramRenameInput,
@@ -193,7 +193,7 @@ export function ProgramDetailPanel({
             <span className="num">{e.frames.toLocaleString(i18n.language)}</span>
           </Field>
           <Field label={t("library.colSize")}>
-            <span className="num">{formatBytes(e.bytes)}</span>
+            <span className="num">{formatBytesIec(e.bytes)}</span>
           </Field>
           <Field label={t("library.colUniverses")}>
             {e.universes.length === 0 ? "—" : <span className="num">{e.universes.join(", ")}</span>}

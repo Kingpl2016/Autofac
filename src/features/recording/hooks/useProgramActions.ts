@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { useAppModeStore, useModeActions } from "@/features/app-mode";
 import {
   errorText as netErrorText,
@@ -40,10 +41,6 @@ import {
 } from "../lib/types";
 import { usePlayerStore } from "../stores/usePlayerStore";
 
-/** 把任意异常规整为字符串（后端错误是字符串，前端异常是 `Error`）。 */
-export function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /**
  * 节目操作（节目库侧栏与节目库页面共用）：回放 / 暂停、重命名、删除、复制、改备注、
@@ -74,7 +71,7 @@ export function useProgramActions(onPlayed?: () => void, options: { stayOnPage?:
 
   const describeError = useCallback(
     (e: unknown): string => {
-      const raw = messageOf(e);
+      const raw = errorMessage(e);
       if (raw === LIB_ERR_EXISTS) return t("recording.libErrExists");
       if (raw === LIB_ERR_OUTSIDE) return t("recording.libErrOutside");
       if (raw === LIB_ERR_NOT_FOUND) return t("recording.libErrNotFound");
@@ -94,7 +91,7 @@ export function useProgramActions(onPlayed?: () => void, options: { stayOnPage?:
   /** 把打开节目失败的原因说得比“切换模式失败”更具体。 */
   const describeOpenError = useCallback(
     (e: unknown): string => {
-      const raw = messageOf(e);
+      const raw = errorMessage(e);
       if (raw === PLAYER_ERR_RECORDING_ACTIVE) return t("player.errRecordingActive");
       if (raw === PLAYER_ERR_SHOW_ACTIVE) return t("player.errShowActive");
       if (raw === PLAYER_ERR_BAD_PATH) return t("recording.libErrOutside");
@@ -201,7 +198,7 @@ export function useProgramActions(onPlayed?: () => void, options: { stayOnPage?:
       if (loadedState === "playing") await playerPause();
       else await playerPlay();
     } catch (e: unknown) {
-      const raw = messageOf(e);
+      const raw = errorMessage(e);
       toast.error(raw === PLAYER_ERR_NO_PLAYER ? t("player.errNoPlayer") : raw);
     }
   }, [loadedState, t]);

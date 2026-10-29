@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { onEvent } from "@/shared/tauri/events";
+import { useTauriEvent } from "@/shared/events/useObservable";
 import { getStatus } from "../lib/api";
 import type { PreviewEvent, SendErrorEvent, SenderStatus } from "../lib/types";
 import { useSenderStore } from "../stores/useSenderStore";
@@ -14,18 +14,13 @@ export function useSignalCheckerListeners(): void {
   const pushError = useSenderStore((s) => s.pushError);
   const setPreview = useSenderStore((s) => s.setPreview);
 
+  useTauriEvent<SenderStatus>("signal-checker:status", setStatus);
+  useTauriEvent<SendErrorEvent>("signal-checker:error", pushError);
+  useTauriEvent<PreviewEvent>("signal-checker:preview", setPreview);
+
   useEffect(() => {
-    const unlisteners: Array<Promise<() => void>> = [
-      onEvent<SenderStatus>("signal-checker:status", setStatus),
-      onEvent<SendErrorEvent>("signal-checker:error", pushError),
-      onEvent<PreviewEvent>("signal-checker:preview", setPreview),
-    ];
     void getStatus()
       .then(setStatus)
       .catch(() => undefined);
-
-    return () => {
-      for (const u of unlisteners) void u.then((fn) => fn());
-    };
-  }, [setStatus, pushError, setPreview]);
+  }, [setStatus]);
 }

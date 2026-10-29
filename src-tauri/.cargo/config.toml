@@ -1,0 +1,6 @@
+# ts-rs：`cargo test` 时把带 `#[ts(export)]` 的 DTO 导出为前端 TypeScript 类型。
+# 生成物位于仓库的 `src/bindings`，纳入版本管理；改了 DTO 后运行 `npm run gen:types`。
+[env]
+TS_RS_EXPORT_DIR = { value = "../src/bindings", relative = true }
+# u64 / i64 在前端都是 JSON 数字（不会超出 2^53 的范围），按 `number` 生成
+TS_RS_LARGE_INT = "number"

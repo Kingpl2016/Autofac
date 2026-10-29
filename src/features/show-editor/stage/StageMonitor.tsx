@@ -5,6 +5,7 @@ import { EyeOff, Move, Power, Sparkle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
+import { useElementSize } from "@/shared/hooks/useElementSize";
 import { useEngine } from "../engine/useEngine";
 import { STAGE_DROP_ID, type StageDropData } from "../hooks/fixtureDrop";
 import { usePreviewProject } from "../hooks/usePreviewProject";
@@ -86,7 +87,7 @@ export function StageMonitor() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<StageRenderer | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const size = useElementSize(wrapRef);
   const [hover, setHover] = useState<string | null>(null);
   // 别处（Universe 视图、通道格）悬停的灯具：在舞台上一并高亮
   const sharedHover = useEditorUiStore((s) => s.hoverFixtureId);
@@ -178,17 +179,6 @@ export function StageMonitor() {
     };
   });
   const points = fixtures.map((f) => ({ id: f.id, ...toCanvas(view, f.x, f.y) }));
-
-  // 画布尺寸
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const measure = () => setSize({ width: el.clientWidth, height: el.clientHeight });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   // 渲染器（策略）
   useEffect(() => {

@@ -23,7 +23,8 @@ import {
   type StaticCue,
   type Track,
 } from "./project";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 对时间线上 Cue 的纯编辑操作。

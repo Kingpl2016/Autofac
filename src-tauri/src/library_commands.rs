@@ -93,6 +93,7 @@ pub async fn recordings_duplicate(
 /// 保留片段（源时间轴，微秒）。
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SegmentDto {
     /// 片段开始（含）。
     pub start_us: u64,
@@ -103,6 +104,7 @@ pub struct SegmentDto {
 /// 结果去向。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum EditOutputDto {
     /// 另存为新节目。
     New {
@@ -116,6 +118,7 @@ pub enum EditOutputDto {
 /// 编辑导出请求。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EditRequest {
     /// 源节目路径。
     pub path: String,
@@ -132,6 +135,7 @@ pub struct EditRequest {
 /// 编辑导出结果。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EditResult {
     /// 结果节目路径。
     pub path: String,
@@ -148,6 +152,7 @@ pub struct EditResult {
 /// `recordings:edit` 事件载荷。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 struct EditProgress<'a> {
     /// 任务 id。
     job_id: &'a str,

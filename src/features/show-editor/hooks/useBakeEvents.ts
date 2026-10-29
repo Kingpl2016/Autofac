@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { RECORDINGS_QUERY_KEY } from "@/features/recording";
-import { onEvent } from "@/shared/tauri/events";
+import { useTauriEvent } from "@/shared/events/useObservable";
 import { SHOW_BAKE_EVENT, useBakeStore, type BakeEvent } from "../stores/useBakeStore";
 
 /** 不值得弹错误的跳过原因：工程里还没有灯具，本来就没有东西可生成。 */
@@ -22,32 +22,21 @@ export function useBakeEvents(): void {
   const { t } = useTranslation();
   const client = useQueryClient();
 
-  useEffect(() => {
-    let alive = true;
-    let unlisten: (() => void) | null = null;
-    onEvent<BakeEvent>(SHOW_BAKE_EVENT, (event) => {
-      useBakeStore.getState().apply(event);
-      if (event.status === "running") return;
-      void client.invalidateQueries({ queryKey: RECORDINGS_QUERY_KEY });
-      if (event.status === "done") {
-        toast.success(t("editor.bake.done", { frames: event.frames ?? 0 }));
-      } else if (event.status === "failed") {
-        toast.error(t("editor.bake.failed", { reason: event.reason ?? "" }));
-      } else if (event.reason === "in_use") {
-        toast.warning(t("editor.bake.inUse"));
-      } else if (event.reason === REASON_NOTHING) {
-        toast.info(t("editor.bake.nothing"));
-      }
-    })
-      .then((off) => {
-        if (alive) unlisten = off;
-        else off();
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-      unlisten?.();
-      useBakeStore.getState().reset();
-    };
-  }, [client, t]);
+  useTauriEvent<BakeEvent>(SHOW_BAKE_EVENT, (event) => {
+    useBakeStore.getState().apply(event);
+    if (event.status === "running") return;
+    void client.invalidateQueries({ queryKey: RECORDINGS_QUERY_KEY });
+    if (event.status === "done") {
+      toast.success(t("editor.bake.done", { frames: event.frames ?? 0 }));
+    } else if (event.status === "failed") {
+      toast.error(t("editor.bake.failed", { reason: event.reason ?? "" }));
+    } else if (event.reason === "in_use") {
+      toast.warning(t("editor.bake.inUse"));
+    } else if (event.reason === REASON_NOTHING) {
+      toast.info(t("editor.bake.nothing"));
+    }
+  });
+
+  // 离开编辑器时清掉进行中的进度
+  useEffect(() => () => useBakeStore.getState().reset(), []);
 }

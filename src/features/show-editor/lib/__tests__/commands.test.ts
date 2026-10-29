@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { chordOf, formatChord, parseChord } from "@/shared/lib/keyboard";
 import {
-  chordOf,
   effectiveKeys,
   findConflicts,
-  formatChord,
   fuzzyMatch,
   matchCommand,
-  parseChord,
   rankCommands,
   type Command,
 } from "../commands";

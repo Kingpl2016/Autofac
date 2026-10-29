@@ -5,7 +5,7 @@ import "@/shared/i18n";
 import "@/styles/globals.css";
 import { loadAppearance, rehydrateOnFocus, startAppearanceSync } from "@/features/appearance";
 import { loadLanguage, rehydrateLanguageOnFocus, startLanguageSync } from "@/features/i18n";
-import { SignalCheckerRoot } from "@/features/signal-checker";
+import { SignalCheckerRoot } from "@/features/signal-checker/window";
 import { installNativeGuards } from "@/shared/lib/nativeGuards";
 
 /**

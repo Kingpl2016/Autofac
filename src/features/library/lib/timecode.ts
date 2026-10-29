@@ -1,4 +1,4 @@
-const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+import { formatHms } from "@/shared/lib/format";
 
 /**
  * 把微秒格式化为时间码：`m:ss.mmm`，一小时以上为 `h:mm:ss.mmm`。
@@ -7,12 +7,7 @@ const pad = (n: number, w = 2) => String(n).padStart(w, "0");
  */
 export function formatTimecode(us: number): string {
   const totalMs = Math.max(0, Math.round(us / 1000));
-  const ms = totalMs % 1000;
-  const totalSec = Math.floor(totalMs / 1000);
-  const s = totalSec % 60;
-  const m = Math.floor(totalSec / 60) % 60;
-  const h = Math.floor(totalSec / 3600);
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}.${pad(ms, 3)}` : `${m}:${pad(s)}.${pad(ms, 3)}`;
+  return `${formatHms(Math.floor(totalMs / 1000))}.${String(totalMs % 1000).padStart(3, "0")}`;
 }
 
 /**

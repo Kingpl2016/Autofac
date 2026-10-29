@@ -1,19 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
+import { stubResizeObserver } from "@/test/mockTauriEvents";
+import { renderWithProviders } from "@/test/renderWithProviders";
+import { makeDevice } from "@/test/factories";
 
-vi.stubGlobal(
-  "ResizeObserver",
-  class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  },
-);
+stubResizeObserver();
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 const api = vi.hoisted(() => ({
@@ -101,14 +96,12 @@ function Where() {
 }
 
 function renderView(initial = "/network") {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[initial]}>
-        <NetworkView />
-        <Where />
-      </MemoryRouter>
-    </QueryClientProvider>,
+  return renderWithProviders(
+    <>
+      <NetworkView />
+      <Where />
+    </>,
+    { route: initial },
   );
 }
 
@@ -214,11 +207,11 @@ describe("NetworkView 布局与设备栏", () => {
   it("设备发现页的 Art-Net 节点出现在候选里，点击添加预填表单", async () => {
     useEngineDataStore.setState({
       devices: [
-        { ip: "10.0.0.50", hostname: "ans-node-50", customName: null, mac: null, category: "artNet", artnetPorts: 1, online: true, lastSeenMs: 0 },
+        makeDevice({ ip: "10.0.0.50", hostname: "ans-node-50", artnetPorts: 1 }),
         // 已保存的、离线的、非 Art-Net 的都不应出现
-        { ip: "10.0.0.2", hostname: "x", customName: null, mac: null, category: "artNet", artnetPorts: 1, online: true, lastSeenMs: 0 },
-        { ip: "10.0.0.60", hostname: "y", customName: null, mac: null, category: "artNet", artnetPorts: 1, online: false, lastSeenMs: 0 },
-        { ip: "10.0.0.70", hostname: "z", customName: null, mac: null, category: "computer", artnetPorts: null, online: true, lastSeenMs: 0 },
+        makeDevice({ ip: "10.0.0.2", hostname: "x", artnetPorts: 1 }),
+        makeDevice({ ip: "10.0.0.60", hostname: "y", artnetPorts: 1, online: false }),
+        makeDevice({ ip: "10.0.0.70", hostname: "z", category: "computer" }),
       ],
     });
     renderView();

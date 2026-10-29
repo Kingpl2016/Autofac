@@ -48,13 +48,6 @@ export function hasWebGL(): boolean {
 }
 
 /**
- * 重置 WebGL 检测的缓存（仅供测试使用）。
- */
-export function resetWebGLCache(): void {
-  webglSupport = undefined;
-}
-
-/**
  * 订阅页面可见性。
  *
  * @param listener - 变化回调

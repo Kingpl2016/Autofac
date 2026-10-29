@@ -1,22 +1,28 @@
+import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LiveAnnouncer } from "@/shared/components/LiveAnnouncer";
 import { SignalCheckerView } from "./SignalCheckerView";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { refetchOnWindowFocus: true },
-  },
-});
+/** 检测器窗口的查询客户端：窗口获得焦点时刷新。 */
+function createCheckerQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { refetchOnWindowFocus: true },
+    },
+  });
+}
 
 /**
  * 信号检测器窗口的根组件：外观同步、查询客户端与提示层。
  *
  * 独立于主应用的 `App`：不挂载引擎 / 录制 / 回放的全局监听，也没有路由。
  * 外观与语言的读回、同步由窗口入口（`signal-checker/main.tsx`）负责。
+ * 查询客户端在组件里创建（只创建一次），模块本身没有副作用。
  */
 export function SignalCheckerRoot() {
+  const [queryClient] = useState(createCheckerQueryClient);
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={200}>

@@ -1,10 +1,11 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
+import { checkerKeys } from "../lib/queries";
 import { validateConfig } from "../lib/api";
 import { draftToConfig, type Draft } from "../lib/draft";
 import { isConfigError } from "../lib/errors";
 import type { ConfigError } from "../lib/types";
-import { useDebouncedValue } from "./useDebouncedValue";
+import { useDebouncedValue } from "@/shared/hooks/useDebounced";
 
 /** 草稿的校验结果。 */
 export type Validation =
@@ -34,7 +35,7 @@ export function useConfigValidation(draft: Draft): Validation {
   const config = draftToConfig(settled);
 
   const query = useQuery({
-    queryKey: ["signal-checker", "validate", config],
+    queryKey: [...checkerKeys.validate, config],
     queryFn: async (): Promise<Validation> => {
       try {
         return { state: "ok", universeCount: await validateConfig(config!) };

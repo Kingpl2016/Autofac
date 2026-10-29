@@ -1,20 +1,4 @@
-const UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
-
-/**
- * 把字节数格式化为易读文本，如 `1.5 MB`。
- *
- * @param bytes 字节数；负数与非有限值按 0 处理。
- * @returns 带单位的字符串，`B` 级取整，其余保留一位小数。
- */
-export function formatBytes(bytes: number): string {
-  let value = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
-  let unit = 0;
-  while (value >= 1024 && unit < UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${unit === 0 ? Math.round(value) : value.toFixed(1)} ${UNITS[unit]}`;
-}
+import { formatBytes, formatHms, pad2 } from "@/shared/lib/format";
 
 /**
  * 把毫秒格式化为时间码：`m:ss`，一小时以上为 `h:mm:ss`。
@@ -23,12 +7,7 @@ export function formatBytes(bytes: number): string {
  * @returns 时间码字符串。
  */
 export function formatClock(ms: number): string {
-  const total = Math.floor((Number.isFinite(ms) && ms > 0 ? ms : 0) / 1000);
-  const s = total % 60;
-  const m = Math.floor(total / 60) % 60;
-  const h = Math.floor(total / 3600);
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+  return formatHms(ms / 1000);
 }
 
 /**
@@ -79,5 +58,5 @@ export function agoParts(elapsedMs: number): { unit: AgoUnit; value: number } {
  */
 export function formatHourMinute(ts: number): string {
   const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }

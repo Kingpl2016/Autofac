@@ -12,7 +12,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -28,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/shared/lib/clipboard";
 import type { Device } from "@/shared/domain/device";
 import type { FleetEntry } from "../hooks/useFleetStatus";
 import { draftFromDiscovered } from "../lib/discovery";
@@ -240,14 +240,8 @@ function DeviceRow({ device, entry, selected, onSelect, onKeyDown, onEdit, onRem
   const playing = player?.state === PlayState.Playing || player?.state === PlayState.Paused;
   const progress = player && player.durMs > 0 ? Math.min(1, player.posMs / player.durMs) : 0;
 
-  const copyIp = async () => {
-    try {
-      await navigator.clipboard.writeText(device.host);
-      toast.success(t("network.rail.ipCopied", { ip: device.host }));
-    } catch {
-      toast.error(t("network.logs.copyFailed"));
-    }
-  };
+  const copyIp = () =>
+    copyText(device.host, { success: t("network.rail.ipCopied", { ip: device.host }), failure: t("network.logs.copyFailed") });
 
   return (
     <li className="group relative">

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { useDebouncedCallback } from "@/shared/hooks/useDebounced";
+import { errorMessage } from "@/shared/lib/errors";
 import { getSettings, saveSettings } from "../lib/api";
 import type { AppSettings } from "../lib/types";
 
@@ -37,7 +39,6 @@ export function useSettingsDraft(initial: AppSettings) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<AppSettings>(initial);
   const [status, setStatus] = useState<SaveStatus>("idle");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const persist = useCallback(
     (next: AppSettings) => {
@@ -51,46 +52,34 @@ export function useSettingsDraft(initial: AppSettings) {
         })
         .catch((e: unknown) => {
           setStatus("error");
-          toast.error(e instanceof Error ? e.message : String(e));
+          toast.error(errorMessage(e));
         });
     },
     [t, queryClient],
   );
 
-  const scheduleSave = useCallback(
-    (next: AppSettings) => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => persist(next), AUTOSAVE_DELAY);
-    },
-    [persist],
-  );
+  // 卸载时取消未执行的保存（与改造前一致）
+  const autosave = useDebouncedCallback(persist, AUTOSAVE_DELAY);
 
   const update = useCallback(
     (updater: (prev: AppSettings) => AppSettings) => {
       setStatus("pending");
       setDraft((prev) => {
         const next = updater(prev);
-        scheduleSave(next);
+        autosave.schedule(next);
         return next;
       });
     },
-    [scheduleSave],
+    [autosave],
   );
 
   const replace = useCallback(
     (next: AppSettings) => {
-      if (timer.current) clearTimeout(timer.current);
+      autosave.cancel();
       setDraft(next);
       persist(next);
     },
-    [persist],
-  );
-
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
+    [autosave, persist],
   );
 
   return { draft, update, replace, status };

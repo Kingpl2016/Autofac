@@ -20,6 +20,7 @@ pub const CRITICAL_FREE_BYTES: u64 = 100_000_000;
 /// 磁盘剩余空间等级。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum DiskLevel {
     /// 空间充足。
     #[default]

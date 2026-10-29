@@ -33,6 +33,7 @@ use crate::store::{sanitize_file_stem, ARTREC_SUFFIX};
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[expect(clippy::struct_excessive_bools, reason = "节目库条目的状态位语义独立")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct LibraryEntry {
     /// `.artrec` 绝对路径。
     pub path: String,
@@ -69,6 +70,7 @@ pub struct LibraryEntry {
 /// 节目文件的压缩算法（前端标签用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Compression {
     /// 无压缩。
     None,
@@ -79,6 +81,7 @@ pub enum Compression {
 /// 由文件头发现的需要提示用户的问题。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum HeaderIssue {
     /// 帧数为 0：节目里没有任何数据，播放不会有输出。
     EmptyProgram,
@@ -91,6 +94,7 @@ pub enum HeaderIssue {
 /// 由文件头（A 区）派生的格式信息（只读文件头，不解析帧数据）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HeaderInfo {
     /// 主版本。
     pub ver_major: u16,

@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Check, Clapperboard, Lightbulb, ListVideo, Radio, Repeat2, Sparkles, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -7,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { netdevSetWorkmode } from "../../lib/api";
 import { netKeys } from "../../lib/queryKeys";
-import { runCommand } from "../../lib/run";
+import { useNetCommand } from "../../hooks/useNetCommand";
 import { WORK_MODES, type NetDevice } from "../../lib/types";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 
@@ -34,8 +33,13 @@ interface WorkModePanelProps {
  */
 export function WorkModePanel({ device, access }: WorkModePanelProps) {
   const { t } = useTranslation();
-  const client = useQueryClient();
-  const [busy, setBusy] = useState<number | null>(null);
+  const setMode = useNetCommand<number>({
+    run: (mode) => netdevSetWorkmode(device.id, mode),
+    success: (mode) => t("network.control.modeApplied", { mode: t(`network.modes.${mode}`) }),
+    // 无论成败都以设备实际状态为准
+    invalidate: [netKeys.status(device.id)],
+  });
+  const busy = setMode.variables ?? null;
   const current = access.status.status?.workMode ?? null;
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = Math.max(0, WORK_MODES.findIndex((m) => m === current));
@@ -43,17 +47,8 @@ export function WorkModePanel({ device, access }: WorkModePanelProps) {
   const tabStop = focusIndex ?? selectedIndex;
   const disabled = busy !== null || !access.canWrite;
 
-  const apply = async (mode: number) => {
-    if (mode === current) return;
-    setBusy(mode);
-    await runCommand(
-      t,
-      () => netdevSetWorkmode(device.id, mode),
-      t("network.control.modeApplied", { mode: t(`network.modes.${mode}`) }),
-    );
-    // 无论成败都以设备实际状态为准
-    await client.invalidateQueries({ queryKey: netKeys.status(device.id) });
-    setBusy(null);
+  const apply = (mode: number) => {
+    if (mode !== current) void setMode.run(mode);
   };
 
   /** 只移动焦点（漫游 tabindex），不应用。 */

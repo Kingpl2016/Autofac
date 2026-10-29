@@ -1,7 +1,8 @@
+import { z } from "zod";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
+import { persistPrefs, prefsSanitizer } from "@/shared/stores/persistPrefs";
 import {
   DEFAULT_SORT,
   type CategoryFilter,
@@ -28,17 +29,10 @@ interface DiscoveryPrefsState extends DiscoveryPrefsData {
   clearFilters: () => void;
 }
 
-const CATEGORIES: readonly CategoryFilter[] = [
-  "all",
-  "artNet",
-  "sacn",
-  "cluster",
-  "computer",
-  "network",
-];
-const STATUSES: readonly StatusFilter[] = ["all", "online", "offline"];
-const SORT_KEYS: readonly SortKey[] = ["name", "ip", "status", "category", "ports"];
-const SORT_DIRS: readonly SortDir[] = ["asc", "desc"];
+const CATEGORIES = ["all", "artNet", "sacn", "cluster", "computer", "network"] as const satisfies readonly CategoryFilter[];
+const STATUSES = ["all", "online", "offline"] as const satisfies readonly StatusFilter[];
+const SORT_KEYS = ["name", "ip", "status", "category", "ports"] as const satisfies readonly SortKey[];
+const SORT_DIRS = ["asc", "desc"] as const satisfies readonly SortDir[];
 
 /** 偏好默认值。 */
 export const DEFAULT_PREFS: DiscoveryPrefsData = {
@@ -48,38 +42,24 @@ export const DEFAULT_PREFS: DiscoveryPrefsData = {
   showMac: true,
 };
 
-/**
- * 校验并规整从磁盘读回的偏好：任何字段不合法都回落到默认值，
- * 避免旧版本文件或被手改的文件让页面进入无效状态。
- *
- * @param raw 磁盘上读到的未知数据。
- * @returns 一定合法的偏好数据。
- */
-export function sanitizePrefs(raw: unknown): DiscoveryPrefsData {
-  const r = (raw ?? {}) as Partial<Record<keyof DiscoveryPrefsData, unknown>>;
-  const sort = (r.sort ?? {}) as { key?: unknown; dir?: unknown };
-  return {
-    category: CATEGORIES.includes(r.category as CategoryFilter)
-      ? (r.category as CategoryFilter)
-      : DEFAULT_PREFS.category,
-    status: STATUSES.includes(r.status as StatusFilter)
-      ? (r.status as StatusFilter)
-      : DEFAULT_PREFS.status,
-    sort: {
-      key: SORT_KEYS.includes(sort.key as SortKey)
-        ? (sort.key as SortKey)
-        : DEFAULT_PREFS.sort.key,
-      dir: SORT_DIRS.includes(sort.dir as SortDir)
-        ? (sort.dir as SortDir)
-        : DEFAULT_PREFS.sort.dir,
-    },
-    showMac: typeof r.showMac === "boolean" ? r.showMac : DEFAULT_PREFS.showMac,
-  };
-}
+/** 落盘字段与兜底规则：任何字段不合法都回落默认值，避免旧版本文件或被手改的文件让页面进入无效状态。 */
+const schema = z.object({
+  category: z.enum(CATEGORIES).catch(DEFAULT_PREFS.category),
+  status: z.enum(STATUSES).catch(DEFAULT_PREFS.status),
+  sort: z
+    .object({
+      key: z.enum(SORT_KEYS).catch(DEFAULT_PREFS.sort.key),
+      dir: z.enum(SORT_DIRS).catch(DEFAULT_PREFS.sort.dir),
+    })
+    .catch(DEFAULT_PREFS.sort),
+  showMac: z.boolean().catch(DEFAULT_PREFS.showMac),
+}) satisfies z.ZodType<DiscoveryPrefsData>;
+
+/** 校验并规整从磁盘读回的偏好。 */
+export const sanitizePrefs = prefsSanitizer(schema);
 
 /**
- * 设备发现页的可保存偏好（分类 / 在线状态 / 排序），经 Tauri Store 插件落盘到
- * `ui-prefs.json`；非 Tauri 环境回退 `localStorage`。
+ * 设备发现页的可保存偏好（分类 / 在线状态 / 排序 / MAC 列），经 Tauri Store 插件落盘到 `ui-prefs.json`。
  */
 export const useDiscoveryPrefs = create<DiscoveryPrefsState>()(
   persist(
@@ -91,14 +71,6 @@ export const useDiscoveryPrefs = create<DiscoveryPrefsState>()(
       setShowMac: (showMac) => set({ showMac }),
       clearFilters: () => set({ category: "all", status: "all" }),
     }),
-    {
-      name: "discovery",
-      version: 1,
-      storage: createTauriPersistStorage<DiscoveryPrefsData>(),
-      partialize: ({ category, status, sort, showMac }) => ({ category, status, sort, showMac }),
-      // 没有已保存的数据（首次运行 / 读取失败）时保持当前值，不被默认值覆盖
-      merge: (persisted, current) =>
-        persisted == null ? current : { ...current, ...sanitizePrefs(persisted) },
-    },
+    persistPrefs<DiscoveryPrefsState, DiscoveryPrefsData>({ name: "discovery", version: 1, schema }),
   ),
 );

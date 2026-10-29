@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// 网络工作模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum NetworkMode {
     /// 单接口模式（默认）。
     Single,
@@ -18,6 +19,7 @@ pub enum NetworkMode {
 /// 单块网卡在多网卡模式下的协议开关。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct NicConfig {
     /// 接口名称或 IP。
     pub name: String,
@@ -30,6 +32,7 @@ pub struct NicConfig {
 /// 网络设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct NetworkSettings {
     /// 工作模式。
     pub mode: NetworkMode,
@@ -52,6 +55,7 @@ impl Default for NetworkSettings {
 /// 协议设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ProtocolSettings {
     /// 是否接收 Art-Net。
     pub artnet_enabled: bool,
@@ -81,6 +85,7 @@ impl Default for ProtocolSettings {
 /// Universe 编号显示格式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum UniverseFormat {
     /// 十进制（从 1）。
     Decimal1,
@@ -97,6 +102,7 @@ pub enum UniverseFormat {
 /// 通道编号显示格式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ChannelFormat {
     /// 十进制（从 1）。
     Decimal1,
@@ -109,6 +115,7 @@ pub enum ChannelFormat {
 /// 通道值显示格式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ValueFormat {
     /// 十进制 0-255。
     Decimal,
@@ -121,6 +128,7 @@ pub enum ValueFormat {
 /// 显示设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct DisplaySettings {
     /// 界面刷新率（fps）：15 / 30 / 60。
     pub ui_update_rate: u16,
@@ -149,6 +157,7 @@ pub use signal_engine::MergeMode;
 /// 合并设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct MergeSettings {
     /// 全局合并模式。
     pub mode: MergeMode,
@@ -168,6 +177,7 @@ impl Default for MergeSettings {
 /// 录制压缩方式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum RecordingCompression {
     /// Zstd 压缩（默认；基准测试中体积最优）。
     Zstd,
@@ -181,6 +191,7 @@ pub enum RecordingCompression {
 /// 不会因为新增字段而被整体判为损坏并重置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RecordingSettings {
     /// 录制输出目录；空字符串表示使用默认目录（文档目录下的 `ArtNet Studio Recordings`）。
     pub directory: String,
@@ -206,6 +217,7 @@ impl Default for RecordingSettings {
 /// 更新通道。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum UpdateChannel {
     /// 稳定版。
     Stable,
@@ -216,6 +228,7 @@ pub enum UpdateChannel {
 /// 更新设置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UpdateSettings {
     /// 更新通道。
     pub channel: UpdateChannel,
@@ -234,6 +247,7 @@ impl Default for UpdateSettings {
 /// 整个结构带 `#[serde(default)]`：没有该分区的旧配置文件照常加载，缺失字段回落默认。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PlayerSettings {
     /// 启动时直接进入播放器模式（给无人值守的节目播放机用）；默认关闭，即始终以实时模式启动。
     pub start_in_player_mode: bool,
@@ -262,6 +276,7 @@ const SACN_DEFAULT_PORT: u16 = 5568;
 /// 应用总配置。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct AppSettings {
     /// 配置结构版本，用于一次性迁移。
     #[serde(default = "legacy_schema_version")]

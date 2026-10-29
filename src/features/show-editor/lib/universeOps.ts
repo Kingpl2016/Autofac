@@ -11,7 +11,7 @@ import {
   type UniverseConfig,
   type UniversePort,
 } from "./project";
-import { clamp } from "./time";
+import { clamp } from "@/shared/lib/math";
 
 /**
  * Patch 与 Universe 路由表的纯编辑操作（直接修改 immer 草稿）。

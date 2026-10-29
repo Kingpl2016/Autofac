@@ -1,7 +1,8 @@
+import { z } from "zod";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
+import { persistPrefs } from "@/shared/stores/persistPrefs";
 
 /** 面板宽度范围与预设，单位 rem。 */
 export const PANEL_WIDTH = {
@@ -51,20 +52,14 @@ export const usePanelPrefsStore = create<PanelPrefsState>()(
       setWidth: (width) => set({ width: clampPanelWidth(width) }),
       setPreviewOpen: (previewOpen) => set({ previewOpen }),
     }),
-    {
+    persistPrefs<PanelPrefsState, PanelPrefs>({
       name: "appearance-panel",
       version: 1,
-      storage: createTauriPersistStorage<PanelPrefs>(),
-      partialize: ({ width, previewOpen }) => ({ width, previewOpen }),
       // 存储可能被手动改过：宽度重新限制范围，开关只接受布尔值
-      merge: (persisted, current) => {
-        const raw = (persisted ?? {}) as Partial<Record<keyof PanelPrefs, unknown>>;
-        return {
-          ...current,
-          width: typeof raw.width === "number" ? clampPanelWidth(raw.width) : current.width,
-          previewOpen: typeof raw.previewOpen === "boolean" ? raw.previewOpen : current.previewOpen,
-        };
-      },
-    },
+      schema: z.object({
+        width: z.number().catch(PANEL_WIDTH.default).transform(clampPanelWidth),
+        previewOpen: z.boolean().catch(false),
+      }),
+    }),
   ),
 );

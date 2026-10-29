@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { FilePlayState, ProgramAssignment } from "../../lib/files";
-import { formatBytes } from "../../lib/format";
+import { formatBytes } from "@/shared/lib/format";
 import type { NetFile } from "../../lib/types";
 import { ProgramNumberEditor } from "./ProgramNumberEditor";
 

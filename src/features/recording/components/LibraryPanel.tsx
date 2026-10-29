@@ -19,7 +19,8 @@ import { useProgramActions } from "../hooks/useProgramActions";
 import { usePlayerStore } from "../stores/usePlayerStore";
 import { useRecordingStore } from "../stores/useRecordingStore";
 import { RECORDINGS_QUERY_KEY, recordingsList } from "../lib/api";
-import { formatBytes, formatDurationUs } from "../lib/filter";
+import { formatBytesIec } from "@/shared/lib/format";
+import { formatDurationUs } from "../lib/filter";
 import { libraryHref } from "../lib/libraryRoutes";
 import { hasProgramFlags } from "../lib/programFlags";
 import type { LibraryEntry } from "../lib/types";
@@ -177,7 +178,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
               const isFresh = freshPaths.has(e.path.replaceAll("\\", "/"));
               const meta = t("recording.libMeta", {
                 frames: e.frames,
-                size: formatBytes(e.bytes),
+                size: formatBytesIec(e.bytes),
                 n: e.universes.length,
               });
               const when = new Date(e.modifiedUnixMs).toLocaleString();
@@ -240,7 +241,7 @@ export function LibraryPanel({ onPlayed }: LibraryPanelProps) {
                           </div>
                           <div className="num truncate text-xs text-muted-foreground">
                             {formatDurationUs(e.durationUs)} · {t("recording.libUniverses", { n: e.universes.length })} ·{" "}
-                            {formatBytes(e.bytes)}
+                            {formatBytesIec(e.bytes)}
                           </div>
                         </>
                       )}

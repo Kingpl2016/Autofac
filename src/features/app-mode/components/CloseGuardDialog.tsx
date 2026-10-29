@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { onEvent } from "@/shared/tauri/events";
+import { useTauriEvent } from "@/shared/events/useObservable";
 import { appQuit } from "../lib/api";
 
 /** `app:close-requested` 事件载荷：关闭窗口时哪些工作正在进行。 */
@@ -40,12 +41,7 @@ export function CloseGuardDialog() {
   const [quitting, setQuitting] = useState(false);
   const stayRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    const unlisten = onEvent<CloseRequest>("app:close-requested", (r) => setRequest(r));
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, []);
+  useTauriEvent<CloseRequest>("app:close-requested", setRequest);
 
   const quit = async () => {
     setQuitting(true);
@@ -53,7 +49,7 @@ export function CloseGuardDialog() {
       await appQuit();
     } catch (e: unknown) {
       // 后端出错时仍会退出；若没退出，让用户知道原因并保留对话框以便重试
-      toast.error(t("closeGuard.failed", { reason: e instanceof Error ? e.message : String(e) }));
+      toast.error(t("closeGuard.failed", { reason: errorMessage(e) }));
       setQuitting(false);
     }
   };

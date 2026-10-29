@@ -12,6 +12,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 
 import i18n from "@/shared/i18n";
+import { makeDevice } from "@/test/factories";
 
 const toast = vi.hoisted(() => ({
   success: vi.fn(),
@@ -55,16 +56,7 @@ import { DEFAULT_PREFS, useDiscoveryPrefs } from "../../stores/useDiscoveryPrefs
 import { useScanSession } from "../../stores/useScanSession";
 import { DiscoveryView } from "../DiscoveryView";
 
-const dev = (over: Partial<Device> & { ip: string }): Device => ({
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: null,
-  online: true,
-  lastSeenMs: 0,
-  ...over,
-});
+const dev = (over: Partial<Device> & { ip: string }): Device => makeDevice(over);
 
 const summary = (over: Partial<Record<string, unknown>> = {}) => ({
   targets: 2,

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Loader2, Radar as RadarIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { saveTextFile } from "@/shared/tauri/files";
@@ -17,10 +18,12 @@ import { DeviceTable, type DeviceTableHandle } from "./DeviceTable";
 import { DiscoveryEmptyState } from "./DiscoveryEmptyState";
 import { DiscoveryToolbar } from "./DiscoveryToolbar";
 import { ScanNoReplyAlert, ScanStatus } from "./ScanStatus";
-import type { SegmentOption } from "../../../shared/components/SegmentedControl";
+import type { SegmentOption } from "@/shared/components/SegmentedControl";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useDiscoveryPrefs } from "../stores/useDiscoveryPrefs";
-import { useMediaQuery } from "../../../shared/hooks/useMediaQuery";
+import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
+import { useSlashToFocus } from "@/shared/hooks/useWindowKeydown";
+import { MEDIA_2XL, MEDIA_XL } from "@/shared/lib/breakpoints";
 import { useNetworkScan } from "../hooks/useNetworkScan";
 import { useNewDevices } from "../hooks/useNewDevices";
 import {
@@ -44,17 +47,6 @@ const CATEGORY_ORDER: { value: CategoryFilter; labelKey: string }[] = [
   { value: "network", labelKey: "discovery.filterNetwork" },
 ];
 
-/** 判断键盘事件是否发生在可输入元素里（此时不触发全局快捷键）。 */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
-  );
-}
-
 /**
  * 设备发现页：页头（扫描状态 + 网络扫描）+ 筛选工具栏 + 设备表格，选中设备后右侧并排显示详情面板。
  * 分类 / 在线状态 / 排序会经 Tauri Store 保存，下次打开自动恢复；搜索词与选中项不保存。
@@ -68,8 +60,8 @@ export function DiscoveryView() {
   const { sacnEnabled } = useProtocolFlags();
   const { scanning, last, showNoReply, scan, dismissNoReply } = useNetworkScan();
   const freshIps = useNewDevices();
-  const wide = useMediaQuery("(min-width: 1280px)");
-  const xwide = useMediaQuery("(min-width: 1536px)");
+  const wide = useMediaQuery(MEDIA_XL);
+  const xwide = useMediaQuery(MEDIA_2XL);
 
   const rawCategory = useDiscoveryPrefs((s) => s.category);
   const status = useDiscoveryPrefs((s) => s.status);
@@ -91,17 +83,7 @@ export function DiscoveryView() {
   const tableRef = useRef<DeviceTableHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // `/` 聚焦搜索框（不在输入框里、没有修饰键时）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useSlashToFocus(searchRef);
 
   const counts = useMemo(() => countByCategory(devices), [devices]);
   const onlineCount = useMemo(() => devices.filter((d) => d.online).length, [devices]);
@@ -155,7 +137,7 @@ export function DiscoveryView() {
   const handleRefresh = () => {
     void getDevices()
       .then(setDevices)
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => toast.error(errorMessage(e)));
   };
 
   const handleClearOffline = () => {
@@ -165,7 +147,7 @@ export function DiscoveryView() {
         setDevices(left);
         toast.success(t("discovery.clearedOffline", { n }));
       })
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => toast.error(errorMessage(e)));
   };
 
   const handleExport = () => {
@@ -176,7 +158,7 @@ export function DiscoveryView() {
     // 先本地更新，界面立即反映；后端持久化失败时再提示
     setDevices(devices.map((d) => (d.ip === ip ? { ...d, customName: name || null } : d)));
     void setDeviceName(ip, name).catch((e: unknown) =>
-      toast.error(e instanceof Error ? e.message : String(e)),
+      toast.error(errorMessage(e)),
     );
   };
 

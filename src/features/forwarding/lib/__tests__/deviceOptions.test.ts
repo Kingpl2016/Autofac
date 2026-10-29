@@ -8,18 +8,9 @@ import {
   groupOnlineDevices,
 } from "../deviceOptions";
 import { newDestination, type ForwardDestination } from "../types";
+import { makeDevice } from "@/test/factories";
 
-const dev = (ip: string, over: Partial<Device> = {}): Device => ({
-  ip,
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: null,
-  online: true,
-  lastSeenMs: 0,
-  ...over,
-});
+const dev = (ip: string, over: Partial<Device> = {}): Device => makeDevice({ ip, ...over });
 
 const draft = (over: Partial<ForwardDestination> = {}): ForwardDestination => ({
   ...newDestination(),

@@ -2,9 +2,9 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import type { UniverseSnapshot } from "@/shared/domain/engine";
-import { portAddress, sourcesOf, CARD_SOURCE_LIMIT, type MergeModeName } from "../lib/universeView";
-import { conflictLevel } from "../lib/universeView";
-import { formatPacketRate } from "../lib/format";
+import { conflictLevel, type MergeModeName } from "@/shared/lib/conflict";
+import { formatPacketRate } from "@/shared/lib/format";
+import { portAddress, sourcesOf, CARD_SOURCE_LIMIT } from "../lib/universeView";
 import { ConflictBadge } from "@/shared/components/ConflictBadge";
 
 interface UniverseCardProps {

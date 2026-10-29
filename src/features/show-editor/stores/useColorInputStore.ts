@@ -1,7 +1,8 @@
+import { z } from "zod";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
+import { persistPrefs } from "@/shared/stores/persistPrefs";
 
 /** 色盘“彩色”方式下的输入方式：色轮（HSV）、RGB 数值。 */
 export const COLOR_INPUTS = ["wheel", "rgb"] as const;
@@ -32,16 +33,11 @@ export const useColorInputStore = create<ColorInputState>()(
       input: "wheel",
       setInput: (input) => set({ input }),
     }),
-    {
+    persistPrefs<ColorInputState, ColorInputData>({
       name: "editor-color-input",
       version: 1,
-      storage: createTauriPersistStorage<ColorInputData>(),
-      partialize: ({ input }) => ({ input }),
       // 旧版本存的 `hsl` 方式已去掉（与色轮重复），读回时和其它非法值一样回到色轮
-      merge: (persisted, current) => {
-        const input = (persisted as Partial<ColorInputData> | null)?.input;
-        return COLOR_INPUTS.includes(input as ColorInput) ? { ...current, input: input as ColorInput } : current;
-      },
-    },
+      schema: z.object({ input: z.enum(COLOR_INPUTS).catch("wheel") }),
+    }),
   ),
 );

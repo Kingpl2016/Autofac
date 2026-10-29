@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -107,7 +108,7 @@ export function ForwardingEditor({ initial, prefill = null, onSaved }: Forwardin
       if (destinations.length === 0) applyImport(result.destinations, "replace");
       else setPendingImport(result.destinations);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     }
   };
 

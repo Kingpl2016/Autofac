@@ -3,7 +3,7 @@ import { useEffect, type RefObject } from "react";
 import { useAppearanceRevision } from "@/features/appearance";
 import { drawHeatmap, heatmapCells } from "../lib/heatmap";
 import { collapseRows } from "../lib/recordTimeline";
-import { themeColor } from "../lib/themeColor";
+import { themeColor } from "@/shared/lib/canvas";
 import type { Overview } from "../lib/types";
 
 /** 热力色阶（冷 → 暖）对应的主题变量。 */

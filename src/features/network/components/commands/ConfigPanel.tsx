@@ -10,7 +10,7 @@ import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { useDeviceConfig } from "../../hooks/useDeviceConfig";
 import { netdevBoardOp } from "../../lib/api";
 import { errorText } from "../../lib/errors";
-import { runCommand } from "../../lib/run";
+import { useNetCommand } from "../../hooks/useNetCommand";
 import type { NetDevice } from "../../lib/types";
 import { ConfigForm, GROUP_ANCHOR } from "./ConfigForm";
 import { TokenCard } from "./TokenCard";
@@ -33,6 +33,14 @@ export function ConfigPanel({ device, access, onDirtyChange }: ConfigPanelProps)
   const { config, isLoading, error, save, refetch } = useDeviceConfig(device.id, access.canRead);
   const [rebootNeeded, setRebootNeeded] = useState(false);
   const [confirmReboot, setConfirmReboot] = useState(false);
+  const rebootCommand = useNetCommand({
+    run: () => netdevBoardOp(device.id, 0),
+    success: t("network.board.resetSent"),
+    onSuccess: () => {
+      access.markRebooting();
+      setRebootNeeded(false);
+    },
+  });
 
   if (isLoading) {
     return <Skeleton aria-busy="true" className="h-64 rounded-xl bg-surface-2" />;
@@ -50,13 +58,7 @@ export function ConfigPanel({ device, access, onDirtyChange }: ConfigPanelProps)
     );
   }
 
-  const reboot = async () => {
-    const ok = await runCommand(t, () => netdevBoardOp(device.id, 0), t("network.board.resetSent"));
-    if (ok) {
-      access.markRebooting();
-      setRebootNeeded(false);
-    }
-  };
+  const reboot = () => rebootCommand.run();
 
   return (
     <div className="grid gap-(--density-gutter)">

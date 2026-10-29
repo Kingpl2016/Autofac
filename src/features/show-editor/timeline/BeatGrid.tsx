@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 
+import { useElementSize } from "@/shared/hooks/useElementSize";
 import { beatsBetween } from "../lib/tempo";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -20,17 +21,8 @@ export function BeatGrid() {
   const pxPerSec = useEditorUiStore((s) => s.pxPerSec);
   const scrollLeft = useTimelineScrollStore((s) => s.left);
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const { width } = useElementSize(ref);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const update = () => setWidth(el.clientWidth);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const lines = useMemo(() => {
     if (!tempo || width === 0) return [];

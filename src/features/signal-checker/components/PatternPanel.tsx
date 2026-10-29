@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { StatusPill } from "@/shared/components/StatusPill";
 import { cn } from "@/lib/utils";
-import { listPatterns, setPattern } from "../lib/api";
+import { setPattern } from "../lib/api";
+import { patternsQuery } from "../lib/queries";
 import type { PatternGroup, PatternId, PatternInfo } from "../lib/types";
 import { useCheckerFormStore } from "../stores/useCheckerFormStore";
 import { useGuardStore } from "../stores/useGuardStore";
@@ -43,11 +44,7 @@ export function PatternPanel() {
   const acknowledgeStrobe = useGuardStore((s) => s.acknowledgeStrobe);
   const running = useSenderStore((s) => s.status?.running ?? false);
   const [pendingFlashing, setPendingFlashing] = useState<PatternId | null>(null);
-  const catalog = useQuery({
-    queryKey: ["signal-checker", "patterns"],
-    queryFn: listPatterns,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
+  const catalog = useQuery(patternsQuery);
 
   const infos = catalog.data ?? [];
   const current = infos.find((p) => p.id === pattern);

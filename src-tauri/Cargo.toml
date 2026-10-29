@@ -20,7 +20,12 @@ workspace = true
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# 导出 TypeScript 绑定（仅生成类型时开启）。
+ts = ["dep:ts-rs", "recorder/ts", "player/ts", "netdev/ts", "host-core/ts", "signal-gen/ts", "netif/ts", "settings/ts", "show-engine/ts"]
 [dependencies]
+# 由 DTO 生成前端 TypeScript 类型（仅 `ts` feature；见根目录 package.json 的 gen:types）。
+ts-rs = { workspace = true, optional = true }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -106,6 +111,9 @@ dirs = "=7.0.0"
 tempfile = "=3.27.0"
 socket2 = "0.5"
 bytes = "1"
+# 由 Rust DTO 生成前端 TypeScript 类型：各 crate 以可选依赖 + `ts` feature 引入，
+# 只在 `cargo test --all-features export_bindings` 时导出到 `src/bindings`，不进发布产物。
+ts-rs = "=12.0.1"
 # 性能基准（仅 dev-dependencies 使用）：带分配计数的微基准框架。
 divan = "=0.1.21"
 # 小键（u16 / IpAddr / 序号）哈希表：FxHash 比默认 SipHash 快；键均来自本机内部，无 HashDoS 风险。

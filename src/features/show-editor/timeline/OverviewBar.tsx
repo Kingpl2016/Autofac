@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAppearanceRevision } from "@/features/appearance";
-import { clamp } from "../lib/time";
+import { useElementSize } from "@/shared/hooks/useElementSize";
+import { prepareCanvas } from "@/shared/lib/canvas";
+import { clamp } from "@/shared/lib/math";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { contentWidth, START_LEFT } from "./timelineData";
@@ -31,18 +33,8 @@ export function OverviewBar({ onScrollTo }: { onScrollTo: (left: number) => void
   const revision = useAppearanceRevision();
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [width, setWidth] = useState(0);
+  const { width } = useElementSize(wrapRef);
   const dragging = useRef<{ offset: number } | null>(null);
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const measure = () => setWidth(el.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const total = Math.max(1, contentWidth(durationMs, pxPerSec));
   const scale = width / total;
@@ -52,13 +44,9 @@ export function OverviewBar({ onScrollTo }: { onScrollTo: (left: number) => void
   // 片段分布：每条轨道一行细线，颜色按片段类型
   useEffect(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || width === 0) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(OVERVIEW_HEIGHT * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, OVERVIEW_HEIGHT);
+    if (!canvas || width === 0) return;
+    const ctx = prepareCanvas(canvas, width, OVERVIEW_HEIGHT);
+    if (!ctx) return;
     const style = getComputedStyle(canvas);
     const colors = Object.fromEntries(
       Object.entries(KIND_TOKEN).map(([k, v]) => [k, style.getPropertyValue(v).trim() || "gray"]),

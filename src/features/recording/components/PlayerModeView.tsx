@@ -11,14 +11,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { EnterPlayerCard, PlayerModeActions } from "@/features/app-mode";
+import { MEDIA_XL } from "@/shared/lib/breakpoints";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { LibraryPanel } from "./LibraryPanel";
 import { PlayerPanel } from "./PlayerPanel";
-
-/** 节目库常驻侧栏所需的最小窗口宽度（Tailwind `xl`）。 */
-const WIDE_QUERY = "(min-width: 80rem)";
 
 /**
  * 播放器页（`/player`）：播放器模式的主页。
@@ -34,7 +32,7 @@ export function PlayerModeView() {
   const { t } = useTranslation();
   const playerMode = useEngineStatusStore((s) => s.appMode === "player");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const wide = useMediaQuery(WIDE_QUERY);
+  const wide = useMediaQuery(MEDIA_XL);
 
   return (
     <>

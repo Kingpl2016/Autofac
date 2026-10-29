@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { X } from "lucide-react";
@@ -9,7 +9,9 @@ import { clearLoop } from "../hooks/timelineObjectActions";
 import { normalizeDuration } from "../lib/duration";
 import { MAX_DURATION_MS, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
-import { clamp, formatTimecode, snapToFrame } from "../lib/time";
+import { useElementSize } from "@/shared/hooks/useElementSize";
+import { clamp } from "@/shared/lib/math";
+import { formatTimecode, snapToFrame } from "../lib/time";
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -36,7 +38,7 @@ export function Ruler() {
   // 小节·拍刻度需要节拍设置；没有时退回时间码
   const bars = useEditorPrefsStore((s) => s.rulerFormat === "bars") && tempo !== null;
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const { width } = useElementSize(ref);
   const seeking = useRef(false);
   /** 拖动循环端点时的预览（松手才写入工程，一次手势一步撤销） */
   const [edgeDrag, setEdgeDrag] = useState<{ edge: "in" | "out"; ms: number } | null>(null);
@@ -46,15 +48,6 @@ export function Ruler() {
   const [endDrag, setEndDrag] = useState<number | null>(null);
   const endMs = endDrag ?? durationMs;
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setWidth(el.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const xOf = (ms: number) => START_LEFT + (ms / 1000) * pxPerSec - scrollLeft;
   const msAt = (clientX: number) => {

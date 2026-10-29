@@ -5,12 +5,13 @@ import { Clapperboard, FolderOpen, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
+import { MEDIA_2XL, MEDIA_XL } from "@/shared/lib/breakpoints";
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatBytesIec } from "@/shared/lib/format";
 import {
-  formatBytes,
-  messageOf,
   ProgramDeleteDialog,
   RECORDINGS_QUERY_KEY,
   recordingsList,
@@ -22,6 +23,7 @@ import { recordingOpenDir } from "@/features/settings";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useNow } from "@/shared/hooks/useNow";
+import { useSlashToFocus } from "@/shared/hooks/useWindowKeydown";
 import { useLibraryUrlState } from "../hooks/useLibraryUrlState";
 import { countByKind, filterEntries, nextSort, sortEntries, type LibrarySortKey } from "../lib/libraryFilters";
 import { BulkActionBar } from "./BulkActionBar";
@@ -31,18 +33,8 @@ import { LibraryTable, type LibraryTableHandle } from "./LibraryTable";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ProgramDetailPanel } from "./ProgramDetailPanel";
 
-/** 详情面板与表格并排所需的最小窗口宽度（Tailwind `xl`）；更窄时详情放进抽屉。 */
-const WIDE_QUERY = "(min-width: 80rem)";
-/** 表格显示全部列所需的最小窗口宽度（`2xl`）；详情并排时也收起次要列。 */
-const ROOMY_QUERY = "(min-width: 96rem)";
 /** 加载中占位的行数。 */
 const SKELETON_ROWS = 8;
-
-/** 判断键盘事件是否发生在可输入元素里（此时不触发页面快捷键）。 */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 /**
  * 节目库页面：页头（打开录制目录 / 刷新 / 新建编辑器节目）+ 搜索与类别筛选 + 可排序表格，
@@ -54,8 +46,8 @@ export function LibraryView() {
   const { t } = useTranslation();
   // 节目库页面本身处于播放器模式：点“回放此节目”直接在本页播放，不跳转到播放器页
   const actions = useProgramActions(undefined, { stayOnPage: true });
-  const wide = useMediaQuery(WIDE_QUERY);
-  const roomy = useMediaQuery(ROOMY_QUERY);
+  const wide = useMediaQuery(MEDIA_XL);
+  const roomy = useMediaQuery(MEDIA_2XL);
   const nowMs = useNow(30_000);
   const lastResult = useRecordingStore((s) => s.last);
   const [url, update] = useLibraryUrlState();
@@ -75,16 +67,7 @@ export function LibraryView() {
     if (lastResult) refresh();
   }, [lastResult, refresh]);
 
-  // `/` 聚焦搜索框
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useSlashToFocus(searchRef);
 
   const numbers = useMemo(() => new Map(entries.map((e, i) => [e.path, i + 1])), [entries]);
   const counts = useMemo(() => countByKind(entries), [entries]);
@@ -149,7 +132,7 @@ export function LibraryView() {
   const clearFilters = () => update({ q: "", kind: "all" });
   const handleSort = (key: LibrarySortKey) => update({ sort: nextSort(url.sort, key) });
 
-  const openDir = () => void recordingOpenDir().catch((e: unknown) => toast.error(messageOf(e)));
+  const openDir = () => void recordingOpenDir().catch((e: unknown) => toast.error(errorMessage(e)));
 
   const uploadChecked = async () => {
     setBulkUploading(true);
@@ -179,7 +162,7 @@ export function LibraryView() {
       <PageHeader
         className="mb-0"
         title={t("library.title")}
-        subtitle={t("library.subtitle", { n: entries.length, size: formatBytes(totalBytes) })}
+        subtitle={t("library.subtitle", { n: entries.length, size: formatBytesIec(totalBytes) })}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={openDir}>
@@ -231,7 +214,7 @@ export function LibraryView() {
             ) : list.isError ? (
               <LibraryEmptyState
                 kind="error"
-                reason={messageOf(list.error)}
+                reason={errorMessage(list.error)}
                 onClearFilters={clearFilters}
                 onRetry={refresh}
               />

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["scripts/*.mjs", "src/shared/plugin/index.ts"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/*.mjs"],
+  "ignore": ["src/components/ui/**", "src/bindings/**"],
+  "ignoreDependencies": ["tailwindcss", "tw-animate-css"],
+  "ignoreUnresolved": ["^/.+\\.html\\?raw$"],
+  "ignoreExportsUsedInFile": true,
+  "rules": {
+    "duplicates": "warn"
+  }
+}

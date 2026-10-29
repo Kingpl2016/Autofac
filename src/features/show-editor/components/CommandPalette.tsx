@@ -1,10 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Command as Cmdk } from "cmdk";
 import { Search } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { effectiveKeys, formatChord, rankCommands, type Command, type RankedCommand } from "../lib/commands";
+import { formatChord } from "@/shared/lib/keyboard";
+import { effectiveKeys, rankCommands, type Command, type RankedCommand } from "../lib/commands";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useKeymapStore } from "../stores/useKeymapStore";
 
@@ -35,8 +37,9 @@ function Highlighted({ text, indices }: { text: string; indices: readonly number
 /**
  * 命令面板（Ctrl+K）：模糊搜索全部编辑器命令并执行，右侧显示当前生效的快捷键。
  *
- * 键盘：↑ / ↓ 移动、Enter 执行、Esc 关闭；不可用的命令置灰且不能执行。
- * 采用 WAI-ARIA combobox + listbox 模式（焦点留在搜索框，`aria-activedescendant` 指向当前项）。
+ * 列表交互（↑ / ↓ / Home / End 移动并循环、Enter 执行、指针悬停选中、combobox + listbox 语义）由 cmdk 提供；
+ * 排序与命中高亮用编辑器自己的模糊匹配（`rankCommands`），所以关闭了 cmdk 的内置过滤。
+ * 不可用的命令置灰，键盘选择会跳过它们。
  *
  * @param props.commands 全部命令（来自 `useEditorHotkeys`）。
  */
@@ -63,9 +66,6 @@ function PaletteBody({ commands, onClose }: { commands: readonly Command[]; onCl
   const { t } = useTranslation();
   const overrides = useKeymapStore((s) => s.overrides);
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const listId = useId();
-  const listRef = useRef<HTMLUListElement>(null);
 
   const results = useMemo<RankedCommand[]>(() => {
     const title = (c: Command) => t(c.titleKey);
@@ -77,118 +77,68 @@ function PaletteBody({ commands, onClose }: { commands: readonly Command[]; onCl
     return rankCommands(commands, query, title, category);
   }, [commands, query, t]);
 
-  const current = Math.min(active, Math.max(0, results.length - 1));
-  const optionId = (i: number) => `${listId}-opt-${i}`;
-
-  // 让当前项保持在可视范围内
-  useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${current}"]`);
-    el?.scrollIntoView?.({ block: "nearest" });
-  }, [current]);
-
-  const run = (item: RankedCommand | undefined) => {
-    if (!item) return;
-    const { command } = item;
+  const run = (command: Command) => {
     if (command.enabled && !command.enabled()) return;
     onClose();
     command.run();
-  };
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      setActive(results.length === 0 ? 0 : (current + 1) % results.length);
-    } else if (e.key === "ArrowUp") {
-      setActive(results.length === 0 ? 0 : (current - 1 + results.length) % results.length);
-    } else if (e.key === "Home") {
-      setActive(0);
-    } else if (e.key === "End") {
-      setActive(Math.max(0, results.length - 1));
-    } else if (e.key === "Enter") {
-      run(results[current]);
-    } else {
-      return;
-    }
-    e.preventDefault();
   };
 
   return (
     <>
       <DialogTitle className="sr-only">{t("editor.commands.paletteTitle")}</DialogTitle>
       <DialogDescription className="sr-only">{t("editor.commands.paletteHint")}</DialogDescription>
-      <div className="flex items-center gap-3 border-b border-border px-4 pr-12">
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <input
-          role="combobox"
-          aria-expanded
-          aria-controls={listId}
-          aria-activedescendant={results.length > 0 ? optionId(current) : undefined}
-          aria-autocomplete="list"
-          aria-label={t("editor.commands.paletteSearch")}
-          placeholder={t("editor.commands.paletteSearch")}
-          className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setActive(0);
-          }}
-          onKeyDown={onKeyDown}
-        />
-      </div>
-      <ul
-        ref={listRef}
-        id={listId}
-        role="listbox"
-        aria-label={t("editor.commands.paletteTitle")}
-        className="max-h-[50vh] overflow-y-auto p-1.5"
-      >
-        {results.length === 0 && (
-          <li role="presentation" className="px-3 py-6 text-center text-sm text-muted-foreground">
-            {t("editor.commands.paletteEmpty")}
-          </li>
-        )}
-        {results.map((item, i) => {
-          const { command } = item;
-          const disabled = command.enabled ? !command.enabled() : false;
-          const keys = effectiveKeys(command, overrides);
-          return (
-            <li
-              key={command.id}
-              id={optionId(i)}
-              data-index={i}
-              role="option"
-              aria-selected={i === current}
-              aria-disabled={disabled || undefined}
-              title={disabled ? t("editor.commands.disabled") : undefined}
-              className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm",
-                i === current && "bg-accent text-accent-foreground",
-                disabled && "cursor-not-allowed opacity-50",
-              )}
-              onPointerMove={() => setActive(i)}
-              onClick={() => run(item)}
-            >
-              <span className="w-14 shrink-0 text-xs text-muted-foreground">
-                {t(`editor.commands.category.${command.category}`)}
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                <Highlighted text={item.title} indices={item.match.indices} />
-              </span>
-              {keys.length > 0 && (
-                <span className="flex shrink-0 gap-1">
-                  {keys.slice(0, 2).map((k) => (
-                    <kbd
-                      key={k}
-                      className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                    >
-                      {formatChord(k)}
-                    </kbd>
-                  ))}
+      <Cmdk label={t("editor.commands.paletteSearch")} shouldFilter={false} loop vimBindings={false}>
+        <div className="flex items-center gap-3 border-b border-border px-4 pr-12">
+          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Cmdk.Input
+            placeholder={t("editor.commands.paletteSearch")}
+            className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            value={query}
+            onValueChange={setQuery}
+          />
+        </div>
+        <Cmdk.List label={t("editor.commands.paletteTitle")} className="max-h-[50vh] overflow-y-auto p-1.5">
+          <Cmdk.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">{t("editor.commands.paletteEmpty")}</Cmdk.Empty>
+          {results.map((item) => {
+            const { command } = item;
+            const disabled = command.enabled ? !command.enabled() : false;
+            const keys = effectiveKeys(command, overrides);
+            return (
+              <Cmdk.Item
+                key={command.id}
+                value={command.id}
+                disabled={disabled}
+                title={disabled ? t("editor.commands.disabled") : undefined}
+                onSelect={() => run(command)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm",
+                  "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+                  "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50",
+                )}
+              >
+                <span className="w-14 shrink-0 text-xs text-muted-foreground">
+                  {t(`editor.commands.category.${command.category}`)}
                 </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                <span className="min-w-0 flex-1 truncate">
+                  <Highlighted text={item.title} indices={item.match.indices} />
+                </span>
+                {keys.length > 0 && (
+                  <span className="flex shrink-0 gap-1">
+                    {keys.slice(0, 2).map((k) => (
+                      <kbd
+                        key={k}
+                        className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                      >
+                        {formatChord(k)}
+                      </kbd>
+                    ))}
+                  </span>
+                )}
+              </Cmdk.Item>
+            );
+          })}
+        </Cmdk.List>
+      </Cmdk>
       <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground" aria-hidden>
         {t("editor.commands.paletteHint")}
       </div>

@@ -19,6 +19,7 @@ const PORTS_PER_BIND: u8 = 4;
 /// 设备类别。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum DeviceCategory {
     /// Art-Net 节点。
     ArtNet,
@@ -35,6 +36,7 @@ pub enum DeviceCategory {
 /// 单个发现到的设备（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Device {
     /// IPv4 地址字符串。
     pub ip: String,
@@ -63,6 +65,12 @@ pub struct Device {
     /// OEM 码；节点未上报时为 `None`。
     pub oem: Option<u16>,
     /// 设备样式：`node` / `controller` / `media` / `route` / `backup` / `config` / `visual`。
+    #[cfg_attr(
+        feature = "ts",
+        ts(
+            type = r#""node" | "controller" | "media" | "route" | "backup" | "config" | "visual" | null"#
+        )
+    )]
     pub style: Option<String>,
     /// 端口列表（多 bind 设备已合并，`index` 为跨 bind 的唯一序号）。
     pub ports: Vec<NodePort>,

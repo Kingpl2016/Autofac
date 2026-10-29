@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { AppInfo } from "../api";
-import { buildDiagnostics, formatBytes, formatPublishDate } from "../format";
+import { formatBytes } from "@/shared/lib/format";
+import { buildDiagnostics, formatPublishDate } from "../format";
 
 describe("formatBytes", () => {
   it("按 1024 进位并保留一位小数", () => {

@@ -53,6 +53,7 @@ pub const ERR_DISK_LOW: &str = "disk_low";
 /// 启动录制的参数（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RecordingStartArgs {
     /// 节目显示名。
     #[serde(default)]
@@ -74,6 +75,7 @@ pub struct RecordingStartArgs {
 /// 启动录制的结果。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RecordingStartResult {
     /// 最终 `.artrec` 路径（完成后才存在）。
     pub path: String,
@@ -84,6 +86,7 @@ pub struct RecordingStartResult {
 /// 录制实时状态（`recording:stats` 事件载荷与 `recording_status` 返回值）。
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RecordingStatus {
     /// 是否正在录制。
     pub recording: bool,
@@ -114,6 +117,7 @@ pub struct RecordingStatus {
 /// 录制活动时间线的前端 DTO（行数据为 Base64 字符串，与时间线概览同一编码）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ActivityDto {
     /// 桶布局代次，每次合并桶加一。
     pub generation: u32,
@@ -162,6 +166,7 @@ struct StatsEvent<'a> {
 /// 一个已完成的录制文件。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct FinishedFile {
     /// `.artrec` 路径。
     pub path: String,
@@ -178,6 +183,7 @@ pub struct FinishedFile {
 /// 一次录制（可能含多个分段）的最终结果。
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RecordingResult {
     /// 已完成的文件（按分段顺序）。
     pub files: Vec<FinishedFile>,
@@ -192,6 +198,7 @@ pub struct RecordingResult {
 /// 录制被自动停止的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum StopReason {
     /// 磁盘剩余空间低于临界值，已自动收尾并停止。
     Disk,
@@ -200,6 +207,7 @@ pub enum StopReason {
 /// 录制目录所在卷的空间信息（`recording_disk_info` 返回值）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct DiskInfo {
     /// 被查询的目录。
     pub path: String,

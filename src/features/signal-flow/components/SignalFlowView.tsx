@@ -22,10 +22,11 @@ import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Segmented } from "@/shared/components/Segmented";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
+import { MEDIA_REDUCED_MOTION } from "@/shared/lib/breakpoints";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { useOutputStore } from "@/shared/stores/outputStore";
 import { useResolvedMode } from "@/features/appearance";
-import { useForwardingQuery } from "@/features/forwarding/hooks/useForwarding";
+import { useForwardingQuery } from "@/features/forwarding";
 import { usePlayerStore } from "@/features/recording";
 import { useProtocolFlags, useSettingsQuery } from "@/features/settings";
 import { useAnnounceSignal } from "../hooks/useAnnounceSignal";
@@ -72,7 +73,7 @@ function SignalFlowContent() {
   const view = useSignalFlowPrefs((s) => s.view);
   const setView = useSignalFlowPrefs((s) => s.setView);
   const hintId = useId();
-  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)", false);
+  const reduced = useMediaQuery(MEDIA_REDUCED_MOTION, false);
   const { fitView } = useReactFlow();
 
   const forwardingDestinations = useMemo(

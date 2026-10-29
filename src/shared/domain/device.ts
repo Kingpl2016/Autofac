@@ -1,51 +1,21 @@
-/** 设备发现相关类型（对应 Rust discovery::Device）。 */
+/** 设备发现相关类型：由 Rust `discovery::Device` 等经 ts-rs 生成（`npm run gen:types`）。 */
 
-export type DeviceCategory =
-  | "artNet"
-  | "sacn"
-  | "cluster"
-  | "computer"
-  | "network";
+import type { Device } from "@/bindings/Device";
 
-/** 端口方向：输入口把外部 DMX 送上网络，输出口把网络数据输出为 DMX。 */
-export type PortDirection = "input" | "output";
+export type { Device };
+export type { DeviceCategory } from "@/bindings/DeviceCategory";
+/** 节点上报的单个端口（Rust `artnet_net::artnet::NodePort`）。 */
+export type { NodePort } from "@/bindings/NodePort";
 
 /** 设备样式码（Art-Net `Style`）的稳定标识。 */
-export type DeviceStyle =
-  | "node"
-  | "controller"
-  | "media"
-  | "route"
-  | "backup"
-  | "config"
-  | "visual";
+export type DeviceStyle = NonNullable<Device["style"]>;
 
-/** 节点上报的单个端口（对应 Rust `artnet_net::artnet::NodePort`）。 */
-export interface NodePort {
-  /** 端口序号，从 0 起；多 bind 设备跨 bind 唯一。 */
-  index: number;
-  direction: PortDirection;
-  /** 15 位 Port-Address。 */
-  universe: number;
-  /** 当前是否有数据流。 */
-  active: boolean;
-}
-
-export interface Device {
-  ip: string;
-  hostname: string | null;
-  customName: string | null;
-  mac: string | null;
-  category: DeviceCategory;
-  artnetPorts: number | null;
-  online: boolean;
-  lastSeenMs: number;
-  /** 以下为 ArtPollReply 扩展字段；旧后端或非 Art-Net 设备可能缺省。 */
-  shortName?: string | null;
-  nodeReport?: string | null;
-  firmware?: string | null;
-  manufacturer?: string | null;
-  oem?: number | null;
-  style?: DeviceStyle | null;
-  ports?: NodePort[];
+/**
+ * 设备的展示名：自定义名 > 主机名 > 短名 > IP。
+ *
+ * @param d 设备。
+ * @returns 用于展示与按名称排序的字符串。
+ */
+export function displayName(d: Pick<Device, "ip" | "customName" | "hostname" | "shortName">): string {
+  return d.customName || d.hostname || d.shortName || d.ip;
 }

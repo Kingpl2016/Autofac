@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/shared/lib/clipboard";
 import { saveTextFile } from "@/shared/tauri/files";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { netdevLogs } from "../../lib/api";
@@ -68,14 +69,7 @@ export function LogPanel({ device, access, active }: LogPanelProps) {
     if (el) setPinned(isNearBottom(el.scrollTop, el.clientHeight, el.scrollHeight));
   };
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(lines.join("\n"));
-      toast.success(t("network.logs.copied"));
-    } catch {
-      toast.error(t("network.logs.copyFailed"));
-    }
-  };
+  const copy = () => copyText(lines.join("\n"), { success: t("network.logs.copied"), failure: t("network.logs.copyFailed") });
 
   const saveAs = async () => {
     try {

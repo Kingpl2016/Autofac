@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -11,7 +10,7 @@ import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { netdevPutConfig } from "../../lib/api";
 import { netKeys } from "../../lib/queryKeys";
-import { runCommand } from "../../lib/run";
+import { useNetCommand } from "../../hooks/useNetCommand";
 import type { NetDevice } from "../../lib/types";
 import { validateToken } from "../../lib/validate";
 
@@ -29,26 +28,25 @@ interface TokenCardProps {
  */
 export function TokenCard({ device, access, tokenSet }: TokenCardProps) {
   const { t } = useTranslation();
-  const client = useQueryClient();
   const [token, setToken] = useState("");
   const [touched, setTouched] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
   // 空串对"设置"无意义（清除有独立按钮），所以也算不合法
   const invalid = token === "" ? "network.form.tokenInvalid" : validateToken(token);
 
-  const apply = async (value: string, ok: string) => {
-    setBusy(true);
-    const done = await runCommand(t, () => netdevPutConfig(device.id, { httpToken: value }), ok);
-    if (done) {
+  const putToken = useNetCommand<{ value: string; ok: string }>({
+    run: ({ value }) => netdevPutConfig(device.id, { httpToken: value }),
+    success: ({ ok }) => ok,
+    onSuccess: () => {
       setToken("");
       setTouched(false);
-      await client.invalidateQueries({ queryKey: netKeys.devices });
-      await client.invalidateQueries({ queryKey: netKeys.config(device.id) });
-    }
-    setBusy(false);
-  };
+    },
+    invalidate: [netKeys.devices, netKeys.config(device.id)],
+    invalidateOn: "success",
+  });
+  const busy = putToken.pending;
+  const apply = (value: string, ok: string) => void putToken.run({ value, ok });
 
   return (
     <SurfacePanel

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { agoParts, formatBytes, formatClock, formatHourMinute, formatSpeed, percentOf } from "../format";
+import { formatBytes } from "@/shared/lib/format";
+import { agoParts, formatClock, formatHourMinute, formatSpeed, percentOf } from "../format";
 
 describe("format", () => {
   it("formatBytes 按 1024 进位", () => {

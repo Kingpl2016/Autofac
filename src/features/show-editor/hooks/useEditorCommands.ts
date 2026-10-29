@@ -12,7 +12,7 @@ import { addSection, sectionAt } from "../lib/sections";
 import { hasProgrammerValues, recordScene } from "../lib/programmer";
 import { setLoopEdge, setLoopRange } from "../lib/ops";
 import { OUTPUT_FPS } from "../lib/project";
-import { clamp } from "../lib/time";
+import { clamp } from "@/shared/lib/math";
 import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, zoomPxPerSec } from "../lib/zoom";
 import { CENTER_VIEWS, useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { LIBRARY_TABS, useEditorUiStore } from "../stores/useEditorUiStore";

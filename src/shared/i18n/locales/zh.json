@@ -3275,9 +3275,6 @@
       "strobe": "频闪"
     }
   },
-  "placeholder": {
-    "comingSoon": "该功能将在后续任务中实现"
-  },
   "mode": {
     "switchLabel": "运行模式",
     "live": "实时模式",

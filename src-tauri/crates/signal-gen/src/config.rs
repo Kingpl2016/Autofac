@@ -21,6 +21,7 @@ pub const SACN_PORT: u16 = 5568;
 /// 发送协议（序列化为 `"artNet"` / `"sacn"`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum SignalProtocol {
     /// Art-Net（ArtDmx）。
     ArtNet,
@@ -59,6 +60,7 @@ impl SignalProtocol {
 /// 配置校验错误。序列化为 `{ "code": "...", ... }`，前端按 `code` 本地化文案。
 #[derive(Debug, Clone, PartialEq, Eq, Error, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ConfigError {
     /// 目标不是合法的 IPv4 地址。
     #[error("目标 IP `{value}` 不是合法的 IPv4 地址")]
@@ -101,6 +103,7 @@ pub enum ConfigError {
 /// 用户填写的发送配置（未经校验）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SignalConfig {
     /// 目标 IPv4 地址（单播、广播均可）。
     pub target_ip: String,

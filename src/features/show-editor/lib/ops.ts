@@ -12,7 +12,8 @@ import {
   type Track,
 } from "./project";
 import { MAX_BPM, MIN_BPM } from "./tempo";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 对工程的纯编辑操作。

@@ -7,6 +7,7 @@ use serde::Serialize;
 /// 一块网络接口的精简信息。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct NetworkInterfaceDto {
     /// 接口名称。
     pub name: String,

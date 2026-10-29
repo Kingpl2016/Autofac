@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { MetricChip } from "../MetricChip";
-import { Segmented } from "../../../../../shared/components/Segmented";
-import { StatusPill, type StatusTone } from "../../../../../shared/components/StatusPill";
+import { Segmented } from "@/shared/components/Segmented";
+import { StatusPill, type StatusTone } from "@/shared/components/StatusPill";
 import { TimeCode } from "../TimeCode";
 
 afterEach(() => cleanup());

@@ -1,4 +1,4 @@
-import type { Device, DeviceCategory } from "@/shared/domain/device";
+import { displayName, type Device, type DeviceCategory } from "@/shared/domain/device";
 
 /** 分类筛选：全部或某一类。 */
 export type CategoryFilter = "all" | DeviceCategory;
@@ -42,16 +42,6 @@ export function ipToNumber(ip: string): number {
   return ip
     .split(".")
     .reduce((acc, part) => acc * 256 + (Number.parseInt(part, 10) || 0), 0);
-}
-
-/**
- * 设备展示名：自定义名 > 主机名 > 短名 > IP。
- *
- * @param d 设备。
- * @returns 用于展示与按名称排序的字符串。
- */
-export function displayName(d: Device): string {
-  return d.customName || d.hostname || d.shortName || d.ip;
 }
 
 /**

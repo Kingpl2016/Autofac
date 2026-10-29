@@ -14,7 +14,9 @@ import type {
   OtaReceipt,
   OtaStatus,
   PlayerStatus,
+  ProgramAssign,
   Progress,
+  SavedDevice,
   UploadReceipt,
 } from "./types";
 
@@ -29,8 +31,8 @@ export function netdevList(): Promise<NetDevice[]> {
 }
 
 /** 新增或更新设备，返回保存后的设备（不含 `hasToken`）。 */
-export function netdevSave(input: NetDeviceInput): Promise<Omit<NetDevice, "hasToken">> {
-  return invoke("netdev_save", { input });
+export function netdevSave(input: NetDeviceInput): Promise<SavedDevice> {
+  return invoke<SavedDevice>("netdev_save", { input });
 }
 
 /** 删除设备（同时清除其 Token）。 */
@@ -129,10 +131,7 @@ export function netdevRenameFile(id: string, from: string, to: string): Promise<
  * 新固件走设备端原子批量重排（`POST /api/programs/reorder`），要么全部生效要么不改动；
  * 旧固件退回逐条分配，中途失败会尽力回滚。节目号与文件名都不得重复。
  */
-export function netdevAssignPrograms(
-  id: string,
-  assignments: ReadonlyArray<{ no: number; file: string }>,
-): Promise<void> {
+export function netdevAssignPrograms(id: string, assignments: readonly ProgramAssign[]): Promise<void> {
   return invoke<void>("netdev_assign_programs", { id, assignments });
 }
 

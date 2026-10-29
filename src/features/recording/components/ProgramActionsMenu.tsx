@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ProgramHeaderTags } from "./ProgramHeaderTags";
 import type { ProgramActions } from "../hooks/useProgramActions";
-import { formatBytes } from "../lib/filter";
+import { formatBytesIec } from "@/shared/lib/format";
 import type { LibraryEntry } from "../lib/types";
 
 interface ProgramActionsMenuProps {
@@ -49,7 +49,7 @@ export function ProgramActionsMenu({
   const when = new Date(entry.modifiedUnixMs).toLocaleString();
   const meta = t("recording.libMeta", {
     frames: entry.frames,
-    size: formatBytes(entry.bytes),
+    size: formatBytesIec(entry.bytes),
     n: entry.universes.length,
   });
   const canEditExport = entry.valid && entry.exported;

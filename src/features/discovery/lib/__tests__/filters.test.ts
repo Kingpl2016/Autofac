@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Device } from "@/shared/domain/device";
+import { displayName, type Device } from "@/shared/domain/device";
 import {
   originalName,
   countByCategory,
-  displayName,
   filterDevices,
   ipToNumber,
   isFiltering,
@@ -12,17 +11,9 @@ import {
   sortDevices,
   type DeviceFilter,
 } from "../filters";
+import { makeDevice } from "@/test/factories";
 
-const dev = (over: Partial<Device> & { ip: string }): Device => ({
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: null,
-  online: true,
-  lastSeenMs: 0,
-  ...over,
-});
+const dev = (over: Partial<Device> & { ip: string }): Device => makeDevice(over);
 
 const ALL: DeviceFilter = { category: "all", status: "all", query: "" };
 

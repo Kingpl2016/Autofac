@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
-import { parseChord, type KeymapOverrides } from "../lib/commands";
+import { parseChord } from "@/shared/lib/keyboard";
+import { type KeymapOverrides } from "../lib/commands";
 
 /** 落盘的快捷键自定义。 */
 export interface KeymapData {

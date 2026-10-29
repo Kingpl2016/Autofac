@@ -8,7 +8,12 @@ description = "核心插件：应用配置 + 信号引擎 + 设备发现 + 转�
 [lints]
 workspace = true
 
+[features]
+# 导出 TypeScript 绑定（仅生成类型时开启）。
+ts = ["dep:ts-rs", "artnet-net/ts", "signal-engine/ts", "discovery/ts", "forwarding/ts", "settings/ts", "recorder/ts", "player/ts", "netif/ts"]
 [dependencies]
+# 由 DTO 生成前端 TypeScript 类型（仅 `ts` feature；见根目录 package.json 的 gen:types）。
+ts-rs = { workspace = true, optional = true }
 tauri = { version = "2", features = [] }
 artnet-net = { path = "../artnet-net" }
 signal-engine = { path = "../signal-engine" }

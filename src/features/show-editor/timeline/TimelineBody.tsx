@@ -13,6 +13,7 @@ import { compileCached } from "../engine/compiledCache";
 import { useEngine } from "../engine/useEngine";
 import { sampleLanes, stripGradient } from "../lib/colorLanes";
 import i18n from "@/shared/i18n";
+import { useElementSize } from "@/shared/hooks/useElementSize";
 import { announce } from "@/shared/stores/announcerStore";
 import { placeCues } from "../lib/cueOps";
 import { duplicateCuesTo } from "../lib/editOps";
@@ -124,7 +125,10 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
   const setScroll = useTimelineScrollStore((s) => s.set);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  // 视口尺寸（虚拟化与跟随用）
+  const size = useElementSize(scrollRef, {
+    onResize: ({ width }) => useTimelineScrollStore.getState().setViewWidth(width),
+  });
   const drag = useRef<DragState | null>(null);
   const [preview, setPreview] = useState<DragResult | null>(null);
   const [marquee, setMarquee] = useState<MarqueeState | null>(null);
@@ -159,20 +163,6 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     }),
     [],
   );
-
-  // 视口尺寸（虚拟化与跟随用）
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const measure = () => {
-      setSize({ width: el.clientWidth, height: el.clientHeight });
-      useTimelineScrollStore.getState().setViewWidth(el.clientWidth);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   // 素材库拖放需要的视口信息
   useEffect(

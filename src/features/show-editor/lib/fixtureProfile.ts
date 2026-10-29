@@ -1,5 +1,4 @@
 import {
-  FIXTURE_CAPABILITIES,
   modelProfile,
   type FixtureCapability,
   type FixtureModel,
@@ -15,7 +14,6 @@ import type { AttrKey, Look, ShowProject, Track } from "./project";
  * 这里按轨道 / 一组灯具汇总，时间线据此显示 / 过滤片段，检查器只显示支持的属性组。
  */
 
-export { FIXTURE_CAPABILITIES };
 export type { FixtureCapability, FixtureProfile, FixtureType };
 
 /**

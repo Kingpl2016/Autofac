@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 /// 灯光信号协议类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Protocol {
     /// Art-Net 4。
     ArtNet,

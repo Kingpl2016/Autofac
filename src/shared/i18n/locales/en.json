@@ -3275,9 +3275,6 @@
       "strobe": "Strobe"
     }
   },
-  "placeholder": {
-    "comingSoon": "This feature will be implemented in a later task"
-  },
   "mode": {
     "switchLabel": "Run mode",
     "live": "Live mode",

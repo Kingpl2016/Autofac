@@ -2,20 +2,11 @@
  * 录制磁盘空间相关类型与格式化，与 Rust `recorder::disk` / `host_core::recording::DiskInfo` 对应。
  */
 
-/** 空间等级（对应 `recorder::DiskLevel`）。 */
-export type DiskLevel = "ok" | "low" | "critical";
+/** 空间等级（`recorder::DiskLevel`，ts-rs 生成）。 */
+export type { DiskLevel } from "@/bindings/DiskLevel";
 
-/** 录制目录所在卷的空间信息（对应 `host_core::recording::DiskInfo`）。 */
-export interface DiskInfo {
-  /** 被查询的目录 */
-  path: string;
-  /** 剩余字节数；无法查询时为 null */
-  freeBytes: number | null;
-  /** 空间等级；无法查询时为 ok */
-  level: DiskLevel;
-  /** 是否允许开始录制；无法查询时为 true */
-  canStart: boolean;
-}
+/** 录制目录所在卷的空间信息（`host_core::recording::DiskInfo`，ts-rs 生成）。 */
+export type { DiskInfo } from "@/bindings/DiskInfo";
 
 /** 开始录制所需的最小剩余空间（字节），与后端 `MIN_START_FREE_BYTES` 一致。 */
 export const MIN_START_FREE_BYTES = 500_000_000;

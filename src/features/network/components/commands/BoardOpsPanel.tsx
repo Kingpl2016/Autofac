@@ -18,7 +18,7 @@ import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { netdevBoardOp } from "../../lib/api";
-import { runCommand } from "../../lib/run";
+import { useNetCommand } from "../../hooks/useNetCommand";
 import type { NetDevice } from "../../lib/types";
 
 /** 设备操作码。 */
@@ -40,10 +40,15 @@ export function BoardOpsPanel({ device, access }: BoardOpsPanelProps) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmFactory, setConfirmFactory] = useState(false);
 
-  const reboot = async (op: number, ok: string) => {
-    const done = await runCommand(t, () => netdevBoardOp(device.id, op), ok);
-    if (done) access.markRebooting();
-  };
+  // 复位 / 恢复出厂：成功后进入“重启中”
+  const boardOp = useNetCommand<{ op: number; ok: string; reboots: boolean }>({
+    run: ({ op }) => netdevBoardOp(device.id, op),
+    success: ({ ok }) => ok,
+    onSuccess: ({ reboots }) => {
+      if (reboots) access.markRebooting();
+    },
+  });
+  const reboot = (op: number, ok: string) => boardOp.run({ op, ok, reboots: true });
 
   return (
     <SurfacePanel title={t("network.board.title")}>
@@ -53,7 +58,7 @@ export function BoardOpsPanel({ device, access }: BoardOpsPanelProps) {
             size="sm"
             variant="outline"
             disabled={!access.canWrite}
-            onClick={() => void runCommand(t, () => netdevBoardOp(device.id, OP.SelfTest), t("network.board.selfTestDone"))}
+            onClick={() => void boardOp.run({ op: OP.SelfTest, ok: t("network.board.selfTestDone"), reboots: false })}
           >
             <Stethoscope />
             {t("network.board.selfTest")}

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { clamp01 } from "@/shared/lib/math";
 import builtinFile from "./builtinEffects.json";
 import { addLookCue } from "./cueOps";
 import { periodMs } from "./effects";
@@ -44,35 +45,6 @@ export const EFFECT_GROUPS = ["position", "intensity", "color", "beam", "custom"
 
 /** 新建的用户特效默认放进的分组。 */
 export const CUSTOM_EFFECT_GROUP = "custom";
-
-/** 可选图标（界面映射到 lucide 图标；未知名称用默认图标）。 */
-export const EFFECT_ICONS = [
-  "orbit",
-  "infinity",
-  "diamond",
-  "square",
-  "moveHorizontal",
-  "moveVertical",
-  "fan",
-  "shuffle",
-  "waves",
-  "moveRight",
-  "activity",
-  "sparkles",
-  "sunrise",
-  "sunset",
-  "zap",
-  "rainbow",
-  "repeat",
-  "palette",
-  "blend",
-  "zoomIn",
-  "aperture",
-  "rotateCw",
-] as const;
-
-/** 图标名。 */
-export type EffectIcon = (typeof EFFECT_ICONS)[number];
 
 /** 数值层。 */
 export type EffectLayer =
@@ -380,7 +352,6 @@ export function defaultEffectParams(def: EffectDef): EffectParams {
   return { period: def.period, size: def.size, spread: def.spread, wings: 1, direction: 1, order: "members" };
 }
 
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const round4 = (v: number) => Math.round(v * 10_000) / 10_000 + 0;
 
 /** 片段内的循环次数（引擎要求不少于 1）。 */

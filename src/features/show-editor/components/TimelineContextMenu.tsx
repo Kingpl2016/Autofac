@@ -14,7 +14,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useContextActions } from "../hooks/useContextActions";
-import { effectiveKeys, formatChord, type Command } from "../lib/commands";
+import { formatChord } from "@/shared/lib/keyboard";
+import { effectiveKeys, type Command } from "../lib/commands";
 import { buildContextMenu, type MenuEntry } from "../lib/contextMenus";
 import { CUE_TAG_COLORS, CUE_TAGS } from "../lib/project";
 import { useEditorUiStore } from "../stores/useEditorUiStore";

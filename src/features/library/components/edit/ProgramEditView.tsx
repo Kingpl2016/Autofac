@@ -19,6 +19,7 @@ import { Link, useBlocker, useNavigate, useSearchParams } from "react-router-dom
 import { toast } from "sonner";
 import { useStore } from "zustand";
 
+import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -34,9 +35,10 @@ import {
   useProgramActions,
 } from "@/features/recording";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
-import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
+import { isTextEntry } from "@/shared/lib/keyboard";
+import { useEngineStatusStore } from "@/shared/stores/engineStatusStore";
 import { useEditExport } from "../../hooks/useEditExport";
 import { useSegmentPreview } from "../../hooks/useSegmentPreview";
 import { totalDuration } from "../../lib/segments";
@@ -52,12 +54,6 @@ const ZOOM_LEVELS = [1, 2, 4, 8, 16] as const;
 /** 方向键移动播放头的步长（微秒）：100ms，Shift 为 1s。 */
 const SEEK_STEP_US = 100_000;
 const SEEK_STEP_COARSE_US = 1_000_000;
-
-/** 判断键盘事件是否发生在可输入元素里（此时不触发页面快捷键）。 */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 /** 草稿的撤销 / 重做状态。 */
 function useDraftHistory() {
@@ -233,15 +229,14 @@ export function ProgramEditView() {
   }, []);
 
   // 页面快捷键（不在输入框里时）
-  useEffect(() => {
-    if (!ready) return;
-    const onKey = (e: KeyboardEvent) => {
+  useWindowKeydown(
+    (e) => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         requestExportRef.current();
         return;
       }
-      if (isTypingTarget(e.target) || e.altKey) return;
+      if (isTextEntry(e.target) || e.altKey) return;
       const s = useEditDraftStore.getState();
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
@@ -271,10 +266,9 @@ export function ProgramEditView() {
         s.setPlayhead(s.playheadUs + (e.key === "ArrowLeft" ? -stepUs : stepUs));
       } else return;
       e.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [ready, history, preview]);
+    },
+    { enabled: ready },
+  );
 
   const back = (
     <Button asChild variant="ghost" size="sm">

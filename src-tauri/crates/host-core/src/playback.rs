@@ -76,6 +76,7 @@ pub const ERR_BAD_TARGET: &str = "bad_target";
 /// 重复模式：节目自然播完后的行为。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum RepeatMode {
     /// 播完即停（停在结尾）。
     #[default]
@@ -144,6 +145,7 @@ pub fn next_in_library(dir: &Path, current: &Path) -> Option<NextProgram> {
 /// 回放状态（面向前端）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PlaybackState {
     /// 已停止。
     #[default]

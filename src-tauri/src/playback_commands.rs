@@ -468,6 +468,7 @@ fn open_shared(file: &Path) -> Result<ArtRecReader<File>, String> {
 /// 通道曲线查询参数（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SeriesQuery {
     /// 节目路径。
     pub path: String,

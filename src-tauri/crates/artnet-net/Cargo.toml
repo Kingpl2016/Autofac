@@ -8,7 +8,12 @@ description = "Art-Net 4 与 sACN (E1.31) 数据包编解码及 UDP 收发"
 [lints]
 workspace = true
 
+[features]
+# 导出 TypeScript 绑定（仅生成类型时开启）。
+ts = ["dep:ts-rs"]
 [dependencies]
+# 由 DTO 生成前端 TypeScript 类型（仅 `ts` feature；见根目录 package.json 的 gen:types）。
+ts-rs = { workspace = true, optional = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

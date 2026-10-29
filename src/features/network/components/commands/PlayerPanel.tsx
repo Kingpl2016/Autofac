@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pause, Play, Repeat, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -14,7 +13,7 @@ import { netdevProgramOp, netdevSeek, netdevSpeed } from "../../lib/api";
 import { formatCount } from "@/shared/lib/format";
 import { formatClock } from "../../lib/format";
 import { netKeys } from "../../lib/queryKeys";
-import { runCommand } from "../../lib/run";
+import { useNetCommand } from "../../hooks/useNetCommand";
 import { PlayState, ProgramAction, type NetDevice } from "../../lib/types";
 import { SpeedMenu } from "../SpeedMenu";
 
@@ -36,11 +35,13 @@ interface PlayerPanelProps {
  */
 export function PlayerPanel({ device, access }: PlayerPanelProps) {
   const { t } = useTranslation();
-  const client = useQueryClient();
+  const command = useNetCommand<() => Promise<unknown>>({
+    run: (fn) => fn(),
+    invalidate: [netKeys.player(device.id)],
+  });
   const player = usePlayer(device.id, access.canRead);
   const { files } = useDeviceFiles(device.id, access.canRead);
   const [dragPos, setDragPos] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const state = player?.state ?? PlayState.Idle;
   const playing = state === PlayState.Playing;
@@ -50,16 +51,8 @@ export function PlayerPanel({ device, access }: PlayerPanelProps) {
   const dur = player?.durMs ?? 0;
   const shown = dragPos ?? player?.posMs ?? 0;
   const ratio = dur > 0 ? Math.min(1, shown / dur) : 0;
-  const disabled = !access.canWrite || busy;
-
-  const refresh = () => client.invalidateQueries({ queryKey: netKeys.player(device.id) });
-
-  const act = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    await runCommand(t, fn);
-    await refresh();
-    setBusy(false);
-  };
+  const disabled = !access.canWrite || command.pending;
+  const act = (fn: () => Promise<unknown>) => command.run(fn);
 
   const program = player?.programNo ?? 0;
   const commit = () => {

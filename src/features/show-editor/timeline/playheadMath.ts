@@ -1,5 +1,6 @@
 import { pxToMs, SNAP_THRESHOLD_PX, snapValue } from "../lib/snap";
-import { clamp, snapToFrame } from "../lib/time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "../lib/time";
 import { START_LEFT } from "./timelineData";
 
 /** 播放头抓取带的宽度（像素）：比线宽得多，容易抓住。 */

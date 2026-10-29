@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { EMPTY_PLAYBACK, type PlaybackStatus } from "@/features/recording/lib/types";
 import type { ForwardDestination } from "@/features/forwarding/lib/types";
-import { PLAYER_SOURCE_ID, buildGraph } from "../graphModel";
+import { PLAYER_SOURCE_ID } from "../activity";
+import { buildGraph } from "../graphModel";
 import { PLAYER_DIRECT_ID, playerDestinations, playerUniverses } from "../playerSource";
 
 const status = (over: Partial<PlaybackStatus> = {}): PlaybackStatus => ({

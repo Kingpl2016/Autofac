@@ -1,4 +1,5 @@
 import type { Protocol, UniverseSnapshot } from "@/shared/domain/engine";
+import { formatHms, pad2 } from "@/shared/lib/format";
 import type { RecordFilter, UniversePlan, UniverseRange } from "./types";
 
 /** ArtRec 可表示的最大 Universe 编号（`net` 0~127 × 16 + 15）。 */
@@ -121,8 +122,6 @@ export function previewUniverses(
   return plan;
 }
 
-const pad = (n: number, w = 2) => String(n).padStart(w, "0");
-
 /**
  * 生成按本地时间排序的文件名主干：`yyyyMMdd-HHmmss_名称`。
  *
@@ -130,7 +129,7 @@ const pad = (n: number, w = 2) => String(n).padStart(w, "0");
  * @param name 节目名（可空）。
  */
 export function buildFileStem(date: Date, name: string): string {
-  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  const stamp = `${date.getFullYear()}${pad2(date.getMonth() + 1)}${pad2(date.getDate())}-${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}`;
   const n = name.trim();
   return n ? `${stamp}_${n}` : stamp;
 }
@@ -141,30 +140,6 @@ export function buildFileStem(date: Date, name: string): string {
  * @param us 微秒。
  */
 export function formatDurationUs(us: number): string {
-  const totalTenths = Math.floor(us / 100_000);
-  const tenths = totalTenths % 10;
-  const totalSec = Math.floor(totalTenths / 10);
-  const s = totalSec % 60;
-  const m = Math.floor(totalSec / 60) % 60;
-  const h = Math.floor(totalSec / 3600);
-  return h > 0
-    ? `${h}:${pad(m)}:${pad(s)}.${tenths}`
-    : `${m}:${pad(s)}.${tenths}`;
-}
-
-/**
- * 字节数格式化（二进制进制）。
- *
- * @param bytes 字节数。
- */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KiB", "MiB", "GiB"];
-  let v = bytes / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
+  const totalTenths = Math.floor(Math.max(0, us) / 100_000);
+  return `${formatHms(Math.floor(totalTenths / 10))}.${totalTenths % 10}`;
 }

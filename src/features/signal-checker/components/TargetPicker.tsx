@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { checkerKeys } from "../lib/queries";
 import { getTargets } from "../lib/api";
 import type { TargetGroups, TargetOption } from "../lib/types";
 
@@ -33,7 +34,7 @@ export function TargetPicker({ onSelect }: TargetPickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const targets = useQuery({
-    queryKey: ["signal-checker", "targets"],
+    queryKey: checkerKeys.targets,
     queryFn: getTargets,
     enabled: open,
     staleTime: 0,

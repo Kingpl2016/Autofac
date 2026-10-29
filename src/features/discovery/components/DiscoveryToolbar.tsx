@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { CategoryFilter, StatusFilter } from "../lib/filters";
-import { SegmentedControl, type SegmentOption } from "../../../shared/components/SegmentedControl";
+import { SegmentedControl, type SegmentOption } from "@/shared/components/SegmentedControl";
 
 interface DiscoveryToolbarProps {
   query: string;

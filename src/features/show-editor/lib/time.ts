@@ -1,3 +1,4 @@
+import { formatHms, pad2 } from "@/shared/lib/format";
 import { OUTPUT_FPS } from "./project";
 
 /**
@@ -9,12 +10,7 @@ import { OUTPUT_FPS } from "./project";
 export function formatTimecode(ms: number): string {
   const safe = Math.max(0, Math.floor(ms));
   const frames = Math.floor(((safe % 1000) / 1000) * OUTPUT_FPS);
-  const totalSec = Math.floor(safe / 1000);
-  const s = totalSec % 60;
-  const m = Math.floor(totalSec / 60) % 60;
-  const h = Math.floor(totalSec / 3600);
-  const two = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${two(m)}:${two(s)}.${two(frames)}` : `${two(m)}:${two(s)}.${two(frames)}`;
+  return `${formatHms(Math.floor(safe / 1000), true)}.${pad2(frames)}`;
 }
 
 /**
@@ -49,15 +45,4 @@ export function parseTimecode(text: string): number | null {
 export function snapToFrame(ms: number): number {
   const frameMs = 1000 / OUTPUT_FPS;
   return Math.round(Math.round(ms / frameMs) * frameMs);
-}
-
-/**
- * 把值夹在 `[min, max]` 内。
- *
- * @param value 输入值。
- * @param min 下限。
- * @param max 上限。
- */
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

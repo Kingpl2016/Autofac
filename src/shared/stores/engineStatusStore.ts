@@ -1,16 +1,18 @@
 import { create } from "zustand";
+import type { AppMode as AppModeName } from "@/bindings/AppMode";
+import type { ReceiversState as ReceiversName } from "@/bindings/ReceiversState";
+import type { SenderState as SenderName } from "@/bindings/SenderState";
 
 /** 集群角色 */
 export type ClusterRole = "primary" | "standby" | "none";
 
-/** 应用运行模式：实时 / 播放器（对应后端 `AppMode`）。 */
-export type AppModeName = "live" | "player";
-
-/** 接收任务状态：已绑定 / 重建失败 / 被播放器模式主动停止。 */
-export type ReceiversName = "bound" | "failed" | "suspended";
-
-/** 发送器状态：就绪 / 重连中 / 不可用。 */
-export type SenderName = "ready" | "reconnecting" | "down";
+/**
+ * 运行状态名（均由后端枚举经 ts-rs 生成）：
+ * - `AppModeName`：实时 / 播放器（`AppMode`）；
+ * - `ReceiversName`：已绑定 / 重建失败 / 被播放器模式主动停止（`ReceiversState`）；
+ * - `SenderName`：就绪 / 重连中 / 不可用（`SenderState`）。
+ */
+export type { AppModeName, SenderName };
 
 interface EngineStatusState {
   /** 当前网络接口标签 */

@@ -1,11 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getContext, listPatterns } from "../lib/api";
 import { startReasons, type StartReason } from "../lib/guard";
+import { contextQuery, patternsQuery } from "../lib/queries";
 import type { SignalConfig } from "../lib/types";
 import { useCheckerFormStore } from "../stores/useCheckerFormStore";
 import { useGuardStore } from "../stores/useGuardStore";
-import { CONTEXT_QUERY_KEY } from "./useCheckerContext";
 
 /**
  * 开始发送前的安全检查。
@@ -20,16 +19,8 @@ export function useStartGuard() {
 
   const evaluate = async (config: SignalConfig): Promise<StartReason[]> => {
     const [context, catalog] = await Promise.all([
-      client
-        .fetchQuery({ queryKey: CONTEXT_QUERY_KEY, queryFn: getContext, staleTime: 0 })
-        .catch(() => undefined),
-      client
-        .fetchQuery({
-          queryKey: ["signal-checker", "patterns"],
-          queryFn: listPatterns,
-          staleTime: Number.POSITIVE_INFINITY,
-        })
-        .catch(() => undefined),
+      client.fetchQuery({ ...contextQuery, staleTime: 0 }).catch(() => undefined),
+      client.fetchQuery(patternsQuery).catch(() => undefined),
     ]);
     const { mode, pattern } = useCheckerFormStore.getState();
     return startReasons({

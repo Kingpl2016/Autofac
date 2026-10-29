@@ -57,6 +57,7 @@ pub enum ArtNetPacket {
 /// 节点端口方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PortDirection {
     /// 输入口：把外部 DMX 送上 Art-Net 网络。
     Input,
@@ -67,6 +68,7 @@ pub enum PortDirection {
 /// ArtPollReply 中一个端口的信息（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct NodePort {
     /// 端口序号（从 0 起，对应节点的第 1~4 口）。
     pub index: u8,

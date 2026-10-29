@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Film, Music, VolumeX } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { prepareCanvas } from "@/shared/lib/canvas";
 import type { Peaks } from "../lib/mediaApi";
 import type { MediaClip, MediaRef } from "../lib/project";
 import { formatTimecode } from "../lib/time";
@@ -63,13 +64,9 @@ export const MediaClipView = memo(function MediaClipView({
 
   useEffect(() => {
     const el = canvas.current;
-    const ctx = el?.getContext("2d");
-    if (!el || !ctx || !peaks || drawWidth === 0 || waveHeight < 8) return;
-    const dpr = window.devicePixelRatio || 1;
-    el.width = Math.round(drawWidth * dpr);
-    el.height = Math.round(waveHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, drawWidth, waveHeight);
+    if (!el || !peaks || drawWidth === 0 || waveHeight < 8) return;
+    const ctx = prepareCanvas(el, drawWidth, waveHeight);
+    if (!ctx) return;
     ctx.fillStyle = getComputedStyle(el).color;
     const msPerPx = 1000 / pxPerSec;
     // 第 0 列对应的素材内时刻 = 入点 + （可见起点 − 片段左边缘）

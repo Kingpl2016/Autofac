@@ -318,6 +318,7 @@ pub struct DestSnapshot {
 /// 输出总体状态（面向前端）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum OutputState {
     /// 空闲：近期没有包发出。
     Idle,
@@ -332,6 +333,7 @@ pub enum OutputState {
 /// `engine:output` 事件载荷。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct OutputPayload {
     /// 总体状态。
     pub state: OutputState,
@@ -356,6 +358,7 @@ pub struct OutputPayload {
 /// 单个目的地的输出统计（面向前端）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct DestinationOutput {
     /// 目的地 id。
     pub id: String,

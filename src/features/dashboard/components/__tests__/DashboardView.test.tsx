@@ -4,6 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import i18n from "@/shared/i18n";
 import type { Device } from "@/shared/domain/device";
+import { makeDevice } from "@/test/factories";
 
 const forwarding = vi.hoisted(() => ({
   data: undefined as { destinations: { enabled: boolean }[] } | undefined,
@@ -25,16 +26,7 @@ vi.mock("@tauri-apps/plugin-store", () => ({
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import { DashboardView } from "../DashboardView";
 
-const device = (ip: string, online: boolean): Device => ({
-  ip,
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: 4,
-  online,
-  lastSeenMs: 0,
-});
+const device = (ip: string, online: boolean): Device => makeDevice({ ip, artnetPorts: 4, online });
 
 /** 取统计卡的文本：统计卡在页面最上方，取第一个同名文字所在的容器。 */
 function cardText(label: string): string {

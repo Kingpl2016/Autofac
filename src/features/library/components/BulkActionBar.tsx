@@ -2,7 +2,8 @@ import { useTranslation } from "react-i18next";
 import { Trash2, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { formatBytes, formatDurationUs, type LibraryEntry } from "@/features/recording";
+import { formatBytesIec } from "@/shared/lib/format";
+import { formatDurationUs, type LibraryEntry } from "@/features/recording";
 
 interface BulkActionBarProps {
   /** 已勾选的节目 */
@@ -33,7 +34,7 @@ export function BulkActionBar({ entries, canUpload, uploading, onUpload, onDelet
       <p className="text-sm font-medium" aria-live="polite">
         {t("library.bulkSelected", { n: entries.length })}
         <span className="num ml-2 text-xs font-normal text-muted-foreground">
-          {formatDurationUs(totalUs)} · {formatBytes(totalBytes)}
+          {formatDurationUs(totalUs)} · {formatBytesIec(totalBytes)}
         </span>
       </p>
       <div className="flex flex-1 flex-wrap items-center gap-2">

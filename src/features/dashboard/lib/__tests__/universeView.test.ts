@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { UniverseSnapshot } from "@/shared/domain/engine";
-import {
-  UNIVERSE_CARD_LIMIT,
-  conflictLevel,
-  portAddress,
-  sourcesOf,
-  visibleUniverses,
-} from "../universeView";
+import { conflictLevel } from "@/shared/lib/conflict";
+import { UNIVERSE_CARD_LIMIT, portAddress, sourcesOf, visibleUniverses } from "../universeView";
 
 const snap = (universe: number, over: Partial<UniverseSnapshot> = {}): UniverseSnapshot => ({
   universe,

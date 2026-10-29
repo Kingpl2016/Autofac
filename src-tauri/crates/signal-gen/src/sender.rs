@@ -53,6 +53,7 @@ const ZEROS: [u8; CHANNELS] = [0; CHANNELS];
 /// 发送模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum SendMode {
     /// 自动：发送选定的测试图案。
     Auto,
@@ -85,6 +86,7 @@ pub type EventSink = Arc<dyn Fn(SenderEvent) + Send + Sync>;
 /// 发送器错误。序列化为 `{ "code": "...", ... }`。
 #[derive(Debug, Clone, PartialEq, Eq, Error, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum SenderError {
     /// 无法创建 / 配置 UDP 套接字。
     #[error("无法创建发送套接字：{message}")]
@@ -97,6 +99,7 @@ pub enum SenderError {
 /// 发送器状态快照（`camelCase` 序列化后直接给前端）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SenderStatus {
     /// 是否正在发送。
     pub running: bool,

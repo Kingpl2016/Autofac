@@ -2,7 +2,8 @@ import { gapAround, MIN_CUE_MS } from "./cueOps";
 import { newId } from "./ids";
 import { fixed } from "./looks";
 import type { AttrKey, ColorValue, Look, SceneClip, ShowProject, Track } from "./project";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 编程器（Programmer）：在“同一帧”给多台灯具分别设定值的工作区，类似调光台的编程器。

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
 import { useOverview } from "../hooks/useOverview";
 import { drawHeatmap, heatmapCells } from "../lib/heatmap";
-import { themeColor } from "../lib/themeColor";
+import { themeColor } from "@/shared/lib/canvas";
 
 /** 缩略图内部分辨率（像素列数）；CSS 负责拉伸到卡片宽度。 */
 const THUMB_COLUMNS = 240;

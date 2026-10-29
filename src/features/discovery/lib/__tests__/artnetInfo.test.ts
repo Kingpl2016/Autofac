@@ -1,19 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { Device, NodePort } from "@/shared/domain/device";
+import type { NodePort } from "@/shared/domain/device";
 import { artnetInfo } from "../artnetInfo";
+import { makeDevice } from "@/test/factories";
 
-const dev = (over: Partial<Device> = {}): Device => ({
-  ip: "10.0.0.1",
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: null,
-  online: true,
-  lastSeenMs: 0,
-  ...over,
-});
+const dev = makeDevice;
 
 const port = (index: number, universe: number, direction: NodePort["direction"] = "output"): NodePort => ({
   index,

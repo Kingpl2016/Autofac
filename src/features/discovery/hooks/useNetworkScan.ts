@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { useEngineDataStore } from "@/shared/stores/engineDataStore";
 import {
   getDevices,
@@ -40,7 +41,7 @@ export function useNetworkScan(): {
     if (session.scanning) return;
 
     const describeError = (e: unknown): string => {
-      const raw = e instanceof Error ? e.message : String(e);
+      const raw = errorMessage(e);
       if (raw === SCAN_ERR_ARTNET_DISABLED) return t("discovery.scanErrArtnetDisabled");
       if (raw === SCAN_ERR_IN_PROGRESS) return t("discovery.scanErrInProgress");
       return t("discovery.scanFailed", { reason: raw });

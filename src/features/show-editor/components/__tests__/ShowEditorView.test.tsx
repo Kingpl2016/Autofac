@@ -36,6 +36,8 @@ beforeAll(() => {
       disconnect() {}
     },
   );
+  // 命令面板（cmdk）会把选中项滚动到可见范围，jsdom 没有实现 scrollIntoView
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
 beforeEach(async () => {

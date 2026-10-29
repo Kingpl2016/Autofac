@@ -1,19 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import i18n from "@/shared/i18n";
+import { stubResizeObserver } from "@/test/mockTauriEvents";
+import { renderWithProviders } from "@/test/renderWithProviders";
 
 // 行内“⋯”菜单（Radix Popper）依赖 ResizeObserver，jsdom 没有
-vi.stubGlobal(
-  "ResizeObserver",
-  class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  },
-);
+stubResizeObserver();
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 const api = vi.hoisted(() => ({
@@ -70,12 +64,7 @@ function accessWith(over: Partial<Omit<DeviceAccess, "status">> & { status?: Par
 }
 
 function renderTab(access: DeviceAccess = accessWith()) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <FilesTab device={device} access={access} />
-    </QueryClientProvider>,
-  );
+  return renderWithProviders(<FilesTab device={device} access={access} />);
 }
 
 const row = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;

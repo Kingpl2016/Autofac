@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { errorText } from "../lib/errors";
-import { formatBytes, formatSpeed, percentOf } from "../lib/format";
+import { formatBytes } from "@/shared/lib/format";
+import { formatSpeed, percentOf } from "../lib/format";
 import { useTransferStore, type TransferItem, type TransferKind } from "../stores/useTransferStore";
 
 interface TransferIndicatorProps {

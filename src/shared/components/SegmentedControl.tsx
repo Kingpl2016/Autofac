@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { SEGMENT_ITEM_BASE } from "./Segmented";
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -40,8 +41,8 @@ export function SegmentedControl<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-md px-3 text-xs font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              SEGMENT_ITEM_BASE,
+              "h-8 gap-2 px-3 text-xs",
               active
                 ? "bg-primary/15 text-primary"
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",

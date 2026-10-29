@@ -1,6 +1,5 @@
-import { onEvent } from "@/shared/tauri/events";
+import { tauriEvent$ } from "@/shared/events/fromTauriEvent";
 import { invoke } from "@/shared/tauri/invoke";
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { ShowProject } from "./project";
 
 /** 后端预览引擎的传输状态。 */
@@ -104,20 +103,8 @@ export function showSetOutputEnabled(enabled: boolean): Promise<ShowState> {
   return invoke<ShowState>("show_set_output_enabled", { enabled });
 }
 
-/** 读取当前状态。 */
-export function showStatus(): Promise<ShowState> {
-  return invoke<ShowState>("show_status");
-}
-
-/**
- * 订阅 `show:state` 事件。
- *
- * @param handler 状态处理器。
- * @returns 取消订阅函数的 Promise。
- */
-export function onShowState(handler: (state: ShowState) => void): Promise<UnlistenFn> {
-  return onEvent<ShowState>(SHOW_STATE_EVENT, handler);
-}
+/** `show:state` 事件流（冷 Observable：订阅时 `listen`，退订时 `unlisten`）。 */
+export const showState$ = tauriEvent$<ShowState>(SHOW_STATE_EVENT);
 
 /**
  * 告诉后端编辑器里的工程是否有未保存的修改（关闭窗口时的退出守卫据此确认）。

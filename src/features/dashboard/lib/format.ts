@@ -2,10 +2,6 @@
 
 import { trimFraction, type ValueWithUnit } from "@/shared/lib/format";
 
-// 包速率格式化已提升到共享库，这里再导出以保持既有引用路径可用
-export { formatPacketRate, type ValueWithUnit } from "@/shared/lib/format";
-export { formatUptime } from "@/shared/lib/uptime";
-
 /**
  * 格式化进程内存：不足 1 GB 用 MB（取整），否则用 GB（保留 1 位小数）。
  *

@@ -5,12 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from "@/shared/appearance/hsv";
-
-/** 浏览器的 EyeDropper API（Chromium 系支持）的最小类型描述。 */
-interface EyeDropperLike {
-  /** 打开取色器，用户点击屏幕任意位置后返回颜色。 */
-  open: () => Promise<{ sRGBHex: string }>;
-}
+import { canPickScreenColor, pickScreenColor } from "@/shared/lib/eyeDropper";
+import { clamp01 } from "@/shared/lib/math";
 
 /** 色相条的渐变背景。 */
 const HUE_GRADIENT = "linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)";
@@ -24,16 +20,6 @@ interface ColorPickerProps {
   value: string;
   /** 颜色变化回调，参数为小写的 `#rrggbb`。 */
   onChange: (hex: string) => void;
-}
-
-/** 限制数值在 0 到 1。 */
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-/** 获取浏览器的 EyeDropper 构造函数；当前环境不支持时返回 undefined。 */
-function getEyeDropper(): (new () => EyeDropperLike) | undefined {
-  return (window as unknown as { EyeDropper?: new () => EyeDropperLike }).EyeDropper;
 }
 
 /**
@@ -87,16 +73,11 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
     commit({ h: hsv.h, s: clamp01(hsv.s + delta[0]), v: clamp01(hsv.v + delta[1]) });
   };
 
-  const EyeDropper = getEyeDropper();
   const pickFromScreen = async () => {
-    if (!EyeDropper) return;
-    try {
-      const result = await new EyeDropper().open();
-      const picked = hexToHsv(result.sRGBHex);
-      if (picked) commit(picked);
-    } catch {
-      // 用户按 Esc 取消取色：不需要处理
-    }
+    // 用户按 Esc 取消时为 null：不需要处理
+    const hex = await pickScreenColor();
+    const picked = hex ? hexToHsv(hex) : null;
+    if (picked) commit(picked);
   };
 
   const saturation = Math.round(hsv.s * 100);
@@ -170,7 +151,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
           }}
           onBlur={() => setDraft(null)}
         />
-        {EyeDropper ? (
+        {canPickScreenColor() ? (
           <Button
             type="button"
             variant="outline"

@@ -19,6 +19,7 @@ const ARTNET_DEFAULT_PRIORITY: u8 = 100;
 /// 单个活跃 Universe 的快照（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UniverseSnapshot {
     /// Universe 编号。
     pub universe: u16,
@@ -44,6 +45,7 @@ pub struct UniverseSnapshot {
 /// 单个 Universe 内某个来源的统计（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UniverseSource {
     /// 源 IP 字符串（未知来源为 `0.0.0.0`）。
     pub ip: String,
@@ -62,6 +64,7 @@ pub struct UniverseSource {
 /// 单个来源（按源 IP 聚合）的统计（面向前端 DTO，camelCase）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SourceStat {
     /// 源 IP 字符串（未知来源为 `0.0.0.0`）。
     pub ip: String,

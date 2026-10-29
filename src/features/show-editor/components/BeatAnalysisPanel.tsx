@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AudioWaveform, Loader2 } from "lucide-react";
 
+import { errorMessage } from "@/shared/lib/errors";
 import { Button } from "@/components/ui/button";
 import { announce } from "@/shared/stores/announcerStore";
 import { primaryMedia } from "../lib/media";
@@ -42,7 +43,7 @@ export function BeatAnalysisPanel() {
       });
       setState({ status: "done", analysis, plan, name: media.name });
     } catch (e) {
-      const code = typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+      const code = errorMessage(e);
       setState({
         status: "error",
         message: code === MEDIA_ERR.noBeat ? t("editor.beats.noBeat") : t("editor.beats.failed", { reason: code }),

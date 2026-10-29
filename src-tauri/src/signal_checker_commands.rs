@@ -62,6 +62,7 @@ impl SignalCheckerState {
 /// `signal-checker:error` 事件载荷。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 struct ErrorPayload {
     /// 出错时正在发送的 Universe。
     universe: Option<u16>,
@@ -72,6 +73,7 @@ struct ErrorPayload {
 /// `signal-checker:preview` 事件载荷。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 struct PreviewPayload {
     /// 被查看的 Universe。
     universe: u16,
@@ -455,6 +457,7 @@ pub fn signal_checker_frame(state: State<'_, SignalCheckerState>, universe: u16)
 /// 目标 IP 候选项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TargetOption {
     /// IPv4 地址。
     pub ip: String,
@@ -467,6 +470,7 @@ pub struct TargetOption {
 /// 按来源分组的目标 IP 候选项。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TargetGroups {
     /// 本机回环（`127.0.0.1`），用于回灌自测。
     pub local: Vec<TargetOption>,
@@ -581,6 +585,7 @@ pub fn signal_checker_targets(app: AppHandle) -> TargetGroups {
 /// 界面做"发送前确认"与"自测提示"所需的运行环境快照。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct CheckerContext {
     /// 应用当前的运行模式；播放器模式下实时接收已停止，发给本机的信号不会被接收。
     pub app_mode: AppMode,

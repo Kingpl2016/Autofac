@@ -43,6 +43,7 @@ const DOWN_AFTER_FAILED_ATTEMPTS: u32 = 3;
 /// 发送器状态（面向前端）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum SenderState {
     /// 就绪：发送套接字工作正常。
     #[default]

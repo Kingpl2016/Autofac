@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// 闭区间 Universe 范围 `[start, end]`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UniverseRange {
     /// 起始 Universe（含）。
     pub start: u16,
@@ -39,6 +40,7 @@ impl UniverseRange {
 /// 录制过滤条件。三类条件取交集；任一类条件为空表示该维度不限制。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RecordFilter {
     /// 来源 IP 集合；空表示不按来源过滤。
     pub sources: Vec<IpAddr>,

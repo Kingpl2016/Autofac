@@ -24,6 +24,7 @@ pub const MAX_UNIVERSES_PER_FILE: usize = MAX_FULL_PAYLOAD / DMX_LEN as usize;
 /// Universe 集合规划结果。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UniversePlan {
     /// 将被录制的 Universe（升序，与文件内 UniDesc 顺序一致）。
     pub accepted: Vec<u16>,
@@ -76,6 +77,7 @@ pub struct SessionConfig {
 /// 会话实时统计。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SessionStats {
     /// 已写帧数。
     pub frames: u64,

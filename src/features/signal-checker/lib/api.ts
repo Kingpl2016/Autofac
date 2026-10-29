@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import i18n from "@/shared/i18n";
 import { invoke } from "@/shared/tauri/invoke";
 import type {
@@ -23,7 +24,7 @@ export async function openSignalChecker(): Promise<void> {
   try {
     await invoke<void>("signal_checker_open");
   } catch (e: unknown) {
-    const reason = e instanceof Error ? e.message : String(e);
+    const reason = errorMessage(e);
     toast.error(i18n.t("signalChecker.openFailed", { reason }));
   }
 }

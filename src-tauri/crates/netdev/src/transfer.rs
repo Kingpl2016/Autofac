@@ -29,6 +29,7 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 /// 传输进度快照。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
     /// 已传输字节数。

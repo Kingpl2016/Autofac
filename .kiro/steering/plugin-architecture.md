@@ -28,7 +28,7 @@ src/features/<x>/plugin.ts   每个 feature 一个插件入口，经 index.ts �
 ## 事件与数据
 
 - 跨插件通信用 `EventBus`（新增事件通过 `declare module "@/shared/events/eventBus"` 扩充 `AppEventMap`），不要互相 import 内部文件。
-- Tauri 事件用 `fromTauriEvent<T>(name)` 得到冷 Observable，组件里用 `useSubscription` 订阅；不要手写 `listen` + 取消订阅。
+- Tauri 事件在组件里用 `useTauriEvent<T>(name, handler)`，组件外用 `tauriEvent$<T>(name)`（引用稳定的冷 Observable，见 `@/shared/events`）；不要手写 `listen` + 取消订阅（ESLint 会拦）。
 - 高频数据（引擎帧）继续用 zustand store，不要套 RxJS。
 - `shared` 不依赖 `features`：需要“业务把自己接入共享流程”时用登记表（例如 `registerDmxFrameHandler`），由业务插件在 `setup` 里登记。
 

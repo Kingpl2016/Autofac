@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { useDebouncedCallback } from "@/shared/hooks/useDebounced";
+import { errorMessage } from "@/shared/lib/errors";
 import { getForwarding, saveForwarding } from "../lib/api";
 import { moveWithin } from "../lib/order";
 import type { ForwardDestination, ForwardingTable } from "../lib/types";
@@ -48,7 +50,6 @@ export function useForwardingDraft(initial: ForwardingTable, options: DraftOptio
   const [status, setStatus] = useState<SaveStatus>("idle");
   const latest = useRef(destinations);
   const dirty = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { onSaved } = options;
 
   const persist = useCallback(async () => {
@@ -64,27 +65,28 @@ export function useForwardingDraft(initial: ForwardingTable, options: DraftOptio
     } catch (e: unknown) {
       dirty.current = true;
       setStatus("error");
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     }
   }, [t, onSaved]);
 
-  // 定时器与卸载清理里要调用最新的 persist，通过 ref 间接引用，避免闭包过期
+  // 卸载清理里要调用最新的 persist，通过 ref 间接引用，避免闭包过期
   const persistRef = useRef(persist);
   useEffect(() => {
     persistRef.current = persist;
   }, [persist]);
 
-  const commit = useCallback((next: ForwardDestination[]) => {
-    latest.current = next;
-    dirty.current = true;
-    setDestinations(next);
-    setStatus("pending");
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      void persistRef.current();
-    }, AUTOSAVE_DELAY);
-  }, []);
+  const autosave = useDebouncedCallback(() => void persist(), AUTOSAVE_DELAY);
+
+  const commit = useCallback(
+    (next: ForwardDestination[]) => {
+      latest.current = next;
+      dirty.current = true;
+      setDestinations(next);
+      setStatus("pending");
+      autosave.schedule();
+    },
+    [autosave],
+  );
 
   const upsert = useCallback(
     (dest: ForwardDestination) => {
@@ -141,29 +143,19 @@ export function useForwardingDraft(initial: ForwardingTable, options: DraftOptio
 
   /** 立即保存未保存的改动（没有改动时什么也不做）。 */
   const flush = useCallback(async () => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
+    autosave.cancel();
     if (dirty.current) await persist();
-  }, [persist]);
+  }, [autosave, persist]);
 
   /** 保存失败后重试。 */
   const retry = useCallback(() => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
+    autosave.cancel();
     void persist();
-  }, [persist]);
+  }, [autosave, persist]);
 
-  // 卸载时：取消定时器，并把还没保存的改动立即落盘
+  // 卸载时：把还没保存的改动立即落盘（待执行的防抖保存由 useDebouncedCallback 取消）
   useEffect(
     () => () => {
-      if (timer.current) {
-        clearTimeout(timer.current);
-        timer.current = null;
-      }
       if (dirty.current) void persistRef.current();
     },
     [],

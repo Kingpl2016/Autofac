@@ -2,7 +2,8 @@ import { placeFixtures } from "../stage/stageGeometry";
 import { gapAround, MIN_CUE_MS } from "./cueOps";
 import { newId } from "./ids";
 import type { ColorValue, FixtureInstance, Keyframe, Param, Rgb, SceneClip, SceneEntry, ShowProject, StageLayout } from "./project";
-import { clamp, snapToFrame } from "./time";
+import { clamp } from "@/shared/lib/math";
+import { snapToFrame } from "./time";
 
 /**
  * 像素映射（视频 → 灯具）：按每台灯在舞台上的位置，从视频画面对应的点取色，

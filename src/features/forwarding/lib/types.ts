@@ -1,33 +1,12 @@
-/** 与 Rust forwarding 模型对应的前端类型。 */
+/** 转发相关类型：由 Rust `forwarding` 模型经 ts-rs 生成（`npm run gen:types`），此处转出并补前端辅助函数。 */
 
-export type ForwardProtocol = "artNet" | "sacn";
-export type ForwardMode = "all" | "selected";
-export type OverrideAction = "forward" | "exclude";
+import type { ForwardDestination } from "@/bindings/ForwardDestination";
 
-export interface UniverseOverride {
-  sourceUniverse: number;
-  action: OverrideAction;
-  targetUniverse?: number | null;
-  delayMs?: number | null;
-}
-
-export interface ForwardDestination {
-  id: string;
-  name: string;
-  targetIp: string;
-  protocol: ForwardProtocol;
-  port: number;
-  mode: ForwardMode;
-  universeOffset: number;
-  defaultDelayMs: number;
-  description: string;
-  enabled: boolean;
-  overrides: UniverseOverride[];
-}
-
-export interface ForwardingTable {
-  destinations: ForwardDestination[];
-}
+export type { ForwardProtocol } from "@/bindings/ForwardProtocol";
+export type { OverrideAction } from "@/bindings/OverrideAction";
+export type { UniverseOverride } from "@/bindings/UniverseOverride";
+export type { ForwardDestination };
+export type { ForwardingTable } from "@/bindings/ForwardingTable";
 
 /** 创建一个带默认值的新目的地。 */
 export function newDestination(): ForwardDestination {

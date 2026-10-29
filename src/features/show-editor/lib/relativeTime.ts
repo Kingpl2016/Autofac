@@ -1,15 +1,7 @@
-/** 相对时间的分段（秒）。 */
-const UNITS: readonly [Intl.RelativeTimeFormatUnit, number][] = [
-  ["year", 365 * 24 * 3600],
-  ["month", 30 * 24 * 3600],
-  ["week", 7 * 24 * 3600],
-  ["day", 24 * 3600],
-  ["hour", 3600],
-  ["minute", 60],
-];
+import { formatRelativeTime } from "@/shared/lib/relativeTime";
 
 /**
- * 相对时间文字（“3 分钟前”“昨天”）。一分钟以内显示“刚刚”一类的文字（由 `Intl` 的 `numeric: "auto"` 给出）。
+ * 最近文件的相对时间（“3 分钟前”“昨天”“2 周前”），最远到“x 年前”，一分钟以内显示“现在”。
  *
  * @param at 时间戳（毫秒）。
  * @param now 当前时间戳（毫秒）。
@@ -17,12 +9,7 @@ const UNITS: readonly [Intl.RelativeTimeFormatUnit, number][] = [
  * @returns 文字。
  */
 export function relativeTime(at: number, now: number, locale: string): string {
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const diff = Math.round((at - now) / 1000);
-  for (const [unit, sec] of UNITS) {
-    if (Math.abs(diff) >= sec) return rtf.format(Math.round(diff / sec), unit);
-  }
-  return rtf.format(0, "second");
+  return formatRelativeTime(at, now, locale, { maxUnit: "year", nowUnit: "second" });
 }
 
 /**

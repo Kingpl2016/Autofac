@@ -5,6 +5,8 @@
  * 命令的注册与执行见 `hooks/useEditorCommands.ts`。
  */
 
+import { chordOf, parseChord, type ChordEvent } from "@/shared/lib/keyboard";
+
 /** 命令分类（命令面板里的分组与匹配依据）。 */
 export type CommandCategory = "file" | "edit" | "transport" | "timeline" | "view" | "insert" | "output" | "select";
 
@@ -23,111 +25,6 @@ export interface Command {
   run: () => void;
   /** 在文本输入框里也响应快捷键（例如保存） */
   global?: boolean;
-}
-
-/** 键盘事件里与 chord 有关的字段。 */
-export interface ChordEvent {
-  key: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-}
-
-/** `KeyboardEvent.key` 的别名规整（小写；空格写作 `space`）。 */
-const KEY_ALIASES: Record<string, string> = {
-  " ": "space",
-  spacebar: "space",
-  esc: "escape",
-  del: "delete",
-  plus: "+",
-  "=": "+",
-  add: "+",
-  subtract: "-",
-  minus: "-",
-};
-
-/**
- * 规整一个键名。
- *
- * @param key `KeyboardEvent.key` 或手写的键名。
- * @returns 小写键名。
- */
-function normalizeKey(key: string): string {
-  const k = key.length === 1 ? key.toLowerCase() : key.toLowerCase();
-  return KEY_ALIASES[k] ?? k;
-}
-
-/**
- * 由键盘事件得到规整的 chord：修饰键按 `mod`（Ctrl / ⌘）、`alt`、`shift` 的固定顺序，最后是键名。
- *
- * @param e 键盘事件。
- * @returns 例如 `mod+shift+z`；只按了修饰键时为空串。
- */
-export function chordOf(e: ChordEvent): string {
-  const key = normalizeKey(e.key);
-  if (["control", "meta", "shift", "alt", "os"].includes(key)) return "";
-  const parts: string[] = [];
-  if (e.ctrlKey || e.metaKey) parts.push("mod");
-  if (e.altKey) parts.push("alt");
-  // 已经由 Shift 产生的符号（例如 `+`）不再重复记 shift
-  if (e.shiftKey && !(key.length === 1 && /[^a-z0-9]/.test(key))) parts.push("shift");
-  parts.push(key);
-  return parts.join("+");
-}
-
-/**
- * 规整手写的 chord（大小写、修饰键顺序、别名）。
- *
- * @param chord 例如 `Ctrl+Shift+Z`、`mod+b`。
- * @returns 规整后的 chord；无法识别时为空串。
- */
-export function parseChord(chord: string): string {
-  const raw = chord.trim();
-  if (raw === "") return "";
-  // 末尾的 `+` 本身是键名（例如 `mod++`）
-  const plusKey = raw.endsWith("++") || raw === "+";
-  const parts = (plusKey ? raw.slice(0, -1) : raw).split("+").map((p) => p.trim().toLowerCase()).filter(Boolean);
-  const mods = new Set<string>();
-  let key = plusKey ? "+" : "";
-  for (const p of parts) {
-    if (p === "ctrl" || p === "control" || p === "cmd" || p === "meta" || p === "mod") mods.add("mod");
-    else if (p === "alt" || p === "option") mods.add("alt");
-    else if (p === "shift") mods.add("shift");
-    else key = normalizeKey(p);
-  }
-  if (key === "") return "";
-  return [...["mod", "alt", "shift"].filter((m) => mods.has(m)), key].join("+");
-}
-
-/**
- * 把 chord 格式化成给人看的文字（Windows / Linux 风格）。
- *
- * @param chord 规整后的 chord。
- * @returns 例如 `Ctrl+Shift+Z`、`Space`、`→`。
- */
-export function formatChord(chord: string): string {
-  const names: Record<string, string> = {
-    mod: "Ctrl",
-    alt: "Alt",
-    shift: "Shift",
-    space: "Space",
-    arrowleft: "←",
-    arrowright: "→",
-    arrowup: "↑",
-    arrowdown: "↓",
-    escape: "Esc",
-    delete: "Del",
-    backspace: "Backspace",
-    enter: "Enter",
-    home: "Home",
-    end: "End",
-  };
-  return chord
-    .split("+")
-    .map((p, i, all) => (p === "" && i === all.length - 1 ? "+" : names[p] ?? p.toUpperCase()))
-    .filter((p) => p !== "")
-    .join("+");
 }
 
 /** 用户自定义的快捷键：命令 id → chord 列表（空数组表示取消该命令的快捷键）。 */

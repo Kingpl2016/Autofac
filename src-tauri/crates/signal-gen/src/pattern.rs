@@ -38,6 +38,7 @@ const RAINBOW_UNIVERSE_SHIFT: f64 = 0.3;
 /// 图案分组（界面按分组排布）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PatternGroup {
     /// 基础：全亮、全黑、渐变。
     Basic,
@@ -52,6 +53,7 @@ pub enum PatternGroup {
 /// 测试图案标识（序列化为 kebab-case，如 `"ramp-up"`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PatternId {
     /// 全部通道 255。
     FullOn,
@@ -154,6 +156,7 @@ impl PatternId {
 /// 图案元数据（供界面渲染分组与禁用速度控件；文案由前端按 `id` 本地化）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PatternInfo {
     /// 图案标识。
     pub id: PatternId,

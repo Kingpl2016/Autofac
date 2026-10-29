@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CircleStop, ListOrdered, Pause, Play, Repeat, Square, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { announce } from "@/shared/stores/announcerStore";
-import { Segmented } from "../../../shared/components/Segmented";
-import { StatusPill, type StatusTone } from "../../../shared/components/StatusPill";
-import { SurfacePanel } from "../../../shared/components/SurfacePanel";
+import { Segmented } from "@/shared/components/Segmented";
+import { StatusPill, type StatusTone } from "@/shared/components/StatusPill";
+import { SurfacePanel } from "@/shared/components/SurfacePanel";
+import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
+import { isInteractiveTarget } from "@/shared/lib/keyboard";
 import { TimeCode } from "./console/TimeCode";
 import { useScrubSeek } from "../hooks/useScrubSeek";
 import { formatDurationUs } from "../lib/filter";
@@ -49,17 +51,6 @@ const SCRUB_THUMB_PX = 18;
 /** 快捷键跳转步长（微秒）：方向键 5 秒，Shift + 方向键 1 秒。 */
 const HOTKEY_SEEK_US = 5_000_000;
 const HOTKEY_SEEK_FINE_US = 1_000_000;
-
-/** 焦点在这些元素上时，空格 / 方向键归它们自己处理，不触发全局快捷键。 */
-function isInteractiveTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target.closest(
-      'input, textarea, select, button, a[href], [role="slider"], [role="switch"], [role="radio"], [role="combobox"], [role="dialog"]',
-    ) !== null
-  );
-}
 
 /** 重复模式的文案键。 */
 const REPEAT_LABEL: Record<RepeatMode, string> = {
@@ -106,37 +97,29 @@ export function TransportDeck({
   const playing = status.state === "playing";
 
   // 键盘快捷键：空格 播放 / 暂停，←/→ 前后跳 5 秒（Shift 为 1 秒），L 依次切换重复模式。
-  // 用 ref 持有最新状态，监听器只在开关变化时重新注册。
-  const live = useRef({ status, playing, onPlay, onPause, onSeek, onRepeat, t });
-  useEffect(() => {
-    live.current = { status, playing, onPlay, onPause, onSeek, onRepeat, t };
-  });
-  useEffect(() => {
-    if (!hotkeys) return;
-    const onKey = (e: KeyboardEvent) => {
+  useWindowKeydown(
+    (e) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       if (isInteractiveTarget(e.target)) return;
-      const cur = live.current;
       if (e.key === " ") {
         e.preventDefault();
-        if (cur.playing) cur.onPause();
-        else cur.onPlay();
+        if (playing) onPause();
+        else onPlay();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
         const step = e.shiftKey ? HOTKEY_SEEK_FINE_US : HOTKEY_SEEK_US;
         const delta = e.key === "ArrowLeft" ? -step : step;
-        cur.onSeek(Math.min(cur.status.durationUs, Math.max(0, cur.status.posUs + delta)));
+        onSeek(Math.min(status.durationUs, Math.max(0, status.posUs + delta)));
       } else if (e.key === "l" || e.key === "L") {
         e.preventDefault();
         // 快捷键切换时焦点没有移动，需主动向读屏播报新模式
-        const next = nextRepeatMode(cur.status.repeat);
-        cur.onRepeat(next);
-        announce(cur.t("player.repeatAnnounce", { mode: cur.t(REPEAT_LABEL[next]) }));
+        const next = nextRepeatMode(status.repeat);
+        onRepeat(next);
+        announce(t("player.repeatAnnounce", { mode: t(REPEAT_LABEL[next]) }));
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [hotkeys]);
+    },
+    { enabled: hotkeys },
+  );
   const shown = dragPos ?? status.posUs;
   const max = Math.max(status.durationUs, 1);
   const ratio = Math.min(1, Math.max(0, shown / max));

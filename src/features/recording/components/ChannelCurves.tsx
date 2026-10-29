@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAppearanceRevision } from "@/features/appearance";
-import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/shared/hooks/useDebounced";
+import { useElementSize } from "@/shared/hooks/useElementSize";
 import { useSeries } from "../hooks/useSeries";
 import {
   curveStyle,
@@ -24,7 +25,7 @@ import {
   type CurveWindow,
 } from "../lib/curves";
 import { formatDurationUs } from "../lib/filter";
-import { themeColor } from "../lib/themeColor";
+import { themeColor } from "@/shared/lib/canvas";
 
 /** 曲线区高度（像素）。 */
 const CANVAS_HEIGHT = 176;
@@ -64,17 +65,7 @@ export function ChannelCurves({ path, durationUs, posUs, universes }: ChannelCur
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const update = () => setWidth(Math.floor(el.clientWidth));
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const { width } = useElementSize(wrapRef);
 
   const [t0, t1] = curveWindow(mode, posUs, durationUs);
   const maxPoints = Math.min(1200, Math.max(64, Math.floor(width / 2)));

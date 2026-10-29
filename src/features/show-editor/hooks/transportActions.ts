@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import { toast } from "sonner";
 
+import { errorMessage } from "@/shared/lib/errors";
 import i18n from "@/shared/i18n";
 import {
   SHOW_ERR,
@@ -26,7 +27,7 @@ import { flushProjectSync } from "./playbackSync";
  * @returns 本地化文案；未知错误带上原始描述。
  */
 export function playbackErrorText(t: TFunction, error: unknown): string {
-  const raw = typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
+  const raw = errorMessage(error);
   switch (raw) {
     case SHOW_ERR.noShow:
       return t("editor.playback.errors.noShow");

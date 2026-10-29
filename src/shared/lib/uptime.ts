@@ -1,3 +1,5 @@
+import { formatHms } from "./format";
+
 /** 运行时长按量级选出的展示粒度。 */
 export type UptimeUnit = "seconds" | "minutes" | "hours" | "days";
 
@@ -33,16 +35,11 @@ export function splitUptime(sec: number): UptimeParts {
 }
 
 /**
- * 将秒数格式化为 `h:mm:ss` 或 `mm:ss`。
+ * 将秒数格式化为 `h:mm:ss` 或 `mm:ss`（分钟补零）。
  *
- * @param sec 秒数。
+ * @param sec 秒数；负数与非有限值按 0 处理，小数向下取整。
  * @returns 可读时长字符串。
  */
 export function formatUptime(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  return formatHms(sec, true);
 }

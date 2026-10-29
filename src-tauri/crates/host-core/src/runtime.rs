@@ -179,6 +179,7 @@ fn passive_sources(snapshot: &[UniverseSnapshot], out: &mut Vec<(IpAddr, Protoco
 /// 引擎统计事件载荷。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct StatsPayload {
     /// 活跃 Universe 数。
     pub active_universes: usize,

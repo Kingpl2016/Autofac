@@ -1,6 +1,6 @@
 import { invoke } from "@/shared/tauri/invoke";
 
-import type { DiskInfo } from "../../../shared/domain/disk";
+import type { DiskInfo } from "@/shared/domain/disk";
 import { decodeOverview } from "./overview";
 import type {
   ActivityDto,
@@ -19,13 +19,7 @@ import type {
   RecoveryOutcome,
   RepeatMode,
   SeriesQuery,
-  SourceStat,
 } from "./types";
-
-/** 当前生效的录制目录（配置为空时为默认目录）。 */
-export function getRecordingDir(): Promise<string> {
-  return invoke<string>("get_recording_dir");
-}
 
 /**
  * 查询录制目录所在卷的剩余空间。
@@ -34,11 +28,6 @@ export function getRecordingDir(): Promise<string> {
  */
 export function recordingDiskInfo(path?: string): Promise<DiskInfo> {
   return invoke<DiskInfo>("recording_disk_info", { path: path ?? null });
-}
-
-/** 当前来源（按 IP 聚合）统计。 */
-export function getSourceStats(): Promise<SourceStat[]> {
-  return invoke<SourceStat[]>("get_source_stats");
 }
 
 /** 开始录制。 */

@@ -69,6 +69,7 @@ impl FixtureState {
 /// Excel 导入的结果：合并统计 + 解析警告。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ImportOutcome {
     /// 新增 / 覆盖 / 忽略的模型编号。
     #[serde(flatten)]

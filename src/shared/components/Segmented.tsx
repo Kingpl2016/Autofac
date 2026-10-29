@@ -2,6 +2,10 @@ import { useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+/** 分段按钮共用的基础样式（`Segmented` 与 `SegmentedControl` 共用）。 */
+export const SEGMENT_ITEM_BASE =
+  "inline-flex items-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
@@ -107,11 +111,11 @@ export function Segmented<T extends string>({
             onFocus={() => activation === "manual" && setFocusIndex(i)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "num inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors",
+              SEGMENT_ITEM_BASE,
+              "num justify-center gap-1.5",
               size === "xs" ? "h-6 min-w-8 px-2 text-[11px] [&_svg]:size-3.5" : "min-w-12 px-3 text-xs [&_svg]:size-3.5",
               size === "md" ? "h-9 [&_svg]:size-4" : size === "sm" && "py-2",
               "[&_svg]:shrink-0",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "disabled:cursor-not-allowed disabled:opacity-60",
               checked
                 ? "bg-surface-3 text-foreground shadow-sm"

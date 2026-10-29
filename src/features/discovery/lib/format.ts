@@ -1,4 +1,6 @@
 /** 设备发现展示用的格式化辅助。 */
+import { intlLocale } from "@/shared/lib/locale";
+import { formatRelativeTime } from "@/shared/lib/relativeTime";
 
 /**
  * 将“最后在线”格式化为本地化的相对时间（如“3 分钟前”）。
@@ -16,16 +18,12 @@ export function formatLastSeen(
   nowMs: number,
   language: string,
 ): string {
-  const locale = language.startsWith("zh") ? "zh-CN" : "en";
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const sec = Math.max(0, Math.round((nowMs - lastSeenMs) / 1000));
-
-  if (sec < 60) return rtf.format(-sec, "second");
-  const min = Math.round(sec / 60);
-  if (min < 60) return rtf.format(-min, "minute");
-  const hr = Math.round(min / 60);
-  if (hr < 24) return rtf.format(-hr, "hour");
-  return rtf.format(-Math.round(hr / 24), "day");
+  // 时钟回退（lastSeen 晚于 now）时按“现在”处理
+  return formatRelativeTime(Math.min(lastSeenMs, nowMs), nowMs, intlLocale(language), {
+    minUnit: "second",
+    maxUnit: "day",
+    rounding: "cascade",
+  });
 }
 
 /**

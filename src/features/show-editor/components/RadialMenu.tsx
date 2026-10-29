@@ -4,7 +4,8 @@ import { Bookmark, ChevronLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { announce } from "@/shared/stores/announcerStore";
-import { effectiveKeys, formatChord, type Command } from "../lib/commands";
+import { formatChord } from "@/shared/lib/keyboard";
+import { effectiveKeys, type Command } from "../lib/commands";
 import { mergeLayers } from "../lib/layers";
 import { colorValueRgb, paramHead } from "../lib/looks";
 import type { Preset } from "../lib/project";

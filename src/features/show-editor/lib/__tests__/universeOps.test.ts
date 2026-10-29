@@ -26,6 +26,7 @@ import {
   updatePort,
 } from "../universeOps";
 import { DIMMER, HEAD16, RGBW } from "./testkit";
+import { makeDevice } from "@/test/factories";
 
 /** 3 台 RGBW（U0 @1/5/9）+ 1 台 16CH 摇头灯（U0 @13）。 */
 function base(): ShowProject {
@@ -199,19 +200,14 @@ describe("Universe 路由表", () => {
 });
 
 describe("从发现的节点生成路由", () => {
-  const device = (ip: string, ports: number[], over: Partial<Device> = {}): Device => ({
-    ip,
-    hostname: null,
-    customName: null,
-    mac: null,
-    category: "artNet",
-    artnetPorts: ports.length,
-    online: true,
-    lastSeenMs: 0,
-    shortName: `Node ${ip}`,
-    ports: ports.map((universe, index) => ({ index, direction: "output", universe, active: false })),
-    ...over,
-  });
+  const device = (ip: string, ports: number[], over: Partial<Device> = {}): Device =>
+    makeDevice({
+      ip,
+      artnetPorts: ports.length,
+      shortName: `Node ${ip}`,
+      ports: ports.map((universe, index) => ({ index, direction: "output", universe, active: false })),
+      ...over,
+    });
 
   it("只列在线 Art-Net 节点的输出口，按 IP 数值顺序", () => {
     const outputs = nodeOutputs([

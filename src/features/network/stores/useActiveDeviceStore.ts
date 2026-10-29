@@ -1,7 +1,8 @@
+import { z } from "zod";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
+import { persistPrefs } from "@/shared/stores/persistPrefs";
 
 interface ActiveDeviceState {
   /** 当前选中的设备 id（可能指向已被删除的设备，读取方需回退）。 */
@@ -25,16 +26,11 @@ export const useActiveDeviceStore = create<ActiveDeviceState>()(
       activeId: null,
       setActiveId: (activeId) => set({ activeId }),
     }),
-    {
+    persistPrefs<ActiveDeviceState, Persisted>({
       name: "net-active-device",
       version: 1,
-      storage: createTauriPersistStorage<Persisted>(),
-      partialize: ({ activeId }) => ({ activeId }),
-      // 磁盘数据不合法（非字符串 / null）时保持当前值
-      merge: (persisted, current) => {
-        const id = (persisted as Partial<Persisted> | null | undefined)?.activeId;
-        return typeof id === "string" ? { ...current, activeId: id } : current;
-      },
-    },
+      // 磁盘数据不是字符串时当作没有选中
+      schema: z.object({ activeId: z.string().nullable().catch(null) }),
+    }),
   ),
 );

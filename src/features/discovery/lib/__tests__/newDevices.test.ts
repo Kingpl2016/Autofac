@@ -2,17 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { Device } from "@/shared/domain/device";
 import { findNewIps } from "../newDevices";
+import { makeDevice } from "@/test/factories";
 
-const dev = (ip: string): Device => ({
-  ip,
-  hostname: null,
-  customName: null,
-  mac: null,
-  category: "artNet",
-  artnetPorts: null,
-  online: true,
-  lastSeenMs: 0,
-});
+const dev = (ip: string): Device => makeDevice({ ip });
 
 describe("findNewIps", () => {
   it("只返回未见过的 IP，并保持顺序", () => {

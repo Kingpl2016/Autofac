@@ -27,7 +27,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock("sonner", () => ({ toast }));
 // 进度事件走 Tauri 事件；测试里没有 Tauri，订阅直接返回空的取消函数
-vi.mock("@/shared/tauri/events", () => ({ onEvent: () => Promise.resolve(() => undefined) }));
+vi.mock("@/shared/tauri/events", async () => (await import("@/test/mockTauriEvents")).tauriEventsModule);
 vi.mock("@/features/network", () => ({
   useActiveDevice: () => ({ device: null, setActive: vi.fn() }),
   useDeviceStatus: () => ({ online: false, status: null, error: null, isLoading: false, refetch: vi.fn() }),

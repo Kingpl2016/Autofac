@@ -12,6 +12,7 @@ use crate::pattern::CHANNELS;
 /// 手动数据操作错误。序列化为 `{ "code": "...", ... }`，前端按 `code` 本地化文案。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ManualError {
     /// 通道号不在 `1..=512` 内。
     #[error("通道号 {channel} 超出 1 到 512")]

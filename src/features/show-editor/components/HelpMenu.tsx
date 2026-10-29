@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -94,16 +95,14 @@ export function HeaderHelpMenu() {
   const editor = isEditorPath(pathname);
   const setOpen = useEditorUiStore((s) => s.setHelpOpen);
 
-  useEffect(() => {
-    if (editor) return;
-    const onKey = (e: KeyboardEvent) => {
+  useWindowKeydown(
+    (e) => {
       if (e.key !== "F1" || e.repeat || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
       e.preventDefault();
       setOpen(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editor, setOpen]);
+    },
+    { enabled: !editor },
+  );
 
   // 离开编辑页时关掉菜单，避免带着编辑器的菜单项停在别的页面
   useEffect(() => () => setOpen(false), [editor, setOpen]);

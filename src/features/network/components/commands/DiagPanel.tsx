@@ -11,7 +11,7 @@ import type { DeviceAccess } from "../../hooks/useDeviceAccess";
 import { useDiag } from "../../hooks/useDiag";
 import { heapContiguity, sortTasks, sparkPoints, stackLevel, type DiagSample } from "../../lib/diag";
 import { errorText } from "../../lib/errors";
-import { formatBytes } from "../../lib/format";
+import { formatBytes } from "@/shared/lib/format";
 import type { NetDevice } from "../../lib/types";
 
 /** `HH:mm:ss`（诊断每 2 秒刷新，需要精确到秒）。 */
