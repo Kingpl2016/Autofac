@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Crosshair, Layers } from "lucide-react";
+import { Crosshair, Layers, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,7 +22,10 @@ import {
 import { revealInPatch } from "../hooks/selectionActions";
 import { setCueLengths } from "../lib/editOps";
 import { selectionOfTracks } from "../lib/fixtureSelection";
-import { trackName } from "../lib/ops";
+import { trackFixtureIds, trackName } from "../lib/ops";
+import { effectFromClip } from "../lib/effectDraft";
+import { useEffectEditorStore } from "../stores/useEffectEditorStore";
+import { allEffects, useEffectLibraryStore } from "../stores/useEffectLibraryStore";
 import type { Cue, Easing, EffectCue, LookClip } from "../lib/project";
 import { formatTimecode, parseTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -149,8 +152,31 @@ export function CueInspector() {
         )}
         {locked && <p className="text-xs text-warning">{t("editor.cue.locked")}</p>}
         {looks.length > 0 && <LookKeyNav cues={looks} />}
-        {((statics.length > 0 && !locked) || convertible) && (
+        {((statics.length > 0 && !locked) || convertible || single?.kind === "look") && (
           <div role="toolbar" aria-label={t("editor.cue.actions")} className="flex flex-wrap items-center gap-1">
+            {single?.kind === "look" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                title={t("editor.effectEditor.fromClipHint")}
+                onClick={() => {
+                  const track = project.tracks.find((tr) => tr.id === single.trackId);
+                  const lib = useEffectLibraryStore.getState();
+                  const def = effectFromClip(single, {
+                    members: track ? trackFixtureIds(project, track).length : 1,
+                    tempo: project.tempo,
+                    existing: allEffects(lib),
+                    name: clipName(single, project.presets, (e) => t(`editor.effects.${e}`)) || t("editor.effectEditor.untitled"),
+                  });
+                  useEffectEditorStore.getState().open(def, "new");
+                }}
+              >
+                <Sparkles aria-hidden />
+                {t("editor.effectEditor.fromClip")}
+              </Button>
+            )}
             {statics.length > 0 && !locked && (
               <Button
                 type="button"

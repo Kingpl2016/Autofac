@@ -1,43 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useDraggable } from "@dnd-kit/core";
-import {
-  Activity,
-  Aperture,
-  Blend,
-  ChevronDown,
-  ChevronRight,
-  ChevronsRight,
-  Copy,
-  Diamond,
-  Fan,
-  FileDown,
-  FileUp,
-  Flame,
-  FolderOpen,
-  Infinity as InfinityIcon,
-  MoveHorizontal,
-  MoveRight,
-  MoveVertical,
-  Orbit,
-  Palette,
-  Plus,
-  Rainbow,
-  RefreshCw,
-  Repeat,
-  RotateCw,
-  Shuffle,
-  Sparkles,
-  Square,
-  Sunrise,
-  Sunset,
-  Trash2,
-  TriangleAlert,
-  Waves,
-  Zap,
-  ZoomIn,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, FileDown, FileUp, FolderOpen, Pencil, Plus, RefreshCw, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -76,36 +40,11 @@ import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { ApplyBadge } from "./ApplyBadge";
+import { blankEffect } from "../lib/effectDraft";
+import { useEffectEditorStore } from "../stores/useEffectEditorStore";
+import { EFFECT_ICONS } from "./effectIcons";
 import { EffectParamsPanel } from "./EffectParamsPanel";
 import { HelpTip } from "./HelpTip";
-
-/** 特效定义里的图标名 → lucide 图标。 */
-const ICONS: Record<string, LucideIcon> = {
-  orbit: Orbit,
-  infinity: InfinityIcon,
-  diamond: Diamond,
-  square: Square,
-  moveHorizontal: MoveHorizontal,
-  moveVertical: MoveVertical,
-  fan: Fan,
-  shuffle: Shuffle,
-  waves: Waves,
-  moveRight: MoveRight,
-  activity: Activity,
-  sparkles: Sparkles,
-  sunrise: Sunrise,
-  sunset: Sunset,
-  zap: Zap,
-  rainbow: Rainbow,
-  repeat: Repeat,
-  palette: Palette,
-  blend: Blend,
-  zoomIn: ZoomIn,
-  aperture: Aperture,
-  rotateCw: RotateCw,
-  flame: Flame,
-  chevronsRight: ChevronsRight,
-};
 
 /** 拖拽数据：属性特效库里的一个特效，带拖出时参数面板里的参数。 */
 export interface EffectDefDragData {
@@ -262,6 +201,9 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
           <HelpTip topic="editor.help.effects" />
         </h3>
         <div role="toolbar" aria-label={t("editor.effectLib.tools")} className="flex shrink-0 items-center">
+          {tool(t("editor.effectEditor.new"), <Plus aria-hidden />, () =>
+            useEffectEditorStore.getState().open(blankEffect([...effects, ...user], t("editor.effectEditor.untitled")), "new"),
+          )}
           {tool(t("editor.effectLib.import"), <FileUp aria-hidden />, () => void onImport())}
           {tool(t("editor.effectLib.export"), <FileDown aria-hidden />, () => void onExport())}
           {tool(t("editor.effectLib.reveal"), <FolderOpen aria-hidden />, () => void onReveal())}
@@ -310,6 +252,15 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
                       onInsert={() => insertEffect(def, paramsOf(def), actions, t, i18n.language)}
                       onCopy={() => void copy(def)}
                       onDelete={() => void remove(def)}
+                      onEdit={() => {
+                        // 内置特效：编辑一份副本（保存后成为“我的特效”）
+                        if (def.builtin) {
+                          const { created } = copyEffectToUser(store().user, effects, def, t("editor.templates.copySuffix"));
+                          useEffectEditorStore.getState().open(created, "new");
+                        } else {
+                          useEffectEditorStore.getState().open(def, "edit");
+                        }
+                      }}
                     />
                   </li>
                 ))}
@@ -335,7 +286,7 @@ export function EffectLibrarySection({ caps }: { caps: TrackCapabilities[] }) {
 /** 拖动属性特效时跟随指针的小卡片。 */
 export function EffectDefChip({ def }: { def: EffectDef }) {
   const { i18n } = useTranslation();
-  const Icon = ICONS[def.icon ?? ""] ?? Sparkles;
+  const Icon = EFFECT_ICONS[def.icon ?? ""] ?? Sparkles;
   return (
     <span className="flex items-center gap-2 rounded-md border border-primary bg-card px-2.5 py-2 text-sm shadow-lg">
       <Icon className="size-4 shrink-0 text-clip-effect" aria-hidden />
@@ -369,6 +320,7 @@ function EffectItem({
   onInsert,
   onCopy,
   onDelete,
+  onEdit,
 }: {
   def: EffectDef;
   /** 参数面板里的当前参数（拖到时间线时按它生成片段） */
@@ -379,10 +331,12 @@ function EffectItem({
   onInsert: () => void;
   onCopy: () => void;
   onDelete: () => void;
+  /** 打开特效编辑器（内置特效编辑副本） */
+  onEdit: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const name = effectName(def, i18n.language);
-  const Icon = ICONS[def.icon ?? ""] ?? Sparkles;
+  const Icon = EFFECT_ICONS[def.icon ?? ""] ?? Sparkles;
   const badgeId = `effect-badge-${def.id}`;
   const data: EffectDefDragData = { kind: "effectDef", def, params };
   const { setNodeRef, listeners, isDragging } = useDraggable({ id: `effectDef:${def.id}`, data });
@@ -418,6 +372,10 @@ function EffectItem({
         <ContextMenuItem onSelect={onInsert}>
           <Plus aria-hidden />
           {t("editor.effectLib.insert")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onEdit}>
+          <Pencil aria-hidden />
+          {def.builtin ? t("editor.effectEditor.editCopy") : t("editor.effectEditor.edit")}
         </ContextMenuItem>
         <ContextMenuItem onSelect={onCopy}>
           <Copy aria-hidden />

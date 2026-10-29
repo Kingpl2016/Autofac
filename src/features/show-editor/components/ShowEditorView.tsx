@@ -58,6 +58,7 @@ import { ShortcutSheetDialog } from "./ShortcutSheetDialog";
 import { TemplateChip, type TemplateDragData } from "./TemplatesTab";
 import type { FixtureInstanceDragData } from "./SwatchView";
 import { RepeatDialog } from "./RepeatDialog";
+import { EffectEditorDialog } from "./EffectEditorDialog";
 import { ensureRefTracks } from "../lib/ops";
 import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 
@@ -289,6 +290,7 @@ export function ShowEditorView() {
       <AutoDraftDialog />
       <DurationConfirmDialog />
       <RepeatDialog />
+      <EffectEditorDialog />
       <KeymapDialog commands={commands} />
       <ShortcutSheetDialog commands={commands} />
       <OnboardingRuntime />
