@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import i18n from "@/shared/i18n";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
@@ -8,6 +8,7 @@ import type { ColorValue } from "../../lib/project";
 import { RGBW } from "../../lib/__tests__/testkit";
 import { useColorInputStore } from "../../stores/useColorInputStore";
 import { useRecentColorsStore } from "../../stores/useRecentColorsStore";
+import { useUserSwatchesStore } from "../../stores/useUserSwatchesStore";
 import { ColorPicker } from "../ColorPicker";
 
 beforeAll(() => {
@@ -89,7 +90,9 @@ describe("ColorPicker", () => {
     const { rerender } = render(
       <ColorPicker value={{ kind: "kelvin", kelvin: 3200 }} onCommit={onCommit} gamma={1} modes={["kelvin"]} />,
     );
-    expect(screen.getAllByRole("radio", { name: /^(彩色|色温|发光体)$/ }).map((r) => r.textContent)).toEqual(["色温"]);
+    // 只有一种方式时不显示切换，只写出方式名
+    expect(screen.queryByRole("radiogroup", { name: "颜色方式" })).toBeNull();
+    expect(screen.getByText("色温", { selector: "span" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "红" })).toBeNull();
     expect(screen.getByRole("button", { name: "日光 5600K" })).toBeTruthy();
     expect(screen.queryByRole("note")).toBeNull();
@@ -104,6 +107,101 @@ describe("ColorPicker", () => {
     setup({ kind: "rgb", rgb: [255, 255, 255] });
     const meters = within(screen.getByLabelText("实际输出")).getAllByRole("meter");
     expect(meters.map((m) => m.getAttribute("aria-valuenow"))).toEqual(["0", "0", "0", "100"]);
+  });
+});
+
+describe("ColorPicker 色板", () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await useUserSwatchesStore.setState({ swatches: [] });
+    });
+  });
+
+  it("色纸页：搜索编号后点色块提交 RGB", () => {
+    const { onCommit } = setup();
+    fireEvent.click(screen.getByRole("radio", { name: "色纸" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索色纸编号或名称" }), { target: { value: "181" } });
+    fireEvent.click(screen.getByRole("button", { name: "LEE 181 刚果蓝" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [40, 0, 160] });
+    fireEvent.click(screen.getByRole("radio", { name: "Rosco" }));
+    expect(screen.getByText("没有匹配的色纸")).toBeTruthy();
+  });
+
+  it("我的色板：加入当前颜色、改名、排序、删除", () => {
+    const { onCommit, rerender } = setup({ kind: "rgb", rgb: [255, 0, 0] });
+    fireEvent.click(screen.getByRole("radio", { name: "我的色板" }));
+    expect(screen.getByText(/还没有保存的颜色/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "加入当前颜色" }));
+    expect(screen.getByRole("button", { name: "已在色板中" })).toHaveProperty("disabled", true);
+    rerender(<ColorPicker value={{ kind: "rgb", rgb: [0, 0, 255] }} onCommit={onCommit} target={{ model: RGBW }} gamma={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "加入当前颜色" }));
+    expect(useUserSwatchesStore.getState().swatches.map((s) => s.color)).toEqual([
+      { kind: "rgb", rgb: [255, 0, 0] },
+      { kind: "rgb", rgb: [0, 0, 255] },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "#ff0000" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [255, 0, 0] });
+
+    fireEvent.click(screen.getByRole("button", { name: "整理", pressed: false }));
+    const name = screen.getByRole("textbox", { name: "#ff0000 的名称" });
+    fireEvent.change(name, { target: { value: "开场红" } });
+    fireEvent.blur(name);
+    expect(useUserSwatchesStore.getState().swatches[0].name).toBe("开场红");
+    fireEvent.click(screen.getByRole("button", { name: "后移 开场红" }));
+    expect(useUserSwatchesStore.getState().swatches.map((s) => s.name)).toEqual(["", "开场红"]);
+    fireEvent.click(screen.getByRole("button", { name: "删除 开场红" }));
+    expect(useUserSwatchesStore.getState().swatches).toHaveLength(1);
+  });
+
+  it("读回我的色板时丢掉坏条目，其余保留", () => {
+    const merge = useUserSwatchesStore.persist.getOptions().merge!;
+    const good = { id: "sw-1", name: "红", color: { kind: "rgb", rgb: [255, 0, 0] } };
+    const merged = merge(
+      { swatches: [good, { id: "bad id!", name: "x", color: { kind: "rgb", rgb: [1, 2, 3] } }, { id: "sw-2", name: "y", color: { kind: "rgb", rgb: [300, 0, 0] } }] },
+      useUserSwatchesStore.getState(),
+    ) as { swatches: unknown[] };
+    expect(merged.swatches).toEqual([good]);
+    expect((merge({ swatches: "x" }, useUserSwatchesStore.getState()) as { swatches: unknown[] }).swatches).toEqual([]);
+  });
+});
+
+describe("ColorPicker 高级与 HSI", () => {
+  beforeEach(() => useColorInputStore.setState({ input: "wheel" }));
+
+  it("HSI 输入：强度滑杆提交，数值随颜色显示", () => {
+    useColorInputStore.setState({ input: "hsi" });
+    const { onCommit } = setup({ kind: "rgb", rgb: [255, 0, 0] });
+    const group = screen.getByRole("group", { name: "HSI 数值" });
+    expect((within(group).getByRole("textbox", { name: "HSI 强度数值" }) as HTMLInputElement).value).toBe("33");
+    const s = within(group).getByRole("textbox", { name: "HSI 饱和度数值" });
+    fireEvent.change(s, { target: { value: "0" } });
+    fireEvent.blur(s);
+    // 饱和度 0：三通道都等于强度（1/3）
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [85, 85, 85] });
+  });
+
+  it("高级：色相微调、配色方案点选与铺开到多灯", () => {
+    const onCommit = vi.fn();
+    const onApplySpread = vi.fn();
+    render(<ColorPicker value={{ kind: "rgb", rgb: [255, 0, 0] }} onCommit={onCommit} gamma={1} onApplySpread={onApplySpread} />);
+    expect(screen.queryByRole("button", { name: "色相 15°" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "高级", expanded: false }));
+    fireEvent.click(screen.getByRole("button", { name: "色相 15°" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [255, 64, 0] });
+
+    fireEvent.click(screen.getByRole("radio", { name: "三角" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用 #00ff00" }));
+    expect(onCommit).toHaveBeenLastCalledWith({ kind: "rgb", rgb: [0, 255, 0] });
+    fireEvent.click(screen.getByRole("button", { name: "铺开到多灯" }));
+    expect(onApplySpread).toHaveBeenCalledWith([[255, 0, 0], [0, 255, 0], [0, 0, 255]]);
+  });
+
+  it("只存 RGB 的片段：不显示方式切换与白光策略；没有铺开回调时不显示铺开按钮", () => {
+    render(<ColorPicker value={{ kind: "rgb", rgb: [255, 0, 0] }} onCommit={vi.fn()} gamma={1} modes={["rgb"]} whiteStrategy={false} />);
+    expect(screen.queryByRole("radiogroup", { name: "颜色方式" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "白光" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "高级" }));
+    expect(screen.queryByRole("button", { name: "铺开到多灯" })).toBeNull();
   });
 });
 

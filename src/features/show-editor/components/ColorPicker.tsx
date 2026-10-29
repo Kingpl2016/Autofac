@@ -1,14 +1,28 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Pipette } from "lucide-react";
+import { ChevronRight, Rows4 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
-import { canPickScreenColor, pickScreenColor } from "@/shared/lib/eyeDropper";
 import { isEmitter, layoutOf, type FixtureModel } from "@/features/fixtures";
 import { useEngine } from "../engine/useEngine";
-import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
+import {
+  HARMONIES,
+  harmonyColors,
+  hexToRgb,
+  hsiToRgb,
+  hsToWheel,
+  hsvToRgb,
+  rgbToHex,
+  rgbToHsi,
+  rgbToHsv,
+  rotateHue,
+  wheelToHs,
+  type Harmony,
+  type Hsi,
+  type Hsv,
+} from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
 import type { ColorMode } from "../lib/fixtureProfile";
 import { emitterHead, mixPreview } from "../lib/mixPreview";
@@ -16,6 +30,7 @@ import { DEFAULT_GAMMA, type ColorValue, type EmitterKey, type Rgb, type WhiteSt
 import { clamp } from "@/shared/lib/math";
 import { COLOR_INPUTS, useColorInputStore, type ColorInput } from "../stores/useColorInputStore";
 import { useRecentColorsStore } from "../stores/useRecentColorsStore";
+import { ColorSwatchLibrary } from "./ColorSwatchLibrary";
 import { CommitInput } from "./CommitInput";
 
 /** 色盘模式（就是颜色值的类型）。 */
@@ -30,25 +45,11 @@ const MAX_K = 10_000;
 /** 常用色温。 */
 const KELVIN_PRESETS = [2700, 3200, 4300, 5600, 6500] as const;
 
-/** 常用色（剧场色纸的近似 + 常用白光）。 */
-const PALETTE: { id: string; color: ColorValue }[] = [
-  { id: "red", color: { kind: "rgb", rgb: [255, 0, 0] } },
-  { id: "orange", color: { kind: "rgb", rgb: [255, 96, 0] } },
-  { id: "amber", color: { kind: "rgb", rgb: [255, 170, 0] } },
-  { id: "yellow", color: { kind: "rgb", rgb: [255, 230, 0] } },
-  { id: "lime", color: { kind: "rgb", rgb: [160, 255, 0] } },
-  { id: "green", color: { kind: "rgb", rgb: [0, 255, 40] } },
-  { id: "cyan", color: { kind: "rgb", rgb: [0, 255, 220] } },
-  { id: "sky", color: { kind: "rgb", rgb: [60, 160, 255] } },
-  { id: "blue", color: { kind: "rgb", rgb: [0, 30, 255] } },
-  { id: "congo", color: { kind: "rgb", rgb: [90, 0, 255] } },
-  { id: "magenta", color: { kind: "rgb", rgb: [255, 0, 200] } },
-  { id: "pink", color: { kind: "rgb", rgb: [255, 110, 160] } },
-  { id: "warm", color: { kind: "kelvin", kelvin: 3200 } },
-  { id: "neutral", color: { kind: "kelvin", kelvin: 4300 } },
-  { id: "daylight", color: { kind: "kelvin", kelvin: 5600 } },
-  { id: "white", color: { kind: "rgb", rgb: [255, 255, 255] } },
-];
+/** 色相一圈的滑杆背景（0°~360°）。 */
+const HUE_BACKGROUND = `linear-gradient(to right, ${[0, 60, 120, 180, 240, 300, 360].map((h) => `hsl(${h} 100% 50%)`).join(", ")})`;
+
+/** “高级”里色相微调的步长（度）。 */
+const HUE_NUDGE = 15;
 
 /** 色轮背景：色相一圈（0 度在正上方，顺时针）+ 中心向外由白到饱和。 */
 const WHEEL_BACKGROUND = [
@@ -105,26 +106,45 @@ interface ColorPickerProps {
    * 不支持的方式隐藏，但当前值所用的方式总会显示（并提示输出不会变化）。
    */
   modes?: readonly Mode[];
+  /** 是否显示白光策略（只存 RGB 的片段不需要，默认显示） */
+  whiteStrategy?: boolean;
+  /**
+   * “配色方案”里的“铺开到多灯”：把一组颜色写进多灯分布；省略时不显示这个按钮。
+   *
+   * @param colors 颜色（第一个是当前颜色）。
+   */
+  onApplySpread?: (colors: Rgb[]) => void;
 }
 
 /**
  * 专业色盘：
  *
- * - **彩色**：选一个目标颜色，由每台灯的混色器按它的发光体自动混出。两种输入方式（记住上次的选择）——
- *   色轮（HSV：色相 + 饱和度，旁边直接显示 / 输入 H、S、V，V 为颜色明度）与 RGB 数值滑杆；
+ * - **彩色**：选一个目标颜色，由每台灯的混色器按它的发光体自动混出。三种输入方式（记住上次的选择）——
+ *   色轮（HSV：色相 + 饱和度，旁边直接显示 / 输入 H、S、V，V 为颜色明度）、RGB 数值滑杆与 HSI 滑杆；
  *   都可输入十六进制；白光策略决定 RGBW / RGBCW 灯怎样用白光。整体亮度由外观的强度层负责；
+ * - **高级**（折叠）：饱和度 / 明度滑杆、色相 ±15° 微调、配色方案（互补 / 邻近 / 三角 / 分裂互补，
+ *   可一键铺开到多灯分布）；
+ * - 色板：常用色、色纸（LEE / Rosco）与我的色板；
  * - **色温**：1800K~10000K 滑杆与常用色温（RGB 灯按色温近似，冷暖白灯按 mired 分配）；
  * - **发光体**：按目标灯具的发光体逐路直给（手动覆盖混色）；
- * - 常用色、最近使用、屏幕取色；
  * - **实际输出**：用引擎模拟目标灯具真正发出的颜色和各发光体的输出。
  *
  * 拖动时只改本地草稿（实时显示），松手才提交，一次拖动一步撤销。
  */
-export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, modes = ALL_MODES }: ColorPickerProps) {
+export function ColorPicker({
+  value,
+  onCommit,
+  target,
+  gamma = DEFAULT_GAMMA,
+  modes = ALL_MODES,
+  whiteStrategy = true,
+  onApplySpread,
+}: ColorPickerProps) {
   const { t } = useTranslation();
   const engine = useEngine();
-  const recent = useRecentColorsStore((s) => s.colors);
   const pushRecent = useRecentColorsStore((s) => s.push);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [harmony, setHarmony] = useState<Harmony>("complementary");
   const current: ColorValue = value ?? { kind: "rgb", rgb: [255, 255, 255] };
   const [draft, setDraft] = useState<ColorValue | null>(null);
   const shown = draft ?? current;
@@ -199,7 +219,14 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
   };
   const dot = hsToWheel(hsv.h, hsv.s);
 
-  const recentShown = recent.map((c, i) => ({ c, i })).filter(({ c }) => modes.includes(c.kind));
+  // ---- HSI（与 HSV 一样保留上次的值：饱和度或强度到 0 时 RGB 里没有色相） ----
+  const [hsiHold, setHsiHold] = useState<Hsi | null>(null);
+  const hsi: Hsi = hsiHold && same(asRgb(hsiToRgb(hsiHold)), shown) ? hsiHold : rgbToHsi(shown.kind === "rgb" ? shown.rgb : rgb);
+  const fromHsi = (next: Hsi): ColorValue => {
+    const held = { h: ((next.h % 360) + 360) % 360, s: clamp(next.s, 0, 1), i: clamp(next.i, 0, 1) };
+    setHsiHold(held);
+    return asRgb(hsiToRgb(held));
+  };
 
   // 每种模式记住上次的值：彩色 → 色温 → 彩色时回到原来的彩色，而不是色温换算出的近白色
   const lastByMode = useRef<Partial<Record<Mode, ColorValue>>>({});
@@ -217,6 +244,12 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
     }
   };
 
+  const modeOptions = ALL_MODES.filter((m) => m === mode || modes.includes(m)).map((m) => ({
+    value: m,
+    label: t(`editor.color.modes.${m}`),
+    title: t(`editor.color.modeHints.${m}`),
+  }));
+
   const numberField = (label: string, v: number, onValue: (n: number) => void, width = "w-14") => (
     <label className="grid gap-0.5 text-[11px] text-muted-foreground">
       {label}
@@ -231,24 +264,6 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
         }}
       />
     </label>
-  );
-
-  const swatch = (id: string, color: ColorValue, label: string) => (
-    <button
-      key={id}
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={same(color, shown)}
-      onClick={() => {
-        commit(color);
-      }}
-      className={cn(
-        "size-6 cursor-pointer rounded-sm border border-border bg-(--sw) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        same(color, shown) && "ring-2 ring-primary",
-      )}
-      style={{ "--sw": css(colorValueRgb(color, gamma)) } as CSSProperties}
-    />
   );
 
   /** 带渐变底色的滑杆 + 数值框：拖动只改草稿，松手 / 回车提交。 */
@@ -315,16 +330,12 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
     // 取色器是一组控件（不是页面区域）：外层分区（“颜色”）才是区域，避免两个同名区域嵌套
     <div role="group" aria-label={t("editor.color.title")} className="grid gap-3">
       <div className="flex items-center justify-between gap-2">
-        <Segmented<Mode>
-          ariaLabel={t("editor.color.mode")}
-          value={mode}
-          options={ALL_MODES.filter((m) => m === mode || modes.includes(m)).map((m) => ({
-            value: m,
-            label: t(`editor.color.modes.${m}`),
-            title: t(`editor.color.modeHints.${m}`),
-          }))}
-          onChange={switchMode}
-        />
+        {/* 只有一种可用方式（例如只存 RGB 的片段）时不显示切换 */}
+        {modeOptions.length > 1 ? (
+          <Segmented<Mode> ariaLabel={t("editor.color.mode")} value={mode} options={modeOptions} onChange={switchMode} />
+        ) : (
+          <span className="text-[11px] text-muted-foreground">{modeOptions[0]?.label}</span>
+        )}
         <span
           role="img"
           aria-label={t("editor.color.intent", { hex: rgbToHex(rgb) })}
@@ -401,6 +412,32 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
               {hexField}
             </div>
           </div>
+          ) : input === "hsi" ? (
+            <div className="grid gap-1.5" role="group" aria-label={t("editor.color.hsi")}>
+              {gradientSlider(t("editor.color.hsiH"), "H", Math.round(hsi.h), 0, 360, "°", HUE_BACKGROUND, (v) => fromHsi({ ...hsi, h: v }))}
+              {gradientSlider(
+                t("editor.color.hsiS"),
+                "S",
+                Math.round(hsi.s * 100),
+                0,
+                100,
+                "%",
+                `linear-gradient(to right, ${css(hsiToRgb({ ...hsi, s: 0 }))}, ${css(hsiToRgb({ ...hsi, s: 1 }))})`,
+                (v) => fromHsi({ ...hsi, s: v / 100 }),
+              )}
+              {gradientSlider(
+                t("editor.color.hsiI"),
+                "I",
+                Math.round(hsi.i * 100),
+                0,
+                100,
+                "%",
+                `linear-gradient(to right, rgb(0 0 0), ${css(hsiToRgb({ ...hsi, i: 1 }))})`,
+                (v) => fromHsi({ ...hsi, i: v / 100 }),
+              )}
+              <p className="text-[10px] text-muted-foreground">{t("editor.color.hsiHint")}</p>
+              {hexField}
+            </div>
           ) : (
             <div className="grid gap-1.5">
               {(["r", "g", "b"] as const).map((ch, i) =>
@@ -413,18 +450,111 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
               {hexField}
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">{t("editor.color.white")}</span>
-            <Segmented<WhiteStrategy>
-              ariaLabel={t("editor.color.white")}
-              value={white}
-              options={(["off", "preserve", "boost"] as const).map((w) => ({
-                value: w,
-                label: t(`editor.color.whites.${w}`),
-                title: t(`editor.color.whiteHints.${w}`),
-              }))}
-              onChange={(w) => commit({ kind: "rgb", rgb: shown.rgb, ...(w !== "preserve" ? { white: w } : {}) })}
-            />
+          {whiteStrategy && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">{t("editor.color.white")}</span>
+              <Segmented<WhiteStrategy>
+                ariaLabel={t("editor.color.white")}
+                value={white}
+                options={(["off", "preserve", "boost"] as const).map((w) => ({
+                  value: w,
+                  label: t(`editor.color.whites.${w}`),
+                  title: t(`editor.color.whiteHints.${w}`),
+                }))}
+                onChange={(w) => commit({ kind: "rgb", rgb: shown.rgb, ...(w !== "preserve" ? { white: w } : {}) })}
+              />
+            </div>
+          )}
+
+          {/* 高级：饱和度 / 明度、色相微调、配色方案（默认收起，不打扰常用流程） */}
+          <div className="rounded-md border border-border/70">
+            <button
+              type="button"
+              aria-expanded={advancedOpen}
+              onClick={() => setAdvancedOpen(!advancedOpen)}
+              className="flex h-7 w-full items-center gap-1 rounded-md px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRight aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", advancedOpen && "rotate-90")} />
+              {t("editor.color.advanced")}
+            </button>
+            {advancedOpen && (
+              <div className="grid gap-2 border-t border-border/70 p-2">
+                {gradientSlider(
+                  t("editor.color.saturation"),
+                  "S",
+                  Math.round(hsv.s * 100),
+                  0,
+                  100,
+                  "%",
+                  `linear-gradient(to right, ${css(hsvToRgb({ ...hsv, s: 0 }))}, ${css(hsvToRgb({ ...hsv, s: 1 }))})`,
+                  (v) => fromHsv({ ...hsv, s: v / 100 }),
+                )}
+                {gradientSlider(t("editor.color.brightnessLabel"), "V", Math.round(hsv.v * 100), 0, 100, "%", valueGradient(hsv), (v) =>
+                  fromHsv({ ...hsv, v: v / 100 }),
+                )}
+                <div className="flex items-center gap-1">
+                  <span className="mr-auto text-[11px] text-muted-foreground">{t("editor.color.hueNudge")}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="num h-6 px-2 text-[11px]"
+                    aria-label={t("editor.color.hueBy", { deg: -HUE_NUDGE })}
+                    onClick={() => commit(asRgb(rotateHue(shown.rgb, -HUE_NUDGE)))}
+                  >
+                    −{HUE_NUDGE}°
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="num h-6 px-2 text-[11px]"
+                    aria-label={t("editor.color.hueBy", { deg: HUE_NUDGE })}
+                    onClick={() => commit(asRgb(rotateHue(shown.rgb, HUE_NUDGE)))}
+                  >
+                    +{HUE_NUDGE}°
+                  </Button>
+                </div>
+                <div className="grid gap-1.5">
+                  <Segmented<Harmony>
+                    size="xs"
+                    ariaLabel={t("editor.color.harmony")}
+                    value={harmony}
+                    options={HARMONIES.map((h) => ({ value: h, label: t(`editor.color.harmonies.${h}`) }))}
+                    onChange={setHarmony}
+                  />
+                  <div className="flex items-center gap-1">
+                    {harmonyColors(shown.rgb, harmony).map((c, i) => (
+                      <button
+                        key={`${harmony}-${i}`}
+                        type="button"
+                        aria-label={t("editor.color.harmonyItem", { hex: rgbToHex(c) })}
+                        title={rgbToHex(c)}
+                        onClick={() => commit(asRgb(c))}
+                        className={cn(
+                          "h-6 flex-1 cursor-pointer rounded-sm border border-border bg-(--sw) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          i === 0 && "ring-1 ring-foreground/40",
+                        )}
+                        style={{ "--sw": css(c) } as CSSProperties}
+                      />
+                    ))}
+                  </div>
+                  {onApplySpread && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 justify-self-start px-2 text-xs"
+                      title={t("editor.color.harmonySpreadHint")}
+                      onClick={() => onApplySpread(harmonyColors(shown.rgb, harmony))}
+                    >
+                      <Rows4 aria-hidden />
+                      {t("editor.color.harmonySpread")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -497,39 +627,7 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA, mo
         </div>
       )}
 
-      <div className="grid gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-muted-foreground">{t("editor.color.palette")}</span>
-          {canPickScreenColor() && modes.includes("rgb") && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              aria-label={t("editor.color.eyedropper")}
-              title={t("editor.color.eyedropper")}
-              onClick={() => {
-                void pickScreenColor().then((hex) => {
-                  const parsed = hex ? hexToRgb(hex) : null;
-                  if (parsed) commit({ kind: "rgb", rgb: parsed });
-                });
-              }}
-            >
-              <Pipette aria-hidden />
-            </Button>
-          )}
-        </div>
-        {/* 常用色与最近使用只列出目标灯具支持的方式（例如只有色温通道的灯不列彩色） */}
-        <div className="flex flex-wrap gap-1">
-          {PALETTE.filter((p) => modes.includes(p.color.kind)).map((p) => swatch(p.id, p.color, t(`editor.color.swatches.${p.id}`)))}
-        </div>
-        {recentShown.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="mr-1 text-[11px] text-muted-foreground">{t("editor.color.recent")}</span>
-            {recentShown.map(({ c, i }) => swatch(`recent-${i}`, c, t("editor.color.recentItem", { hex: rgbToHex(colorValueRgb(c)) })))}
-          </div>
-        )}
-      </div>
+      <ColorSwatchLibrary shown={shown} gamma={gamma} modes={modes} onPick={commit} />
 
       {output && (
         <div className="grid gap-1.5 rounded-md border border-border p-2" aria-label={t("editor.color.output")}>

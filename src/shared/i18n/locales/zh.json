@@ -1642,7 +1642,8 @@
       "input": "输入方式",
       "inputs": {
         "wheel": "色轮（HSV）",
-        "rgb": "RGB 数值"
+        "rgb": "RGB 数值",
+        "hsi": "HSI"
       },
       "valueOf": "{{name}}数值",
       "modeHints": {
@@ -1654,7 +1655,55 @@
       "hsv": "HSV 数值",
       "hsvH": "色相 H（°）",
       "hsvS": "饱和度 S（%）",
-      "hsvV": "明度 V（%）"
+      "hsvV": "明度 V（%）",
+      "swatchTabs": "色板",
+      "gels": "色纸",
+      "mine": "我的色板",
+      "gelSearch": "搜索色纸编号或名称",
+      "gelBrand": "色纸品牌",
+      "gelAll": "全部",
+      "gelNone": "没有匹配的色纸",
+      "gelNote": "色纸颜色是 LED 的近似值，仅供参考。",
+      "gelFamilies": {
+        "red": "红",
+        "orange": "橙",
+        "yellow": "黄",
+        "green": "绿",
+        "cyan": "青",
+        "blue": "蓝",
+        "purple": "紫",
+        "pink": "粉与品红",
+        "tint": "淡色与色温校正"
+      },
+      "mineAdd": "加入当前颜色",
+      "mineHas": "已在色板中",
+      "mineFull": "最多保存 {{count}} 个颜色",
+      "mineEdit": "整理",
+      "mineEmpty": "还没有保存的颜色。选好颜色后点“加入当前颜色”。",
+      "mineName": "{{name}} 的名称",
+      "mineUp": "前移 {{name}}",
+      "mineDown": "后移 {{name}}",
+      "mineRemove": "删除 {{name}}",
+      "hsi": "HSI 数值",
+      "hsiH": "HSI 色相",
+      "hsiS": "HSI 饱和度",
+      "hsiI": "HSI 强度",
+      "hsiHint": "I 是三个通道的平均值：纯色最高约 33%，白色为 100%。",
+      "advanced": "高级",
+      "saturation": "饱和度",
+      "hueNudge": "色相微调",
+      "hueBy": "色相 {{deg}}°",
+      "harmony": "配色方案",
+      "harmonies": {
+        "complementary": "互补",
+        "analogous": "邻近",
+        "triad": "三角",
+        "split": "分裂互补"
+      },
+      "harmonyItem": "使用 {{hex}}",
+      "harmonySpread": "铺开到多灯",
+      "harmonySpreadHint": "把这组颜色依次铺到轨道的各台灯上（写入多灯分布）",
+      "harmonySpreadDone": "已把 {{count}} 种颜色铺开到多灯"
     },
     "look": {
       "title": "外观与关键帧",

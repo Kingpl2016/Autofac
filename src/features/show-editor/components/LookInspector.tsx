@@ -354,6 +354,16 @@ export function LookInspector({ cues }: { cues: readonly LookClip[] }) {
           gamma={gamma}
           modes={modes}
           onCommit={(color) => edit((l, uMs) => void (l.color = setValueAt(l.color, uMs, color)))}
+          // 配色方案铺开到多灯：写进分布的静态颜色（覆盖颜色层），一步撤销
+          onApplySpread={
+            members > 1
+              ? (colors) => {
+                  noteDetach();
+                  update((d) => void setSpread(d, ids, { ...first.spread, colors: { colors: colors.map((rgb) => ({ kind: "rgb", rgb })), blend: "step" } }));
+                  announce(t("editor.color.harmonySpreadDone", { count: colors.length }));
+                }
+              : undefined
+          }
         />
         {look.color?.kind === "keys" && segmentSelect(look.color, "color")}
       </div>

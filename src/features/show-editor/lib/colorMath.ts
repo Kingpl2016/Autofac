@@ -86,3 +86,88 @@ export function hsToWheel(h: number, s: number): { x: number; y: number } {
   const a = (h * Math.PI) / 180;
   return { x: Math.sin(a) * s, y: -Math.cos(a) * s };
 }
+
+/** HSI 颜色：色相 0~360°、饱和度 0~1、强度 0~1（三通道平均值）。 */
+export interface Hsi {
+  h: number;
+  s: number;
+  i: number;
+}
+
+const DEG = Math.PI / 180;
+
+/**
+ * RGB → HSI（色彩学的标准定义：强度为三通道平均值，饱和度为 `1 - min / 强度`）。
+ *
+ * @param rgb sRGB 0~255。
+ * @returns HSI；灰色的色相为 0，黑色的饱和度为 0。
+ */
+export function rgbToHsi([r8, g8, b8]: Rgb): Hsi {
+  const [r, g, b] = [r8 / 255, g8 / 255, b8 / 255];
+  const i = (r + g + b) / 3;
+  const s = i <= 0 ? 0 : 1 - Math.min(r, g, b) / i;
+  const num = 0.5 * (r - g + (r - b));
+  const den = Math.sqrt((r - g) ** 2 + (r - b) * (g - b));
+  if (den < 1e-9) return { h: 0, s, i };
+  const theta = Math.acos(Math.min(1, Math.max(-1, num / den))) / DEG;
+  return { h: b <= g ? theta : 360 - theta, s, i };
+}
+
+/**
+ * HSI → RGB（与 {@link rgbToHsi} 互逆；超出 RGB 范围的组合会被截断）。
+ *
+ * @param hsi HSI（饱和度、强度会被限制在 0~1）。
+ * @returns sRGB 0~255（取整）。
+ */
+export function hsiToRgb({ h, s, i }: Hsi): Rgb {
+  const H = ((h % 360) + 360) % 360;
+  const S = Math.min(1, Math.max(0, s));
+  const I = Math.min(1, Math.max(0, i));
+  // 每 120° 一个扇区：扇区起点的通道最大，下一个通道其次，第三个通道为 I(1-S)
+  const sector = Math.floor(H / 120) % 3;
+  const a = (H - sector * 120) * DEG;
+  const low = I * (1 - S);
+  const high = I * (1 + (S * Math.cos(a)) / Math.cos(60 * DEG - a));
+  const mid = 3 * I - (low + high);
+  const [r, g, b] = sector === 0 ? [high, mid, low] : sector === 1 ? [low, high, mid] : [mid, low, high];
+  const to8 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  return [to8(r), to8(g), to8(b)];
+}
+
+/**
+ * 旋转色相（保持 HSV 的饱和度与明度）。
+ *
+ * @param rgb 颜色。
+ * @param degrees 旋转角度（正为顺时针）。
+ * @returns 新颜色；灰色不变。
+ */
+export function rotateHue(rgb: Rgb, degrees: number): Rgb {
+  const hsv = rgbToHsv(rgb);
+  if (hsv.s === 0) return [...rgb];
+  return hsvToRgb({ ...hsv, h: (((hsv.h + degrees) % 360) + 360) % 360 });
+}
+
+/** 配色方案：互补、邻近、三角、分裂互补。 */
+export const HARMONIES = ["complementary", "analogous", "triad", "split"] as const;
+
+/** 配色方案。 */
+export type Harmony = (typeof HARMONIES)[number];
+
+/** 每种方案相对基色的色相偏移（第一个为基色本身）。 */
+const HARMONY_OFFSETS: Record<Harmony, readonly number[]> = {
+  complementary: [0, 180],
+  analogous: [0, -30, 30],
+  triad: [0, 120, 240],
+  split: [0, 150, 210],
+};
+
+/**
+ * 按配色方案从基色生成一组颜色。
+ *
+ * @param rgb 基色。
+ * @param harmony 方案。
+ * @returns 颜色（第一个是基色）；基色是灰色时全部相同。
+ */
+export function harmonyColors(rgb: Rgb, harmony: Harmony): Rgb[] {
+  return HARMONY_OFFSETS[harmony].map((d) => (d === 0 ? ([...rgb] as Rgb) : rotateHue(rgb, d)));
+}

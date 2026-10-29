@@ -133,6 +133,44 @@ describe("外观片段的关键帧", () => {
   });
 });
 
+describe("颜色的配色方案铺开到多灯", () => {
+  it("分组轨道上：三角配色写进分布的静态颜色，一步撤销", () => {
+    act(() =>
+      useProjectStore.getState().load(
+        produce(createEmptyProject("t"), (d) => {
+          const ids = addFixtures(d, RGBW, 3);
+          createGroup(d, "排", ids);
+          d.durationMs = 10_000;
+          id = addLookCue(d, d.tracks.at(-1)!.id, 1000, { intensity: fixed(100), color: fixed({ kind: "rgb", rgb: [255, 0, 0] }) }, 2000) ?? "";
+        }),
+      ),
+    );
+    act(() => useEditorUiStore.setState({ selectedCueIds: [id], playheadMs: 1500 }));
+    render(<CueInspector />);
+    fireEvent.click(screen.getByRole("button", { name: "高级", expanded: false }));
+    fireEvent.click(screen.getByRole("radio", { name: "三角" }));
+    const steps = useProjectStore.temporal.getState().pastStates.length;
+    fireEvent.click(screen.getByRole("button", { name: "铺开到多灯" }));
+    const c = cue();
+    expect(c.kind === "look" && c.spread?.colors).toEqual({
+      colors: [
+        { kind: "rgb", rgb: [255, 0, 0] },
+        { kind: "rgb", rgb: [0, 255, 0] },
+        { kind: "rgb", rgb: [0, 0, 255] },
+      ],
+      blend: "step",
+    });
+    expect(useProjectStore.temporal.getState().pastStates.length).toBe(steps + 1);
+  });
+
+  it("单灯轨道没有“铺开到多灯”", () => {
+    render(<CueInspector />);
+    fireEvent.click(screen.getByRole("button", { name: "转换为外观片段（1）" }));
+    fireEvent.click(screen.getByRole("button", { name: "高级", expanded: false }));
+    expect(screen.queryByRole("button", { name: "铺开到多灯" })).toBeNull();
+  });
+});
+
 describe("外观检查器按灯具类型显示", () => {
   it("调光灯轨道不显示色盘；已有颜色层时提示并可移除；分组里部分支持时标出台数", () => {
     let groupCue = "";

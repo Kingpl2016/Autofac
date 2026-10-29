@@ -12,6 +12,7 @@ import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { CueInspector } from "../CueInspector";
+import { useColorInputStore } from "../../stores/useColorInputStore";
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -78,7 +79,7 @@ describe("CueInspector", () => {
     act(() => useEditorUiStore.getState().selectCues([c1]));
     render(<CueInspector />);
     expect(screen.getByRole("heading", { name: "RGBW全彩灯 1" })).toBeTruthy();
-    expect((screen.getByLabelText("红（数值）") as HTMLInputElement).value).toBe("255");
+    expect(screen.getByRole("img", { name: /^目标颜色 #ff0000/ })).toBeTruthy();
     expect((screen.getByLabelText("亮度（数值）") as HTMLInputElement).value).toBe("100");
     expect((screen.getByLabelText("起点") as HTMLInputElement).value).toBe("00:01.00");
     expect((screen.getByLabelText("长度") as HTMLInputElement).value).toBe("00:02.00");
@@ -152,18 +153,29 @@ describe("CueInspector", () => {
     expect(screen.getByRole("radio", { name: "S 曲线" }).getAttribute("aria-checked")).toBe("true");
   });
 
-  it("颜色分量：提交后写入，超出 0~255 的值被夹住", () => {
+  it("静态片段用完整色盘：RGB 分量提交后写入（超出 0~255 的值被夹住），色纸直接写 RGB", () => {
+    useColorInputStore.setState({ input: "rgb" });
     const { c1 } = load();
     act(() => useEditorUiStore.getState().selectCues([c1]));
     render(<CueInspector />);
-    const green = screen.getByLabelText("绿（数值）");
+    // 只有彩色方式，不显示白光策略
+    expect(screen.queryByRole("radiogroup", { name: "颜色方式" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "白光" })).toBeNull();
+    const green = screen.getByRole("textbox", { name: "绿数值" });
     fireEvent.change(green, { target: { value: "128" } });
     fireEvent.blur(green);
-    const blue = screen.getByLabelText("蓝（数值）");
+    const blue = screen.getByRole("textbox", { name: "蓝数值" });
     fireEvent.change(blue, { target: { value: "999" } });
     fireEvent.blur(blue);
-    const cue = project().cues.find((c) => c.id === c1);
-    expect(cue?.kind === "static" && cue.rgb).toEqual([255, 128, 255]);
+    const rgbOf = () => {
+      const cue = project().cues.find((c) => c.id === c1);
+      return cue?.kind === "static" ? cue.rgb : null;
+    };
+    expect(rgbOf()).toEqual([255, 128, 255]);
+
+    fireEvent.click(screen.getByRole("radio", { name: "色纸" }));
+    fireEvent.click(screen.getByRole("button", { name: "LEE 106 原红" }));
+    expect(rgbOf()).toEqual([240, 0, 0]);
   });
 
   it("时间：改起点平移 Cue；与别的 Cue 冲突或格式不对时被忽略", () => {

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
 import { cssColor } from "../lib/cueTemplates";
+import { colorValueRgb } from "../lib/looks";
 import { clipName } from "../lib/clipVisual";
 import { commonFx, convertLegacyEffects, detachFx, effectName, setFxParams } from "../lib/effectLibrary";
 import {
@@ -31,7 +32,7 @@ import { formatTimecode, parseTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { CommitInput } from "./CommitInput";
-import { ColorSection } from "./ColorSection";
+import { ColorPicker } from "./ColorPicker";
 import { EffectInspector } from "./EffectInspector";
 import { EffectParamsPanel } from "./EffectParamsPanel";
 import { EmptyHint } from "./EmptyHint";
@@ -41,6 +42,9 @@ import { SceneInspector } from "./SceneInspector";
 import { SliderField } from "./SliderField";
 
 const EASINGS: readonly Easing[] = ["linear", "easeInOut", "sCurve"];
+
+/** 静态片段的色盘只提供彩色方式。 */
+const RGB_ONLY = ["rgb"] as const;
 
 /**
  * 一批 Cue 在某个属性上的共同值。
@@ -113,6 +117,7 @@ export function CueInspector() {
   const fx = looks.length === looks.filter((c) => c.fx).length ? commonFx(looks) : null;
   const lookIds = looks.map((c) => c.id);
   const firstStatic = statics[0]?.kind === "static" ? statics[0] : null;
+  const gamma = project.output.gamma;
 
   return (
     <div className="flex flex-col">
@@ -227,11 +232,17 @@ export function CueInspector() {
           title={t("editor.cue.color")}
           aside={<span aria-hidden className="size-3.5 rounded-sm border border-border" style={{ backgroundColor: cssColor(firstStatic.rgb) }} />}
         >
-          <ColorSection
+          {common(statics, (c) => (c.kind === "static" ? c.rgb : null)).mixed && (
+            <p className="mb-1 text-xs text-muted-foreground">{t("editor.cue.mixed")}</p>
+          )}
+          {/* 静态片段只存 RGB：同一套色盘（色纸、我的色板、HSI、高级），不提供色温 / 发光体与白光策略 */}
+          <ColorPicker
             key={ids.join(",")}
-            rgb={firstStatic.rgb}
-            mixed={common(statics, (c) => (c.kind === "static" ? c.rgb : null)).mixed}
-            onCommit={(rgb) => patch({ rgb })}
+            value={{ kind: "rgb", rgb: firstStatic.rgb }}
+            gamma={gamma}
+            modes={RGB_ONLY}
+            whiteStrategy={false}
+            onCommit={(color) => patch({ rgb: color.kind === "rgb" ? [...color.rgb] : colorValueRgb(color, gamma) })}
           />
         </InspectorSection>
       )}

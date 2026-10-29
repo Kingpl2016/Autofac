@@ -1642,7 +1642,8 @@
       "input": "Input method",
       "inputs": {
         "wheel": "Wheel (HSV)",
-        "rgb": "RGB values"
+        "rgb": "RGB values",
+        "hsi": "HSI"
       },
       "valueOf": "{{name}} value",
       "modeHints": {
@@ -1654,7 +1655,55 @@
       "hsv": "HSV values",
       "hsvH": "Hue H (°)",
       "hsvS": "Saturation S (%)",
-      "hsvV": "Value V (%)"
+      "hsvV": "Value V (%)",
+      "swatchTabs": "Swatches",
+      "gels": "Gels",
+      "mine": "My swatches",
+      "gelSearch": "Search gel number or name",
+      "gelBrand": "Gel brand",
+      "gelAll": "All",
+      "gelNone": "No matching gels",
+      "gelNote": "Gel colours are LED approximations, for reference only.",
+      "gelFamilies": {
+        "red": "Red",
+        "orange": "Orange",
+        "yellow": "Yellow",
+        "green": "Green",
+        "cyan": "Cyan",
+        "blue": "Blue",
+        "purple": "Purple",
+        "pink": "Pink and magenta",
+        "tint": "Tints and CT correction"
+      },
+      "mineAdd": "Add current colour",
+      "mineHas": "Already saved",
+      "mineFull": "Up to {{count}} colours",
+      "mineEdit": "Arrange",
+      "mineEmpty": "No saved colours yet. Pick a colour and click “Add current colour”.",
+      "mineName": "Name of {{name}}",
+      "mineUp": "Move {{name}} up",
+      "mineDown": "Move {{name}} down",
+      "mineRemove": "Delete {{name}}",
+      "hsi": "HSI values",
+      "hsiH": "HSI hue",
+      "hsiS": "HSI saturation",
+      "hsiI": "HSI intensity",
+      "hsiHint": "I is the average of the three channels: pure colours reach about 33%, white is 100%.",
+      "advanced": "Advanced",
+      "saturation": "Saturation",
+      "hueNudge": "Hue nudge",
+      "hueBy": "Hue {{deg}}°",
+      "harmony": "Colour harmony",
+      "harmonies": {
+        "complementary": "Complementary",
+        "analogous": "Analogous",
+        "triad": "Triad",
+        "split": "Split"
+      },
+      "harmonyItem": "Use {{hex}}",
+      "harmonySpread": "Spread across fixtures",
+      "harmonySpreadHint": "Lay these colours across the fixtures of the track (writes the spread)",
+      "harmonySpreadDone": "Spread {{count}} colours across the fixtures"
     },
     "look": {
       "title": "Look & keyframes",

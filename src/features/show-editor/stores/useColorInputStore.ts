@@ -4,8 +4,8 @@ import { persist } from "zustand/middleware";
 
 import { persistPrefs } from "@/shared/stores/persistPrefs";
 
-/** 色盘“彩色”方式下的输入方式：色轮（HSV）、RGB 数值。 */
-export const COLOR_INPUTS = ["wheel", "rgb"] as const;
+/** 色盘“彩色”方式下的输入方式：色轮（HSV）、RGB 数值、HSI 滑杆。 */
+export const COLOR_INPUTS = ["wheel", "rgb", "hsi"] as const;
 
 /** 输入方式。 */
 export type ColorInput = (typeof COLOR_INPUTS)[number];
