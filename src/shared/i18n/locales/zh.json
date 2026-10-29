@@ -3078,6 +3078,8 @@
       "capabilities": "能力",
       "modeCount": "通道模式",
       "heads": "像素数",
+      "highlight": "高亮 {{value}}",
+      "emitters": "发光体校准",
       "pan": "Pan 行程",
       "tilt": "Tilt 行程",
       "beam": "光束角",
@@ -3107,6 +3109,7 @@
       "amber": "琥珀光",
       "uv": "紫外光 UV",
       "lime": "青柠光",
+      "indigo": "靛蓝光",
       "cyan": "青 C",
       "magenta": "品红 M",
       "yellow": "黄 Y",
@@ -3116,6 +3119,7 @@
       "speed": "云台速度",
       "shutter": "频闪 / 切光",
       "colorWheel": "颜色轮",
+      "colorWheelRotate": "颜色轮旋转",
       "gobo": "图案盘",
       "goboRotate": "图案旋转",
       "prism": "棱镜",
@@ -3125,8 +3129,14 @@
       "zoom": "变焦",
       "iris": "光圈",
       "goboShake": "图案抖动",
+      "blade": "切光刀片",
+      "bladeRotate": "刀片旋转",
+      "rotation": "光束旋转",
       "macro": "宏功能",
       "reset": "灯具复位",
+      "fog": "烟雾输出",
+      "effectSpeed": "程序速度",
+      "maintenance": "维护功能",
       "other": "其他"
     },
     "editor": {
@@ -3233,7 +3243,8 @@
       "not_found": "模型不存在，可能已被删除",
       "io": "读写灯具库文件失败",
       "importOpen": "无法打开或解析这个文件",
-      "importNoModels": "文件里没有找到可导入的物模型"
+      "importNoModels": "文件里没有找到可导入的物模型",
+      "importRedirect": "这是一个重定向文件，真正的灯具定义在 {{target}}，请导入那个文件"
     },
     "import": {
       "button": "导入物模型表",
@@ -3245,6 +3256,10 @@
       "summary": "新增 {{added}} 个，覆盖 {{updated}} 个，忽略 {{skipped}} 个。",
       "skipped": "与内置模型编号相同，已忽略：{{ids}}",
       "warnings": "{{count}} 条提示",
+      "warningGroup": "{{model}}（{{count}} 条）",
+      "warningMore": "还有 {{count}} 条未显示，可复制全部查看。",
+      "copyWarnings": "复制全部提示",
+      "copied": "已复制到剪贴板",
       "warning": {
         "channelsReassigned": "模型 {{model}}（{{sheet}} 第 {{row}} 行起）的起始通道重叠，已按书写顺序依次排布。",
         "duplicateModel": "模型 {{model}}（{{sheet}} 第 {{row}} 行）的编号重复，已忽略。",
@@ -3253,8 +3268,14 @@
         "unknownFunction": "{{sheet}} 第 {{row}} 行（模型 {{model}}）的属性代码“{{detail}}”无法识别，按“其他”处理。",
         "unknownFunctionOfl": "模型 {{model}}（{{sheet}}）的通道“{{detail}}”无法识别功能，按“其他”处理。",
         "fineChannelSeparate": "模型 {{model}}（{{sheet}}）的精细通道“{{detail}}”没有紧跟粗调通道，已作为独立通道导入。",
-        "unsupportedFeature": "模型 {{model}}（{{sheet}}）用到了暂不支持的特性（{{detail}}），相关通道已跳过。",
-        "invalidModelOfl": "模型 {{model}} 未通过校验（{{detail}}），已跳过。"
+        "unsupportedFeature": "模型 {{model}}（{{sheet}}）用到了暂不支持的特性（{{detail}}），相关内容已跳过。",
+        "invalidModelOfl": "模型 {{model}} 未通过校验（{{detail}}），已跳过。",
+        "unknownChannel": "模型 {{model}}（{{sheet}}）引用的通道“{{detail}}”在灯具定义里找不到，该通道留空。",
+        "fineChannelTruncated": "模型 {{model}}（{{sheet}}）的精细通道“{{detail}}”超过 16 位，已作为独立通道保留。",
+        "duplicateFunctionDemoted": "模型 {{model}}（{{sheet}}）的通道“{{detail}}”与同一像素里的另一通道功能重复，已改为“其他”。",
+        "capabilityDropped": "模型 {{model}}（{{sheet}}）通道“{{detail}}”的部分能力区间重叠或超出上限，已丢弃。",
+        "pixelGroupsAsHeads": "模型 {{model}}（{{sheet}}）按像素组控制，像素按组的顺序编号：{{detail}}。",
+        "modeSkipped": "模型 {{model}}（{{sheet}}）的这个模式无法使用（{{detail}}），已跳过。"
       }
     },
     "type": {

@@ -23,10 +23,25 @@ describe("通道功能分类", () => {
     expect(groupOf("zoom")).toBe("focus");
     expect(groupOf("shutter")).toBe("intensity");
     expect(groupOf("iris")).toBe("beam");
+    // OFL 适配新增的功能，与 Rust `ChannelFunction::group` 一致
+    expect(groupOf("indigo")).toBe("color");
+    expect(groupOf("colorWheelRotate")).toBe("color");
+    expect(groupOf("blade")).toBe("beam");
+    expect(groupOf("rotation")).toBe("beam");
+    expect(groupOf("fog")).toBe("control");
+    expect(groupOf("maintenance")).toBe("control");
+  });
+
+  it("下拉菜单列出全部功能", () => {
+    expect(new Set(CHANNEL_FUNCTIONS).size).toBe(CHANNEL_FUNCTIONS.length);
+    expect(CHANNEL_FUNCTIONS).toContain("indigo");
+    expect(CHANNEL_FUNCTIONS).toContain("effectSpeed");
   });
 
   it("发光体与合成规则", () => {
     expect(isEmitter("lime")).toBe(true);
+    expect(isEmitter("indigo")).toBe(true);
+    expect(defaultPrecedence("indigo")).toBe("htp");
     expect(isEmitter("cyan")).toBe(false);
     expect(defaultPrecedence("dimmer")).toBe("htp");
     expect(defaultPrecedence("pan")).toBe("ltp");

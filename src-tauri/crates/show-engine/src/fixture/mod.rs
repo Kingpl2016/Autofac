@@ -14,11 +14,11 @@ pub use builtin::builtin_models;
 pub use import::{ImportError, ImportReport, ImportWarning, ImportWarningKind};
 pub use model::{
     find_overlap, footprint, reassign_sequential, validate_layout, AttributeGroup, Capability,
-    ChannelFunction, Emitter, FixtureError, FixtureMode, FixtureModel, FixtureProperty,
+    CapabilityTag, ChannelFunction, Emitter, FixtureError, FixtureMode, FixtureModel, FixtureProperty,
     MatrixLayout, Physical, Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS, MAX_ID_LEN,
     MAX_MODES, MAX_PROPERTIES,
 };
-pub use ofl::import_ofl;
+pub use ofl::{import_ofl, import_ofl_as, OFL_RECOGNIZER_VERSION};
 pub use store::{FixtureLibrary, LibraryError, MergeOutcome};
 #[cfg(feature = "xlsx")]
 pub use xlsx::import_xlsx;

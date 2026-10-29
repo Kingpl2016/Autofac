@@ -16,6 +16,7 @@ const EMITTERS: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
   "amber",
   "uv",
   "lime",
+  "indigo",
 ]);
 
 /** 除发光体外，同一像素头里只能出现一次的功能。 */
@@ -41,11 +42,13 @@ const GROUP: Record<ChannelFunction, AttributeGroup> = {
   amber: "color",
   uv: "color",
   lime: "color",
+  indigo: "color",
   cyan: "color",
   magenta: "color",
   yellow: "color",
   colorTemp: "color",
   colorWheel: "color",
+  colorWheelRotate: "color",
   pan: "position",
   tilt: "position",
   speed: "position",
@@ -56,10 +59,16 @@ const GROUP: Record<ChannelFunction, AttributeGroup> = {
   prismRotate: "beam",
   frost: "beam",
   iris: "beam",
+  blade: "beam",
+  bladeRotate: "beam",
+  rotation: "beam",
   focus: "focus",
   zoom: "focus",
   macro: "control",
   reset: "control",
+  fog: "control",
+  effectSpeed: "control",
+  maintenance: "control",
   other: "control",
 };
 

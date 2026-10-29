@@ -9,8 +9,7 @@ use std::path::{Path, PathBuf};
 use parking_lot::Mutex;
 use serde::Serialize;
 use show_engine::fixture::{
-    import_ofl, import_xlsx, FixtureLibrary, FixtureModel, ImportError, ImportWarning,
-    MergeOutcome,
+    import_ofl, import_xlsx, FixtureLibrary, FixtureModel, ImportWarning, MergeOutcome,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -146,10 +145,7 @@ pub async fn fixture_import_xlsx(
     let report = tauri::async_runtime::spawn_blocking(move || import_xlsx(&path))
         .await
         .map_err(|e| format!("import_failed:{e}"))?
-        .map_err(|e| match e {
-            ImportError::Open(_) => "import_failed:open".to_owned(),
-            ImportError::NoModels => "import_failed:no_models".to_owned(),
-        })?;
+        .map_err(|e| e.code())?;
     let merge = state
         .with(|lib| lib.merge_import(report.models))
         .map_err(|e| e.code())?;
@@ -222,10 +218,11 @@ pub async fn fixture_import_ofl(
     let text = tokio::fs::read_to_string(&path)
         .await
         .map_err(|_| "import_failed:open".to_owned())?;
-    let report = import_ofl(&text, &key).map_err(|e| match e {
-        ImportError::Open(_) => "import_failed:open".to_owned(),
-        ImportError::NoModels => "import_failed:no_models".to_owned(),
-    })?;
+    // 解析与校验是纯计算，几十毫秒级；放到阻塞线程池，避免大文件占住异步运行时
+    let report = tauri::async_runtime::spawn_blocking(move || import_ofl(&text, &key))
+        .await
+        .map_err(|e| format!("import_failed:{e}"))?
+        .map_err(|e| e.code())?;
     let merge = state
         .with(|lib| lib.merge_import(report.models))
         .map_err(|e| e.code())?;

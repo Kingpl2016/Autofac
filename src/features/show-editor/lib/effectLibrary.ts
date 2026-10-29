@@ -102,6 +102,7 @@ const ATTR_KEY_LIST = [
   "speed",
   "shutter",
   "colorWheel",
+  "colorWheelRotate",
   "cyan",
   "magenta",
   "yellow",
@@ -115,8 +116,14 @@ const ATTR_KEY_LIST = [
   "focus",
   "zoom",
   "iris",
+  "blade",
+  "bladeRotate",
+  "rotation",
   "macro",
   "reset",
+  "fog",
+  "effectSpeed",
+  "maintenance",
 ] as const satisfies readonly AttrKey[];
 
 const byte = z.number().int().min(0).max(255);

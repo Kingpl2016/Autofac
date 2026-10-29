@@ -146,7 +146,7 @@ export type Param<T> =
 export type WhiteStrategy = "off" | "preserve" | "boost";
 
 /** 发光体键（与 `ChannelFunction` 里的发光体同名）。 */
-export type EmitterKey = "red" | "green" | "blue" | "white" | "coolWhite" | "warmWhite" | "amber" | "uv" | "lime";
+export type EmitterKey = "red" | "green" | "blue" | "white" | "coolWhite" | "warmWhite" | "amber" | "uv" | "lime" | "indigo";
 
 /**
  * 颜色值：存“意图色”，由每台灯的混色器换算成通道值；也可以按发光体直接给定（手动覆盖）。
@@ -166,6 +166,7 @@ export type AttrKey =
   | "speed"
   | "shutter"
   | "colorWheel"
+  | "colorWheelRotate"
   | "cyan"
   | "magenta"
   | "yellow"
@@ -179,8 +180,14 @@ export type AttrKey =
   | "focus"
   | "zoom"
   | "iris"
+  | "blade"
+  | "bladeRotate"
+  | "rotation"
   | "macro"
-  | "reset";
+  | "reset"
+  | "fog"
+  | "effectSpeed"
+  | "maintenance";
 
 /** 属性分层的“外观”：只写出现的层，没出现的层不参与（不覆盖其它片段 / 默认值）。 */
 export interface Look {

@@ -6,7 +6,7 @@ export const MAX_ID_LEN = 64;
 /** 单个模式最多的通道对象数（与后端一致）。 */
 export const MAX_PROPERTIES = 256;
 /** 单个模型最多的附加模式数（与后端一致）。 */
-export const MAX_MODES = 16;
+export const MAX_MODES = 32;
 /** 多头矩阵最多的像素数（与后端一致）。 */
 export const MAX_HEADS = 512;
 /** 单个通道对象最多的能力区间数（与后端一致）。 */

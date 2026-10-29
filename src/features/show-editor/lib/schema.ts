@@ -24,6 +24,9 @@ const capability = z.object({
   physical: z.tuple([z.number(), z.number()]).optional(),
   unit: z.string().optional(),
   color: rgb.optional(),
+  tag: z
+    .enum(["shutterOpen", "shutterClosed", "strobe", "noFunction", "slot", "rotation", "effect", "maintenance"])
+    .optional(),
 });
 
 const fixtureProperty = z.object({
@@ -105,7 +108,7 @@ function numberParam(range: z.ZodNumber) {
   ]);
 }
 
-const emitterKey = z.enum(["red", "green", "blue", "white", "coolWhite", "warmWhite", "amber", "uv", "lime"]);
+const emitterKey = z.enum(["red", "green", "blue", "white", "coolWhite", "warmWhite", "amber", "uv", "lime", "indigo"]);
 
 const colorValue = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("rgb"), rgb, white: z.enum(["off", "preserve", "boost"]).optional() }),
@@ -124,6 +127,7 @@ const attrKey = z.enum([
   "speed",
   "shutter",
   "colorWheel",
+  "colorWheelRotate",
   "cyan",
   "magenta",
   "yellow",
@@ -137,8 +141,14 @@ const attrKey = z.enum([
   "focus",
   "zoom",
   "iris",
+  "blade",
+  "bladeRotate",
+  "rotation",
   "macro",
   "reset",
+  "fog",
+  "effectSpeed",
+  "maintenance",
 ]);
 
 const look = z.object({

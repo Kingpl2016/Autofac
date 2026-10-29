@@ -124,6 +124,8 @@ arc-swap = "=1.9.3"
 parking_lot = "=0.12.5"
 # 概览矩阵的标准 Base64 编解码（前端 JSON / sidecar 用）。
 base64 = "=0.22.1"
+# OFL 像素组的名称约束（正则）：轻量实现，WASM 构建也能用。
+regex-lite = "=0.1.9"
 # 节目概览 / 通道曲线的并行扫描（专用线程池）。
 rayon = "=1.12.0"
 # 回放线程的高精度等待（Windows 原生 sleep 精度不足 1ms）。

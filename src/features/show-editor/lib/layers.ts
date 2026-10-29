@@ -13,6 +13,7 @@ export const ATTR_KEYS: readonly AttrKey[] = [
   "speed",
   "shutter",
   "colorWheel",
+  "colorWheelRotate",
   "cyan",
   "magenta",
   "yellow",
@@ -26,8 +27,14 @@ export const ATTR_KEYS: readonly AttrKey[] = [
   "focus",
   "zoom",
   "iris",
+  "blade",
+  "bladeRotate",
+  "rotation",
   "macro",
   "reset",
+  "fog",
+  "effectSpeed",
+  "maintenance",
 ];
 
 /**

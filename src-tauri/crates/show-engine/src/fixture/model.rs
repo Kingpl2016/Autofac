@@ -27,8 +27,8 @@ pub const MAX_PROPERTIES: usize = 256;
 /// 模型编号的最大长度（字符数）。
 pub const MAX_ID_LEN: usize = 64;
 
-/// 单个模型最多的附加模式数。
-pub const MAX_MODES: usize = 16;
+/// 单个模型最多的附加模式数（OFL 里像素灯常有二三十个模式）。
+pub const MAX_MODES: usize = 32;
 
 /// 多头矩阵最多的像素数。
 pub const MAX_HEADS: u16 = 512;
@@ -96,6 +96,8 @@ pub enum ChannelFunction {
     Uv,
     /// 青柠光。
     Lime,
+    /// 靛蓝光（加色发光体）。
+    Indigo,
     /// 青（CMY 减色混合）。
     Cyan,
     /// 品红（CMY 减色混合）。
@@ -114,6 +116,8 @@ pub enum ChannelFunction {
     Shutter,
     /// 颜色轮。
     ColorWheel,
+    /// 颜色轮整轮旋转（彩虹效果）。
+    ColorWheelRotate,
     /// 图案盘。
     Gobo,
     /// 图案旋转。
@@ -132,6 +136,18 @@ pub enum ChannelFunction {
     Iris,
     /// 图案抖动。
     GoboShake,
+    /// 切光刀片插入。
+    Blade,
+    /// 切光刀片或刀片系统旋转。
+    BladeRotate,
+    /// 光束旋转（未指明对象的旋转，例如整个光束组件）。
+    Rotation,
+    /// 烟雾 / 雾机输出。
+    Fog,
+    /// 内置程序 / 特效的速度或参数。
+    EffectSpeed,
+    /// 维护功能（灯泡开关、风扇、显示屏等，不含复位）。
+    Maintenance,
     /// 宏功能。
     Macro,
     /// 灯具复位。
@@ -173,6 +189,7 @@ impl ChannelFunction {
             "amber" => Self::Amber,
             "uv" | "ultraviolet" => Self::Uv,
             "lime" => Self::Lime,
+            "indigo" => Self::Indigo,
             "cyan" => Self::Cyan,
             "magenta" => Self::Magenta,
             "yellow" => Self::Yellow,
@@ -182,6 +199,7 @@ impl ChannelFunction {
             "speed" | "pantiltspeed" => Self::Speed,
             "shutter" | "strobe" | "shutterstrobe" => Self::Shutter,
             "colorwheel" | "color" => Self::ColorWheel,
+            "colorwheelrotate" | "colorwheelrotation" => Self::ColorWheelRotate,
             "gobo" | "gobowheel" => Self::Gobo,
             "goborotate" | "goborotation" => Self::GoboRotate,
             "prism" => Self::Prism,
@@ -191,6 +209,12 @@ impl ChannelFunction {
             "zoom" => Self::Zoom,
             "iris" => Self::Iris,
             "goboshake" => Self::GoboShake,
+            "blade" | "blades" | "bladeinsertion" | "shaper" => Self::Blade,
+            "bladerotate" | "bladerotation" | "bladesystemrotation" => Self::BladeRotate,
+            "rotation" | "beamrotation" => Self::Rotation,
+            "fog" | "haze" | "fogoutput" | "smoke" => Self::Fog,
+            "effectspeed" | "programspeed" | "showspeed" => Self::EffectSpeed,
+            "maintenance" | "lamp" | "lampcontrol" => Self::Maintenance,
             "macro" => Self::Macro,
             "reset" => Self::Reset,
             _ => Self::Other,
@@ -215,11 +239,13 @@ impl ChannelFunction {
             | Self::Amber
             | Self::Uv
             | Self::Lime
+            | Self::Indigo
             | Self::Cyan
             | Self::Magenta
             | Self::Yellow
             | Self::ColorTemp
-            | Self::ColorWheel => AttributeGroup::Color,
+            | Self::ColorWheel
+            | Self::ColorWheelRotate => AttributeGroup::Color,
             Self::Pan | Self::Tilt | Self::Speed => AttributeGroup::Position,
             Self::Gobo
             | Self::GoboRotate
@@ -227,9 +253,17 @@ impl ChannelFunction {
             | Self::Prism
             | Self::PrismRotate
             | Self::Frost
-            | Self::Iris => AttributeGroup::Beam,
+            | Self::Iris
+            | Self::Blade
+            | Self::BladeRotate
+            | Self::Rotation => AttributeGroup::Beam,
             Self::Focus | Self::Zoom => AttributeGroup::Focus,
-            Self::Macro | Self::Reset | Self::Other => AttributeGroup::Control,
+            Self::Macro
+            | Self::Reset
+            | Self::Fog
+            | Self::EffectSpeed
+            | Self::Maintenance
+            | Self::Other => AttributeGroup::Control,
         }
     }
 
@@ -237,7 +271,7 @@ impl ChannelFunction {
     ///
     /// # Returns
     ///
-    /// 红、绿、蓝、白、冷白、暖白、琥珀、紫外、青柠返回 `true`。
+    /// 红、绿、蓝、白、冷白、暖白、琥珀、紫外、青柠、靛蓝返回 `true`。
     #[must_use]
     pub fn is_emitter(self) -> bool {
         matches!(
@@ -251,6 +285,7 @@ impl ChannelFunction {
                 | Self::Amber
                 | Self::Uv
                 | Self::Lime
+                | Self::Indigo
         )
     }
 
@@ -340,6 +375,49 @@ pub struct Capability {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub color: Option<[u8; 3]>,
+    /// 区间的语义（开光、关光、频闪、槽位…），供引擎与特效生成器按语义选值；未知时为 `None`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub tag: Option<CapabilityTag>,
+}
+
+/// 能力区间的语义标签（来自 OFL 能力类型，自定义模型可手动设置）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub enum CapabilityTag {
+    /// 快门全开（常亮出光）。
+    ShutterOpen,
+    /// 快门关闭（不出光）。
+    ShutterClosed,
+    /// 频闪 / 脉冲 / 渐变等快门效果；`physical` 为频率时单位是 `Hz`。
+    Strobe,
+    /// 无功能（空档）。
+    NoFunction,
+    /// 选择色轮 / 图案轮等的槽位。
+    Slot,
+    /// 连续旋转（色轮、图案、棱镜等），`physical` 为转速。
+    Rotation,
+    /// 内置程序 / 特效。
+    Effect,
+    /// 维护功能（复位、灯泡、风扇等）。
+    Maintenance,
+}
+
+impl FixtureProperty {
+    /// 找到第一个带指定语义标签的能力区间。
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - 语义标签。
+    ///
+    /// # Returns
+    ///
+    /// 第一个匹配的区间；没有时为 `None`。
+    #[must_use]
+    pub fn capability_tagged(&self, tag: CapabilityTag) -> Option<&Capability> {
+        self.capabilities.iter().find(|c| c.tag == Some(tag))
+    }
 }
 
 /// 灯具的一个通道对象。
@@ -978,6 +1056,20 @@ mod tests {
         assert_eq!(ChannelFunction::Iris.group(), AttributeGroup::Beam);
         assert_eq!(ChannelFunction::Shutter.group(), AttributeGroup::Intensity);
         assert_eq!(ChannelFunction::Tilt.group(), AttributeGroup::Position);
+        // OFL 适配新增的功能
+        assert_eq!(ChannelFunction::from_code("Indigo"), ChannelFunction::Indigo);
+        assert!(ChannelFunction::Indigo.is_emitter() && ChannelFunction::Indigo.is_unique());
+        assert_eq!(ChannelFunction::Indigo.default_precedence(), Precedence::Htp);
+        assert_eq!(ChannelFunction::from_code("Color Wheel Rotation"), ChannelFunction::ColorWheelRotate);
+        assert_eq!(ChannelFunction::ColorWheelRotate.group(), AttributeGroup::Color);
+        assert_eq!(ChannelFunction::from_code("Blade Insertion"), ChannelFunction::Blade);
+        assert_eq!(ChannelFunction::BladeRotate.group(), AttributeGroup::Beam);
+        assert_eq!(ChannelFunction::Rotation.group(), AttributeGroup::Beam);
+        assert_eq!(ChannelFunction::from_code("Haze"), ChannelFunction::Fog);
+        for f in [ChannelFunction::Fog, ChannelFunction::EffectSpeed, ChannelFunction::Maintenance] {
+            assert_eq!(f.group(), AttributeGroup::Control);
+            assert!(!f.is_unique() && !f.is_emitter());
+        }
     }
 
     #[test]

@@ -49,7 +49,18 @@ export interface FixtureProfile {
   caps: ReadonlySet<FixtureCapability>;
 }
 
-const BEAM: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>(["gobo", "goboRotate", "goboShake", "prism", "prismRotate", "frost", "iris"]);
+const BEAM: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
+  "gobo",
+  "goboRotate",
+  "goboShake",
+  "prism",
+  "prismRotate",
+  "frost",
+  "iris",
+  "blade",
+  "bladeRotate",
+  "rotation",
+]);
 
 /**
  * 推断一台灯具（模型的某个模式）的能力。

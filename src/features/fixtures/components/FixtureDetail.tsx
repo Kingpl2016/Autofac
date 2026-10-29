@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/shared/components/Segmented";
 import { SurfacePanel } from "@/shared/components/SurfacePanel";
 import { DEFAULT_MODE_KEY, layoutForKey, sortByChannel } from "../lib/draft";
-import { channelRangeText } from "../lib/format";
+import { capabilityText, channelRangeText, physicalText } from "../lib/format";
 import { effectivePrecedence, groupOf, headCount } from "../lib/functions";
 import { FIXTURE_CAPABILITIES, modelProfile, modelType, type FixtureCapability } from "../lib/profile";
 import type { FixtureModel } from "../lib/types";
@@ -136,6 +136,14 @@ export function FixtureDetail({ model, onEdit, onClone, onDelete, onAddToShow }:
         <Meta label={t("fixtures.detail.system")} value={model.system || "—"} />
         <Meta label={t("fixtures.detail.productType")} value={model.productType || "—"} />
         {model.manufacturer && <Meta label={t("fixtures.editor.manufacturer")} value={model.manufacturer} />}
+        {(model.emitters?.length ?? 0) > 0 && (
+          <Meta
+            label={t("fixtures.detail.emitters")}
+            value={(model.emitters ?? [])
+              .map((e) => `${t(`fixtures.functions.${e.function}`)}${e.kelvin ? ` ${e.kelvin}K` : ""}`)
+              .join("、")}
+          />
+        )}
       </dl>
 
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -192,16 +200,29 @@ export function FixtureDetail({ model, onEdit, onClone, onDelete, onAddToShow }:
                     ? t("fixtures.table.bits16", { order: p.bigEndian ? t("fixtures.table.bigEndian") : t("fixtures.table.littleEndian") })
                     : t("fixtures.table.bits8")}
                 </td>
-                <td className="num py-2 pr-3">{p.defaultValue}</td>
+                <td className="num py-2 pr-3">
+                  {p.defaultValue}
+                  {p.highlightValue !== undefined && (
+                    <span className="block text-xs text-muted-foreground">
+                      {t("fixtures.detail.highlight", { value: p.highlightValue })}
+                    </span>
+                  )}
+                </td>
                 <td className="min-w-48 py-2 text-muted-foreground">
                   {p.capabilities && p.capabilities.length > 0 ? (
                     <>
                       <CapabilityBand caps={p.capabilities} max={p.width === 2 ? 65535 : 255} className="h-5" />
-                      <span className="sr-only">{p.capabilities.map((c) => `${c.range[0]}–${c.range[1]} ${c.label}`).join("；")}</span>
+                      {p.capabilities.length === 1 && physicalText(p.capabilities[0]) && (
+                        <span className="num mt-1 block text-xs" aria-hidden>
+                          {physicalText(p.capabilities[0])}
+                        </span>
+                      )}
+                      <span className="sr-only">{p.capabilities.map(capabilityText).join("；")}</span>
                     </>
                   ) : (
                     p.valueDesc || "—"
                   )}
+                  {p.description && <span className="mt-1 block text-xs">{p.description}</span>}
                 </td>
               </tr>
             ))}

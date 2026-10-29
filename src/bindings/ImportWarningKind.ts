@@ -3,4 +3,4 @@
 /**
  * 导入过程中的警告类别。
  */
-export type ImportWarningKind = "channelsReassigned" | "duplicateModel" | "invalidRow" | "invalidModel" | "unknownFunction" | "fineChannelSeparate" | "unsupportedFeature";
+export type ImportWarningKind = "channelsReassigned" | "duplicateModel" | "invalidRow" | "invalidModel" | "unknownFunction" | "fineChannelSeparate" | "unsupportedFeature" | "unknownChannel" | "fineChannelTruncated" | "duplicateFunctionDemoted" | "capabilityDropped" | "pixelGroupsAsHeads" | "modeSkipped";

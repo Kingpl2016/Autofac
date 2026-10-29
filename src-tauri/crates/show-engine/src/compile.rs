@@ -16,7 +16,7 @@ use crate::envelope::sanitize_gamma;
 use crate::fixture::{footprint, ChannelFunction, FixtureModel, FixtureProperty, DMX_CHANNELS};
 use crate::look::{Look, Spread, SpreadOrder, SpreadRange};
 use crate::mix::{
-    ColorMixer, Emitters, AMBER, B, COMPONENTS, CW, DIM, G, LIME, R, SW, UV, W, WW,
+    ColorMixer, Emitters, AMBER, B, COMPONENTS, CW, DIM, G, INDIGO, LIME, R, SW, UV, W, WW,
 };
 use crate::project::{Cue, CueBase, ShowProject, Tempo, TrackTarget, MAX_UNIVERSE};
 
@@ -79,6 +79,8 @@ pub struct Driven {
     pub uv: Option<Slot>,
     /// 青柠。
     pub lime: Option<Slot>,
+    /// 靛蓝。
+    pub indigo: Option<Slot>,
     /// 调光。
     pub dimmer: Option<Slot>,
     /// 开关。
@@ -103,6 +105,7 @@ impl Driven {
         s[AMBER] = self.amber;
         s[UV] = self.uv;
         s[LIME] = self.lime;
+        s[INDIGO] = self.indigo;
         s[DIM] = self.dimmer;
         s[SW] = self.switch;
         s
@@ -548,6 +551,7 @@ fn layout_fixture(a: &Accepted<'_>, base: &mut DmxData) -> (Driven, Vec<(usize, 
             ChannelFunction::Amber => Some((&mut driven.amber, AMBER)),
             ChannelFunction::Uv => Some((&mut driven.uv, UV)),
             ChannelFunction::Lime => Some((&mut driven.lime, LIME)),
+            ChannelFunction::Indigo => Some((&mut driven.indigo, INDIGO)),
             ChannelFunction::Dimmer => Some((&mut driven.dimmer, DIM)),
             ChannelFunction::Switch => Some((&mut driven.switch, SW)),
             _ => None,

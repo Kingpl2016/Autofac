@@ -22,6 +22,12 @@ describe("fixtureErrorText", () => {
     expect(fixtureErrorText(t, "invalid_model:overlap")).toBe("模型未通过校验（overlap）");
   });
 
+  it("OFL 重定向文件提示目标灯具", () => {
+    expect(fixtureErrorText(t, "import_failed:redirect:minuit-une/ivl-carre")).toBe(
+      "这是一个重定向文件，真正的灯具定义在 minuit-une/ivl-carre，请导入那个文件",
+    );
+  });
+
   it("未知错误回落到通用文案", () => {
     expect(fixtureErrorText(t, "什么鬼")).toBe("发生未知错误");
     expect(fixtureErrorText(t, undefined)).toBe("发生未知错误");

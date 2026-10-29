@@ -22,6 +22,7 @@ const ATTR_FUNCTIONS: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
   "speed",
   "shutter",
   "colorWheel",
+  "colorWheelRotate",
   "cyan",
   "magenta",
   "yellow",
@@ -35,8 +36,14 @@ const ATTR_FUNCTIONS: ReadonlySet<ChannelFunction> = new Set<ChannelFunction>([
   "focus",
   "zoom",
   "iris",
+  "blade",
+  "bladeRotate",
+  "rotation",
   "macro",
   "reset",
+  "fog",
+  "effectSpeed",
+  "maintenance",
 ]);
 
 /** 单元格写入编程器的方式。 */

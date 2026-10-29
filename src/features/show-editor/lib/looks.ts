@@ -76,6 +76,7 @@ const EMITTER_RGB: Record<string, { rgb: Rgb; gain: number }> = {
   amber: { rgb: [255, 191, 0], gain: 1 },
   uv: { rgb: [96, 0, 255], gain: 0.3 },
   lime: { rgb: [191, 255, 0], gain: 1 },
+  indigo: { rgb: [75, 0, 255], gain: 1 },
 };
 
 /**

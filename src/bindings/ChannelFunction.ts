@@ -6,4 +6,4 @@
  * 求值器按功能驱动通道：强度与颜色类由混色引擎驱动，其余功能由属性层与特效驱动；
  * 片段不涉及的通道输出默认值（见 [`ChannelFunction::default_value`]）。
  */
-export type ChannelFunction = "switch" | "dimmer" | "red" | "green" | "blue" | "white" | "coolWhite" | "warmWhite" | "amber" | "uv" | "lime" | "cyan" | "magenta" | "yellow" | "colorTemp" | "pan" | "tilt" | "speed" | "shutter" | "colorWheel" | "gobo" | "goboRotate" | "prism" | "prismRotate" | "frost" | "focus" | "zoom" | "iris" | "goboShake" | "macro" | "reset" | "other";
+export type ChannelFunction = "switch" | "dimmer" | "red" | "green" | "blue" | "white" | "coolWhite" | "warmWhite" | "amber" | "uv" | "lime" | "indigo" | "cyan" | "magenta" | "yellow" | "colorTemp" | "pan" | "tilt" | "speed" | "shutter" | "colorWheel" | "colorWheelRotate" | "gobo" | "goboRotate" | "prism" | "prismRotate" | "frost" | "focus" | "zoom" | "iris" | "goboShake" | "blade" | "bladeRotate" | "rotation" | "fog" | "effectSpeed" | "maintenance" | "macro" | "reset" | "other";

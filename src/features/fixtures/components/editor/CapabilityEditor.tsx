@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { nextCapability, splitCapabilities } from "../../lib/draft";
+import { capabilityText } from "../../lib/format";
 import type { Capability, FixtureProperty } from "../../lib/types";
 
 interface CapabilityEditorProps {
@@ -199,7 +200,7 @@ export function CapabilityBand({ caps, max, className }: { caps: readonly Capabi
           <div
             key={`${p.lo}-${p.hi}`}
             style={style}
-            title={p.cap ? `${p.lo}–${p.hi} ${p.cap.label}` : `${p.lo}–${p.hi}`}
+            title={p.cap ? capabilityText({ ...p.cap, range: [p.lo, p.hi] }) : `${p.lo}–${p.hi}`}
             className={cn(
               "flex min-w-0 items-center justify-center truncate border-r border-background px-1 text-[0.65rem] last:border-r-0",
               p.cap === null && "border-dashed bg-transparent text-muted-foreground/60",

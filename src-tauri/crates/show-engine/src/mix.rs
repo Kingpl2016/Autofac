@@ -35,7 +35,7 @@ use crate::envelope::apply_gamma;
 use crate::fixture::{ChannelFunction, FixtureModel};
 
 /// 混色结果的分量数。
-pub const COMPONENTS: usize = 11;
+pub const COMPONENTS: usize = 12;
 
 /// 分量下标：红。
 pub const R: usize = 0;
@@ -55,13 +55,15 @@ pub const AMBER: usize = 6;
 pub const UV: usize = 7;
 /// 分量下标：青柠。
 pub const LIME: usize = 8;
+/// 分量下标：靛蓝。
+pub const INDIGO: usize = 9;
 /// 分量下标：调光。
-pub const DIM: usize = 9;
+pub const DIM: usize = 10;
 /// 分量下标：开关。
-pub const SW: usize = 10;
+pub const SW: usize = 11;
 
-/// 发光体分量（R..=LIME）的个数。
-pub const EMITTERS: usize = 9;
+/// 发光体分量（R..=INDIGO）的个数。
+pub const EMITTERS: usize = 10;
 
 /// 一次混色的结果：各分量的线性输出 `0..=1`（灯具没有的通道恒为 0）。
 pub type Components = [f64; COMPONENTS];
@@ -102,14 +104,14 @@ pub enum ColorRequest {
     },
     /// 色温（K），按灯具能力换算。
     Kelvin(f64),
-    /// 按发光体直接给定（下标同 [`R`] ..= [`LIME`]，各 `0..=1`，为 DMX 线性分数）。
+    /// 按发光体直接给定（下标同 [`R`] ..= [`INDIGO`]，各 `0..=1`，为 DMX 线性分数）。
     Manual([f64; EMITTERS]),
 }
 
 /// 一路发光体的颜色向量（线性 RGB，最大分量为 1，再乘相对亮度）。
 pub type EmitterVector = [f64; 3];
 
-/// 灯具发光体的颜色（按 [`R`] ..= [`LIME`] 下标）。
+/// 灯具发光体的颜色（按 [`R`] ..= [`INDIGO`] 下标）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Emitters {
     /// 各发光体的线性 RGB 向量。
@@ -162,6 +164,8 @@ impl Emitters {
                 // UV 只在预览里有颜色意义，RGB 意图从不分配给它
                 display8_to_output([96, 0, 255], gamma).map(|v| v * 0.3),
                 display8_to_output([191, 255, 0], gamma),
+                // 靛蓝（约 445 nm）：与 UV 一样只由“按发光体直给”驱动，RGB 意图不分配给它
+                display8_to_output([75, 0, 255], gamma),
             ],
             cool_kelvin: DEFAULT_COOL_K,
             warm_kelvin: DEFAULT_WARM_K,
@@ -225,6 +229,7 @@ pub fn emitter_index(function: ChannelFunction) -> Option<usize> {
         ChannelFunction::Amber => AMBER,
         ChannelFunction::Uv => UV,
         ChannelFunction::Lime => LIME,
+        ChannelFunction::Indigo => INDIGO,
         _ => return None,
     })
 }
@@ -440,7 +445,7 @@ impl ColorMixer {
             Strategy::Rgb(RgbFamily)
         } else if present.any(&[CW, WW]) {
             Strategy::Cct(CctOnly::default())
-        } else if present.any(&[W, AMBER, UV, LIME]) {
+        } else if present.any(&[W, AMBER, UV, LIME, INDIGO]) {
             Strategy::Mono(MonoEmitter)
         } else {
             Strategy::None(NoEmitter)
@@ -888,6 +893,19 @@ mod tests {
         v[AMBER] = 1.0; // 灯具没有琥珀
         let m = mx.mix(&ColorRequest::Manual(v), 1.0);
         assert!(near(m[R], 0.3) && near(m[W], 0.7) && near(m[AMBER], 0.0));
+    }
+
+    #[test]
+    fn 靛蓝只由手动直给驱动_rgb_意图不分配() {
+        let mx = mixer(Driven { indigo: slot(3), ..rgb_fixture() });
+        let blue = mx.mix(&rgb_req([0.0, 0.0, 1.0]), 1.0);
+        assert!(near(blue[B], 1.0) && near(blue[INDIGO], 0.0));
+        let mut v = [0.0; EMITTERS];
+        v[INDIGO] = 0.8;
+        let m = mx.mix(&ColorRequest::Manual(v), 1.0);
+        assert!(near(m[INDIGO], 0.8));
+        let rgb = mx.emitted_rgb(&m);
+        assert!(rgb[2] > rgb[0] && rgb[1] < 1e-9, "靛蓝预览应偏蓝紫：{rgb:?}");
     }
 
     #[test]

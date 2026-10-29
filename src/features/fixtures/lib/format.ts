@@ -1,4 +1,4 @@
-import type { FixtureModel, ImportWarning } from "./types";
+import type { Capability, FixtureModel, ImportWarning } from "./types";
 import { endChannel } from "./validate";
 
 /**
@@ -21,6 +21,37 @@ export function filterModels(models: readonly FixtureModel[], query: string): Fi
   const q = query.trim().toLowerCase();
   if (q === "") return [...models];
   return models.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+}
+
+/** 物理量单位的显示写法（OFL 的 `deg` 写成 `°`）。 */
+function unitText(unit: string | undefined): string {
+  return unit === "deg" ? "°" : (unit ?? "");
+}
+
+/**
+ * 能力区间的物理量文字：比例区间为 `0°–540°`，单值为 `20Hz`。
+ *
+ * @param cap 能力区间。
+ * @returns 文字；没有物理量时为空串。
+ */
+export function physicalText(cap: Pick<Capability, "physical" | "unit">): string {
+  if (!cap.physical) return "";
+  const u = unitText(cap.unit);
+  const fmt = (v: number) => `${Number(v.toFixed(2))}${u}`;
+  const [a, b] = cap.physical;
+  return a === b ? fmt(a) : `${fmt(a)}–${fmt(b)}`;
+}
+
+/**
+ * 能力区间的完整说明：`DMX 起–止 名称（物理量）`，用于悬停提示与读屏文本。
+ *
+ * @param cap 能力区间。
+ * @returns 说明文字。
+ */
+export function capabilityText(cap: Pick<Capability, "range" | "label" | "physical" | "unit">): string {
+  const phys = physicalText(cap);
+  const base = `${cap.range[0]}–${cap.range[1]} ${cap.label}`.trim();
+  return phys && !cap.label.includes(phys) ? `${base}（${phys}）` : base;
 }
 
 /**

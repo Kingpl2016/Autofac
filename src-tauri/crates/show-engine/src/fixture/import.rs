@@ -22,8 +22,20 @@ pub enum ImportWarningKind {
     UnknownFunction,
     /// OFL：精细通道没有紧跟在粗调通道之后，无法合并为 16 位，已作为独立通道导入。
     FineChannelSeparate,
-    /// OFL：用到了暂不支持的特性（例如按像素组重复的矩阵通道），相关通道已跳过。
+    /// OFL：用到了暂不支持的特性（`detail` 为特性名），相关模式或通道已跳过。
     UnsupportedFeature,
+    /// OFL：模式里的通道键在灯具定义里找不到，该 DMX 通道留空。
+    UnknownChannel,
+    /// OFL：24 位等第二级以上的精细通道无法合并，已作为独立通道保留（模型最多 16 位）。
+    FineChannelTruncated,
+    /// OFL：同一像素里重复出现的唯一功能（例如两个调光），后出现的已降为“其他”。
+    DuplicateFunctionDemoted,
+    /// OFL：能力区间与前一个重叠、起止颠倒或超出数量上限，已丢弃（`detail` 为通道键）。
+    CapabilityDropped,
+    /// OFL：模式按像素组控制，像素编号按组出现的顺序分配（不对应网格位置）。
+    PixelGroupsAsHeads,
+    /// OFL：模式无法使用（`detail` 为原因），已跳过。
+    ModeSkipped,
 }
 
 /// 一条导入警告。
@@ -62,4 +74,23 @@ pub enum ImportError {
     /// 工作簿里没有读到任何可用的模型。
     #[error("文件中没有找到可导入的物模型")]
     NoModels,
+    /// OFL 重定向文件：灯具已改名或与另一型号相同，真正的定义在 `制造商/灯具` 里。
+    #[error("这是一个重定向文件，指向 {0}")]
+    Redirect(String),
+}
+
+impl ImportError {
+    /// 机器可读的错误码，前端据此选择本地化文案。
+    ///
+    /// # Returns
+    ///
+    /// `import_failed:open`、`import_failed:no_models` 或 `import_failed:redirect:<目标>`。
+    #[must_use]
+    pub fn code(&self) -> String {
+        match self {
+            Self::Open(_) => "import_failed:open".to_owned(),
+            Self::NoModels => "import_failed:no_models".to_owned(),
+            Self::Redirect(target) => format!("import_failed:redirect:{target}"),
+        }
+    }
 }

@@ -22,5 +22,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 fsutil = { path = "../fsutil" }
+regex-lite = { workspace = true }
 calamine = { workspace = true, optional = true }
 symphonia = { version = "=0.5.5", optional = true, default-features = false, features = ["mp3", "wav", "flac", "aac", "isomp4", "ogg", "vorbis", "pcm", "alac", "adpcm", "mkv"] }

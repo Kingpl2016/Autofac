@@ -3078,6 +3078,8 @@
       "capabilities": "Capabilities",
       "modeCount": "Modes",
       "heads": "Pixels",
+      "highlight": "Highlight {{value}}",
+      "emitters": "Emitter calibration",
       "pan": "Pan range",
       "tilt": "Tilt range",
       "beam": "Beam angle",
@@ -3107,6 +3109,7 @@
       "amber": "Amber",
       "uv": "UV",
       "lime": "Lime",
+      "indigo": "Indigo",
       "cyan": "Cyan",
       "magenta": "Magenta",
       "yellow": "Yellow",
@@ -3116,6 +3119,7 @@
       "speed": "Pan/Tilt speed",
       "shutter": "Shutter / Strobe",
       "colorWheel": "Color wheel",
+      "colorWheelRotate": "Color wheel rotation",
       "gobo": "Gobo wheel",
       "goboRotate": "Gobo rotation",
       "prism": "Prism",
@@ -3125,8 +3129,14 @@
       "zoom": "Zoom",
       "iris": "Iris",
       "goboShake": "Gobo shake",
+      "blade": "Blade insertion",
+      "bladeRotate": "Blade rotation",
+      "rotation": "Beam rotation",
       "macro": "Macro",
       "reset": "Fixture reset",
+      "fog": "Fog output",
+      "effectSpeed": "Program speed",
+      "maintenance": "Maintenance",
       "other": "Other"
     },
     "editor": {
@@ -3233,7 +3243,8 @@
       "not_found": "The model no longer exists",
       "io": "Could not read or write the fixture library file",
       "importOpen": "Could not open or parse this file",
-      "importNoModels": "No importable models were found in the file"
+      "importNoModels": "No importable models were found in the file",
+      "importRedirect": "This is a redirect file; the fixture is defined in {{target}}. Import that file instead"
     },
     "import": {
       "button": "Import model sheet",
@@ -3245,6 +3256,10 @@
       "summary": "{{added}} added, {{updated}} replaced, {{skipped}} ignored.",
       "skipped": "Same ID as a built-in model, ignored: {{ids}}",
       "warnings": "{{count}} notes",
+      "warningGroup": "{{model}} ({{count}})",
+      "warningMore": "{{count}} more not shown; copy all to see them.",
+      "copyWarnings": "Copy all notes",
+      "copied": "Copied to clipboard",
       "warning": {
         "channelsReassigned": "Model {{model}} ({{sheet}}, from row {{row}}) had overlapping start channels; they were laid out in row order.",
         "duplicateModel": "Model {{model}} ({{sheet}}, row {{row}}) has a duplicate ID and was ignored.",
@@ -3253,8 +3268,14 @@
         "unknownFunction": "{{sheet}} row {{row}} (model {{model}}): property code \"{{detail}}\" is not recognized and is treated as Other.",
         "unknownFunctionOfl": "Model {{model}} ({{sheet}}): the function of channel \"{{detail}}\" is not recognized and is treated as Other.",
         "fineChannelSeparate": "Model {{model}} ({{sheet}}): fine channel \"{{detail}}\" does not follow its coarse channel and was imported as a separate channel.",
-        "unsupportedFeature": "Model {{model}} ({{sheet}}) uses an unsupported feature ({{detail}}); those channels were skipped.",
-        "invalidModelOfl": "Model {{model}} failed validation ({{detail}}) and was skipped."
+        "unsupportedFeature": "Model {{model}} ({{sheet}}) uses an unsupported feature ({{detail}}); that part was skipped.",
+        "invalidModelOfl": "Model {{model}} failed validation ({{detail}}) and was skipped.",
+        "unknownChannel": "Model {{model}} ({{sheet}}): channel \"{{detail}}\" is not defined in the fixture, so that DMX channel is left empty.",
+        "fineChannelTruncated": "Model {{model}} ({{sheet}}): fine channel \"{{detail}}\" goes beyond 16 bits and was kept as a separate channel.",
+        "duplicateFunctionDemoted": "Model {{model}} ({{sheet}}): channel \"{{detail}}\" repeats a function already used in the same pixel and was changed to Other.",
+        "capabilityDropped": "Model {{model}} ({{sheet}}): some ranges of channel \"{{detail}}\" overlap or exceed the limit and were dropped.",
+        "pixelGroupsAsHeads": "Model {{model}} ({{sheet}}) is controlled by pixel groups; pixels are numbered in group order: {{detail}}.",
+        "modeSkipped": "Model {{model}} ({{sheet}}): this mode cannot be used ({{detail}}) and was skipped."
       }
     },
     "type": {

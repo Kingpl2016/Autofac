@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { channelRangeText, filterModels, warningParams } from "../format";
+import { capabilityText, channelRangeText, filterModels, physicalText, warningParams } from "../format";
 import type { FixtureModel } from "../types";
 
 const model = (id: string, name: string): FixtureModel => ({
@@ -33,5 +33,15 @@ describe("format", () => {
     expect(
       warningParams({ kind: "invalidRow", sheet: "S", row: 3, modelId: "1.1.1.1", detail: "x" }),
     ).toEqual({ sheet: "S", row: 3, model: "1.1.1.1", detail: "x" });
+  });
+});
+
+describe("能力区间文字", () => {
+  it("比例区间显示起止物理量，角度写成 °", () => {
+    expect(physicalText({ physical: [0, 540], unit: "deg" })).toBe("0°–540°");
+    expect(physicalText({ physical: [20, 20], unit: "Hz" })).toBe("20Hz");
+    expect(physicalText({})).toBe("");
+    expect(capabilityText({ range: [0, 65535], label: "Pan", physical: [0, 540], unit: "deg" })).toBe("0–65535 Pan（0°–540°）");
+    expect(capabilityText({ range: [0, 20], label: "Closed" })).toBe("0–20 Closed");
   });
 });
