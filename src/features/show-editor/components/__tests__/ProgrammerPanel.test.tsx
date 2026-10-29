@@ -9,7 +9,7 @@ import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { fixed } from "../../lib/looks";
 import { addFixtures } from "../../lib/ops";
 import { createEmptyProject } from "../../lib/project";
-import { RGBW } from "../../lib/__tests__/testkit";
+import { PIXEL_BAR, RGBW } from "../../lib/__tests__/testkit";
 import { useEditorPrefsStore } from "../../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProgrammerStore } from "../../stores/useProgrammerStore";
@@ -198,5 +198,41 @@ describe("灯具表", () => {
     // 预览叠了编程器：红光 50% → 128
     const cell = within(row2).getByRole("button", { name: /^Red 50%/ });
     expect(cell.className).toContain("bg-keyframe");
+  });
+
+  it("像素灯展开像素行：给单个像素改颜色，该像素行的数值随之变化，其它像素不变", () => {
+    act(() => {
+      useProjectStore.getState().load(
+        produce(createEmptyProject("t"), (d) => {
+          addFixtures(d, PIXEL_BAR, 1);
+          d.durationMs = 10_000;
+          d.output.gamma = 1;
+        }),
+      );
+      useEditorPrefsStore.setState({ centerView: "sheet" });
+    });
+    render(<PreviewPanel />);
+    const table = screen.getByRole("table", { name: "灯具表" });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    fireEvent.click(within(table).getByRole("button", { name: "展开 灯条 1 的 3 个像素" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(5);
+
+    const id = ids()[0];
+    const pixelRow = (n: number) => within(table).getByRole("button", { name: `灯条 1 · 像素 ${n}` }).closest("tr") as HTMLElement;
+    act(() => {
+      useProgrammerStore.setState({
+        values: { [`${id}#2`]: { intensity: fixed(100), color: fixed({ kind: "rgb", rgb: [0, 0, 255] }) } },
+      });
+    });
+    expect(within(pixelRow(2)).getByRole("button", { name: /^B2 100%/ })).toBeTruthy();
+    expect(within(pixelRow(1)).getByRole("button", { name: /^B1 0%/ })).toBeTruthy();
+
+    // 在像素行上编辑写入像素引用
+    fireEvent.click(within(pixelRow(3)).getByRole("button", { name: /^R3 0%/ }));
+    const input = within(pixelRow(3)).getByRole("textbox", { name: "R3 的百分比" });
+    fireEvent.change(input, { target: { value: "40" } });
+    fireEvent.blur(input);
+    expect(programmer().values[`${id}#3`]).toMatchObject({ color: fixed({ kind: "manual", values: { red: 0.4 } }) });
+    expect(within(pixelRow(3)).getByRole("button", { name: /^R3 40%/ })).toBeTruthy();
   });
 });

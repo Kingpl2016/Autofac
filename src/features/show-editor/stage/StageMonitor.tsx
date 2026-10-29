@@ -159,6 +159,8 @@ export function StageMonitor() {
   );
   // 选中像素时高亮它所属的灯具（舞台上每台灯只画一个点）
   const selected = new Set(selectedIds.map(baseOf));
+  // 编程器里有整灯或任一像素的值时，舞台上标为已编程
+  const programmed = new Set(Object.keys(values).map(baseOf));
   const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
   const fixtures: StageFixture[] = project.fixtures.map((f, i) => {
     const place = placements.get(f.id) ?? { x: 0, y: 0 };
@@ -176,7 +178,7 @@ export function StageMonitor() {
       tilt: cells?.get("tilt")?.fraction ?? null,
       panRange: models.get(f.modelId)?.physical?.panRangeDeg ?? DEFAULT_PAN_RANGE,
       selected: selected.has(f.id),
-      programmed: values[f.id] !== undefined,
+      programmed: programmed.has(f.id),
       parked: parked.has(f.id),
     };
   });

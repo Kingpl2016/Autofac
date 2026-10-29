@@ -5,7 +5,7 @@ import { buildSheet, cellTarget, manualEmitters, sheetColumns } from "../fixture
 import { fixed } from "../looks";
 import { addFixtures } from "../ops";
 import { createEmptyProject } from "../project";
-import { HEAD16, RGBW } from "./testkit";
+import { HEAD16, PIXEL_BAR, RGBW } from "./testkit";
 
 /** 1 台 RGBW（U0 @1）+ 1 台 16CH 摇头灯（U0 @5，Pan 16 位小端）。 */
 function rig() {
@@ -49,6 +49,36 @@ describe("灯具表", () => {
     expect(rows[1].cells.get("dimmer")?.programmed).toBe(true);
     expect(rows[1].cells.get("tilt")?.programmed).toBe(true);
     expect(rows[1].cells.get("pan")?.programmed).toBe(false);
+  });
+
+  it("像素灯展开后每个像素一行，显示各自的输出与编程状态；不展开时每台灯一行", () => {
+    const p = produce(createEmptyProject("t"), (d) => void addFixtures(d, PIXEL_BAR, 1));
+    const id = p.fixtures[0].id;
+    const frame = new Uint8Array(512);
+    frame[0] = 255; // 总调光
+    frame[1] = 200; // 像素 1 红
+    frame[8] = 100; // 像素 3 绿（第 9 通道）
+    const values = { [`${id}#3`]: { color: fixed({ kind: "rgb" as const, rgb: [0, 255, 0] as [number, number, number] }) } };
+
+    const collapsed = buildSheet(p, () => frame, values);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ fixtureId: id, head: null, pixels: 3 });
+    // 整灯行：总调光 + 第一个像素的代表值
+    expect(collapsed[0].cells.get("dimmer")?.dmx).toBe(255);
+    expect(collapsed[0].cells.get("red")?.dmx).toBe(200);
+
+    const rows = buildSheet(p, () => frame, values, new Set([id]));
+    expect(rows.map((r) => [r.fixtureId, r.head])).toEqual([
+      [id, null],
+      [`${id}#1`, 1],
+      [`${id}#2`, 2],
+      [`${id}#3`, 3],
+    ]);
+    // 像素行只有这个像素的通道
+    expect([...rows[3].cells.keys()]).toEqual(["red", "green", "blue"]);
+    expect(rows[3].cells.get("green")).toMatchObject({ dmx: 100, programmed: true });
+    expect(rows[2].cells.get("green")).toMatchObject({ dmx: 0, programmed: false });
+    expect(rows[1].cells.get("red")?.dmx).toBe(200);
   });
 
   it("单元格写入方式与手动发光体的当前值", () => {

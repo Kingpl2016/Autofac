@@ -5,7 +5,9 @@ import {
   isEmitter,
   layoutOf,
   type ChannelFunction,
+  type FixtureProperty,
 } from "@/features/fixtures";
+import { headsOf, refOf } from "./fixtureRef";
 import { paramHead } from "./looks";
 import type { AttrKey, EmitterKey, ShowProject } from "./project";
 import type { ProgrammerValues } from "./programmer";
@@ -81,14 +83,23 @@ export interface SheetCell {
   programmed: boolean;
 }
 
-/** 一行。 */
+/** 一行：一台灯（整灯），或展开后多头 / 像素灯的一个像素。 */
 export interface SheetRow {
+  /** 灯具引用：整灯为灯具 id，像素为 `灯具id#n`（与选择、编程器的键一致） */
   fixtureId: string;
+  /** 像素号；整灯行为 `null` */
+  head: number | null;
+  /** 整灯行：这台灯的像素数（单头灯为 0）；像素行为 0 */
+  pixels: number;
+  /** 灯具名 */
   name: string;
   modelName: string;
   /** `U1 @12` */
   address: string;
-  /** 功能 → 单元格（同一功能有多个通道对象时取整灯的第一个） */
+  /**
+   * 功能 → 单元格。整灯行：同一功能有多个通道对象时取整灯本体的，本体没有时取第一个像素的（代表值）；
+   * 像素行：只有这个像素的通道。
+   */
   cells: Map<ChannelFunction, SheetCell>;
 }
 
@@ -114,45 +125,53 @@ function programmedLayer(values: ProgrammerValues, fixtureId: string, fn: Channe
  *
  * @param project 工程（只读）。
  * @param frameOf 取工程内某个 Universe 当前的 512 字节；没有输出时返回 `null`（按 0 显示）。
- * @param values 编程器内容。
- * @returns 每台灯具一行（工程顺序）。
+ * @param values 编程器内容（键为灯具或像素引用）。
+ * @param expanded 展开像素行的灯具 id；省略时只有整灯行（每台灯一行，与 `project.fixtures` 一一对应）。
+ * @returns 工程顺序的行：每台灯一行整灯行，展开的灯紧跟各像素行。
  */
 export function buildSheet(
   project: Pick<ShowProject, "fixtures" | "fixtureModels">,
   frameOf: (universe: number) => ArrayLike<number> | null,
   values: ProgrammerValues,
+  expanded: ReadonlySet<string> = new Set(),
 ): SheetRow[] {
   const models = new Map(project.fixtureModels.map((m) => [m.id, m]));
-  return project.fixtures.map((f) => {
+  return project.fixtures.flatMap((f) => {
     const model = models.get(f.modelId);
     const layout = model ? (layoutOf(model, f.modeId) ?? []) : [];
     const frame = frameOf(f.universe);
-    const cells = new Map<ChannelFunction, SheetCell>();
-    // 整灯的通道对象优先（像素头的同名功能不重复成列）
-    const ordered = [...layout].sort((a, b) => (a.head ?? 0) - (b.head ?? 0));
-    for (const p of ordered) {
-      if (cells.has(p.function)) continue;
-      const at = f.address + p.channel - 2;
-      const byte = (i: number) => (frame && at + i >= 0 && at + i < 512 ? (frame[at + i] ?? 0) : 0);
-      const dmx = p.width === 2 ? (p.bigEndian ? byte(0) * 256 + byte(1) : byte(0) + byte(1) * 256) : byte(0);
-      const max = p.width === 2 ? 65535 : 255;
-      const raw = dmx / max;
-      cells.set(p.function, {
-        fn: p.function,
-        name: p.name,
-        dmx,
-        max,
-        fraction: p.invert ? 1 - raw : raw,
-        programmed: programmedLayer(values, f.id, p.function),
-      });
-    }
-    return {
-      fixtureId: f.id,
-      name: f.name,
-      modelName: model?.name ?? f.modelId,
-      address: `U${f.universe} @${f.address}`,
-      cells,
+    const heads = headsOf(model, f.modeId);
+    /** 由通道对象生成单元格（同一功能只取第一个）。 */
+    const cellsOf = (props: readonly FixtureProperty[], ref: string) => {
+      const cells = new Map<ChannelFunction, SheetCell>();
+      for (const p of props) {
+        if (cells.has(p.function)) continue;
+        const at = f.address + p.channel - 2;
+        const byte = (i: number) => (frame && at + i >= 0 && at + i < 512 ? (frame[at + i] ?? 0) : 0);
+        const dmx = p.width === 2 ? (p.bigEndian ? byte(0) * 256 + byte(1) : byte(0) + byte(1) * 256) : byte(0);
+        const max = p.width === 2 ? 65535 : 255;
+        const raw = dmx / max;
+        cells.set(p.function, {
+          fn: p.function,
+          name: p.name,
+          dmx,
+          max,
+          fraction: p.invert ? 1 - raw : raw,
+          programmed: programmedLayer(values, ref, p.function),
+        });
+      }
+      return cells;
     };
+    const base = { name: f.name, modelName: model?.name ?? f.modelId, address: `U${f.universe} @${f.address}` };
+    // 整灯行：整灯本体的通道对象优先（像素头的同名功能不重复成列）
+    const ordered = [...layout].sort((a, b) => (a.head ?? 0) - (b.head ?? 0));
+    const whole: SheetRow = { ...base, fixtureId: f.id, head: null, pixels: heads.length, cells: cellsOf(ordered, f.id) };
+    if (!expanded.has(f.id)) return [whole];
+    const pixelRows = heads.map((h): SheetRow => {
+      const ref = refOf(f.id, h);
+      return { ...base, fixtureId: ref, head: h, pixels: 0, cells: cellsOf(layout.filter((p) => p.head === h), ref) };
+    });
+    return [whole, ...pixelRows];
   });
 }
 

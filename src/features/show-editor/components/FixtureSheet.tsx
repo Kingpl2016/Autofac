@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { ChannelFunction } from "@/features/fixtures";
@@ -24,6 +25,8 @@ interface EditingCell {
  * 灯具表（Fixture Sheet）：每台灯一行、每种功能一列，显示播放头时刻的实际输出（百分比）。
  *
  * - 点行选灯（Ctrl 追加、Shift 连选），与编程器、预览区共用选择；
+ * - 多头 / 像素灯可以展开出像素行，每个像素显示自己的输出（整灯行的颜色列只是第一个像素的代表值），
+ *   像素行同样可以选中、编辑（写入像素引用 `灯具id#n`）；
  * - 编程器里有值的单元格高亮；
  * - 点单元格输入百分比写入编程器——这台灯在选择里时，同时写给所有选中且有该功能的灯。
  */
@@ -39,6 +42,8 @@ export function FixtureSheet() {
   const engine = useEngine();
   const evaluate = useMemo(() => createDmxEvaluator(preview, engine), [preview, engine]);
   const [editing, setEditing] = useState<EditingCell | null>(null);
+  // 多头 / 像素灯可以展开出像素行：像素的颜色、亮度各自不同，整灯行只能显示代表值
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const anchor = useRef<number | null>(null);
 
   const frames = new Map<number, Uint8Array>();
@@ -50,11 +55,19 @@ export function FixtureSheet() {
     }
     return f;
   };
-  const rows = buildSheet(project, frameOf, values);
+  const rows = buildSheet(project, frameOf, values, expanded);
   const columns = sheetColumns(rows);
   const selected = new Set(selectedIds);
 
   if (rows.length === 0) return <EmptyHint>{t("editor.preview.empty")}</EmptyHint>;
+
+  const toggleExpanded = (id: string) =>
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const pickRow = (index: number, e: MouseEvent) => {
     const id = rows[index].fixtureId;
@@ -158,6 +171,9 @@ export function FixtureSheet() {
         <tbody>
           {rows.map((row, index) => {
             const isSelected = selected.has(row.fixtureId);
+            const pixel = row.head !== null;
+            const open = expanded.has(row.fixtureId);
+            const label = pixel ? t("editor.patch.pixel", { n: row.head }) : row.name;
             return (
               <tr
                 key={row.fixtureId}
@@ -166,20 +182,37 @@ export function FixtureSheet() {
                 onClick={(e) => pickRow(index, e)}
               >
                 <th scope="row" className={cn("sticky left-0 bg-surface-2 px-2 py-1 text-left font-normal", isSelected && "bg-primary/15")}>
-                  <button
-                    type="button"
-                    aria-pressed={isSelected}
-                    className="max-w-40 truncate rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title={row.modelName}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      pickRow(index, e);
-                    }}
-                  >
-                    {row.name}
-                  </button>
+                  <span className={cn("flex items-center gap-1", pixel && "pl-5")}>
+                    {row.pixels > 0 && (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={t(open ? "editor.patch.collapsePixels" : "editor.patch.expandPixels", { name: row.name, count: row.pixels })}
+                        className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpanded(row.fixtureId);
+                        }}
+                      >
+                        <ChevronRight aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-pressed={isSelected}
+                      aria-label={pixel ? `${row.name} · ${label}` : undefined}
+                      className="max-w-40 truncate rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title={row.modelName}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pickRow(index, e);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  </span>
                 </th>
-                <td className="num whitespace-nowrap px-2 py-1 text-muted-foreground">{row.address}</td>
+                <td className="num whitespace-nowrap px-2 py-1 text-muted-foreground">{pixel ? "" : row.address}</td>
                 {columns.map((fn) => (
                   <td key={fn} className="px-1 py-0.5">
                     {cellView(row.fixtureId, row.cells.get(fn))}
