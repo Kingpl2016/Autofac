@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import builtinFile from "./builtinCueTemplates.json";
+import { clipFxSchema, type EffectDef, type EffectParams } from "./effectDefSchema";
 import { periodMs } from "./effects";
 import { colorValueRgb } from "./looks";
-import type { EffectCue, Rgb, Tempo } from "./project";
+import type { ColorValue, EffectCue, Easing, Look, Period, Rgb, Spread, Tempo } from "./project";
+import { colorValueSchema, lookSchema, spreadSchema } from "./schema";
 
 /**
  * Cue 模板：一组预设的“颜色场景”，从素材库拖到轨道（或点击）就能得到对应外观的片段。
@@ -12,7 +14,7 @@ import type { EffectCue, Rgb, Tempo } from "./project";
  * `cue-templates.json`（可手改、导入导出，也可在软件里新建 / 改名 / 改分组 / 删除）。两者合并，
  * 同 `id` 时用户的覆盖内置的。
  *
- * 文件格式（版本 1）：
+ * 文件格式（版本 2；版本 1 只有颜色模板，照常读取）。颜色模板：
  *
  * ```json
  * { "version": 1, "templates": [
@@ -23,11 +25,14 @@ import type { EffectCue, Rgb, Tempo } from "./project";
  * ] }
  * ```
  *
+ * 版本 2 起每条可再带 `kind`（`look` 时带 `look` / `spread`，`effect` 时带 `fx`）、`easing`、`length`、`tags`；
+ * 字段与工程文件里片段的同名字段一致。
+ *
  * 色纸编号只是参考：LED 混不出色纸的光谱，RGB 为近似值。
  */
 
-/** 文件格式版本。 */
-export const TEMPLATE_FILE_VERSION = 1;
+/** 文件格式版本：2 起支持外观模板、特效预设模板与高级设置（版本 1 的文件照常读取）。 */
+export const TEMPLATE_FILE_VERSION = 2;
 
 /** 内置的分组（显示顺序；用户可以用任意分组名）。 */
 export const BUILTIN_GROUPS = ["basic", "stage", "white", "custom"] as const;
@@ -35,8 +40,16 @@ export const BUILTIN_GROUPS = ["basic", "stage", "white", "custom"] as const;
 /** 新建的用户模板默认放进的分组。 */
 export const CUSTOM_GROUP = "custom";
 
-/** 模板的颜色：RGB 意图色或色温。 */
-export type TemplateColor = { kind: "rgb"; rgb: Rgb } | { kind: "kelvin"; kelvin: number };
+/** 模板的颜色：RGB 意图色（可带白光策略）、色温，或按发光体直给。 */
+export type TemplateColor = ColorValue;
+
+/**
+ * 模板种类：
+ * - `color`：一种颜色（可带沿成员铺开的多色分布）；
+ * - `look`：外观（强度 / 颜色 / 属性层，固定值、曲线、关键帧、颜色序列都可以）+ 分布；
+ * - `effect`：特效预设（特效快照 + 参数，插入后仍可改参数）。
+ */
+export type TemplateKind = "color" | "look" | "effect";
 
 /** 一个 Cue 模板。 */
 export interface CueTemplate {
@@ -45,34 +58,76 @@ export interface CueTemplate {
   name: string | { zh?: string; en?: string };
   /** 分组 */
   group: string;
+  /** 种类；省略为 `color` */
+  kind?: TemplateKind;
+  /** 颜色模板的颜色；外观 / 特效模板为代表色（素材库色块显示用） */
   color: TemplateColor;
   /** 亮度 0~100 */
   brightness: number;
   fadeInMs: number;
   fadeOutMs: number;
+  /** 淡入淡出的缓动；省略为线性 */
+  easing?: Easing;
+  /** 片段长度（毫秒或拍）；省略为默认长度 */
+  length?: Period;
+  /** 外观模板的外观 */
+  look?: Look;
+  /** 多灯分布（外观模板，或颜色模板的多色分布） */
+  spread?: Spread;
+  /** 特效预设模板：特效快照与参数 */
+  fx?: { def: EffectDef; params: EffectParams };
+  /** 标签（搜索用） */
+  tags?: string[];
   /** 说明（例如参考的色纸编号） */
   note?: string;
   /** 内置模板（只读；运行时标记，不写进用户文件） */
   builtin?: boolean;
 }
 
-const byte = z.number().int().min(0).max(255);
+/**
+ * 模板的种类（省略时为颜色模板）。
+ *
+ * @param template 模板。
+ * @returns 种类。
+ */
+export function templateKind(template: Pick<CueTemplate, "kind">): TemplateKind {
+  return template.kind ?? "color";
+}
+
 const nonEmpty = z.string().trim().min(1).max(80);
 
+/** 色温上限：与工程校验一致（旧文件里超过的按上限读入）。 */
+const MAX_KELVIN = 20_000;
+
 /** 单个模板的校验（缺省的亮度为 100、淡入淡出为 0、分组为“我的”）。 */
-const templateSchema = z.object({
-  id: z.string().trim().min(1).max(64).regex(/^[\w.-]+$/),
-  name: z.union([nonEmpty, z.object({ zh: nonEmpty.optional(), en: nonEmpty.optional() }).refine((n) => n.zh || n.en)]),
-  group: z.string().trim().min(1).max(32).default(CUSTOM_GROUP),
-  color: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("rgb"), rgb: z.tuple([byte, byte, byte]) }),
-    z.object({ kind: z.literal("kelvin"), kelvin: z.number().min(1000).max(40_000) }),
-  ]),
-  brightness: z.number().min(0).max(100).default(100),
-  fadeInMs: z.number().int().min(0).max(600_000).default(0),
-  fadeOutMs: z.number().int().min(0).max(600_000).default(0),
-  note: z.string().max(200).optional(),
-});
+const templateSchema = z
+  .object({
+    id: z.string().trim().min(1).max(64).regex(/^[\w.-]+$/),
+    name: z.union([nonEmpty, z.object({ zh: nonEmpty.optional(), en: nonEmpty.optional() }).refine((n) => n.zh || n.en)]),
+    group: z.string().trim().min(1).max(32).default(CUSTOM_GROUP),
+    kind: z.enum(["color", "look", "effect"]).optional(),
+    color: z.union([
+      // 旧版本允许到 40000K：读入时夹到工程的上限
+      z.object({ kind: z.literal("kelvin"), kelvin: z.number().min(1000).max(40_000).transform((k) => Math.min(k, MAX_KELVIN)) }),
+      colorValueSchema,
+    ]),
+    brightness: z.number().min(0).max(100).default(100),
+    fadeInMs: z.number().int().min(0).max(600_000).default(0),
+    fadeOutMs: z.number().int().min(0).max(600_000).default(0),
+    easing: z.enum(["linear", "easeInOut", "sCurve"]).optional(),
+    length: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("ms"), ms: z.number().int().min(100).max(3_600_000) }),
+        z.object({ kind: z.literal("beats"), beats: z.number().min(0.25).max(1024) }),
+      ])
+      .optional(),
+    look: lookSchema.optional(),
+    spread: spreadSchema.optional(),
+    fx: clipFxSchema.optional(),
+    tags: z.array(z.string().trim().min(1).max(24)).max(8).optional(),
+    note: z.string().max(200).optional(),
+  })
+  .refine((t) => (t.kind === "look" ? t.look !== undefined : t.kind === "effect" ? t.fx !== undefined : true), "kind");
 
 /** 解析出的一处问题（第几条、哪里不对）。 */
 export interface TemplateIssue {
@@ -109,8 +164,26 @@ export function parseTemplates(data: unknown): TemplateParse {
       issues.push({ index: i + 1, message: `${first?.path.join(".") || "?"}: ${first?.message ?? ""}`.trim() });
       return;
     }
-    const { note, ...rest } = r.data;
-    byId.set(rest.id, { ...rest, color: rest.color as TemplateColor, ...(note ? { note } : {}) });
+    const d = r.data;
+    // 只保留出现的可选字段（文件里没有的不写 undefined）
+    const template: CueTemplate = {
+      id: d.id,
+      name: d.name,
+      group: d.group,
+      color: d.color as TemplateColor,
+      brightness: d.brightness,
+      fadeInMs: d.fadeInMs,
+      fadeOutMs: d.fadeOutMs,
+      ...(d.kind && d.kind !== "color" ? { kind: d.kind } : {}),
+      ...(d.easing ? { easing: d.easing } : {}),
+      ...(d.length ? { length: d.length } : {}),
+      ...(d.look && d.kind === "look" ? { look: d.look as Look } : {}),
+      ...(d.spread && d.kind !== "effect" ? { spread: d.spread as Spread } : {}),
+      ...(d.fx && d.kind === "effect" ? { fx: d.fx as CueTemplate["fx"] } : {}),
+      ...(d.tags && d.tags.length > 0 ? { tags: [...new Set(d.tags)] } : {}),
+      ...(d.note ? { note: d.note } : {}),
+    };
+    byId.set(template.id, template);
   });
   return { templates: [...byId.values()], issues };
 }

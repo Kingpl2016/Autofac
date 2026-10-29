@@ -120,8 +120,8 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
         sep,
         ...(cue.kind === "static" ? [act("convertToLook", "convertToLook")] : []),
         ...(cue.kind === "look" ? [act("saveAsPreset", "saveAsPreset")] : []),
-        ...(cue.kind === "look" || cue.kind === "static"
-          ? [act("saveAsTemplate", "saveAsTemplate", { disabled: templateFromCue(cue) === null })]
+        ...(cue.kind === "look" || cue.kind === "static" || cue.kind === "effect"
+          ? [act("saveAsTemplate", "saveAsTemplate", { disabled: templateFromCue(cue, project.presets) === null })]
           : []),
         cmd("select.after"),
         act("selectTrackCues", "selectTrackCues"),

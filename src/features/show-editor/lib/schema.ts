@@ -683,3 +683,12 @@ export function parseProject(text: string): ParseResult {
   }
   return { ok: true, project, migratedFrom: migrated.from === PROJECT_VERSION ? null : migrated.from };
 }
+
+/** 外观（`Look`）的校验：Cue 模板文件里的外观模板共用。 */
+export const lookSchema = look;
+
+/** 多灯分布（`Spread`）的校验：Cue 模板文件共用。 */
+export const spreadSchema = spread;
+
+/** 颜色值（`ColorValue`）的校验：Cue 模板文件共用。 */
+export const colorValueSchema = colorValue;

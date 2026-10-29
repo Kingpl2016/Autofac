@@ -110,20 +110,26 @@ describe("用户模板的编辑", () => {
     expect(r.next.some((t) => "builtin" in t)).toBe(false);
   });
 
-  it("从片段取模板：静态片段取颜色；外观片段取颜色层开头的值；发光体直给 / 没有颜色的不能存", () => {
+  it("从片段取模板：静态片段取颜色；外观片段取颜色层开头的值；只有强度的为外观模板；发光体直给也能存", () => {
     const base = { id: "c", trackId: "t", startMs: 0, endMs: 1000, brightness: 80, fadeInMs: 100, fadeOutMs: 200, easing: "linear" as const };
     expect(templateFromCue({ ...base, kind: "static", rgb: [1, 2, 3] })).toEqual({
       brightness: 80,
       fadeInMs: 100,
       fadeOutMs: 200,
+      length: { kind: "ms", ms: 1000 },
       color: { kind: "rgb", rgb: [1, 2, 3] },
     });
     expect(
       templateFromCue({ ...base, kind: "look", look: { color: { kind: "value", value: { kind: "kelvin", kelvin: 3200 } } } })?.color,
     ).toEqual({ kind: "kelvin", kelvin: 3200 });
-    expect(templateFromCue({ ...base, kind: "look", look: { intensity: { kind: "value", value: 100 } } })).toBeNull();
+    expect(templateFromCue({ ...base, kind: "look", look: { intensity: { kind: "value", value: 100 } } })).toMatchObject({
+      kind: "look",
+      look: { intensity: { kind: "value", value: 100 } },
+      color: { kind: "rgb", rgb: [255, 255, 255] },
+    });
     expect(
-      templateFromCue({ ...base, kind: "look", look: { color: { kind: "value", value: { kind: "manual", values: { red: 1 } } } } }),
-    ).toBeNull();
+      templateFromCue({ ...base, kind: "look", look: { color: { kind: "value", value: { kind: "manual", values: { red: 1 } } } } })?.color,
+    ).toEqual({ kind: "manual", values: { red: 1 } });
+    expect(templateFromCue({ ...base, kind: "look", look: {} })).toBeNull();
   });
 });

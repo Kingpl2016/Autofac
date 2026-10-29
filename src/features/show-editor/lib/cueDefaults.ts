@@ -4,7 +4,8 @@ import { rgbToHsv } from "./colorMath";
 import type { CueTemplate } from "./cueTemplates";
 import type { EffectPreset } from "./effectPresets";
 import { trackCapabilities, type FixtureCapability, type TrackCapabilities } from "./fixtureProfile";
-import type { ColorValue, EffectId, Look, Rgb, ShowProject } from "./project";
+import { effectDefNeeds } from "./effectLibrary";
+import type { AttrKey, ColorValue, EffectId, Look, Rgb, ShowProject, Spread } from "./project";
 
 /**
  * 按灯具类型决定的新片段默认外观，以及素材（模板、特效）对所选轨道是否适用。
@@ -54,9 +55,44 @@ const ATTR_EFFECT_NEEDS: Record<AttrEffectId, FixtureCapability> = {
  * @param template 模板。
  * @returns 色温模板和接近白色的 RGB 模板为强度（调光灯也能用），其余彩色为混色。
  */
-export function templateNeeds(template: Pick<CueTemplate, "color">): FixtureCapability {
-  if (template.color.kind === "kelvin") return "intensity";
-  return rgbToHsv(template.color.rgb).s < WHITE_SATURATION ? "intensity" : "mixing";
+export function templateNeeds(template: Pick<CueTemplate, "color" | "kind" | "look" | "spread" | "fx">): FixtureCapability {
+  if (template.kind === "effect" && template.fx) return effectDefNeeds(template.fx.def);
+  if (template.kind === "look" && template.look) return lookNeeds(template.look, template.spread);
+  if (template.spread?.colors) return "mixing";
+  return colorNeeds(template.color);
+}
+
+/** 一种颜色需要的能力：色温与接近白色的 RGB 为强度，按发光体直给与其余彩色为混色。 */
+function colorNeeds(c: ColorValue): FixtureCapability {
+  if (c.kind === "kelvin") return "intensity";
+  if (c.kind === "manual") return "mixing";
+  return rgbToHsv(c.rgb).s < WHITE_SATURATION ? "intensity" : "mixing";
+}
+
+/** 位置属性。 */
+const POSITION_KEYS: ReadonlySet<AttrKey> = new Set<AttrKey>(["pan", "tilt"]);
+/** 聚焦类属性。 */
+const FOCUS_KEYS: ReadonlySet<AttrKey> = new Set<AttrKey>(["focus", "zoom"]);
+
+/**
+ * 外观需要的能力（取最“挑灯”的一层：位置 > 混色 > 聚焦 > 光束 > 强度）。
+ *
+ * @param look 外观。
+ * @param spread 分布（静态颜色分布算混色）。
+ * @returns 能力。
+ */
+export function lookNeeds(look: Look, spread?: Spread): FixtureCapability {
+  const attrs = [...Object.keys(look.attrs ?? {}), ...Object.keys(spread?.values ?? {})].filter((k) => k !== "intensity" && k !== "hue" && !k.startsWith("phase")) as AttrKey[];
+  if (attrs.some((a) => POSITION_KEYS.has(a))) return "position";
+  if (spread?.colors || spread?.values?.hue) return "mixing";
+  const c = look.color;
+  if (c) {
+    const colors = c.kind === "value" ? [c.value] : c.kind === "keys" ? c.keys.map((k) => k.value) : c.cycle.colors;
+    if (colors.some((x) => colorNeeds(x) === "mixing")) return "mixing";
+  }
+  if (attrs.some((a) => FOCUS_KEYS.has(a))) return "focus";
+  if (attrs.length > 0) return "beam";
+  return "intensity";
 }
 
 /**

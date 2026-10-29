@@ -620,7 +620,7 @@ function RefSelect({ label, value, options, onChange }: { label: string; value: 
 }
 
 /** 一个颜色输入（拖动取色时只改草稿，失去焦点时提交）。 */
-function SwatchInput({ label, rgb, onChange }: { label: string; rgb: Rgb; onChange: (rgb: Rgb) => void }) {
+export function SwatchInput({ label, rgb, onChange }: { label: string; rgb: Rgb; onChange: (rgb: Rgb) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <input

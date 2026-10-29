@@ -1,6 +1,3 @@
-import i18n from "@/shared/i18n";
-import type { TemplateStyle } from "../lib/cueDefaults";
-import { templateName, templateRgb, type CueTemplate } from "../lib/cueTemplates";
 import type { Track } from "../lib/project";
 import { pointToTimeRow, type TimelineViewport } from "./geometry";
 
@@ -11,46 +8,6 @@ export type DropResult =
   | { kind: "miss" }
   /** 位置落在已有 Cue 里，或空隙太小放不下 */
   | { kind: "noRoom"; trackId: string };
-
-/**
- * 模板转成新建 Cue 的外观。
- *
- * @param template 素材库里的模板。
- * @param lang 界面语言（片段名称取模板在该语言下的名字）。
- * @returns 新建片段的样式（颜色保持模板原样：RGB 或色温；`rgb` 为显示用的近似色；`label` 为模板名）。
- */
-export function templateStyle(template: CueTemplate, lang: string = i18n.language): TemplateStyle {
-  return {
-    color: structuredClone(template.color),
-    rgb: templateRgb(template),
-    brightness: template.brightness,
-    fadeInMs: template.fadeInMs,
-    fadeOutMs: template.fadeOutMs,
-    label: templateName(template, lang),
-  };
-}
-
-/**
- * 处理把模板拖放到时间线上：按指针位置找到轨道与时间，新建 Cue。
- *
- * @param viewport 时间线当前视口；时间线未挂载时为 `null`。
- * @param pointer 放下时指针的屏幕坐标。
- * @param tracks 当前全部轨道（与时间线行一一对应）。
- * @param template 被拖拽的模板。
- * @param addAt 实际新建 Cue 的函数（见 `useCueActions`），放不下时返回 `null`。
- * @returns 放下的结果。
- */
-export function dropTemplate(
-  viewport: TimelineViewport | null,
-  pointer: { x: number; y: number },
-  tracks: readonly Track[],
-  template: CueTemplate,
-  addAt: (trackId: string, timeMs: number, style: TemplateStyle) => string | null,
-): DropResult {
-  return dropOnTimeline(viewport, pointer, tracks, (trackId, timeMs) =>
-    addAt(trackId, timeMs, templateStyle(template)),
-  );
-}
 
 /**
  * 处理把任意素材（模板、特效…）拖放到时间线上：按指针位置找到轨道与时间，交给 `add` 新建 Cue。

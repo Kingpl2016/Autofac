@@ -26,6 +26,7 @@ import { allTemplates, useCueTemplateStore } from "../stores/useCueTemplateStore
 import { useEditorUiStore, type ContextTarget } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { useTemplateEditorStore } from "../stores/useTemplateEditorStore";
 import { requestShowDuration } from "./editorActions";
 import { clearKeys, clearLoop, clearTempo, deleteKeyAt, deleteObject } from "./timelineObjectActions";
 import { seekTo, togglePlay } from "./transportActions";
@@ -141,14 +142,16 @@ export function useContextActions(): ContextActions {
         case "saveAsTemplate": {
           if (target.kind !== "cue") return;
           const cue = project.cues.find((c) => c.id === target.id);
-          const body = cue ? templateFromCue(cue) : null;
+          const body = cue ? templateFromCue(cue, project.presets) : null;
           if (!body) {
             announce(t("editor.templates.cannotSave"));
             return;
           }
           const store = useCueTemplateStore.getState();
           const all = allTemplates(store);
-          const name = t("editor.templates.customName", { n: store.user.filter((x) => x.group === CUSTOM_GROUP).length + 1 });
+          // 片段有名称时沿用（例如特效名），否则按“我的模板 n”编号
+          const label = (cue?.kind === "look" || cue?.kind === "scene") && cue.label?.trim() ? cue.label.trim().slice(0, 80) : "";
+          const name = label || t("editor.templates.customName", { n: store.user.filter((x) => x.group === CUSTOM_GROUP).length + 1 });
           const created = { ...body, id: uniqueTemplateId(all, "my"), name, group: CUSTOM_GROUP };
           void (async () => {
             // 还没读过用户文件时先读，避免覆盖文件里已有的模板
@@ -161,7 +164,9 @@ export function useContextActions(): ContextActions {
             if (await s.saveUser([...s.user, created])) {
               const text = t("editor.templates.savedFromCue", { name });
               announce(text);
-              toast.success(text);
+              toast.success(text, {
+                action: { label: t("editor.templates.edit"), onClick: () => useTemplateEditorStore.getState().open(created, "edit") },
+              });
             } else {
               toast.error(t(`editor.templates.errors.${useCueTemplateStore.getState().error ?? "io"}`));
             }

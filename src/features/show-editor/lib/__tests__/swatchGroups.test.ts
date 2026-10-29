@@ -90,7 +90,10 @@ describe("预览色块分区", () => {
       cueSections: {},
       programmerRecord: DEFAULT_EDITOR_PREFS.programmerRecord,
       effectParams: {},
+      favoriteTemplates: [],
     });
+    // 收藏的模板：去重、只保留合法 id
+    expect(sanitizeEditorPrefs({ favoriteTemplates: ["a", "a", "bad id", 3, "lee-106"] }, DEFAULT_EDITOR_PREFS).favoriteTemplates).toEqual(["a", "lee-106"]);
     // 记住的特效插入参数：只保留结构合法的条目
     const good = { period: { kind: "beats", beats: 2 }, size: 50, spread: 1, wings: 1, direction: 1, order: "members" };
     expect(

@@ -2142,7 +2142,19 @@
       "builtinHint": "内置模板（只读，右键可复制为我的模板后修改）",
       "customName": "我的模板 {{n}}",
       "savedFromCue": "已存为 Cue 模板 {{name}}（在素材库“Cue 模板”的“我的模板”分组里）",
-      "cannotSave": "这个片段的颜色不能存为模板（发光体直给，或没有颜色）"
+      "cannotSave": "这个片段不能存为模板（场景片段，或没有强度 / 颜色 / 属性层）",
+      "favorites": "收藏",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "favorited": "已收藏 {{name}}",
+      "unfavorited": "已取消收藏 {{name}}",
+      "edit": "编辑…",
+      "copyAndEdit": "复制并编辑…",
+      "search": "搜索模板（名称、标签、说明）",
+      "clearSearch": "清除搜索",
+      "searchResults": "搜索结果",
+      "found": "找到 {{count}} 个模板",
+      "notFound": "没有匹配的模板"
     },
     "cue": {
       "mixed": "（混合值）",
@@ -2921,7 +2933,7 @@
         },
         "templates": {
           "title": "模板来自配置文件",
-          "body": "模板按分组列出，右键可复制、改名、移到别的分组或删除；工具条可导入 / 导出模板文件、打开所在文件夹，手改文件后点“重新加载”。"
+          "body": "模板分颜色、外观、特效预设三种，可搜索、右键收藏（排在最上面）或编辑；也可以把时间线上的片段右键“存为 Cue 模板”。工具条可导入 / 导出模板文件、打开所在文件夹，手改文件后点“重新加载”。"
         },
         "fixtureAdd": {
           "title": "添加灯具的三种方式",
@@ -3438,6 +3450,56 @@
       "previewInvalid": "特效还有问题，修正后显示预览",
       "play": "播放预览",
       "pause": "暂停预览"
+    },
+    "templateEditor": {
+      "titleNew": "新建 Cue 模板",
+      "titleEdit": "编辑 Cue 模板",
+      "description": "设置模板的颜色、亮度、淡入淡出、长度等；从素材库插入时按这些设置生成片段。",
+      "kinds": {
+        "color": "颜色",
+        "look": "外观",
+        "effect": "特效预设"
+      },
+      "basics": "基本信息",
+      "name": "名称",
+      "group": "分组",
+      "tags": "标签",
+      "tagsHint": "用逗号分隔，最多 8 个，搜索时会匹配",
+      "note": "说明",
+      "advanced": "亮度、淡入淡出与长度",
+      "msUnit": "毫秒",
+      "length": "长度",
+      "lengthUnit": "长度单位",
+      "lengthValue": "长度数值",
+      "lengths": {
+        "default": "默认",
+        "ms": "秒",
+        "beats": "拍"
+      },
+      "lengthDefaultHint": "插入时用默认长度 {{s}} 秒；按拍时随工程节拍换算",
+      "color": "颜色",
+      "representative": "代表色",
+      "representativeHint": "只用于素材库里的色块；插入的片段颜色由外观 / 特效本身决定",
+      "multiColor": "沿成员铺开多种颜色",
+      "multiColorHint": "插到多台灯的轨道上时按成员顺序依次取色（覆盖上面的颜色）",
+      "colorN": "颜色 {{n}}",
+      "addColor": "添加颜色",
+      "removeColor": "移除颜色 {{n}}",
+      "blend": "颜色之间的过渡",
+      "fxParams": "特效参数",
+      "lookSummary": "外观概要",
+      "lookHint": "外观的各层在片段上编辑，再用右键“存为 Cue 模板”保存；这里只显示概要",
+      "layerKinds": {
+        "value": "固定值",
+        "keys": "关键帧",
+        "curve": "曲线",
+        "cycle": "颜色序列"
+      },
+      "hasSpread": "带多灯分布（相位、分翼、成块等）",
+      "valid": "可以保存",
+      "invalid": "模板有问题：{{message}}",
+      "save": "保存模板",
+      "saved": "已保存模板 {{name}}"
     }
   },
   "fixtures": {

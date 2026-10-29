@@ -2141,8 +2141,20 @@
       "deleted": "Deleted template {{name}}",
       "builtinHint": "Built-in template (read-only; right-click to copy it to your templates and edit)",
       "customName": "My template {{n}}",
-      "savedFromCue": "Saved as cue template {{name}} (under “My templates” in the Cue templates tab)",
-      "cannotSave": "This clip's color can't be saved as a template (direct emitter values, or no color)"
+      "savedFromCue": "Saved as Cue template {{name}} (in the “My templates” group of the library's Cue templates)",
+      "cannotSave": "This clip can't be saved as a template (a scene clip, or no intensity / color / attribute layer)",
+      "favorites": "Favorites",
+      "favorite": "Add to favorites",
+      "unfavorite": "Remove from favorites",
+      "favorited": "Added {{name}} to favorites",
+      "unfavorited": "Removed {{name}} from favorites",
+      "edit": "Edit…",
+      "copyAndEdit": "Copy and edit…",
+      "search": "Search templates (name, tags, note)",
+      "clearSearch": "Clear search",
+      "searchResults": "Search results",
+      "found": "{{count}} templates found",
+      "notFound": "No matching templates"
     },
     "cue": {
       "mixed": "(mixed)",
@@ -2921,7 +2933,7 @@
         },
         "templates": {
           "title": "Templates come from a config file",
-          "body": "Templates are grouped; right-click to copy, rename, move or delete. The toolbar imports / exports template files, shows the file in its folder, and reloads it after you edit it."
+          "body": "Templates come in three kinds: color, look and effect preset. Search them, right-click to favorite (shown at the top) or edit, or right-click a clip on the timeline and choose “Save as Cue template”. The toolbar imports / exports template files and opens their folder; after editing the file by hand, click “Reload”."
         },
         "fixtureAdd": {
           "title": "Three ways to add fixtures",
@@ -3438,6 +3450,56 @@
       "previewInvalid": "Fix the problems to see a preview",
       "play": "Play preview",
       "pause": "Pause preview"
+    },
+    "templateEditor": {
+      "titleNew": "New Cue template",
+      "titleEdit": "Edit Cue template",
+      "description": "Set the template's color, brightness, fades, length and more; clips inserted from the library use these settings.",
+      "kinds": {
+        "color": "Color",
+        "look": "Look",
+        "effect": "Effect preset"
+      },
+      "basics": "Basics",
+      "name": "Name",
+      "group": "Group",
+      "tags": "Tags",
+      "tagsHint": "Comma-separated, up to 8; matched by search",
+      "note": "Note",
+      "advanced": "Brightness, fades and length",
+      "msUnit": "ms",
+      "length": "Length",
+      "lengthUnit": "Length unit",
+      "lengthValue": "Length value",
+      "lengths": {
+        "default": "Default",
+        "ms": "Seconds",
+        "beats": "Beats"
+      },
+      "lengthDefaultHint": "Inserted with the default length of {{s}} s; beats follow the project tempo",
+      "color": "Color",
+      "representative": "Display color",
+      "representativeHint": "Only used for the swatch in the library; inserted clips take their colors from the look / effect",
+      "multiColor": "Spread several colors across members",
+      "multiColorHint": "On tracks with several fixtures, colors are taken in member order (overrides the color above)",
+      "colorN": "Color {{n}}",
+      "addColor": "Add color",
+      "removeColor": "Remove color {{n}}",
+      "blend": "Blend between colors",
+      "fxParams": "Effect parameters",
+      "lookSummary": "Look summary",
+      "lookHint": "Edit the look's layers on a clip, then right-click “Save as Cue template”; only a summary is shown here",
+      "layerKinds": {
+        "value": "Fixed",
+        "keys": "Keyframes",
+        "curve": "Curve",
+        "cycle": "Color sequence"
+      },
+      "hasSpread": "Multi-fixture spread (phase, wings, blocks…)",
+      "valid": "Ready to save",
+      "invalid": "Template problem: {{message}}",
+      "save": "Save template",
+      "saved": "Saved template {{name}}"
     }
   },
   "fixtures": {

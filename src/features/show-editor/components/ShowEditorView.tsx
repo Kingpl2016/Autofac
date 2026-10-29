@@ -20,19 +20,20 @@ import {
 import { announce } from "@/shared/stores/announcerStore";
 import { useBakeEvents } from "../hooks/useBakeEvents";
 import { dropFixtureModel, resolveFixtureDrop } from "../hooks/fixtureDrop";
-import { useCueActions } from "../hooks/useCueActions";
 import { useEditorHotkeys } from "../hooks/useEditorHotkeys";
 import { useMediaDrop } from "../hooks/useMediaDrop";
 import { useMediaRuntime } from "../hooks/useMediaRuntime";
 import { useShowFile } from "../hooks/useShowFile";
 import { useShowPlayback } from "../hooks/useShowPlayback";
 import { OnboardingRuntime } from "../onboarding/useOnboarding";
-import { dropOnTimeline, templateStyle } from "../timeline/dropTemplate";
+import { dropOnTimeline } from "../timeline/dropTemplate";
 import { readTimelineViewport } from "../timeline/timelineView";
 import { START_LEFT } from "../timeline/timelineData";
 import { placeMediaOnTimeline } from "../hooks/mediaActions";
 import { templateNeeds, trackSupports } from "../lib/cueDefaults";
 import { addLookCue } from "../lib/cueOps";
+import { templateName } from "../lib/cueTemplates";
+import { addTemplateCue } from "../lib/templateOps";
 import { addEffectDefCue, effectDefNeeds, effectName } from "../lib/effectLibrary";
 import type { FixtureCapability } from "../lib/fixtureProfile";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -59,6 +60,7 @@ import { TemplateChip, type TemplateDragData } from "./TemplatesTab";
 import type { FixtureInstanceDragData } from "./SwatchView";
 import { RepeatDialog } from "./RepeatDialog";
 import { EffectEditorDialog } from "./EffectEditorDialog";
+import { TemplateEditorDialog } from "./TemplateEditorDialog";
 import { ensureRefTracks } from "../lib/ops";
 import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 
@@ -100,7 +102,6 @@ export function ShowEditorView() {
   useBakeEvents();
   useMediaRuntime();
   const dropHover = useMediaDrop();
-  const actions = useCueActions();
 
   // 从节目库跳转而来（?open=<节目路径>）：打开那个工程，并把参数从地址栏去掉
   const [params, setParams] = useSearchParams();
@@ -182,7 +183,14 @@ export function ShowEditorView() {
         viewport,
         pointer,
         tracks,
-        guard(templateNeeds(data.template), (trackId, timeMs) => actions.addAt(trackId, timeMs, templateStyle(data.template))),
+        guard(templateNeeds(data.template), (trackId, timeMs) => {
+          let id: string | null = null;
+          useProjectStore.getState().update((d) => {
+            id = addTemplateCue(d, trackId, timeMs, data.template, templateName(data.template, i18n.language));
+          });
+          if (id) useEditorUiStore.getState().selectCues([id]);
+          return id;
+        }),
       );
     } else if (data.kind === "effectDef") {
       // 属性特效：按拖出时参数面板里的参数生成外观片段，分布按落点轨道的成员数展开
@@ -291,6 +299,7 @@ export function ShowEditorView() {
       <DurationConfirmDialog />
       <RepeatDialog />
       <EffectEditorDialog />
+      <TemplateEditorDialog />
       <KeymapDialog commands={commands} />
       <ShortcutSheetDialog commands={commands} />
       <OnboardingRuntime />

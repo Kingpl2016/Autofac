@@ -105,6 +105,8 @@ export interface EditorPrefsData {
   cueSections: SectionStates<"cue">;
   /** 素材库里各属性特效上次用的插入参数（键为特效 `id`；用时再按特效规整） */
   effectParams: Record<string, EffectParams>;
+  /** 收藏的 Cue 模板（模板 `id`，按收藏顺序；内置模板也可以收藏） */
+  favoriteTemplates: string[];
 }
 
 /** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
@@ -191,6 +193,13 @@ interface EditorPrefsState extends EditorPrefsData {
    */
   setEffectParams: (id: string, params: EffectParams | null) => void;
   /**
+   * 收藏 / 取消收藏一个 Cue 模板。
+   *
+   * @param id 模板 `id`。
+   * @param favorite 是否收藏。
+   */
+  setTemplateFavorite: (id: string, favorite: boolean) => void;
+  /**
    * 展开 / 收起输出设置的“高级”分区。
    *
    * @param open 是否展开。
@@ -270,7 +279,11 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   cueSections: {},
   programmerRecord: DEFAULT_RECORD_PREFS,
   effectParams: {},
+  favoriteTemplates: [],
 };
+
+/** 最多收藏多少个模板。 */
+const MAX_FAVORITES = 200;
 
 /** 最多记住多少个特效的插入参数。 */
 const MAX_EFFECT_PARAMS = 200;
@@ -349,6 +362,9 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     cueSections: sanitizeSections("cue", r.cueSections, current.cueSections),
     programmerRecord: sanitizeRecordPrefs(r.programmerRecord, current.programmerRecord),
     effectParams: sanitizeEffectParamsMap(r.effectParams, current.effectParams),
+    favoriteTemplates: Array.isArray(r.favoriteTemplates)
+      ? [...new Set(r.favoriteTemplates.filter((k): k is string => typeof k === "string" && /^[\w.-]{1,64}$/.test(k)))].slice(0, MAX_FAVORITES)
+      : current.favoriteTemplates,
   };
 }
 
@@ -381,6 +397,11 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
           else next[id] = structuredClone(params);
           return { effectParams: next };
         }),
+      setTemplateFavorite: (id, favorite) =>
+        set((s) => {
+          const rest = s.favoriteTemplates.filter((k) => k !== id);
+          return { favoriteTemplates: favorite ? [...rest, id].slice(-MAX_FAVORITES) : rest };
+        }),
       setSection: (scope, section, open) =>
         set((st) => {
           const field = SECTION_FIELDS[scope];
@@ -410,6 +431,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         cueSections,
         programmerRecord,
         effectParams,
+        favoriteTemplates,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -429,6 +451,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         cueSections,
         programmerRecord,
         effectParams,
+        favoriteTemplates,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },

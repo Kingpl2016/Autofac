@@ -1,6 +1,7 @@
-import { cssColor, effectBackground, type EffectFillContext } from "./cueTemplates";
+import { cssColor, effectBackground, templateKind, type CueTemplate, type EffectFillContext } from "./cueTemplates";
 import type { EffectDef } from "./effectLibrary";
 import { colorValueRgb, paramHead, resolveLook } from "./looks";
+import { DEFAULT_CUE_MS } from "./cueOps";
 import { periodMs } from "./effects";
 import {
   DEFAULT_GAMMA,
@@ -228,6 +229,44 @@ export function effectDefSwatch(def: Pick<EffectDef, "look" | "params">, values?
   return { background: `linear-gradient(90deg, ${stops.join(", ")})`, neutral: false };
 }
 
+/**
+ * Cue 模板在素材库卡片上的色块：与插入后的片段主体同一画法。
+ *
+ * - 颜色模板：纯色；带多色分布时按成员顺序排开（“跳变”为硬边，其余为渐变）；
+ * - 外观模板：颜色层固定为纯色、关键帧 / 颜色序列为渐变（按模板长度，节拍按 120 BPM），没有颜色层为中性斜纹；
+ * - 特效预设模板：与特效库卡片相同（参数取模板里保存的值）。
+ *
+ * @param template 模板。
+ * @param gamma 工程 Gamma（手动覆盖颜色的合成用）。
+ * @returns 填充。
+ */
+export function templateSwatch(
+  template: Pick<CueTemplate, "kind" | "color" | "look" | "spread" | "fx" | "length">,
+  gamma: number = DEFAULT_GAMMA,
+): ClipFill {
+  const kind = templateKind(template);
+  if (kind === "effect" && template.fx) return effectDefSwatch(template.fx.def, template.fx.params.values);
+  const spread = template.spread?.colors;
+  if (spread && spread.colors.length > 1) {
+    const colors = spread.colors.map((c) => colorValueRgb(c, gamma));
+    const n = colors.length;
+    const stops =
+      spread.blend === "step"
+        ? colors.flatMap((rgb, i) => [`${cssColor(rgb)} ${pct((i / n) * 100)}`, `${cssColor(rgb)} ${pct(((i + 1) / n) * 100)}`])
+        : colors.map((rgb, i) => `${cssColor(rgb)} ${pct((i / (n - 1)) * 100)}`);
+    return { background: `linear-gradient(90deg, ${stops.join(", ")})`, neutral: false };
+  }
+  if (kind === "look" && template.look) {
+    const p = template.look.color;
+    if (!p) return { background: null, neutral: true };
+    const length = template.length ? Math.max(100, periodMs(template.length, null)) : DEFAULT_CUE_MS;
+    if (p.kind === "keys") return { background: colorKeysGradient(p.keys, length, gamma), neutral: false };
+    if (p.kind === "cycle") return { background: colorCycleGradient(p.cycle, length, null, gamma), neutral: false };
+    const head = paramHead(p);
+    if (head) return { background: cssColor(colorValueRgb(head, gamma)), neutral: false };
+  }
+  return { background: cssColor(colorValueRgb(template.color, gamma)), neutral: false };
+}
 /**
  * 片段的显示名：片段自己的名称（`label`）→ 引用的预设名 → 经典特效名；都没有时为空串。
  *
