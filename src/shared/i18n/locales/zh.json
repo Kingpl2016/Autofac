@@ -1705,7 +1705,43 @@
       "address": "地址",
       "editCell": "{{name}} 的百分比",
       "cellLabel": "{{name}} {{percent}}%（点击编辑，写入编程器）",
-      "cellTitle": "{{name}}：DMX {{dmx}} / {{max}}"
+      "cellTitle": "{{name}}：DMX {{dmx}} / {{max}}",
+      "toolbar": "灯具表工具",
+      "search": "搜索灯具（名称、型号、@地址）",
+      "clearSearch": "清除搜索",
+      "filter": "只看哪些灯",
+      "filters": {
+        "all": "全部",
+        "selected": "选中",
+        "programmed": "编程中"
+      },
+      "readout": "读数方式",
+      "readouts": {
+        "percent": "百分比",
+        "percentFine": "百分比（两位小数）",
+        "dmx8": "DMX（8 位）",
+        "dmx16": "DMX（16 位）",
+        "hex": "十六进制"
+      },
+      "sort": "排序",
+      "sorts": {
+        "project": "工程顺序",
+        "name": "按名称",
+        "address": "按地址"
+      },
+      "columns": "列",
+      "columnGroups": "显示的属性组",
+      "model": "型号",
+      "expandAll": "展开全部像素",
+      "collapseAll": "收起全部像素",
+      "count": "{{shown}} / {{total}} 台",
+      "noMatch": "没有符合条件的灯具",
+      "output": "实际输出颜色",
+      "outputColor": "实际输出：红 {{r}} 绿 {{g}} 蓝 {{b}}",
+      "editCellAs": "{{name}}（{{unit}}）",
+      "cellLabelAs": "{{name}} {{value}}{{suffix}}（{{unit}}；Enter 编辑，Delete 清除编程器值）",
+      "badValue": "输入的值无法识别",
+      "cleared": "已清除 {{count}} 台灯的 {{name}} 编程器值"
     },
     "select": {
       "title": "灯具选择",
@@ -3214,6 +3250,13 @@
         "body": "灯的颜色、光晕和摇头灯的光束方向都来自引擎求值，与实际输出一致（已叠加编程器）。\n• 单击单选，Ctrl / Shift 追加，空白处拖动框选；双击灯打开编程器；\n• 滚轮以指针为中心缩放，Shift + 滚轮横向平移，中键拖动平移，F 适应窗口；\n• 右键：只选这台、选同型号、Locate、在 Patch 中定位、清除编程器值、复位位置；\n• “布置”模式：拖动灯具和布景物件摆位（按吸附步长吸附，按住 Alt 自由移动），方向键微调；底部工具条可对齐、等距分布、镜像、反转顺序、排成直线 / 弧线 / 网格 / 圆；\n• 视图设置：灯具旁显示名称或地址、吸附步长、背景图不透明度；\n• 角标：圆点 = 编程器里有值，P = 通道锁定。",
         "keys": "滚轮 缩放 · F 适应窗口 · Ctrl+A 全选 · Esc 取消 · 方向键 平移 / 微调",
         "term": "Layout View（布局视图）"
+      },
+      "sheet": {
+        "title": "灯具表",
+        "short": "每台灯一行、每种功能一列，显示播放头处的实际输出；单元格可直接写入编程器。",
+        "body": "• 读数可选百分比、两位小数的百分比、8 位 / 16 位 DMX、十六进制，输入新值时按同一种读数；\n• 搜索名称、型号或地址（@12 表示地址 12，1.12 表示 Universe 1 地址 12），可只看选中或编程中的灯，可按名称、地址排序；\n• “列”菜单按属性组隐藏列、显示型号列；\n• 点行选灯，Ctrl 追加、Shift 连选；点单元格或按 Enter 输入，Delete 清除这一层的编程器值，方向键在单元格之间移动；选中的灯在选择里时，同时作用于所有选中且有该功能的灯；\n• 多头 / 像素灯可展开像素行，工具条可一键展开 / 收起全部；\n• 高亮的单元格 = 编程器里有值；悬停的行在舞台和色块里同时高亮。\n这些设置都会记住。",
+        "keys": "方向键 移动 · Enter 编辑 · Delete 清除 · Esc 取消编辑",
+        "term": "Fixture Sheet（Readout / Prog Only）"
       }
     },
     "shortcutSheet": {

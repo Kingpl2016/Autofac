@@ -1705,7 +1705,43 @@
       "address": "Address",
       "editCell": "Percent of {{name}}",
       "cellLabel": "{{name}} {{percent}}% (click to edit; writes to the programmer)",
-      "cellTitle": "{{name}}: DMX {{dmx}} / {{max}}"
+      "cellTitle": "{{name}}: DMX {{dmx}} / {{max}}",
+      "toolbar": "Fixture sheet tools",
+      "search": "Search fixtures (name, model, @address)",
+      "clearSearch": "Clear search",
+      "filter": "Fixtures to show",
+      "filters": {
+        "all": "All",
+        "selected": "Selected",
+        "programmed": "Programmed"
+      },
+      "readout": "Readout",
+      "readouts": {
+        "percent": "Percent",
+        "percentFine": "Percent (2 decimals)",
+        "dmx8": "DMX (8-bit)",
+        "dmx16": "DMX (16-bit)",
+        "hex": "Hex"
+      },
+      "sort": "Sort",
+      "sorts": {
+        "project": "Project order",
+        "name": "By name",
+        "address": "By address"
+      },
+      "columns": "Columns",
+      "columnGroups": "Attribute groups shown",
+      "model": "Model",
+      "expandAll": "Expand all pixels",
+      "collapseAll": "Collapse all pixels",
+      "count": "{{shown}} / {{total}} fixtures",
+      "noMatch": "No fixtures match",
+      "output": "Output color",
+      "outputColor": "Output: red {{r}} green {{g}} blue {{b}}",
+      "editCellAs": "{{name}} ({{unit}})",
+      "cellLabelAs": "{{name}} {{value}}{{suffix}} ({{unit}}; Enter to edit, Delete to clear the programmer value)",
+      "badValue": "The value couldn't be read",
+      "cleared": "Cleared the {{name}} programmer value of {{count}} fixtures"
     },
     "select": {
       "title": "Fixture selection",
@@ -3214,6 +3250,13 @@
         "body": "Colors, glow and moving-head beam directions come from the engine, matching the real output (programmer included).\n• Click to select, Ctrl / Shift to add, drag on empty space to lasso; double-click a fixture to open the programmer;\n• Wheel zooms around the pointer, Shift + wheel pans sideways, middle-drag pans, F fits the window;\n• Right-click: select only this, select same model, Locate, reveal in Patch, clear programmer values, reset position;\n• Layout mode: drag fixtures and set pieces (snapping to the step, hold Alt for free movement), arrow keys nudge; the bottom bar aligns, distributes, mirrors, reverses and arranges in a line / arc / grid / circle;\n• View settings: show names or addresses next to fixtures, snapping step, background opacity;\n• Badges: dot = programmer value, P = parked channel.",
         "keys": "Wheel zoom · F fit · Ctrl+A select all · Esc clear · Arrows pan / nudge",
         "term": "Layout View"
+      },
+      "sheet": {
+        "title": "Fixture sheet",
+        "short": "One row per fixture and one column per function, showing the output at the playhead; cells write straight to the programmer.",
+        "body": "• Readouts: percent, percent with 2 decimals, 8-bit / 16-bit DMX or hex; new values are typed in the same readout;\n• Search by name, model or address (@12 means address 12, 1.12 means universe 1 address 12), show only selected or programmed fixtures, sort by name or address;\n• The Columns menu hides attribute groups and shows a model column;\n• Click a row to select, Ctrl to add, Shift for a range; click a cell or press Enter to type, Delete clears that layer's programmer value, arrow keys move between cells; when the fixture is selected, the change applies to every selected fixture with that function;\n• Multi-head / pixel fixtures can expand into pixel rows; the toolbar expands or collapses all;\n• Highlighted cells = programmer values; hovering a row highlights the fixture on the stage and in the swatches.\nAll of these settings are remembered.",
+        "keys": "Arrows move · Enter edit · Delete clear · Esc cancel edit",
+        "term": "Fixture Sheet (Readout / Prog Only)"
       }
     },
     "shortcutSheet": {

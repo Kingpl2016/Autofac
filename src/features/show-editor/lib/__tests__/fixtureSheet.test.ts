@@ -1,7 +1,7 @@
 import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 
-import { buildSheet, cellTarget, manualEmitters, sheetColumns } from "../fixtureSheet";
+import { arrangeSheetRows, buildSheet, cellTarget, formatCell, manualEmitters, parseCell, sheetColumns, visibleColumns } from "../fixtureSheet";
 import { fixed } from "../looks";
 import { addFixtures } from "../ops";
 import { createEmptyProject } from "../project";
@@ -88,5 +88,63 @@ describe("灯具表", () => {
     expect(cellTarget("switch")).toEqual({ kind: "readonly" });
     expect(manualEmitters({ a: { color: fixed({ kind: "manual", values: { red: 0.5 } }) } }, "a")).toEqual({ red: 0.5 });
     expect(manualEmitters({ a: { color: fixed({ kind: "rgb", rgb: [1, 1, 1] }) } }, "a")).toEqual({});
+  });
+});
+
+describe("灯具表的读数、筛选与排序", () => {
+  const cell8 = { dmx: 128, max: 255, fraction: 128 / 255, invert: false };
+  const cell16 = { dmx: 0x1234, max: 65535, fraction: 0x1234 / 65535, invert: false };
+
+  it("formatCell：百分比、两位小数、8 / 16 位 DMX、十六进制", () => {
+    expect(formatCell(cell8, "percent")).toBe("50");
+    expect(formatCell(cell8, "percentFine")).toBe("50.20");
+    expect(formatCell(cell8, "dmx8")).toBe("128");
+    expect(formatCell(cell8, "dmx16")).toBe(String(128 * 257));
+    expect(formatCell(cell8, "hex")).toBe("80");
+    expect(formatCell(cell16, "dmx8")).toBe("18");
+    expect(formatCell(cell16, "dmx16")).toBe(String(0x1234));
+    expect(formatCell(cell16, "hex")).toBe("1234");
+    // 反向通道：百分比显示属性值，DMX 显示原始值
+    expect(formatCell({ dmx: 255, max: 255, fraction: 0 }, "percent")).toBe("0");
+    expect(formatCell({ dmx: 255, max: 255, fraction: 0 }, "dmx8")).toBe("255");
+  });
+
+  it("parseCell：按读数换成属性值，反向通道撤销反向，超出范围夹取，非法为 null", () => {
+    expect(parseCell("50", cell8, "percent")).toBe(0.5);
+    expect(parseCell("50%", cell8, "percentFine")).toBe(0.5);
+    expect(parseCell("51", cell8, "dmx8")).toBeCloseTo(0.2);
+    expect(parseCell("65535", cell16, "dmx16")).toBe(1);
+    expect(parseCell("#FF", cell8, "hex")).toBe(1);
+    expect(parseCell("0x8000", cell16, "hex")).toBeCloseTo(0x8000 / 65535);
+    expect(parseCell("255", { max: 255, invert: true }, "dmx8")).toBe(0);
+    expect(parseCell("300", cell8, "dmx8")).toBe(1);
+    expect(parseCell("-5", cell8, "percent")).toBe(0);
+    expect(parseCell("abc", cell8, "dmx8")).toBeNull();
+    expect(parseCell("GG", cell8, "hex")).toBeNull();
+    expect(parseCell(" ", cell8, "percent")).toBeNull();
+  });
+
+  it("arrangeSheetRows：像素行跟着整灯行一起筛选排序；地址写法搜索", () => {
+    const p = produce(createEmptyProject("t"), (d) => {
+      addFixtures(d, PIXEL_BAR, 1);
+      addFixtures(d, RGBW, 1);
+      d.fixtures[0].name = "灯条 B";
+      d.fixtures[1].name = "灯 A";
+      d.fixtures[1].universe = 0;
+    });
+    const rows = buildSheet(p, () => null, {}, new Set([p.fixtures[0].id]));
+    const view = { query: "", filter: "all" as const, sort: "name" as const, selected: new Set<string>(), programmed: new Set<string>() };
+    const sorted = arrangeSheetRows(rows, view);
+    expect(sorted.map((r) => r.head)).toEqual([null, null, 1, 2, 3]);
+    expect(sorted[0].name).toBe("灯 A");
+    const addr = `@${p.fixtures[1].address}`;
+    expect(arrangeSheetRows(rows, { ...view, query: addr }).map((r) => r.name)).toEqual(["灯 A"]);
+    expect(arrangeSheetRows(rows, { ...view, filter: "selected", selected: new Set([p.fixtures[0].id]) })).toHaveLength(4);
+    expect(arrangeSheetRows(rows, { ...view, filter: "programmed" })).toEqual([]);
+  });
+
+  it("visibleColumns：按属性组隐藏", () => {
+    const rows = buildSheet(rig(), () => null, {});
+    expect(visibleColumns(sheetColumns(rows), new Set(["color", "control"]))).toEqual(["dimmer", "pan", "tilt"]);
   });
 });

@@ -92,7 +92,12 @@ describe("预览色块分区", () => {
       effectParams: {},
       favoriteTemplates: [],
       stage: DEFAULT_EDITOR_PREFS.stage,
+      sheet: DEFAULT_EDITOR_PREFS.sheet,
     });
+    // 灯具表偏好逐字段兜底；属性组只保留认识的
+    expect(
+      sanitizeEditorPrefs({ sheet: { readout: "hex", filter: "x", sort: "name", hiddenGroups: ["color", "nope", "beam"], showModel: 1, expandPixels: true } }, DEFAULT_EDITOR_PREFS).sheet,
+    ).toEqual({ readout: "hex", filter: "all", sort: "name", hiddenGroups: ["color", "beam"], showModel: false, expandPixels: true });
     // 舞台偏好逐字段兜底
     expect(
       sanitizeEditorPrefs({ stage: { bloom: false, labels: "x", snapM: 0.3, backgroundOpacity: 5, arcSweep: 2, gridColumns: 3.4 } }, DEFAULT_EDITOR_PREFS).stage,

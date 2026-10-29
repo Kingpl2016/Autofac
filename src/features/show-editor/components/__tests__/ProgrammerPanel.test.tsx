@@ -185,7 +185,7 @@ describe("灯具表", () => {
 
     const row2 = within(table).getByRole("button", { name: "RGBW全彩灯 2" }).closest("tr") as HTMLElement;
     fireEvent.click(within(row2).getByRole("button", { name: /^Red 0%/ }));
-    const input = within(row2).getByRole("textbox", { name: "Red 的百分比" });
+    const input = within(row2).getByRole("textbox", { name: "Red（百分比）" });
     fireEvent.change(input, { target: { value: "50" } });
     fireEvent.blur(input);
     for (const id of ids().slice(0, 3)) {
@@ -229,7 +229,7 @@ describe("灯具表", () => {
 
     // 在像素行上编辑写入像素引用
     fireEvent.click(within(pixelRow(3)).getByRole("button", { name: /^R3 0%/ }));
-    const input = within(pixelRow(3)).getByRole("textbox", { name: "R3 的百分比" });
+    const input = within(pixelRow(3)).getByRole("textbox", { name: "R3（百分比）" });
     fireEvent.change(input, { target: { value: "40" } });
     fireEvent.blur(input);
     expect(programmer().values[`${id}#3`]).toMatchObject({ color: fixed({ kind: "manual", values: { red: 0.4 } }) });

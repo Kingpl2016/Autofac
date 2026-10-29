@@ -5,6 +5,8 @@ import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
 import { DEFAULT_RECORD_PREFS, sanitizeRecordPrefs, type RecordPrefs } from "../lib/programmer";
 import { SWATCH_LABELS, type SwatchLabel, type SwatchSort } from "../lib/swatchGroups";
 import { effectParamsSchema, type EffectParams } from "../lib/effectDefSchema";
+import { SHEET_FILTERS, SHEET_READOUTS, SHEET_SORTS, type SheetFilter, type SheetReadout, type SheetSort } from "../lib/fixtureSheet";
+import { ATTRIBUTE_GROUPS, type AttributeGroup } from "@/features/fixtures";
 
 /** 中间区域的视图：色块预览、舞台监视器、灯具表（色块为默认）。 */
 export const CENTER_VIEWS = ["swatches", "stage", "sheet"] as const;
@@ -118,6 +120,54 @@ export function sanitizeStagePrefs(raw: unknown, fallback: StagePrefs): StagePre
   };
 }
 
+/** 灯具表的显示偏好。 */
+export interface SheetPrefs {
+  /** 读数方式 */
+  readout: SheetReadout;
+  /** 只看哪些灯 */
+  filter: SheetFilter;
+  /** 行的排序 */
+  sort: SheetSort;
+  /** 隐藏的属性组（列） */
+  hiddenGroups: AttributeGroup[];
+  /** 显示型号列 */
+  showModel: boolean;
+  /** 打开时展开全部多头 / 像素灯 */
+  expandPixels: boolean;
+}
+
+/** 灯具表偏好的默认值。 */
+export const DEFAULT_SHEET_PREFS: SheetPrefs = {
+  readout: "percent",
+  filter: "all",
+  sort: "project",
+  hiddenGroups: [],
+  showModel: false,
+  expandPixels: false,
+};
+
+/**
+ * 规整灯具表偏好：逐字段兜底。
+ *
+ * @param raw 未知数据。
+ * @param fallback 兜底值。
+ * @returns 合法的偏好。
+ */
+export function sanitizeSheetPrefs(raw: unknown, fallback: SheetPrefs): SheetPrefs {
+  const r = (raw ?? {}) as Partial<Record<keyof SheetPrefs, unknown>>;
+  const pick = <T extends string>(list: readonly T[], v: unknown, fb: T): T => (list.includes(v as T) ? (v as T) : fb);
+  return {
+    readout: pick(SHEET_READOUTS, r.readout, fallback.readout),
+    filter: pick(SHEET_FILTERS, r.filter, fallback.filter),
+    sort: pick(SHEET_SORTS, r.sort, fallback.sort),
+    hiddenGroups: Array.isArray(r.hiddenGroups)
+      ? ATTRIBUTE_GROUPS.filter((g) => (r.hiddenGroups as unknown[]).includes(g))
+      : fallback.hiddenGroups,
+    showModel: typeof r.showModel === "boolean" ? r.showModel : fallback.showModel,
+    expandPixels: typeof r.expandPixels === "boolean" ? r.expandPixels : fallback.expandPixels,
+  };
+}
+
 /** 落盘的数据。 */
 export interface EditorPrefsData {
   centerView: CenterView;
@@ -157,6 +207,8 @@ export interface EditorPrefsData {
   favoriteTemplates: string[];
   /** 舞台监视器的显示与布置偏好 */
   stage: StagePrefs;
+  /** 灯具表的显示偏好 */
+  sheet: SheetPrefs;
 }
 
 /** 右侧属性面板三页的可折叠分区（白名单：读回时只保留这些）。 */
@@ -256,6 +308,12 @@ interface EditorPrefsState extends EditorPrefsData {
    */
   setStagePrefs: (patch: Partial<StagePrefs>) => void;
   /**
+   * 修改灯具表偏好（与当前值合并后规整）。
+   *
+   * @param patch 要改的字段。
+   */
+  setSheetPrefs: (patch: Partial<SheetPrefs>) => void;
+  /**
    * 展开 / 收起输出设置的“高级”分区。
    *
    * @param open 是否展开。
@@ -337,6 +395,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   effectParams: {},
   favoriteTemplates: [],
   stage: DEFAULT_STAGE_PREFS,
+  sheet: DEFAULT_SHEET_PREFS,
 };
 
 /** 最多收藏多少个模板。 */
@@ -423,6 +482,7 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
       ? [...new Set(r.favoriteTemplates.filter((k): k is string => typeof k === "string" && /^[\w.-]{1,64}$/.test(k)))].slice(0, MAX_FAVORITES)
       : current.favoriteTemplates,
     stage: sanitizeStagePrefs(r.stage, current.stage),
+    sheet: sanitizeSheetPrefs(r.sheet, current.sheet),
   };
 }
 
@@ -461,6 +521,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
           return { favoriteTemplates: favorite ? [...rest, id].slice(-MAX_FAVORITES) : rest };
         }),
       setStagePrefs: (patch) => set((s) => ({ stage: sanitizeStagePrefs({ ...s.stage, ...patch }, s.stage) })),
+      setSheetPrefs: (patch) => set((s) => ({ sheet: sanitizeSheetPrefs({ ...s.sheet, ...patch }, s.sheet) })),
       setSection: (scope, section, open) =>
         set((st) => {
           const field = SECTION_FIELDS[scope];
@@ -492,6 +553,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         effectParams,
         favoriteTemplates,
         stage,
+        sheet,
       }) => ({
         centerView,
         swatchGroupBy,
@@ -513,6 +575,7 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         effectParams,
         favoriteTemplates,
         stage,
+        sheet,
       }),
       merge: (persisted, current) => (persisted == null ? current : { ...current, ...sanitizeEditorPrefs(persisted, current) }),
     },
