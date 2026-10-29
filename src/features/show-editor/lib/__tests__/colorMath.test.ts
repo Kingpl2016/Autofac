@@ -4,8 +4,8 @@ import type { FixtureModel } from "@/features/fixtures";
 import type { Engine } from "../../engine/engine";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs } from "../colorMath";
-import { mixPreview } from "../mixPreview";
-import { RGBW } from "./testkit";
+import { emitterHead, mixPreview } from "../mixPreview";
+import { PIXEL_BAR, RGBW } from "./testkit";
 
 let engine: Engine;
 beforeAll(() => {
@@ -78,5 +78,23 @@ describe("实际输出（引擎混色）", () => {
     expect(warm && warm.emitters[1].level > warm.emitters[0].level).toBe(true);
     expect(cool && cool.emitters[0].level > cool.emitters[1].level).toBe(true);
     expect(mixPreview(null, RGBW, undefined, { kind: "rgb", rgb: [1, 2, 3] }, 1)).toBeNull();
+  });
+
+  it("像素灯条：整灯取第一个像素作代表，也可以指定像素", () => {
+    const whole = mixPreview(engine, PIXEL_BAR, undefined, { kind: "rgb", rgb: [255, 0, 0] }, 1);
+    expect(whole?.emitters.map((e) => [e.name, Math.round(e.level * 100)])).toEqual([
+      ["R1", 100],
+      ["G1", 0],
+      ["B1", 0],
+    ]);
+    expect(whole?.rgb[0]).toBeGreaterThan(200);
+    const third = mixPreview(engine, PIXEL_BAR, undefined, { kind: "rgb", rgb: [0, 0, 255] }, 1, 3);
+    expect(third?.emitters.map((e) => [e.name, Math.round(e.level * 100)])).toEqual([
+      ["R3", 0],
+      ["G3", 0],
+      ["B3", 100],
+    ]);
+    expect(emitterHead(PIXEL_BAR, undefined)).toBe(1);
+    expect(emitterHead(RGBW, undefined)).toBe(0);
   });
 });

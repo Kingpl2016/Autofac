@@ -30,7 +30,7 @@ import {
 } from "../programmer";
 import { createEmptyProject, type ShowProject } from "../project";
 import { projectIntegrityIssues } from "../schema";
-import { DIMMER, RGBW } from "./testkit";
+import { DIMMER, PIXEL_BAR, RGBW } from "./testkit";
 
 let engine: Engine;
 beforeAll(() => {
@@ -186,6 +186,27 @@ describe("记录", () => {
     });
     expect(result.trackIds).toHaveLength(0);
     expect(again.cues.find((c) => c.id === result.cueIds[0])).toMatchObject({ startMs: 0, endMs: 1000 });
+  });
+
+  it("像素也能编程：场景条目按“整灯、各像素”的顺序记录，预览按像素输出", () => {
+    const p = produce(createEmptyProject("t"), (d) => void addFixtures(d, PIXEL_BAR, 1));
+    const f = p.fixtures[0].id;
+    // 整灯只给颜色（不发光），像素 1、3 给颜色 + 强度
+    let v = programColor({}, [`${f}#3`, `${f}#1`, f], { kind: "rgb", rgb: [0, 0, 255] });
+    v = programIntensity(v, [`${f}#3`, `${f}#1`], 100);
+    // 不存在的像素不记录
+    v = programIntensity(v, [`${f}#9`], 100);
+    let result!: ReturnType<typeof recordScene>;
+    const next = produce(p, (d) => {
+      result = recordScene(d, v, 0, 2000, "场景");
+    });
+    const clip = next.cues.find((c) => c.id === result.cueIds[0]);
+    expect(clip?.kind === "scene" && clip.entries.map((e) => e.fixtureId)).toEqual([f, `${f}#1`, `${f}#3`]);
+    expect(projectIntegrityIssues(next)).toEqual([]);
+
+    const colors = createPreviewEvaluator(withProgrammer(p, v), engine)(500);
+    expect(colors.get(`${f}#1`)?.[2]).toBeGreaterThan(200);
+    expect(colors.get(`${f}#2`)).toEqual([0, 0, 0]);
   });
 
   it("记录到各自轨道：每台灯一个外观片段，被占用的跳过", () => {

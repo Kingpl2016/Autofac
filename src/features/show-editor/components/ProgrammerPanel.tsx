@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { announce } from "@/shared/stores/announcerStore";
 import { paramHead } from "../lib/looks";
+import { parseRef, pixelRefsOf } from "../lib/fixtureRef";
 import { ordered } from "../lib/fixtureSelection";
 import type { ColorValue } from "../lib/project";
 import {
@@ -52,7 +53,9 @@ export function ProgrammerPanel() {
   const clear = useProgrammerStore((s) => s.clear);
   const [lengthMs, setLengthMs] = useState(DEFAULT_RECORD_MS);
 
-  const all = useMemo(() => project.fixtures.map((f) => f.id), [project.fixtures]);
+  // 可编程的引用：每台灯先整灯、再各像素（像素可以单独设强度 / 颜色并记录成场景条目）
+  const { fixtures, fixtureModels } = project;
+  const all = useMemo(() => fixtures.flatMap((f) => [f.id, ...pixelRefsOf({ fixtureModels }, f)]), [fixtures, fixtureModels]);
   const selected = useMemo(() => ordered(all, selectedRaw), [all, selectedRaw]);
   const programmed = useMemo(
     () => all.filter((id) => values[id] && hasProgrammerValues({ [id]: values[id] })),
@@ -65,9 +68,10 @@ export function ProgrammerPanel() {
   const firstLook = selected.map((id) => values[id]).find((l) => l);
   const intensity = paramHead(firstLook?.intensity) ?? 0;
   const color: ColorValue | undefined = paramHead(firstLook?.color);
-  const firstFixture = project.fixtures.find((f) => f.id === selected[0]);
+  const first = selected[0] ? parseRef(selected[0]) : null;
+  const firstFixture = first ? project.fixtures.find((f) => f.id === first.fixtureId) : undefined;
   const firstModel = firstFixture ? project.fixtureModels.find((m) => m.id === firstFixture.modelId) : undefined;
-  const target = firstModel ? { model: firstModel, modeId: firstFixture?.modeId } : null;
+  const target = firstModel ? { model: firstModel, modeId: firstFixture?.modeId, head: first?.head } : null;
   const mixedIntensity = new Set(selected.map((id) => paramHead(values[id]?.intensity) ?? null)).size > 1;
   const disabled = selected.length === 0;
 
@@ -115,7 +119,7 @@ export function ProgrammerPanel() {
         <div className="flex items-center justify-between gap-2">
           <p className="min-w-0 truncate text-sm font-medium">
             <span role="status" className="num">
-              {t("editor.select.count", { count: selected.length, total: all.length })}
+              {t("editor.select.count", { count: selected.length, total: project.fixtures.length })}
             </span>
             <span aria-hidden className="mx-1.5 text-xs font-normal text-muted-foreground">
               ·

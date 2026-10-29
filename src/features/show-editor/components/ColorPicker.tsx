@@ -10,7 +10,7 @@ import { isEmitter, layoutOf, type FixtureModel } from "@/features/fixtures";
 import { useEngine } from "../engine/useEngine";
 import { hexToRgb, hsToWheel, hsvToRgb, rgbToHex, rgbToHsv, wheelToHs, type Hsv } from "../lib/colorMath";
 import { colorValueRgb, kelvinToRgb } from "../lib/looks";
-import { mixPreview } from "../lib/mixPreview";
+import { emitterHead, mixPreview } from "../lib/mixPreview";
 import { DEFAULT_GAMMA, type ColorValue, type EmitterKey, type Rgb, type WhiteStrategy } from "../lib/project";
 import { clamp } from "@/shared/lib/math";
 import { COLOR_INPUTS, useColorInputStore, type ColorInput } from "../stores/useColorInputStore";
@@ -90,8 +90,10 @@ interface ColorPickerProps {
    * @param value 新颜色。
    */
   onCommit: (value: ColorValue) => void;
-  /** 目标灯具的模型与模式：用于发光体推子和“实际输出”预览；省略时只显示意图色 */
-  target?: { model: FixtureModel; modeId?: string } | null;
+  /**
+   * 目标灯具的模型、模式与像素号（`head` 省略为整灯）：用于发光体推子和“实际输出”预览；省略时只显示意图色
+   */
+  target?: { model: FixtureModel; modeId?: string; head?: number | null } | null;
   /** 工程 Gamma（实际输出预览用） */
   gamma?: number;
 }
@@ -158,12 +160,15 @@ export function ColorPicker({ value, onCommit, target, gamma = DEFAULT_GAMMA }: 
 
   // ---- 目标灯具的发光体 ----
   const emitters = (() => {
-    const layout = target ? (layoutOf(target.model, target.modeId) ?? []) : [];
-    const list = layout.filter((p) => isEmitter(p.function) && (p.head ?? 0) === 0);
+    if (!target) return [];
+    // 像素灯条的发光体都在像素里：整灯时取代表像素（与“实际输出”一致）
+    const head = emitterHead(target.model, target.modeId, target.head);
+    const layout = layoutOf(target.model, target.modeId) ?? [];
+    const list = layout.filter((p) => isEmitter(p.function) && (p.head ?? 0) === head);
     const seen = new Set<string>();
     return list.filter((p) => (seen.has(p.function) ? false : (seen.add(p.function), true)));
   })();
-  const output = target ? mixPreview(engine, target.model, target.modeId, shown, gamma) : null;
+  const output = target ? mixPreview(engine, target.model, target.modeId, shown, gamma, target.head) : null;
 
   // ---- 色轮 ----
   const fromPointer = (e: PointerEvent<HTMLDivElement>) => {

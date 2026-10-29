@@ -1,5 +1,6 @@
 import { gapAround, MIN_CUE_MS } from "./cueOps";
 import { newId } from "./ids";
+import { pixelRefsOf } from "./fixtureRef";
 import { fixed } from "./looks";
 import type { AttrKey, ColorValue, Look, SceneClip, ShowProject, Track } from "./project";
 import { clamp } from "@/shared/lib/math";
@@ -111,14 +112,21 @@ export function knockout(
   return next;
 }
 
-/** 把编程器内容转成场景条目（只保留工程里存在、且有内容的灯具，按工程顺序）。 */
-function entriesOf(project: Pick<ShowProject, "fixtures">, values: ProgrammerValues): SceneClip["entries"] {
+/**
+ * 把编程器内容转成场景条目：只保留工程里存在、且有内容的灯具与像素，按工程顺序（每台灯先整灯、再各像素）。
+ *
+ * @param project 工程（只读）。
+ * @param values 编程器内容（键为灯具或像素引用）。
+ * @returns 场景条目。
+ */
+function entriesOf(project: Pick<ShowProject, "fixtures" | "fixtureModels">, values: ProgrammerValues): SceneClip["entries"] {
   return project.fixtures
-    .filter((f) => {
-      const l = values[f.id];
+    .flatMap((f) => [f.id, ...pixelRefsOf(project, f)])
+    .filter((id) => {
+      const l = values[id];
       return l && (l.intensity || l.color || Object.keys(l.attrs ?? {}).length > 0);
     })
-    .map((f) => ({ fixtureId: f.id, look: structuredClone(values[f.id]) }));
+    .map((id) => ({ fixtureId: id, look: structuredClone(values[id]) }));
 }
 
 /**
