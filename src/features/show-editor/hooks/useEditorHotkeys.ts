@@ -1,6 +1,7 @@
 import { useWindowKeydown } from "@/shared/hooks/useWindowKeydown";
 import { isTextEntry } from "@/shared/lib/keyboard";
 import { matchCommand, type Command } from "../lib/commands";
+import type { FileCommandHandlers } from "../lib/fileCommands";
 import { currentOverrides } from "../stores/useKeymapStore";
 import { useEditorCommands } from "./useEditorCommands";
 
@@ -28,10 +29,11 @@ const NO_REPEAT = new Set([
  * - 已被其它处理器处理（`defaultPrevented`）的事件不再处理。
  *
  * @param onSave 保存动作（来自文件操作）。
+ * @param file 其它文件命令的动作（新建、打开、导入、导出…）；省略时这些命令不注册。
  * @returns 命令列表（供命令面板使用）。
  */
-export function useEditorHotkeys(onSave?: () => void): Command[] {
-  const commands = useEditorCommands(onSave);
+export function useEditorHotkeys(onSave?: () => void, file?: FileCommandHandlers): Command[] {
+  const commands = useEditorCommands(onSave, file);
 
   useWindowKeydown((e) => {
     if (e.defaultPrevented) return;

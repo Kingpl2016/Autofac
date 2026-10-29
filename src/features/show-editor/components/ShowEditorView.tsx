@@ -97,7 +97,7 @@ const PRESET_CLIP_MS = 4000;
 export function ShowEditorView() {
   const { t, i18n } = useTranslation();
   const file = useShowFile();
-  const commands = useEditorHotkeys(file.save);
+  const commands = useEditorHotkeys(file.save, file.handlers);
   useShowPlayback();
   useBakeEvents();
   useMediaRuntime();

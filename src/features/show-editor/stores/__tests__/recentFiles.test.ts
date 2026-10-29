@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { folderOf, relativeTime } from "../../lib/relativeTime";
-import { fileStem, MAX_RECENT, pushRecent, sanitizeRecent, type RecentFile } from "../useRecentFilesStore";
+import { fileStem, MAX_RECENT, orderRecent, pushRecent, sanitizeRecent, type RecentFile } from "../useRecentFilesStore";
 
 const item = (path: string, openedAt = 0, kind: RecentFile["kind"] = "external"): RecentFile => ({ path, kind, name: fileStem(path), openedAt });
 
@@ -38,5 +38,25 @@ describe("最近文件", () => {
     expect(relativeTime(now - 3 * 60_000, now, "zh-CN")).toBe("3分钟前");
     expect(relativeTime(now - 24 * 3600_000, now, "zh-CN")).toBe("昨天");
     expect(relativeTime(now - 2 * 3600_000, now, "en")).toBe("2 hours ago");
+  });
+});
+
+describe("最近文件的置顶", () => {
+  it("置顶的不会被挤出列表，显示时排在最前；再次打开保持置顶", () => {
+    let list: RecentFile[] = [{ ...item("D:/keep.artshow", 0), pinned: true }];
+    for (let i = 0; i < 15; i += 1) list = pushRecent(list, item(`D:/x/${i}.artshow`, i + 1));
+    expect(list.filter((x) => !x.pinned)).toHaveLength(MAX_RECENT);
+    expect(list.some((x) => x.path === "D:/keep.artshow")).toBe(true);
+    expect(orderRecent(list)[0].path).toBe("D:/keep.artshow");
+    list = pushRecent(list, item("D:/keep.artshow", 100));
+    expect(list[0]).toMatchObject({ path: "D:/keep.artshow", pinned: true, openedAt: 100 });
+  });
+
+  it("读回时保留置顶标记、丢掉非布尔值", () => {
+    const data = sanitizeRecent({ items: [{ ...item("a.artshow", 1), pinned: true }, { ...item("b.artshow", 2), pinned: "yes" }] });
+    expect(data.items.map((x) => [x.path, x.pinned])).toEqual([
+      ["b.artshow", undefined],
+      ["a.artshow", true],
+    ]);
   });
 });

@@ -20,6 +20,7 @@ import { RECORDINGS_QUERY_KEY, recordingsList } from "@/features/recording";
 import type { ShowFileController } from "../hooks/useShowFile";
 import { useDocumentStore } from "../stores/useDocumentStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { ImportShowDialog, ShowInfoDialog } from "./FileExtraDialogs";
 
 /** 工程文件相关的全部对话框：保存到节目库、从节目库打开、未保存提示、恢复提示。 */
 export function FileDialogs({ file }: { file: ShowFileController }) {
@@ -29,7 +30,34 @@ export function FileDialogs({ file }: { file: ShowFileController }) {
       <OpenFromLibraryDialog file={file} />
       <UnsavedDialog file={file} />
       <RecoverDialog file={file} />
+      <ReloadDialog file={file} />
+      {file.dialog === "import" && <ImportShowDialog onClose={file.closeDialog} />}
+      {file.dialog === "info" && <ShowInfoDialog file={file} />}
     </>
+  );
+}
+
+/** 重新载入前的确认：未保存的修改会丢失。 */
+function ReloadDialog({ file }: { file: ShowFileController }) {
+  const { t } = useTranslation();
+  if (file.dialog !== "reload") return null;
+  return (
+    <Dialog open onOpenChange={(o) => !o && file.closeDialog()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("editor.file.reloadTitle")}</DialogTitle>
+          <DialogDescription>{t("editor.file.reloadDescription")}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={file.closeDialog}>
+            {t("common.cancel")}
+          </Button>
+          <Button type="button" variant="destructive" onClick={file.confirmReload}>
+            {t("editor.file.reloadConfirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

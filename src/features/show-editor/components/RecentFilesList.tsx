@@ -1,10 +1,10 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FileClock, Library, X } from "lucide-react";
+import { FileClock, Library, Pin, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { folderOf, relativeTime } from "../lib/relativeTime";
-import { useRecentFilesStore, type RecentFile } from "../stores/useRecentFilesStore";
+import { orderRecent, useRecentFilesStore, type RecentFile } from "../stores/useRecentFilesStore";
 
 interface RecentFilesListProps {
   /** 最多显示几项 */
@@ -17,7 +17,7 @@ interface RecentFilesListProps {
 }
 
 /**
- * 最近文件列表：名称、位置（节目库或所在文件夹）与相对时间；点击打开。
+ * 最近文件列表：名称、位置（节目库或所在文件夹）与相对时间；点击打开。置顶的排在最前并带图钉。
  * 列表为空时不渲染。
  */
 export function RecentFilesList({ limit, onOpen, manage = false, className }: RecentFilesListProps) {
@@ -28,7 +28,8 @@ export function RecentFilesList({ limit, onOpen, manage = false, className }: Re
   const titleId = useId();
   // 列表挂载时取一次“现在”：相对时间以打开列表的时刻为准
   const [now] = useState(() => Date.now());
-  const shown = limit ? items.slice(0, limit) : items;
+  const ordered = orderRecent(items);
+  const shown = limit ? ordered.slice(0, limit) : ordered;
   if (shown.length === 0) return null;
 
   return (
@@ -64,7 +65,10 @@ export function RecentFilesList({ limit, onOpen, manage = false, className }: Re
                   <FileClock aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{item.name}</span>
+                  <span className="flex items-center gap-1 truncate text-sm">
+                    <span className="truncate">{item.name}</span>
+                    {item.pinned && <Pin aria-label={t("editor.recent.pinned")} className="size-3 shrink-0 text-muted-foreground" />}
+                  </span>
                   <span className="block truncate text-[11px] text-muted-foreground">
                     {where} · {relativeTime(item.openedAt, now, i18n.language)}
                   </span>

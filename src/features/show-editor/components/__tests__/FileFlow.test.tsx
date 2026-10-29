@@ -8,8 +8,8 @@ import { produce } from "immer";
 import i18n from "@/shared/i18n";
 
 const invoke = vi.hoisted(() => vi.fn());
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-const pickers = vi.hoisted(() => ({ pickArtshowFile: vi.fn(), pickArtshowSavePath: vi.fn() }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), loading: vi.fn(() => "t1"), dismiss: vi.fn() }));
+const pickers = vi.hoisted(() => ({ pickArtshowFile: vi.fn(), pickArtshowSavePath: vi.fn(), pickArtrecSavePath: vi.fn() }));
 vi.mock("@/shared/tauri/invoke", () => ({ invoke }));
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/shared/tauri/pickers", async (orig) => ({ ...(await orig<typeof import("@/shared/tauri/pickers")>()), ...pickers }));
@@ -79,6 +79,24 @@ function installBackend(opts: { autosave?: string | null } = {}) {
       }
       case "show_autosave_read":
         return opts.autosave ?? null;
+      case "show_reveal":
+        return undefined;
+      case "show_export_artrec":
+        return { frames: 12, bytes: 4096 };
+      case "show_file_info": {
+        const path = args?.path as string;
+        const exists = !path.includes("丢了");
+        const library = args?.kind === "library";
+        return {
+          exists,
+          projectPath: library ? `${path}.show` : path,
+          bytes: exists ? 2048 : 0,
+          modifiedUnixMs: exists ? 1_700_000_000_000 : null,
+          artrecPath: library ? path : null,
+          artrecBytes: null,
+          artrecModifiedUnixMs: null,
+        };
+      }
       case "show_autosave_write":
       case "show_autosave_clear":
         return undefined;
@@ -104,6 +122,20 @@ function renderEditor(url = "/editor") {
 }
 
 const toolbar = () => screen.getByRole("toolbar", { name: "编辑工具条" });
+/** 打开工具条上的“文件”菜单（Radix 菜单在 jsdom 里用键盘打开最稳）。 */
+const openFileMenu = () => {
+  const trigger = within(toolbar()).getByRole("button", { name: "文件" });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.keyDown(trigger, { key: "Enter" });
+};
+/** 文件菜单里的一项（名称后面带着快捷键，按前缀匹配）。 */
+/** 打开文件菜单里的“最近打开”子菜单。 */
+async function openRecent() {
+  openFileMenu();
+  const sub = await screen.findByRole("menuitem", { name: "最近文件" });
+  if (sub.getAttribute("aria-expanded") !== "true") fireEvent.keyDown(sub, { key: "ArrowRight" });
+  await screen.findByRole("menu", { name: "最近文件" });
+}
+const fileItem = (name: string) => screen.findByRole("menuitem", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) });
 
 beforeEach(async () => {
   await i18n.changeLanguage("zh");
@@ -114,6 +146,7 @@ beforeEach(async () => {
   toast.error.mockReset();
   pickers.pickArtshowFile.mockReset();
   pickers.pickArtshowSavePath.mockReset();
+  pickers.pickArtrecSavePath.mockReset();
   resetRecoveryCheck();
   useProjectStore.getState().load(createEmptyProject(""));
   useDocumentStore.getState().setOrigin({ kind: "none" });
@@ -136,7 +169,8 @@ describe("保存到节目库", () => {
     makeDirty();
     fireEvent.click(within(toolbar()).getByRole("button", { name: "保存" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "保存到节目库" });
+    // 文件里的第一个用例要冷启动整个编辑器，机器忙时放宽等待
+    const dialog = await screen.findByRole("dialog", { name: "保存到节目库" }, { timeout: 5000 });
     const name = within(dialog).getByLabelText("节目名称");
     fireEvent.change(name, { target: { value: "  " } });
     expect(within(dialog).getByText("请填写节目名称")).toBeTruthy();
@@ -206,8 +240,8 @@ describe("保存到节目库", () => {
     installBackend();
     useDocumentStore.getState().setOrigin({ kind: "library", path: "D:/rec/开场.artrec" });
     renderEditor();
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "另存为新节目…" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("另存为新节目…"));
     const dialog = await screen.findByRole("dialog", { name: "另存为新节目" });
     fireEvent.change(within(dialog).getByLabelText("节目名称"), { target: { value: "副本" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -218,21 +252,35 @@ describe("保存到节目库", () => {
 });
 
 describe("库外文件", () => {
-  it("导出工程副本：选路径后写文件，取消则什么都不做", async () => {
+  it("导出工程副本：选路径后写文件，当前节目仍在原位置、未保存状态不变；取消则什么都不做", async () => {
     installBackend();
+    useDocumentStore.getState().setOrigin({ kind: "library", path: "D:/rec/开场.artrec" });
     renderEditor();
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
+    makeDirty();
+    openFileMenu();
     pickers.pickArtshowSavePath.mockResolvedValueOnce(null);
-    fireEvent.click(await screen.findByRole("button", { name: "导出工程副本…" }));
+    fireEvent.click(await fileItem("导出工程副本…"));
     await waitFor(() => expect(pickers.pickArtshowSavePath).toHaveBeenCalledTimes(1));
     expect(callsOf("show_external_save")).toHaveLength(0);
 
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
+    openFileMenu();
     pickers.pickArtshowSavePath.mockResolvedValueOnce("D:/桌面/备份.artshow");
-    fireEvent.click(await screen.findByRole("button", { name: "导出工程副本…" }));
+    fireEvent.click(await fileItem("导出工程副本…"));
     await waitFor(() => expect(callsOf("show_external_save")).toHaveLength(1));
     expect(callsOf("show_external_save")[0][1]?.path).toBe("D:/桌面/备份.artshow");
-    expect(origin()).toEqual({ kind: "external", path: "D:/桌面/备份.artshow" });
+    expect(origin()).toEqual({ kind: "library", path: "D:/rec/开场.artrec" });
+    expect(dirty()).toBe(true);
+  });
+
+  it("另存为工程文件：之后保存都写到这个文件", async () => {
+    installBackend();
+    renderEditor();
+    makeDirty();
+    openFileMenu();
+    pickers.pickArtshowSavePath.mockResolvedValueOnce("D:/桌面/新.artshow");
+    fireEvent.click(await fileItem("另存为工程文件…"));
+    await waitFor(() => expect(origin()).toEqual({ kind: "external", path: "D:/桌面/新.artshow" }));
+    expect(dirty()).toBe(false);
   });
 
   it("打开文件：载入工程，来源为该文件，之后保存回写原路径", async () => {
@@ -240,8 +288,8 @@ describe("库外文件", () => {
     store.set("D:/桌面/别人的.artshow", JSON.stringify(sample("别人的")));
     renderEditor();
     pickers.pickArtshowFile.mockResolvedValue("D:/桌面/别人的.artshow");
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "打开工程文件…" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("打开工程文件…"));
     await waitFor(() => expect(project().name).toBe("别人的"));
     expect(origin()).toEqual({ kind: "external", path: "D:/桌面/别人的.artshow" });
     makeDirty();
@@ -255,8 +303,8 @@ describe("库外文件", () => {
     store.set("D:/坏.artshow", "{不是json");
     renderEditor();
     pickers.pickArtshowFile.mockResolvedValue("D:/坏.artshow");
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "打开工程文件…" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("打开工程文件…"));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("工程文件已损坏或不是节目编辑器的工程"));
     expect(origin()).toEqual({ kind: "none" });
   });
@@ -266,8 +314,8 @@ describe("从节目库打开", () => {
   it("只列出可编辑的节目，未导出的带标记；选中后载入", async () => {
     installBackend();
     renderEditor();
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "从节目库打开…" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("从节目库打开…"));
     const dialog = await screen.findByRole("dialog", { name: "从节目库打开" });
     expect(await within(dialog).findByText("开场")).toBeTruthy();
     expect(within(dialog).queryByText("录制来的")).toBeNull();
@@ -301,14 +349,14 @@ describe("未保存修改的确认", () => {
     installBackend();
     renderEditor();
     makeDirty();
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "新建节目" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("新建节目"));
     let dialog = await screen.findByRole("dialog", { name: "有未保存的修改" });
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(project().fixtures).toHaveLength(1);
 
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "新建节目" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("新建节目"));
     dialog = await screen.findByRole("dialog", { name: "有未保存的修改" });
     fireEvent.click(within(dialog).getByRole("button", { name: "不保存" }));
     await waitFor(() => expect(project().fixtures).toHaveLength(0));
@@ -319,8 +367,8 @@ describe("未保存修改的确认", () => {
     installBackend();
     renderEditor();
     makeDirty();
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "新建节目" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("新建节目"));
     const unsaved = await screen.findByRole("dialog", { name: "有未保存的修改" });
     fireEvent.click(within(unsaved).getByRole("button", { name: "保存" }));
     const nameDialog = await screen.findByRole("dialog", { name: "保存到节目库" });
@@ -398,8 +446,8 @@ describe("最近文件", () => {
     expect(useRecentFilesStore.getState().items).toEqual([expect.objectContaining({ path: "D:/rec/开场.artrec", kind: "library", name: "开场" })]);
 
     // 新建空节目：预览区列出最近文件
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "新建节目" }));
+    openFileMenu();
+    fireEvent.click(await fileItem("新建节目"));
     await waitFor(() => expect(project().name).toBe(""));
     const preview = screen.getByRole("region", { name: "预览" });
     fireEvent.click(within(within(preview).getByRole("list", { name: "最近文件" })).getByRole("button", { name: /开场/ }));
@@ -413,19 +461,160 @@ describe("最近文件", () => {
       useRecentFilesStore.getState().record({ path: "D:/rec/开场.artrec", kind: "library", name: "开场", openedAt: Date.now() });
     });
     renderEditor();
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    // 预览区（空节目）也有一份列表：取文件菜单里的那份
-    const preview = screen.getByRole("region", { name: "预览" });
-    const list = (await screen.findAllByRole("list", { name: "最近文件" })).find((l) => !preview.contains(l))!;
-    fireEvent.click(within(list).getByRole("button", { name: /^丢了/ }));
+    await openRecent();
+    fireEvent.click(await fileItem("丢了"));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     const [message, opts] = toast.error.mock.calls.at(-1) as unknown as [string, { action: { onClick: () => void } }];
     expect(message).toContain("找不到“丢了”");
-    act(() => opts.action.onClick());
+    act(() => void opts.action.onClick());
     expect(useRecentFilesStore.getState().items.map((x) => x.name)).toEqual(["开场"]);
 
-    fireEvent.click(within(toolbar()).getByRole("button", { name: "文件" }));
-    fireEvent.click(await screen.findByRole("button", { name: "清空列表" }));
+    await openRecent();
+    fireEvent.click(await fileItem("清空列表"));
     expect(useRecentFilesStore.getState().items).toEqual([]);
+  });
+
+  it("置顶：排在最前、清空列表时保留；键盘 P 切换、Delete 移除", async () => {
+    installBackend();
+    act(() => {
+      useRecentFilesStore.getState().record({ path: "D:/a.artshow", kind: "external", name: "甲", openedAt: 1 });
+      useRecentFilesStore.getState().record({ path: "D:/b.artshow", kind: "external", name: "乙", openedAt: 2 });
+    });
+    renderEditor();
+    await openRecent();
+    const a = await fileItem("甲");
+    fireEvent.click(within(a).getByRole("button", { name: "置顶 甲" }));
+    expect(useRecentFilesStore.getState().items.find((x) => x.name === "甲")?.pinned).toBe(true);
+    const names = within(screen.getByRole("menu", { name: "最近文件" }))
+      .getAllByRole("menuitem")
+      .map((el) => el.textContent ?? "");
+    expect(names[0]).toContain("甲");
+
+    fireEvent.click(await fileItem("清空列表（保留置顶）"));
+    expect(useRecentFilesStore.getState().items.map((x) => x.name)).toEqual(["甲"]);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+    await openRecent();
+    fireEvent.keyDown(await fileItem("甲"), { key: "p" });
+    expect(useRecentFilesStore.getState().items[0].pinned).toBeUndefined();
+    fireEvent.keyDown(await fileItem("甲"), { key: "Delete" });
+    expect(useRecentFilesStore.getState().items).toEqual([]);
+  });
+
+  it("清除失效项：查询每个文件，不存在的移除", async () => {
+    installBackend();
+    act(() => {
+      useRecentFilesStore.getState().record({ path: "D:/丢了.artshow", kind: "external", name: "丢了", openedAt: 1 });
+      useRecentFilesStore.getState().record({ path: "D:/rec/开场.artrec", kind: "library", name: "开场", openedAt: 2 });
+    });
+    renderEditor();
+    await openRecent();
+    fireEvent.click(await fileItem("清除失效项"));
+    await waitFor(() => expect(useRecentFilesStore.getState().items.map((x) => x.name)).toEqual(["开场"]));
+    expect(toast.success).toHaveBeenCalledWith("已移除 1 个找不到的文件");
+  });
+});
+
+describe("文件菜单的其它操作", () => {
+  it("当前节目没保存过时，重新载入 / 显示位置 / 复制路径不可用；菜单项显示快捷键", async () => {
+    installBackend();
+    renderEditor();
+    openFileMenu();
+    expect((await fileItem("重新载入")).getAttribute("aria-disabled")).toBe("true");
+    expect((await fileItem("在文件管理器中显示")).getAttribute("aria-disabled")).toBe("true");
+    expect((await fileItem("复制文件路径")).getAttribute("aria-disabled")).toBe("true");
+    expect((await fileItem("新建节目")).textContent).toContain("Ctrl+N");
+    expect((await fileItem("导入节目…")).textContent).toContain("Ctrl+I");
+  });
+
+  it("重新载入：有修改时先确认，放弃修改后恢复成磁盘上的内容", async () => {
+    installBackend();
+    renderEditor(`/editor?open=${encodeURIComponent("D:/rec/开场.artrec")}`);
+    await waitFor(() => expect(project().name).toBe("开场"));
+    makeDirty();
+    expect(project().fixtures).toHaveLength(3);
+    openFileMenu();
+    fireEvent.click(await fileItem("重新载入"));
+    const dialog = await screen.findByRole("dialog", { name: "放弃修改并重新载入？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "放弃修改并重新载入" }));
+    await waitFor(() => expect(project().fixtures).toHaveLength(2));
+    expect(dirty()).toBe(false);
+    expect(toast.success).toHaveBeenCalledWith("已从磁盘重新载入");
+  });
+
+  it("在文件管理器中显示、复制文件路径", async () => {
+    installBackend();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    useDocumentStore.getState().setOrigin({ kind: "library", path: "D:/rec/开场.artrec" });
+    renderEditor();
+    openFileMenu();
+    fireEvent.click(await fileItem("在文件管理器中显示"));
+    await waitFor(() => expect(callsOf("show_reveal")).toHaveLength(1));
+    expect(callsOf("show_reveal")[0][1]).toEqual({ kind: "library", path: "D:/rec/开场.artrec" });
+    openFileMenu();
+    fireEvent.click(await fileItem("复制文件路径"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("D:/rec/开场.artrec"));
+  });
+
+  it("导出 ArtRec：选路径后烘焙当前工程（含未保存修改），完成后报告帧数", async () => {
+    installBackend();
+    renderEditor();
+    makeDirty();
+    pickers.pickArtrecSavePath.mockResolvedValueOnce("D:/导出/秀.artrec");
+    openFileMenu();
+    fireEvent.click(await fileItem("导出 ArtRec 回放文件…"));
+    await waitFor(() => expect(callsOf("show_export_artrec")).toHaveLength(1));
+    const args = callsOf("show_export_artrec")[0][1] as { path: string; json: string };
+    expect(args.path).toBe("D:/导出/秀.artrec");
+    expect((JSON.parse(args.json) as ShowProject).fixtures).toHaveLength(1);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("12 帧"), expect.anything()));
+    expect(dirty()).toBe(true);
+  });
+
+  it("Ctrl+Shift+E 导出 ArtRec，Ctrl+N 新建（命令表与菜单共用）", async () => {
+    installBackend();
+    renderEditor();
+    pickers.pickArtrecSavePath.mockResolvedValueOnce(null);
+    fireEvent.keyDown(window, { key: "E", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(pickers.pickArtrecSavePath).toHaveBeenCalledTimes(1));
+    makeDirty();
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeTruthy();
+  });
+
+  it("导入节目：从节目库选一个，合并灯具与时间线（一步撤销）", async () => {
+    installBackend();
+    renderEditor();
+    makeDirty();
+    const before = project().fixtures.length;
+    openFileMenu();
+    fireEvent.click(await fileItem("导入节目…"));
+    const dialog = await screen.findByRole("dialog", { name: "导入节目" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /^开场/ }));
+    expect(await within(dialog).findByText(/2 台灯具/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "导入" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(project().fixtures).toHaveLength(before + 2);
+    // 重新配接：不与原有的灯冲突
+    const spots = project().fixtures.map((f) => `${f.universe}@${f.address}`);
+    expect(new Set(spots).size).toBe(spots.length);
+    act(() => useProjectStore.temporal.getState().undo());
+    expect(project().fixtures).toHaveLength(before);
+  });
+
+  it("节目信息：位置、文件大小与内容统计", async () => {
+    installBackend();
+    useDocumentStore.getState().setOrigin({ kind: "library", path: "D:/rec/开场.artrec" });
+    renderEditor();
+    makeDirty();
+    openFileMenu();
+    fireEvent.click(await fileItem("节目信息…"));
+    const dialog = await screen.findByRole("dialog", { name: "节目信息" });
+    expect(within(dialog).getByText("D:/rec/开场.artrec")).toBeTruthy();
+    expect(await within(dialog).findByText(/KB/)).toBeTruthy();
+    expect(within(dialog).getByText("还没生成（保存后自动生成）")).toBeTruthy();
+    expect(within(dialog).getByText("有未保存的修改")).toBeTruthy();
+    expect(within(dialog).getByText(/1 台灯具/)).toBeTruthy();
   });
 });

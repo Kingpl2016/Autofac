@@ -169,6 +169,27 @@ export async function pickArtshowSavePath(defaultName: string, name: string): Pr
 }
 
 /**
+ * 让用户选择导出回放文件的位置（`.artrec`）。
+ *
+ * # Arguments
+ *
+ * * `defaultName` - 默认文件名（不含扩展名）。
+ * * `name` - 文件对话框里显示的类型名称。
+ *
+ * # Returns
+ *
+ * 目标路径（保证以 `.artrec` 结尾）；用户取消时返回 `null`。
+ */
+export async function pickArtrecSavePath(defaultName: string, name: string): Promise<string | null> {
+  const picked = await save({
+    defaultPath: `${defaultName}.artrec`,
+    filters: [{ name, extensions: ["artrec"] }],
+  });
+  if (!picked) return null;
+  return picked.toLowerCase().endsWith(".artrec") ? picked : `${picked}.artrec`;
+}
+
+/**
  * 让用户选择一个或多个音视频文件（节目编辑器导入素材）。
  *
  * # Arguments

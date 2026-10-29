@@ -100,13 +100,34 @@ export const PIXEL_BAR: FixtureModel = {
  * @param over 要覆盖的字段。
  */
 export function fakeFile(over: Partial<ShowFileController> = {}): ShowFileController {
+  const handlers = {
+    save: vi.fn(),
+    requestNew: vi.fn(),
+    requestOpenLibrary: vi.fn(),
+    requestOpenFile: vi.fn(),
+    openSaveDialog: vi.fn(),
+    requestImport: vi.fn(),
+    exportArtrec: vi.fn(),
+    requestReload: vi.fn(),
+    revealInFolder: vi.fn(),
+    openInfo: vi.fn(),
+  };
   return {
+    handlers,
     dirty: false,
     dialog: null,
     saveAsNew: false,
     save: vi.fn(),
     openSaveDialog: vi.fn(),
     saveAsFile: vi.fn(),
+    exportCopy: vi.fn(),
+    exportArtrec: vi.fn(),
+    requestReload: vi.fn(),
+    confirmReload: vi.fn(),
+    requestImport: vi.fn(),
+    revealInFolder: vi.fn(),
+    copyPath: vi.fn(),
+    openInfo: vi.fn(),
     requestNew: vi.fn(),
     requestOpenLibrary: vi.fn(),
     requestOpenFile: vi.fn(),

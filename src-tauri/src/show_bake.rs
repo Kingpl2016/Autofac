@@ -25,6 +25,8 @@ use tauri::{AppHandle, Emitter, Manager};
 pub const ERR_NOTHING_TO_BAKE: &str = "nothing_to_bake";
 /// 错误码：工程文件无法解析。
 pub const ERR_INVALID_PROJECT: &str = "invalid_project";
+/// 错误码：目标 `.artrec` 正被回放打开（Windows 上无法替换被打开的文件）。
+pub const ERR_IN_USE: &str = "in_use";
 
 /// 进度事件的最小间隔。
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -158,8 +160,35 @@ fn bake_project(
 ) -> Result<BakeReport, BakeFailure> {
     let text = std::fs::read_to_string(recorder::show_project_path(artrec))
         .map_err(|e| BakeFailure::Failed(e.to_string()))?;
+    bake_text(&text, artrec, cancel, progress)
+}
+
+/// 把工程 JSON 文本烘焙成 `.artrec`。
+///
+/// # Arguments
+///
+/// * `text` - 工程 JSON 文本。
+/// * `dest` - 目标 `.artrec` 路径（所在目录必须存在；成功时原子替换同名文件）。
+/// * `cancel` - 取消标志。
+/// * `progress` - 进度回调（`0.0..=1.0`）。
+///
+/// # Returns
+///
+/// 烘焙报告。
+///
+/// # Errors
+///
+/// 工程无法解析（`invalid_project`）、没有可烘焙内容（`nothing_to_bake`）、
+/// 被取消（`cancelled`），或编码 / 文件系统错误描述。
+fn bake_text(
+    text: &str,
+    dest: &Path,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(f32),
+) -> Result<BakeReport, BakeFailure> {
+    let artrec = dest;
     let project: ShowProject =
-        serde_json::from_str(&text).map_err(|_| BakeFailure::InvalidProject)?;
+        serde_json::from_str(text).map_err(|_| BakeFailure::InvalidProject)?;
     let compiled = compile(&project);
     let universes = compiled.universes().to_vec();
     let mut frames = compiled.new_frames();
@@ -200,6 +229,59 @@ pub(crate) fn is_open_in_player(app: &AppHandle, artrec: &Path) -> bool {
             (std::fs::canonicalize(&open), std::fs::canonicalize(artrec)),
             (Ok(a), Ok(b)) if a == b
         )
+}
+
+/// 把编辑器里的工程直接烘焙到任意位置的 `.artrec`（文件菜单“导出 ArtRec”），同步执行。
+///
+/// 与保存时的后台烘焙共用同一把锁（串行），并登记取消标志：退出应用时
+/// [`ShowBakeState::cancel_all_and_wait`] 会取消它，[`ShowBakeState::is_busy`] 期间阻止关闭窗口。
+/// 导出的文件没有显示名时，sidecar 里写入工程名，便于在节目库里辨认。
+///
+/// # Arguments
+///
+/// * `app` - 应用句柄（取调度状态、检查播放器）。
+/// * `json` - 工程 JSON 文本。
+/// * `dest` - 目标 `.artrec` 路径（调用方已校验扩展名与所在目录）。
+///
+/// # Returns
+///
+/// 烘焙报告（帧数、字节数）。
+///
+/// # Errors
+///
+/// 目标正被回放打开（`in_use`）、工程无法解析（`invalid_project`）、没有可烘焙内容
+/// （`nothing_to_bake`）、被取消（`cancelled`），或编码 / 文件系统错误描述。
+pub(crate) fn bake_json_to(app: &AppHandle, json: &str, dest: &Path) -> Result<BakeReport, String> {
+    if is_open_in_player(app, dest) {
+        return Err(ERR_IN_USE.to_owned());
+    }
+    let state = app.state::<ShowBakeState>();
+    let cancel = Arc::new(AtomicBool::new(false));
+    if let Some(older) = lock(&state.latest).insert(dest.to_path_buf(), cancel.clone()) {
+        older.store(true, Ordering::Relaxed);
+    }
+    let result = {
+        let gate = state.gate.clone();
+        let _turn = lock(&gate);
+        bake_text(json, dest, &cancel, &mut |_| {})
+    };
+    {
+        let mut latest = lock(&state.latest);
+        if latest.get(dest).is_some_and(|c| Arc::ptr_eq(c, &cancel)) {
+            latest.remove(dest);
+        }
+    }
+    let report = result.map_err(|e| e.code())?;
+    // 导出的文件不在节目库的命名流程里：没有显示名时写入工程名
+    let name = serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get("name").and_then(serde_json::Value::as_str).map(str::to_owned))
+        .unwrap_or_default();
+    if let Some(mut meta) = recorder::read_sidecar(dest).filter(|m| m.name.trim().is_empty() && !name.trim().is_empty()) {
+        name.trim().clone_into(&mut meta.name);
+        let _ = recorder::write_sidecar(dest, &meta);
+    }
+    Ok(report)
 }
 
 /// 在后台烘焙一个刚保存的节目；立即返回。
@@ -383,6 +465,21 @@ mod tests {
         let err = bake_project(&artrec, &AtomicBool::new(true), &mut |_| {}).unwrap_err();
         assert_eq!(err.code(), "cancelled");
         assert_eq!(std::fs::read(&artrec).unwrap(), before);
+    }
+
+    #[test]
+    fn 工程文本可直接烘焙到任意位置() {
+        let tmp = Tmp::new("export");
+        let dest = tmp.0.join("导出.artrec");
+        let report = bake_text(&project_json(true), &dest, &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(report.frames, 4);
+        assert!(dest.is_file());
+        let reader = artrec_core::ArtRecReader::open_file(&dest).unwrap();
+        assert_eq!(reader.frame_at(1_000_000).unwrap().unwrap()[0][9..12].to_vec(), vec![255, 0, 0]);
+        assert_eq!(
+            bake_text("not json", &dest, &AtomicBool::new(false), &mut |_| {}).unwrap_err().code(),
+            ERR_INVALID_PROJECT
+        );
     }
 
     #[test]

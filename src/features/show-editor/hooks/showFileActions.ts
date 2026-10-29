@@ -1,11 +1,17 @@
+import { produce } from "immer";
+
+import { mergeProject, type MergeOptions, type MergeReport } from "../lib/mergeProject";
 import {
   parseProjectText,
   serializeProject,
   showAutosaveClear,
+  showExportArtrec,
   showExternalRead,
   showExternalSave,
   showProjectOpen,
   showProjectSave,
+  type ArtrecExportReport,
+  type ShowFileKind,
 } from "../lib/showFile";
 import { createEmptyProject, type ShowProject } from "../lib/project";
 import { useDocumentStore, type DocumentOrigin } from "../stores/useDocumentStore";
@@ -179,4 +185,75 @@ export function restoreFromAutosave(text: string): void {
 /** 新建空工程。 */
 export function newProject(): void {
   install(createEmptyProject(""), { kind: "none" });
+}
+
+/**
+ * 从磁盘重新载入当前工程，放弃未保存的修改（撤销历史一并清空）。
+ *
+ * @returns 是否载入了（工程从未保存过时没有可载入的文件，返回 `false`）。
+ */
+export async function reloadFromDisk(): Promise<boolean> {
+  const origin = useDocumentStore.getState().origin;
+  if (origin.kind === "none") return false;
+  if (origin.kind === "library") await openFromLibrary(origin.path);
+  else await openFromFile(origin.path);
+  return true;
+}
+
+/**
+ * 导出工程副本到库外的 `.artshow` 文件：只写文件，当前工程仍保存在原来的位置，未保存状态不变。
+ *
+ * @param path 目标路径。
+ */
+export async function exportCopy(path: string): Promise<void> {
+  await showExternalSave(path, serializeProject(useProjectStore.getState().project));
+}
+
+/**
+ * 把当前工程（含未保存的修改）烘焙成 `.artrec` 回放文件。
+ *
+ * @param path 目标路径。
+ * @returns 帧数与文件大小。
+ */
+export function exportArtrec(path: string): Promise<ArtrecExportReport> {
+  return showExportArtrec(path, serializeProject(useProjectStore.getState().project));
+}
+
+/**
+ * 读取另一个节目（导入用），不影响当前工程。
+ *
+ * @param kind 节目库里的节目或库外文件。
+ * @param path 节目的 `.artrec` 路径，或 `.artshow` 路径。
+ * @returns 解析并校验过的工程。
+ */
+export async function readShow(kind: ShowFileKind, path: string): Promise<ShowProject> {
+  return parseOrThrow(kind === "library" ? await showProjectOpen(path) : await showExternalRead(path));
+}
+
+/**
+ * 把另一个节目合并进当前工程（一步撤销）。合并结果先按工程文件的规则校验，不合格时不改动当前工程。
+ *
+ * @param source 要导入的工程。
+ * @param options 导入选项。
+ * @returns 导入了多少东西。
+ */
+export function importShow(source: ShowProject, options: MergeOptions): MergeReport {
+  const current = useProjectStore.getState().project;
+  let report: MergeReport | null = null;
+  const merged = produce(current, (d) => {
+    report = mergeProject(d, source, options);
+  });
+  if (!parseProjectText(serializeProject(merged)).ok || !report) throw "invalid_project";
+  useProjectStore.getState().update((d) => {
+    d.fixtureModels = merged.fixtureModels;
+    d.fixtures = merged.fixtures;
+    d.groups = merged.groups;
+    d.presets = merged.presets;
+    d.tracks = merged.tracks;
+    d.cues = merged.cues;
+    d.markers = merged.markers;
+    d.sections = merged.sections;
+    d.durationMs = merged.durationMs;
+  });
+  return report;
 }

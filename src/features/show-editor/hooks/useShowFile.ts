@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { RECORDINGS_QUERY_KEY } from "@/features/recording";
-import { pickArtshowFile, pickArtshowSavePath } from "@/shared/tauri/pickers";
+import { copyText } from "@/shared/lib/clipboard";
+import { formatBytes } from "@/shared/lib/format";
+import { pickArtrecSavePath, pickArtshowFile, pickArtshowSavePath } from "@/shared/tauri/pickers";
+import type { FileCommandHandlers } from "../lib/fileCommands";
 import { showSetDirty } from "../lib/playbackApi";
-import { showAutosaveClear, showAutosaveRead, showAutosaveWrite, showErrorText, serializeProject } from "../lib/showFile";
+import { showAutosaveClear, showAutosaveRead, showAutosaveWrite, showErrorText, showReveal, serializeProject } from "../lib/showFile";
+import { useDocumentStore } from "../stores/useDocumentStore";
 import { selectDirty, useProjectStore } from "../stores/useProjectStore";
 import { useRecentFilesStore, type RecentFile } from "../stores/useRecentFilesStore";
 import {
+  exportArtrec,
+  exportCopy,
   newProject,
+  reloadFromDisk,
   openFromFile,
   openFromLibrary,
   restoreFromAutosave,
@@ -23,11 +30,13 @@ import {
 /** 自动存档的间隔（毫秒）。 */
 export const AUTOSAVE_INTERVAL_MS = 30_000;
 
-/** 当前打开的对话框。 */
-export type FileDialog = "save" | "open" | "unsaved" | "recover" | null;
+/** 当前打开的对话框：保存、打开、未保存提示、恢复提示、重新载入确认、导入节目、节目信息。 */
+export type FileDialog = "save" | "open" | "unsaved" | "recover" | "reload" | "import" | "info" | null;
 
 /** 工程文件操作的状态与动作（工具条和各对话框共用）。 */
 export interface ShowFileController {
+  /** 文件命令用的动作（引用稳定，交给命令表） */
+  handlers: FileCommandHandlers;
   /** 有未保存的修改 */
   dirty: boolean;
   /** 当前打开的对话框 */
@@ -42,8 +51,24 @@ export interface ShowFileController {
    * @param asNew 为 `true` 时即使工程已在库里也另存为新节目。
    */
   openSaveDialog: (asNew: boolean) => void;
-  /** 选择位置，把工程导出为库外的 `.artshow` 文件。 */
+  /** 选择位置，把工程另存为库外的 `.artshow` 文件（之后保存都写到这个文件）。 */
   saveAsFile: () => void;
+  /** 选择位置，导出一份 `.artshow` 副本（当前工程仍保存在原来的位置）。 */
+  exportCopy: () => void;
+  /** 选择位置，把当前工程（含未保存的修改）烘焙成 `.artrec` 回放文件。 */
+  exportArtrec: () => void;
+  /** 从磁盘重新载入当前工程（有未保存修改时先确认）；从未保存过的工程什么也不做。 */
+  requestReload: () => void;
+  /** 确认“放弃修改并重新载入”。 */
+  confirmReload: () => void;
+  /** 打开“导入节目”对话框。 */
+  requestImport: () => void;
+  /** 在系统文件管理器里显示当前工程。 */
+  revealInFolder: () => void;
+  /** 复制当前工程的文件路径。 */
+  copyPath: () => void;
+  /** 打开“节目信息”对话框。 */
+  openInfo: () => void;
   /** 新建工程（有未保存修改时先确认）。 */
   requestNew: () => void;
   /** 从节目库选择并打开工程（有未保存修改时先确认）。 */
@@ -88,6 +113,16 @@ export interface ShowFileController {
   answerRecover: (restore: boolean) => void;
   /** 关闭当前对话框（取消）。 */
   closeDialog: () => void;
+}
+
+/**
+ * 当前工程的位置。
+ *
+ * @returns 节目库或库外文件；从未保存过时为 `null`。
+ */
+function currentPath() {
+  const origin = useDocumentStore.getState().origin;
+  return origin.kind === "none" ? null : origin;
 }
 
 /** 本次应用运行期间是否已经检查过自动存档（编辑器页面反复进出不重复询问）。 */
@@ -324,13 +359,93 @@ export function useShowFile(): ShowFileController {
     return () => window.clearInterval(timer);
   }, [dirty]);
 
+  const doReload = useCallback(
+    () =>
+      void attempt(async () => {
+        if (await reloadFromDisk()) toast.success(t("editor.file.reloaded"));
+      }),
+    [attempt, t],
+  );
+  const requestReload = useCallback(() => {
+    if (useDocumentStore.getState().origin.kind === "none") return;
+    if (selectDirty(useProjectStore.getState())) setDialog("reload");
+    else doReload();
+  }, [doReload]);
+  const confirmReload = useCallback(() => {
+    setDialog(null);
+    doReload();
+  }, [doReload]);
+
+  const exportCopyAction = useCallback(() => {
+    void attempt(async () => {
+      const { project } = useProjectStore.getState();
+      const path = await pickArtshowSavePath(project.name || t("editor.untitled"), t("editor.file.fileType"));
+      if (!path) return;
+      await exportCopy(path);
+      toast.success(t("editor.file.exportedCopy", { path }));
+    });
+  }, [attempt, t]);
+
+  const exportArtrecAction = useCallback(() => {
+    void attempt(async () => {
+      const { project } = useProjectStore.getState();
+      const path = await pickArtrecSavePath(project.name || t("editor.untitled"), t("editor.file.artrecType"));
+      if (!path) return;
+      const id = toast.loading(t("editor.file.exportingArtrec"));
+      try {
+        const report = await exportArtrec(path);
+        refreshLibrary();
+        toast.success(t("editor.file.exportedArtrec", { path, frames: report.frames, size: formatBytes(report.bytes) }), { id });
+      } catch (e) {
+        toast.dismiss(id);
+        throw e;
+      }
+    });
+  }, [attempt, refreshLibrary, t]);
+
+  const revealInFolder = useCallback(() => {
+    const origin = currentPath();
+    if (origin) void attempt(() => showReveal(origin.kind, origin.path));
+  }, [attempt]);
+  const copyPath = useCallback(() => {
+    const origin = currentPath();
+    if (origin) void copyText(origin.path, { success: t("editor.file.pathCopied"), failure: t("editor.file.copyFailed") });
+  }, [t]);
+
+  const requestImport = useCallback(() => setDialog("import"), []);
+  const openInfo = useCallback(() => setDialog("info"), []);
+  const handlers = useMemo<FileCommandHandlers>(
+    () => ({
+      save,
+      requestNew,
+      requestOpenLibrary,
+      requestOpenFile,
+      openSaveDialog,
+      requestImport,
+      exportArtrec: exportArtrecAction,
+      requestReload,
+      revealInFolder,
+      openInfo,
+    }),
+    [save, requestNew, requestOpenLibrary, requestOpenFile, openSaveDialog, requestImport, exportArtrecAction, requestReload, revealInFolder, openInfo],
+  );
+
   return {
+    handlers,
     dirty,
     dialog,
     saveAsNew,
     save,
     openSaveDialog,
     saveAsFile,
+    exportCopy: exportCopyAction,
+    exportArtrec: exportArtrecAction,
+    requestReload,
+    confirmReload,
+    requestImport,
+    revealInFolder,
+    copyPath,
+    openInfo,
     requestNew,
     requestOpenLibrary,
     requestOpenFile,

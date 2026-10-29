@@ -19,6 +19,7 @@ mod playback_commands;
 mod recording_commands;
 mod show_bake;
 mod show_commands;
+mod show_file_commands;
 mod show_runtime;
 mod signal_checker_commands;
 
@@ -243,6 +244,9 @@ pub fn run() {
             show_commands::show_autosave_write,
             show_commands::show_autosave_read,
             show_commands::show_autosave_clear,
+            show_file_commands::show_file_info,
+            show_file_commands::show_reveal,
+            show_file_commands::show_export_artrec,
             media_commands::media_probe,
             media_commands::media_authorize,
             media_commands::stage_image_authorize,

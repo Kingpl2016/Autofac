@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import { announce } from "@/shared/stores/announcerStore";
 import type { Command } from "../lib/commands";
+import { FILE_COMMANDS, type FileCommandHandlers, type FileCommandId } from "../lib/fileCommands";
+import { useDocumentStore } from "../stores/useDocumentStore";
 import { cuesAfter, cuesAt, rippleDeleteCues, splitCues } from "../lib/cueOps";
 import { applyPattern, invertSelection, stepSelection } from "../lib/fixtureSelection";
 import { adjacentCue, adjacentEditPoint, editPoints, toggleCuesDisabled, trimCuesAt, trimMediaAt } from "../lib/editOps";
@@ -45,15 +47,48 @@ import { togglePanel } from "./panelControl";
 const FRAME = Math.round(1000 / OUTPUT_FPS);
 
 /**
+ * 文件类命令（新建、打开、导入、导出…）。
+ *
+ * @param handlers 文件动作（引用稳定，见 `useShowFile` 的 `handlers`）。
+ * @returns 命令列表。
+ */
+function fileCommands(handlers: FileCommandHandlers): Command[] {
+  const f = () => handlers;
+  const hasOrigin = () => useDocumentStore.getState().origin.kind !== "none";
+  const entry = (id: Exclude<FileCommandId, "file.save">, run: () => void, enabled?: () => boolean): Command => ({
+    id,
+    titleKey: FILE_COMMANDS[id].titleKey,
+    category: "file",
+    keys: FILE_COMMANDS[id].keys,
+    global: FILE_COMMANDS[id].keys.length > 0,
+    ...(enabled ? { enabled } : {}),
+    run,
+  });
+  return [
+    entry("file.new", () => f()?.requestNew()),
+    entry("file.openLibrary", () => f()?.requestOpenLibrary()),
+    entry("file.openFile", () => f()?.requestOpenFile()),
+    entry("file.saveAsNew", () => f()?.openSaveDialog(true)),
+    entry("file.import", () => f()?.requestImport()),
+    entry("file.exportArtrec", () => f()?.exportArtrec()),
+    entry("file.reload", () => f()?.requestReload(), hasOrigin),
+    entry("file.reveal", () => f()?.revealInFolder(), hasOrigin),
+    entry("file.info", () => f()?.openInfo()),
+  ];
+}
+
+/**
  * 编辑器的全部命令（工具条、快捷键、命令面板共用）。默认快捷键与剪映一致：
  * 空格播放、Ctrl+B 分割、Delete 删除、Shift+Delete 波纹删除、I / O 入点出点、+ / - 缩放、Shift+Z 适应窗口。
  *
  * @param onSave 保存动作（来自文件操作）。
+ * @param file 其它文件命令的动作（新建、打开、导入、导出…；引用应稳定）；省略时这些命令不注册。
  * @returns 命令列表（稳定引用，内部读取最新状态）。
  */
-export function useEditorCommands(onSave?: () => void): Command[] {
+export function useEditorCommands(onSave?: () => void, file?: FileCommandHandlers): Command[] {
   const { t } = useTranslation();
   const actions = useCueActions();
+
   return useMemo<Command[]>(() => {
     const ui = () => useEditorUiStore.getState();
     const project = () => useProjectStore.getState().project;
@@ -123,7 +158,8 @@ export function useEditorCommands(onSave?: () => void): Command[] {
     const hasTracksSelected = () => ui().selectedTrackIds.length > 0 || ui().selectedTrackId !== null;
 
     const commands: Command[] = [
-      { id: "file.save", titleKey: "editor.commands.save", category: "file", keys: ["mod+s"], global: true, run: () => onSave?.() },
+      { id: "file.save", titleKey: FILE_COMMANDS["file.save"].titleKey, category: "file", keys: FILE_COMMANDS["file.save"].keys, global: true, run: () => onSave?.() },
+      ...(file ? fileCommands(file) : []),
       { id: "edit.undo", titleKey: "editor.commands.undo", category: "edit", keys: ["mod+z"], enabled: () => temporal().pastStates.length > 0, run: () => temporal().undo() },
       { id: "edit.redo", titleKey: "editor.commands.redo", category: "edit", keys: ["mod+shift+z", "mod+y"], enabled: () => temporal().futureStates.length > 0, run: () => temporal().redo() },
       {
@@ -739,5 +775,5 @@ export function useEditorCommands(onSave?: () => void): Command[] {
       });
     }
     return commands;
-  }, [t, actions, onSave]);
+  }, [t, actions, onSave, file]);
 }

@@ -3,8 +3,11 @@ import { persist } from "zustand/middleware";
 
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
 
-/** 最近文件最多记几个。 */
+/** 最近文件最多记几个（不含置顶的）。 */
 export const MAX_RECENT = 10;
+
+/** 最多置顶几个。 */
+export const MAX_PINNED = 10;
 
 /** 一个最近打开 / 保存过的节目。 */
 export interface RecentFile {
@@ -15,6 +18,8 @@ export interface RecentFile {
   name: string;
   /** 最近一次打开 / 保存的时间（毫秒时间戳） */
   openedAt: number;
+  /** 置顶：总排在最前，不会被新打开的文件挤出列表 */
+  pinned?: boolean;
 }
 
 /** 落盘的数据。 */
@@ -35,7 +40,20 @@ interface RecentFilesState extends RecentFilesData {
    * @param path 路径。
    */
   remove: (path: string) => void;
-  /** 清空列表。 */
+  /**
+   * 一次移除多项（清除失效项）。
+   *
+   * @param paths 路径。
+   */
+  removeMany: (paths: readonly string[]) => void;
+  /**
+   * 置顶 / 取消置顶。
+   *
+   * @param path 路径。
+   * @param pinned 是否置顶。
+   */
+  setPinned: (path: string, pinned: boolean) => void;
+  /** 清空列表（置顶的保留）。 */
   clear: () => void;
 }
 
@@ -58,7 +76,33 @@ export function recentKey(path: string): string {
  */
 export function pushRecent(items: readonly RecentFile[], item: RecentFile): RecentFile[] {
   const key = recentKey(item.path);
-  return [item, ...items.filter((x) => recentKey(x.path) !== key)].slice(0, MAX_RECENT);
+  // 已置顶的保持置顶
+  const pinned = item.pinned ?? items.find((x) => recentKey(x.path) === key)?.pinned;
+  const next = { ...item, ...(pinned ? { pinned: true } : {}) };
+  if (!pinned) delete next.pinned;
+  return limitRecent([next, ...items.filter((x) => recentKey(x.path) !== key)]);
+}
+
+/**
+ * 截断：置顶的最多 {@link MAX_PINNED} 个，其余最多 {@link MAX_RECENT} 个（保持原顺序）。
+ *
+ * @param items 列表（新的在前）。
+ * @returns 截断后的列表。
+ */
+function limitRecent(items: readonly RecentFile[]): RecentFile[] {
+  let pinned = 0;
+  let others = 0;
+  return items.filter((x) => (x.pinned ? (pinned += 1) <= MAX_PINNED : (others += 1) <= MAX_RECENT));
+}
+
+/**
+ * 显示顺序：置顶的在前，各自按时间从新到旧。
+ *
+ * @param items 列表。
+ * @returns 新列表。
+ */
+export function orderRecent(items: readonly RecentFile[]): RecentFile[] {
+  return [...items].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.openedAt - a.openedAt);
 }
 
 /**
@@ -81,8 +125,10 @@ export function sanitizeRecent(raw: unknown): RecentFilesData {
       typeof (x as RecentFile).openedAt === "number" &&
       Number.isFinite((x as RecentFile).openedAt),
   );
-  const sorted = [...items].sort((a, b) => b.openedAt - a.openedAt);
-  return { items: sorted.reduce<RecentFile[]>((acc, x) => (acc.some((y) => recentKey(y.path) === recentKey(x.path)) ? acc : [...acc, x]), []).slice(0, MAX_RECENT) };
+  const sorted = [...items]
+    .map(({ path, kind, name, openedAt, pinned }): RecentFile => ({ path, kind, name, openedAt, ...(pinned === true ? { pinned: true } : {}) }))
+    .sort((a, b) => b.openedAt - a.openedAt);
+  return { items: limitRecent(sorted.reduce<RecentFile[]>((acc, x) => (acc.some((y) => recentKey(y.path) === recentKey(x.path)) ? acc : [...acc, x]), [])) };
 }
 
 /**
@@ -94,7 +140,22 @@ export const useRecentFilesStore = create<RecentFilesState>()(
       items: [],
       record: (item) => set((s) => ({ items: pushRecent(s.items, item) })),
       remove: (path) => set((s) => ({ items: s.items.filter((x) => recentKey(x.path) !== recentKey(path)) })),
-      clear: () => set({ items: [] }),
+      removeMany: (paths) => {
+        const keys = new Set(paths.map(recentKey));
+        set((s) => ({ items: s.items.filter((x) => !keys.has(recentKey(x.path))) }));
+      },
+      setPinned: (path, pinned) =>
+        set((s) => {
+          const key = recentKey(path);
+          const items = s.items.map((x) => {
+            if (recentKey(x.path) !== key) return x;
+            const { pinned: _p, ...rest } = x;
+            void _p;
+            return pinned ? { ...rest, pinned: true } : rest;
+          });
+          return { items: limitRecent(items) };
+        }),
+      clear: () => set((s) => ({ items: s.items.filter((x) => x.pinned) })),
     }),
     {
       name: "editor-recent",

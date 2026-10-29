@@ -88,6 +88,67 @@ export function showAutosaveClear(): Promise<void> {
   return invoke<void>("show_autosave_clear");
 }
 
+/** 工程所在位置的种类（与最近文件、工程来源一致）。 */
+export type ShowFileKind = "library" | "external";
+
+/** 工程文件信息（见后端 `show_file_info`）。 */
+export interface ShowFileInfo {
+  /** 工程文件是否存在 */
+  exists: boolean;
+  /** 工程文件路径（节目库为 `名称.artrec.show`） */
+  projectPath: string;
+  /** 工程文件字节数 */
+  bytes: number;
+  /** 工程文件修改时间（Unix 毫秒） */
+  modifiedUnixMs: number | null;
+  /** 节目库里回放文件的路径（库外工程为 `null`） */
+  artrecPath: string | null;
+  /** 回放文件字节数（还没生成时为 `null`） */
+  artrecBytes: number | null;
+  /** 回放文件修改时间（Unix 毫秒） */
+  artrecModifiedUnixMs: number | null;
+}
+
+/**
+ * 查询工程文件信息（文件不存在不算错误）。
+ *
+ * @param kind 节目库或库外文件。
+ * @param path 节目的 `.artrec` 路径，或 `.artshow` 路径。
+ * @returns 文件信息。
+ */
+export function showFileInfo(kind: ShowFileKind, path: string): Promise<ShowFileInfo> {
+  return invoke<ShowFileInfo>("show_file_info", { kind, path });
+}
+
+/**
+ * 在系统文件管理器里显示工程（节目库条目优先选中回放文件）。
+ *
+ * @param kind 节目库或库外文件。
+ * @param path 节目的 `.artrec` 路径，或 `.artshow` 路径。
+ */
+export function showReveal(kind: ShowFileKind, path: string): Promise<void> {
+  return invoke<void>("show_reveal", { kind, path });
+}
+
+/** 导出 ArtRec 的结果。 */
+export interface ArtrecExportReport {
+  /** 写入的帧数 */
+  frames: number;
+  /** 文件字节数 */
+  bytes: number;
+}
+
+/**
+ * 把工程烘焙成指定位置的 `.artrec` 回放文件（不必先保存）。
+ *
+ * @param path 目标路径（扩展名必须是 `.artrec`）。
+ * @param json 工程 JSON 文本。
+ * @returns 帧数与文件大小。
+ */
+export function showExportArtrec(path: string, json: string): Promise<ArtrecExportReport> {
+  return invoke<ArtrecExportReport>("show_export_artrec", { path, json });
+}
+
 /**
  * 读取并校验工程文本。
  *
@@ -114,6 +175,9 @@ export function showErrorText(t: TFunction, error: unknown): string {
     case "project_too_large":
     case "invalid_project":
     case "project_too_new":
+    case "in_use":
+    case "nothing_to_bake":
+    case "reveal_failed":
       return t(`editor.file.errors.${raw}`);
     default:
       return raw.startsWith("trash_failed") || raw === "" ? t("common.unknownError") : raw;
