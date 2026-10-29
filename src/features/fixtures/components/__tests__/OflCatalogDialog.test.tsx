@@ -138,9 +138,10 @@ describe("OflCatalogDialog", () => {
     render(<OflCatalogDialog open onOpenChange={() => {}} onImported={() => {}} />);
     await screen.findByRole("list", { name: "灯具列表" });
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索名称、制造商或分类" }), { target: { value: "par" } });
-    await waitFor(() => expect(screen.getByText("1 个结果")).toBeTruthy());
+    // 搜索词有 200 ms 防抖，全量并行跑测试时机器负载高：放宽等待时间
+    await waitFor(() => expect(screen.getByText("1 个结果")).toBeTruthy(), { timeout: 5000 });
     fireEvent.click(screen.getByRole("radio", { name: "可更新" }));
-    await waitFor(() => expect(screen.getByText("0 个结果")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("0 个结果")).toBeTruthy(), { timeout: 5000 });
     expect(invoke).toHaveBeenCalledWith("ofl_catalog_search", { query: expect.objectContaining({ text: "par", status: "outdated" }) });
   });
 });
