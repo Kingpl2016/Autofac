@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useEngine } from "../engine/useEngine";
 import { usePreviewProject } from "../hooks/usePreviewProject";
 import { createPreviewEvaluator } from "../lib/color";
+import { createDmxEvaluator } from "../lib/dmxPreview";
 import { CENTER_VIEWS, useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -31,6 +32,8 @@ export function PreviewPanel({ onOpenRecent }: { onOpenRecent?: (item: RecentFil
   const playheadMs = useEditorUiStore((s) => s.playheadMs);
   const engine = useEngine();
   const evaluate = useMemo(() => createPreviewEvaluator(preview, engine), [preview, engine]);
+  // 与颜色共用同一个编译结果（`compileCached` 按工程快照缓存）：色块的频闪角标读 DMX
+  const dmx = useMemo(() => createDmxEvaluator(preview, engine), [preview, engine]);
   const view = useEditorPrefsStore((s) => s.centerView);
   const setView = useEditorPrefsStore((s) => s.setCenterView);
 
@@ -90,9 +93,27 @@ export function PreviewPanel({ onOpenRecent }: { onOpenRecent?: (item: RecentFil
             {onOpenRecent && <RecentFilesList limit={5} onOpen={onOpenRecent} className="mx-auto w-full max-w-sm rounded-md border border-border bg-card p-1" />}
           </>
         ) : (
-          <SwatchView colors={evaluate(playheadMs)} />
+          <SwatchView colors={evaluate(playheadMs)} frameOf={frameCache((u) => dmx(playheadMs, u))} />
         )}
       </div>
     </PanelFrame>
   );
+}
+
+/**
+ * 同一次渲染里每个 Universe 只求值一次。
+ *
+ * @param read 取某个 Universe 的数据。
+ * @returns 带缓存的读取函数。
+ */
+function frameCache(read: (universe: number) => Uint8Array): (universe: number) => Uint8Array {
+  const frames = new Map<number, Uint8Array>();
+  return (u) => {
+    let f = frames.get(u);
+    if (!f) {
+      f = read(u);
+      frames.set(u, f);
+    }
+    return f;
+  };
 }

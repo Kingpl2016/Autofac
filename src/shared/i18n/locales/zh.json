@@ -2772,7 +2772,8 @@
       "density": "色块大小",
       "densities": {
         "comfortable": "大色块（显示名称与地址）",
-        "compact": "紧凑（灯多时一屏看全）"
+        "compact": "紧凑（灯多时一屏看全）",
+        "large": "大（像素分段看得清）"
       },
       "legend": "图例",
       "legendProgrammed": "编程器中",
@@ -2784,7 +2785,46 @@
       "conflict": "地址冲突",
       "mirrorTo": "镜像到 {{targets}}",
       "usage": "已用 {{used}} / {{total}} 个通道",
-      "selectSection": "选中 {{name}} 里的全部灯具"
+      "selectSection": "选中 {{name}} 里的全部灯具",
+      "label": "色块标签",
+      "labels": {
+        "name": "名称",
+        "address": "地址",
+        "level": "强度 %",
+        "hex": "HEX 色值",
+        "none": "不显示"
+      },
+      "sort": "区内排序",
+      "sorts": {
+        "address": "按地址",
+        "stage": "按舞台"
+      },
+      "expandAll": "全部展开",
+      "collapseAll": "全部折叠",
+      "search": "搜索名称、型号或地址（@12、1.12）",
+      "clearSearch": "清除搜索",
+      "filter": "色块筛选",
+      "filters": {
+        "all": "全部",
+        "selected": "选中",
+        "programmed": "编程中",
+        "conflict": "有冲突"
+      },
+      "strobe": "频闪",
+      "parked": "通道锁定",
+      "locating": "正在找灯",
+      "noMatch": "没有匹配的灯具",
+      "clearFilter": "清除搜索与筛选",
+      "selectSectionHint": "选中 {{name}} 里的全部灯具（Ctrl 点击并入原选择）",
+      "menu": "色块菜单",
+      "menuSelectOnly": "只选这台",
+      "menuSelectSection": "选中 {{name}} 的全部灯具",
+      "menuReveal": "在 Patch 中定位",
+      "menuLocate": "Locate 找灯",
+      "menuLocateStop": "结束 Locate",
+      "menuKnockout": "清除 {{count}} 台灯的编程器值",
+      "menuTracks": "为 {{count}} 台灯建轨道",
+      "tracksCreated": "新建了 {{count}} 条轨道（已有轨道的灯跳过）"
     },
     "guide": {
       "next": "下一步",
@@ -3045,6 +3085,13 @@
           "keys": "Alt+R 记录为场景片段 · Alt+Shift+R 记录到各自轨道",
           "term": "Store（记录）· Update（更新）· Merge / Overwrite（合并 / 覆盖）"
         }
+      },
+      "swatches": {
+        "title": "预览色块",
+        "short": "每台灯一个色块，显示播放头处的实际颜色；可以在这里选灯、找问题。",
+        "body": "色块的颜色就是灯在播放头处实际发出的颜色（已叠加编程器与高亮）。\n• 单击单选，Ctrl 追加，Shift 按屏幕顺序连选，空白处拖动框选；\n• 方向键移动，Shift + 方向键扩展选择，Ctrl+A 全选看得见的色块，Esc 取消选择；\n• 搜索支持名称、型号与地址（@12 表示地址 12，1.12 表示 Universe 1 地址 12），筛选可只看选中、编程中或有冲突的灯；\n• 像素灯在色块下半部分显示分段，点某一段选中这个像素；\n• 角标：圆点 = 编程器里有值，红框 = 地址冲突，斜纹 = 镜像地址，⚡ = 正在频闪，P = 通道锁定，准星 = 正在找灯；\n• 右键菜单可以在 Patch 中定位、Locate、清除编程器值、为所选灯建轨道；把色块拖到时间线也会建轨道。",
+        "keys": "方向键 移动 · Shift+方向键 扩展 · Ctrl+A 全选 · Esc 取消",
+        "term": "Fixture Sheet / Layout View（灯具视图）"
       }
     },
     "shortcutSheet": {

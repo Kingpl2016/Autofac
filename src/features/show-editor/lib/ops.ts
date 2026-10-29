@@ -192,6 +192,26 @@ export function setFixtureAddress(
 }
 
 /**
+ * 确保每个灯具 / 像素引用都有自己的灯具轨道：已有轨道的跳过，不存在的引用忽略，重复的只建一次。
+ *
+ * @param draft 工程草稿。
+ * @param refs 灯具或像素引用（按给定顺序建轨道）。
+ * @returns 新建的轨道 id。
+ */
+export function ensureRefTracks(draft: ShowProject, refs: readonly string[]): string[] {
+  const has = new Set(draft.tracks.flatMap((tr) => (tr.target.kind === "fixture" ? [tr.target.id] : [])));
+  const created: string[] = [];
+  for (const ref of refs) {
+    if (has.has(ref) || !refExists(draft, ref)) continue;
+    has.add(ref);
+    const id = newId();
+    draft.tracks.push({ id, target: { kind: "fixture", id: ref }, mute: false, solo: false, lock: false });
+    created.push(id);
+  }
+  return created;
+}
+
+/**
  * 把若干灯具编成一组，并为分组创建一条轨道。
  *
  * @param draft 工程草稿。

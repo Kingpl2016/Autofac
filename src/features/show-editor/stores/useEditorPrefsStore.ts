@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import { createTauriPersistStorage } from "@/shared/tauri/tauriStorage";
 import { DEFAULT_RECORD_PREFS, sanitizeRecordPrefs, type RecordPrefs } from "../lib/programmer";
+import { SWATCH_LABELS, type SwatchLabel, type SwatchSort } from "../lib/swatchGroups";
 
 /** 中间区域的视图：色块预览、舞台监视器、灯具表（色块为默认）。 */
 export const CENTER_VIEWS = ["swatches", "stage", "sheet"] as const;
@@ -16,8 +17,8 @@ export const SWATCH_GROUP_BY = ["universe", "group", "model"] as const;
 /** 色块视图的分区方式。 */
 export type SwatchGroupBy = (typeof SWATCH_GROUP_BY)[number];
 
-/** 色块大小：舒适（大块，显示名称与地址）或紧凑（小块，灯多时一屏看全）。 */
-export const SWATCH_DENSITIES = ["comfortable", "compact"] as const;
+/** 色块大小：大（像素分段看得清）、舒适（显示名称与地址）或紧凑（小块，灯多时一屏看全）。 */
+export const SWATCH_DENSITIES = ["large", "comfortable", "compact"] as const;
 
 /** 色块大小。 */
 export type SwatchDensity = (typeof SWATCH_DENSITIES)[number];
@@ -73,6 +74,12 @@ export interface EditorPrefsData {
   centerView: CenterView;
   swatchGroupBy: SwatchGroupBy;
   swatchDensity: SwatchDensity;
+  /** 色块下方的标签内容 */
+  swatchLabel: SwatchLabel;
+  /** 色块区内排序 */
+  swatchSort: SwatchSort;
+  /** 折叠的色块分区（分区键，例如 `u:0`） */
+  swatchCollapsed: string[];
   /** 时间线左侧轨道名称列的宽度（像素） */
   trackHeaderWidth: number;
   /** 批量添加灯具的上次设置 */
@@ -143,6 +150,24 @@ interface EditorPrefsState extends EditorPrefsData {
    * @param density 大小。
    */
   setSwatchDensity: (density: SwatchDensity) => void;
+  /**
+   * 色块标签内容。
+   *
+   * @param label 标签方式。
+   */
+  setSwatchLabel: (label: SwatchLabel) => void;
+  /**
+   * 色块区内排序。
+   *
+   * @param sort 排序方式。
+   */
+  setSwatchSort: (sort: SwatchSort) => void;
+  /**
+   * 设置折叠的色块分区。
+   *
+   * @param keys 分区键。
+   */
+  setSwatchCollapsed: (keys: readonly string[]) => void;
   /**
    * 设置轨道名称列的宽度（会夹在允许范围内）。
    *
@@ -220,6 +245,9 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   centerView: "swatches",
   swatchGroupBy: "universe",
   swatchDensity: "comfortable",
+  swatchLabel: "name",
+  swatchSort: "address",
+  swatchCollapsed: [],
   trackHeaderWidth: TRACK_HEADER_WIDTH.default,
   fixtureAdd: DEFAULT_FIXTURE_ADD,
   outputAdvancedOpen: false,
@@ -267,6 +295,11 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
     centerView: pick(CENTER_VIEWS, r.centerView, current.centerView),
     swatchGroupBy: pick(SWATCH_GROUP_BY, r.swatchGroupBy, current.swatchGroupBy),
     swatchDensity: pick(SWATCH_DENSITIES, r.swatchDensity, current.swatchDensity),
+    swatchLabel: pick(SWATCH_LABELS, r.swatchLabel, current.swatchLabel),
+    swatchSort: pick(["address", "stage"] as const, r.swatchSort, current.swatchSort),
+    swatchCollapsed: Array.isArray(r.swatchCollapsed)
+      ? [...new Set(r.swatchCollapsed.filter((k): k is string => typeof k === "string" && k.length <= 128))].slice(0, 512)
+      : current.swatchCollapsed,
     trackHeaderWidth: typeof r.trackHeaderWidth === "number" ? clampHeaderWidth(r.trackHeaderWidth) : current.trackHeaderWidth,
     fixtureAdd: sanitizeFixtureAdd(r.fixtureAdd, current.fixtureAdd),
     outputAdvancedOpen: typeof r.outputAdvancedOpen === "boolean" ? r.outputAdvancedOpen : current.outputAdvancedOpen,
@@ -296,6 +329,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setCenterView: (centerView) => set({ centerView }),
       setSwatchGroupBy: (swatchGroupBy) => set({ swatchGroupBy }),
       setSwatchDensity: (swatchDensity) => set({ swatchDensity }),
+      setSwatchLabel: (swatchLabel) => set({ swatchLabel }),
+      setSwatchSort: (swatchSort) => set({ swatchSort }),
+      setSwatchCollapsed: (keys) => set({ swatchCollapsed: [...new Set(keys)] }),
       setTrackHeaderWidth: (px) => set({ trackHeaderWidth: clampHeaderWidth(px) }),
       setFixtureAdd: (patch) => set((s) => ({ fixtureAdd: sanitizeFixtureAdd({ ...s.fixtureAdd, ...patch }, s.fixtureAdd) })),
       setOutputAdvancedOpen: (outputAdvancedOpen) => set({ outputAdvancedOpen }),
@@ -319,6 +355,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         centerView,
         swatchGroupBy,
         swatchDensity,
+        swatchLabel,
+        swatchSort,
+        swatchCollapsed,
         trackHeaderWidth,
         fixtureAdd,
         outputAdvancedOpen,
@@ -334,6 +373,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         centerView,
         swatchGroupBy,
         swatchDensity,
+        swatchLabel,
+        swatchSort,
+        swatchCollapsed,
         trackHeaderWidth,
         fixtureAdd,
         outputAdvancedOpen,

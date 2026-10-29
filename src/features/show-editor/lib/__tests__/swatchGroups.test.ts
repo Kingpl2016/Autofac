@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { produce } from "immer";
 
-import { addFixtures, createGroup } from "../ops";
+import { addFixtures, createGroup, ensureRefTracks } from "../ops";
 import { createEmptyProject, type ShowProject } from "../project";
-import { pickSwatch, swatchSections, visibleOrder } from "../swatchGroups";
+import { filterSwatchSections, pickSwatch, strobingFixtures, swatchLabelText, swatchSections, visibleOrder } from "../swatchGroups";
 import { clampHeaderWidth, DEFAULT_EDITOR_PREFS, sanitizeEditorPrefs } from "../../stores/useEditorPrefsStore";
-import { DIMMER, RGBW } from "./testkit";
+import { DIMMER, prop, RGBW } from "./testkit";
 
 /** U1：调光灯 @1；U0：RGBW @9、@1（Patch 顺序打乱）；前两台 RGBW 编为“前排”。 */
 function base(): ShowProject {
@@ -75,6 +75,9 @@ describe("预览色块分区", () => {
       centerView: "stage",
       swatchGroupBy: "universe",
       swatchDensity: "comfortable",
+      swatchLabel: "name",
+      swatchSort: "address",
+      swatchCollapsed: [],
       trackHeaderWidth: 480,
       fixtureAdd: DEFAULT_EDITOR_PREFS.fixtureAdd,
       outputAdvancedOpen: false,
@@ -106,5 +109,87 @@ describe("预览色块分区", () => {
     expect(p.outputAdvancedOpen).toBe(false);
     expect(clampHeaderWidth(10.6 + 200)).toBe(211);
     expect(clampHeaderWidth(Number.NaN)).toBe(208);
+  });
+});
+
+describe("色块筛选、标签、排序与状态", () => {
+  it("搜索名称 / 型号 / 地址（@12、1.12），筛选选中 / 编程中 / 冲突；空分区不显示", () => {
+    const p = base();
+    const [rgb1, rgb2, dim] = p.fixtures.map((f) => f.id);
+    const sections = swatchSections(p, "universe");
+    const none = { selected: new Set<string>(), programmed: new Set<string>() };
+    const ids = (s: ReturnType<typeof filterSwatchSections>) => s.flatMap((x) => x.items.map((it) => it.fixtureId));
+    expect(ids(filterSwatchSections(sections, "全彩灯 2", "all", none))).toEqual([rgb2]);
+    expect(ids(filterSwatchSections(sections, "可调白光", "all", none))).toEqual([dim]);
+    // 型号名
+    expect(ids(filterSwatchSections(sections, "rgbw", "all", none))).toEqual([rgb2, rgb1]);
+    // 地址落在占用范围内即命中
+    expect(ids(filterSwatchSections(sections, "@10", "all", none))).toEqual([rgb1]);
+    expect(ids(filterSwatchSections(sections, "1.1", "all", none))).toEqual([dim]);
+    expect(ids(filterSwatchSections(sections, "0:2", "all", none))).toEqual([rgb2]);
+    expect(filterSwatchSections(sections, "不存在", "all", none)).toEqual([]);
+
+    expect(ids(filterSwatchSections(sections, "", "selected", { ...none, selected: new Set([dim]) }))).toEqual([dim]);
+    expect(ids(filterSwatchSections(sections, "", "programmed", { ...none, programmed: new Set([rgb1]) }))).toEqual([rgb1]);
+    expect(filterSwatchSections(sections, "", "conflict", none)).toEqual([]);
+  });
+
+  it("标签文字：名称、地址、强度百分比、HEX、不显示", () => {
+    const it0 = swatchSections(base(), "universe")[0].items[0];
+    expect(swatchLabelText("name", it0, [0, 0, 0])).toBe("RGBW全彩灯 2");
+    expect(swatchLabelText("address", it0, [0, 0, 0])).toBe("U0 @1");
+    expect(swatchLabelText("level", it0, [128, 10, 0])).toBe("50%");
+    expect(swatchLabelText("hex", it0, [255, 16, 0])).toBe("#FF1000");
+    expect(swatchLabelText("none", it0, [255, 16, 0])).toBe("");
+  });
+
+  it("按舞台位置排序（先 y 后 x，没有位置的排最后）；通道锁定标在灯上", () => {
+    const p = produce(base(), (d) => {
+      d.output.park.push({ universe: 0, channel: 10, value: 255 });
+    });
+    const [rgb1, rgb2] = p.fixtures.map((f) => f.id);
+    const positions = new Map([
+      [rgb1, { x: 1, y: 0 }],
+      [rgb2, { x: 5, y: 2 }],
+    ]);
+    const u0 = swatchSections(p, "universe", { sort: "stage", positions })[0];
+    expect(u0.items.map((it) => it.fixtureId)).toEqual([rgb1, rgb2]);
+    expect(u0.items.map((it) => it.parked)).toEqual([true, false]);
+  });
+
+  it("频闪：快门当前值落在“频闪”区间里", () => {
+    const model = {
+      ...RGBW,
+      id: "strobe",
+      properties: [
+        ...RGBW.properties,
+        {
+          ...prop("Shutter", "shutter", 5),
+          capabilities: [
+            { range: [0, 9] as [number, number], label: "Closed", tag: "shutterClosed" as const },
+            { range: [10, 249] as [number, number], label: "Strobe", tag: "strobe" as const },
+            { range: [250, 255] as [number, number], label: "Open", tag: "shutterOpen" as const },
+          ],
+        },
+      ],
+    };
+    const p = produce(createEmptyProject("t"), (d) => void addFixtures(d, model, 2));
+    const frame = new Uint8Array(512);
+    frame[4] = 100; // 第 1 台：频闪
+    frame[9] = 255; // 第 2 台：开光
+    expect([...strobingFixtures(p, () => frame)]).toEqual([p.fixtures[0].id]);
+    expect(strobingFixtures(p, () => null).size).toBe(0);
+  });
+
+  it("为引用建轨道：已有的跳过，不存在的忽略，重复的只建一次", () => {
+    const p = base();
+    const [rgb1, , dim] = p.fixtures.map((f) => f.id);
+    let created: string[] = [];
+    const q = produce(p, (d) => {
+      d.tracks = d.tracks.filter((t) => !(t.target.kind === "fixture" && t.target.id === dim));
+      created = ensureRefTracks(d, [rgb1, dim, dim, "nope"]);
+    });
+    expect(created).toHaveLength(1);
+    expect(q.tracks.filter((t) => t.target.kind === "fixture" && t.target.id === dim)).toHaveLength(1);
   });
 });

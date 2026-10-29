@@ -8,8 +8,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { announce } from "@/shared/stores/announcerStore";
 import { ensureFixtureTracks } from "../lib/fixtureBatch";
 import { isPixelRef, pixelRefsOf } from "../lib/fixtureRef";
-import { newId } from "../lib/ids";
-import { createGroup, MIN_GROUP_SIZE } from "../lib/ops";
+import { createGroup, ensureRefTracks, MIN_GROUP_SIZE } from "../lib/ops";
 import { analyzePatch } from "../lib/patch";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -140,9 +139,7 @@ function PixelSelection({ refs }: { refs: readonly string[] }) {
           className="h-7 text-xs"
           disabled={missing.length === 0}
           onClick={() => {
-            update((d) => {
-              for (const id of missing) d.tracks.push({ id: newId(), target: { kind: "fixture", id }, mute: false, solo: false, lock: false });
-            });
+            update((d) => void ensureRefTracks(d, missing));
             announce(t("editor.patch.pixelTracksCreated", { count: missing.length }));
           }}
         >

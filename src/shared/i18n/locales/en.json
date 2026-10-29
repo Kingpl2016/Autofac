@@ -2772,7 +2772,8 @@
       "density": "Swatch size",
       "densities": {
         "comfortable": "Large (name and address)",
-        "compact": "Compact (fit many fixtures)"
+        "compact": "Compact (fit many fixtures)",
+        "large": "Large (pixel segments)"
       },
       "legend": "Legend",
       "legendProgrammed": "In programmer",
@@ -2784,7 +2785,46 @@
       "conflict": "address conflict",
       "mirrorTo": "mirrored to {{targets}}",
       "usage": "{{used}} / {{total}} channels used",
-      "selectSection": "Select all fixtures in {{name}}"
+      "selectSection": "Select all fixtures in {{name}}",
+      "label": "Swatch label",
+      "labels": {
+        "name": "Name",
+        "address": "Address",
+        "level": "Level %",
+        "hex": "HEX",
+        "none": "None"
+      },
+      "sort": "Order within section",
+      "sorts": {
+        "address": "By address",
+        "stage": "By stage"
+      },
+      "expandAll": "Expand all",
+      "collapseAll": "Collapse all",
+      "search": "Search name, model or address (@12, 1.12)",
+      "clearSearch": "Clear search",
+      "filter": "Swatch filter",
+      "filters": {
+        "all": "All",
+        "selected": "Selected",
+        "programmed": "Programmed",
+        "conflict": "Conflicts"
+      },
+      "strobe": "Strobing",
+      "parked": "Parked",
+      "locating": "Locating",
+      "noMatch": "No matching fixtures",
+      "clearFilter": "Clear search and filter",
+      "selectSectionHint": "Select all fixtures in {{name}} (Ctrl+click adds to the selection)",
+      "menu": "Swatch menu",
+      "menuSelectOnly": "Select only this",
+      "menuSelectSection": "Select all in {{name}}",
+      "menuReveal": "Reveal in patch",
+      "menuLocate": "Locate",
+      "menuLocateStop": "Stop locate",
+      "menuKnockout": "Clear programmer values of {{count}}",
+      "menuTracks": "Create tracks for {{count}}",
+      "tracksCreated": "Created {{count}} tracks (fixtures that already had one were skipped)"
     },
     "guide": {
       "next": "Next",
@@ -3045,6 +3085,13 @@
           "keys": "Alt+R record scene clip · Alt+Shift+R record to own tracks",
           "term": "Store · Update · Merge / Overwrite"
         }
+      },
+      "swatches": {
+        "title": "Preview swatches",
+        "short": "One swatch per fixture showing its actual color at the playhead; select fixtures and spot problems here.",
+        "body": "Each swatch shows the color the fixture actually emits at the playhead (programmer and highlight included).\n• Click to select, Ctrl to add, Shift to select a range in screen order, drag on empty space to marquee-select;\n• Arrow keys move, Shift+arrows extend, Ctrl+A selects all visible swatches, Esc clears the selection;\n• Search by name, model or address (@12 is address 12, 1.12 is universe 1 address 12); filter to selected, programmed or conflicting fixtures;\n• Pixel fixtures show segments in the lower half; click a segment to select that pixel;\n• Badges: dot = programmer value, red frame = address conflict, hatch = mirror address, ⚡ = strobing, P = parked channel, crosshair = locating;\n• The context menu reveals in patch, locates, clears programmer values and creates tracks; dragging swatches onto the timeline creates tracks too.",
+        "keys": "Arrows move · Shift+arrows extend · Ctrl+A select all · Esc clear",
+        "term": "Fixture sheet / Layout view"
       }
     },
     "shortcutSheet": {

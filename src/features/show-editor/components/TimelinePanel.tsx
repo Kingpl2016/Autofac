@@ -57,7 +57,9 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
   const bodyRef = useRef<TimelineBodyHandle>(null);
   const headersRef = useRef<HTMLDivElement>(null);
   const { setNodeRef: setDropRef, isOver, active: dragActive } = useDroppable({ id: TIMELINE_DROP_ID });
-  const fixtureOver = isOver && (dragActive?.data.current as { kind?: string } | undefined)?.kind === "fixtureModel";
+  // 灯具模型（新建灯具）与预览色块（为已有灯建轨道）都可以放到时间线上
+  const dragKind = (dragActive?.data.current as { kind?: string } | undefined)?.kind;
+  const fixtureOver = isOver && (dragKind === "fixtureModel" || dragKind === "fixtureInstance");
   const { tracks } = project;
 
   const trackById = useMemo(() => new Map(tracks.map((tr) => [tr.id, tr])), [tracks]);

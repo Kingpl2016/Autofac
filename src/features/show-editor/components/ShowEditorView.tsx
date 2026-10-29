@@ -57,13 +57,30 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RadialMenu } from "./RadialMenu";
 import { ShortcutSheetDialog } from "./ShortcutSheetDialog";
 import { TemplateChip, type TemplateDragData } from "./TemplatesTab";
+import type { FixtureInstanceDragData } from "./SwatchView";
+import { ensureRefTracks } from "../lib/ops";
 import { TIMELINE_DROP_ID, TimelinePanel } from "./TimelinePanel";
 
 /** 可以从素材库拖到时间线上的东西。 */
-type DragData = TemplateDragData | EffectDragData | EffectDefDragData | PresetDragData | MediaDragData | FixtureModelDragData;
+type DragData =
+  | TemplateDragData
+  | EffectDragData
+  | EffectDefDragData
+  | PresetDragData
+  | MediaDragData
+  | FixtureModelDragData
+  | FixtureInstanceDragData;
 
 /** 会显示拖拽浮层的素材类型。 */
-const DRAG_KINDS: ReadonlySet<string> = new Set<DragData["kind"]>(["template", "effect", "effectDef", "preset", "media", "fixtureModel"]);
+const DRAG_KINDS: ReadonlySet<string> = new Set<DragData["kind"]>([
+  "template",
+  "effect",
+  "effectDef",
+  "preset",
+  "media",
+  "fixtureModel",
+  "fixtureInstance",
+]);
 
 /** 预设拖到轨道上新建的片段长度（毫秒）。 */
 const PRESET_CLIP_MS = 4000;
@@ -130,6 +147,16 @@ export function ShowEditorView() {
     if (!data) return;
     const start = e.activatorEvent as PointerEvent;
     const pointer = pointerRef.current ?? { x: start.clientX + e.delta.x, y: start.clientY + e.delta.y };
+    // 预览色块拖到时间线：为这些灯（像素）建轨道（已有轨道的跳过）
+    if (data.kind === "fixtureInstance") {
+      if (e.over?.id !== TIMELINE_DROP_ID) return;
+      let created: string[] = [];
+      useProjectStore.getState().update((d) => {
+        created = ensureRefTracks(d, data.refs);
+      });
+      announce(t("editor.swatches.tracksCreated", { count: created.length }));
+      return;
+    }
     // 灯具模型：可放到 Patch 的 Universe 卡片、舞台监视器或时间线
     if (data.kind === "fixtureModel") {
       const target = resolveFixtureDrop(e.over ? { id: e.over.id, rect: e.over.rect, data: e.over.data } : null, pointer, TIMELINE_DROP_ID);
@@ -280,6 +307,11 @@ export function ShowEditorView() {
         {dragging?.kind === "preset" && <PresetChip name={dragging.name} swatch={dragging.swatch} />}
         {dragging?.kind === "media" && <MediaChip name={dragging.name} mediaKind={dragging.mediaKind} />}
         {dragging?.kind === "fixtureModel" && <FixtureModelChip name={dragging.name} type={dragging.type} />}
+        {dragging?.kind === "fixtureInstance" && (
+          <div className="pointer-events-none rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md">
+            {dragging.name}
+          </div>
+        )}
       </DragOverlay>
     </DndContext>
   );
