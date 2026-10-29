@@ -2200,7 +2200,11 @@
         "basic": "基础色",
         "stage": "舞台常用色（色纸参考）",
         "white": "白光色温",
-        "custom": "我的模板"
+        "custom": "我的模板",
+        "rosco": "Rosco 色纸参考",
+        "concert": "演唱会常用",
+        "mood": "氛围外观",
+        "fxPresets": "特效预设"
       },
       "groupList": "{{name}}的模板",
       "tools": "模板文件",

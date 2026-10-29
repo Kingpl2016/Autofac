@@ -1,3 +1,4 @@
+import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 
 import builtinFile from "../builtinCueTemplates.json";
@@ -14,7 +15,20 @@ import {
   uniqueTemplateId,
   type CueTemplate,
 } from "../cueTemplates";
-import { copyToUser, importTemplates, removeTemplate, renameTemplate, setTemplateGroup, templateFromCue } from "../templateOps";
+import { BUILTIN_EFFECTS } from "../effectLibrary";
+import { addFixtures, createGroup } from "../ops";
+import { createEmptyProject } from "../project";
+import { parseProject, projectIntegrityIssues } from "../schema";
+import {
+  addTemplateCue,
+  copyToUser,
+  importTemplates,
+  removeTemplate,
+  renameTemplate,
+  setTemplateGroup,
+  templateFromCue,
+} from "../templateOps";
+import { RGBW } from "./testkit";
 
 const mine = (over: Partial<CueTemplate> = {}): CueTemplate => ({
   id: "my-1",
@@ -28,17 +42,49 @@ const mine = (over: Partial<CueTemplate> = {}): CueTemplate => ({
 });
 
 describe("Cue 模板配置文件", () => {
-  it("内置模板文件全部合法：基础色、舞台常用色、白光色温三组，id 不重复", () => {
+  it("内置模板文件全部合法：七个内置分组，id 不重复", () => {
+    expect(builtinFile.version).toBe(2);
     expect(parseTemplates(builtinFile).issues).toEqual([]);
     expect(BUILTIN_TEMPLATES.length).toBe(builtinFile.templates.length);
     expect(new Set(BUILTIN_TEMPLATES.map((t) => t.id)).size).toBe(BUILTIN_TEMPLATES.length);
-    expect(groupTemplates(BUILTIN_TEMPLATES).map((g) => [g.group, g.templates.length > 0])).toEqual([
-      ["basic", true],
-      ["stage", true],
-      ["white", true],
+    expect(groupTemplates(BUILTIN_TEMPLATES).map((g) => [g.group, g.templates.length])).toEqual([
+      ["basic", 12],
+      ["stage", 25],
+      ["white", 5],
+      ["rosco", 20],
+      ["concert", 12],
+      ["mood", 10],
+      ["fxPresets", 9],
     ]);
-    expect(BUILTIN_TEMPLATES.filter((t) => t.group === "stage").length).toBeGreaterThanOrEqual(20);
     expect(BUILTIN_TEMPLATES.every((t) => t.builtin)).toBe(true);
+    // 氛围是外观模板，特效预设是特效模板
+    expect(BUILTIN_TEMPLATES.filter((t) => t.group === "mood").every((t) => t.kind === "look")).toBe(true);
+    expect(BUILTIN_TEMPLATES.filter((t) => t.group === "fxPresets").every((t) => t.kind === "effect")).toBe(true);
+  });
+
+  it("特效预设模板的快照与内置特效一致", () => {
+    for (const t of BUILTIN_TEMPLATES.filter((x) => x.kind === "effect")) {
+      const source = BUILTIN_EFFECTS.find((e) => e.id === t.fx?.def.id);
+      expect(source, t.id).toBeDefined();
+      const { builtin: _b, ...clean } = source!;
+      void _b;
+      expect(t.fx?.def, t.id).toEqual(clean);
+    }
+  });
+
+  it("每个内置模板都能放进工程并通过完整性与工程校验", () => {
+    const p = produce(createEmptyProject("t"), (d) => {
+      addFixtures(d, RGBW, 3);
+      d.durationMs = 1_000_000;
+      createGroup(d, "排", d.fixtures.map((f) => f.id));
+      const track = d.tracks.at(-1)!.id;
+      BUILTIN_TEMPLATES.forEach((t, i) => {
+        expect(addTemplateCue(d, track, i * 10_000, t, templateName(t, "zh")), t.id).not.toBeNull();
+      });
+    });
+    expect(projectIntegrityIssues(p)).toEqual([]);
+    const r = parseProject(JSON.stringify(p));
+    expect(r.ok, r.ok ? "" : r.detail).toBe(true);
   });
 
   it("解析：缺省值补齐；格式不对的条目跳过并说明第几条；id 重复时后一条覆盖", () => {
@@ -72,7 +118,17 @@ describe("Cue 模板配置文件", () => {
     const redIndex = BUILTIN_TEMPLATES.findIndex((t) => t.id === "red");
     expect(merged[redIndex]).toBe(override);
     expect(merged.slice(-2).map((t) => t.id)).toEqual(["my-1", "x"]);
-    expect(groupTemplates(merged).map((g) => g.group)).toEqual(["basic", "stage", "white", "演唱会", "custom"]);
+    expect(groupTemplates(merged).map((g) => g.group)).toEqual([
+      "basic",
+      "stage",
+      "white",
+      "rosco",
+      "concert",
+      "mood",
+      "fxPresets",
+      "演唱会",
+      "custom",
+    ]);
   });
 
   it("显示名按语言取，缺的语言用另一个；色温换算显示色；需求按颜色判断", () => {

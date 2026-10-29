@@ -35,7 +35,7 @@ import { colorValueSchema, lookSchema, spreadSchema } from "./schema";
 export const TEMPLATE_FILE_VERSION = 2;
 
 /** 内置的分组（显示顺序；用户可以用任意分组名）。 */
-export const BUILTIN_GROUPS = ["basic", "stage", "white", "custom"] as const;
+export const BUILTIN_GROUPS = ["basic", "stage", "white", "rosco", "concert", "mood", "fxPresets", "custom"] as const;
 
 /** 新建的用户模板默认放进的分组。 */
 export const CUSTOM_GROUP = "custom";

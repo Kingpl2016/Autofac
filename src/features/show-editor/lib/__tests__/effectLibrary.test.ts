@@ -1,7 +1,9 @@
 import { produce } from "immer";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { EFFECT_ICONS } from "../../components/effectIcons";
 import type { Engine } from "../../engine/engine";
+import builtinEffectsFile from "../builtinEffects.json";
 import { loadTestEngine } from "../../engine/__tests__/testEngine";
 import { createPreviewEvaluator } from "../color";
 import { addEffectCue, addLookCue, setSpread, updateLooks } from "../cueOps";
@@ -63,15 +65,20 @@ function grouped(): { p: ShowProject; track: string } {
 const lookOf = (p: ShowProject, id: string | null) => p.cues.find((c) => c.id === id) as LookClip | undefined;
 
 describe("特效库：配置文件", () => {
-  it("内置 28 个特效，分四组，全部是只读", () => {
-    expect(BUILTIN_EFFECTS).toHaveLength(28);
+  it("内置 40 个特效，分四组，全部是只读；文件里的条目都合法", () => {
+    expect(BUILTIN_EFFECTS).toHaveLength(40);
     expect(groupEffects(BUILTIN_EFFECTS).map((g) => [g.group, g.effects.length])).toEqual([
-      ["position", 8],
-      ["intensity", 9],
-      ["color", 7],
+      ["position", 10],
+      ["intensity", 15],
+      ["color", 11],
       ["beam", 4],
     ]);
     expect(BUILTIN_EFFECTS.every((e) => e.builtin)).toBe(true);
+    expect(parseEffects(builtinEffectsFile).issues).toEqual([]);
+  });
+
+  it("每个内置特效的图标都有对应的图形", () => {
+    for (const e of BUILTIN_EFFECTS) expect(EFFECT_ICONS[e.icon ?? ""], e.id).toBeDefined();
   });
 
   it("单条不合法时跳过并记下原因；整份不对时没有特效；版本过新给出提示", () => {
@@ -134,7 +141,7 @@ describe("特效库：配置文件", () => {
     const mine: EffectDef = { ...def("circle"), builtin: undefined, name: "我的画圆" };
     const merged = mergeEffects(BUILTIN_EFFECTS, [mine]);
     expect(merged[0].name).toBe("我的画圆");
-    expect(merged).toHaveLength(28);
+    expect(merged).toHaveLength(40);
 
     const { next, created } = copyEffectToUser([], BUILTIN_EFFECTS, def("rainbow"), " 副本");
     expect(created).toMatchObject({ id: "my-effect-1", group: "custom", name: { zh: "彩虹 副本", en: "Rainbow 副本" } });
@@ -319,6 +326,81 @@ describe("特效库：生成外观", () => {
     expect(lit / samples).toBeGreaterThan(0.35);
     expect(lit / samples).toBeLessThan(0.65);
     expect(patterns.size).toBeGreaterThan(10);
+  });
+});
+
+describe("新增特效（引擎求值）", () => {
+  /**
+   * 把特效放到 n 台 RGBW 灯的分组上（周期改为给定毫秒数），返回 t 时刻每台灯的 [R, G, B, W]。
+   * 没有颜色层的特效补白光，方便读强度。
+   */
+  function run(id: string, members: number, periodMs: number) {
+    const e = def(id);
+    const p = produce(createEmptyProject("t"), (d) => {
+      addFixtures(d, RGBW, members);
+      d.durationMs = 20_000;
+      d.output.gamma = 1;
+      if (members > 1) createGroup(d, "排", d.fixtures.map((f) => f.id));
+      const params = { ...defaultEffectParams(e), period: { kind: "ms" as const, ms: periodMs } };
+      const { look, spread } = buildEffectLook(e, params, { members, tempo: null });
+      look.color ??= { kind: "value", value: { kind: "rgb", rgb: [255, 255, 255], white: "off" } };
+      addLookCue(d, d.tracks.at(-1)!.id, 0, look, 10_000, spread);
+    });
+    const evaluate = createPreviewEvaluator(p, engine);
+    return (t: number) => p.fixtures.map((f) => [...(evaluate(t).get(f.id) ?? [0, 0, 0, 0])].slice(0, 4));
+  }
+
+  it("心跳：两下强弱跳动后停在最暗", () => {
+    const at = run("heartbeat", 1, 1600);
+    const red = (t: number) => at(t)[0][0];
+    // 8 步每步 200 ms，每步在前 60% 里滑向下一步：第一下在 120~200 ms 最亮，
+    // 第二下（70%）在 520~600 ms，后半段停在最暗（5%）
+    expect(red(150)).toBeGreaterThan(240);
+    expect(red(560)).toBeGreaterThan(150);
+    expect(red(560)).toBeLessThan(200);
+    expect(red(380)).toBeLessThan(red(560));
+    expect(red(1300)).toBeLessThanOrEqual(Math.ceil(255 * 0.05));
+  });
+
+  it("红蓝警灯：前半个周期红色连闪，后半个周期蓝色连闪", () => {
+    const at = run("police", 1, 800);
+    const [r1, , b1] = at(50)[0];
+    const [r2, , b2] = at(450)[0];
+    expect(r1).toBeGreaterThan(200);
+    expect(b1).toBe(0);
+    expect(r2).toBe(0);
+    expect(b2).toBeGreaterThan(200);
+    // 每次闪之间是暗的
+    expect(Math.max(...at(150)[0])).toBe(0);
+  });
+
+  it("彩色频闪：每闪一下换一种颜色，闪之间全暗", () => {
+    const at = run("colorStrobe", 1, 600);
+    expect(at(25)[0].slice(0, 3)).toEqual([255, 0, 0]);
+    expect(Math.max(...at(75)[0])).toBe(0);
+    const second = at(125)[0];
+    expect(second[0]).toBe(255);
+    expect(second[1]).toBeGreaterThan(150);
+  });
+
+  it("拖尾追逐：同一时刻有一台最亮，其余有渐暗的尾巴", () => {
+    const at = run("comet", 6, 1200);
+    const reds = at(30).map((c) => c[0]);
+    const head = Math.max(...reds);
+    expect(head).toBeGreaterThan(200);
+    expect(reds.filter((v) => v > 0 && v < head).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("火焰：始终是暖色（红远多于蓝），亮度不断变化", () => {
+    const at = run("fire", 1, 1200);
+    const seen = new Set<number>();
+    for (let t = 0; t < 3000; t += 50) {
+      const [r, , b] = at(t)[0];
+      expect(r).toBeGreaterThan(0);
+      expect(b * 5).toBeLessThan(r);
+      seen.add(r);
+    }
+    expect(seen.size).toBeGreaterThan(5);
   });
 });
 

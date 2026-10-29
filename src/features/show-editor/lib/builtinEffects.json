@@ -255,6 +255,118 @@
       "hint": { "zh": "棱镜来回旋转，分组成员错开", "en": "Prism rotates back and forth, offset across the group" },
       "period": { "kind": "beats", "beats": 8 }, "size": 0.3, "spread": 0.5, "spreadBy": "phase",
       "look": { "attrs": { "prismRotate": { "shape": "triangle", "center": 0.5, "amp": 1 } } }
+    },
+    {
+      "id": "heartbeat", "group": "intensity", "icon": "heartPulse", "scale": "percent",
+      "name": { "zh": "心跳", "en": "Heartbeat" },
+      "hint": { "zh": "两下一组的强弱跳动后停顿，像心跳", "en": "A strong and a weak beat followed by a pause, like a heartbeat" },
+      "period": { "kind": "beats", "beats": 2 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [{ "id": "floor", "type": "percent", "default": 0.05, "label": { "zh": "最暗", "en": "Lowest" } }],
+      "look": { "intensity": { "shape": "steps", "lo": "$floor", "hi": 1, "steps": [0, 1, 0.15, 0.7, 0, 0, 0, 0], "ease": "easeOut", "transition": 0.6 } }
+    },
+    {
+      "id": "lightning", "group": "intensity", "icon": "cloudLightning", "scale": "percent",
+      "name": { "zh": "雷电", "en": "Lightning" },
+      "hint": { "zh": "偶发的短促强闪并迅速衰减，每台灯不同", "en": "Occasional short bright flashes that decay fast, different on every fixture" },
+      "period": { "kind": "ms", "ms": 80 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [{ "id": "density", "type": "percent", "default": 0.06, "label": { "zh": "密度", "en": "Density" } }],
+      "look": { "intensity": { "shape": "random", "lo": 0, "hi": 1, "duty": "$density", "ease": "easeOut", "seed": true } }
+    },
+    {
+      "id": "randomStrobe", "group": "intensity", "icon": "shuffle", "scale": "percent",
+      "name": { "zh": "随机频闪", "en": "Random strobe" },
+      "hint": { "zh": "每台灯随机地全亮或全灭，频闪节奏", "en": "Each fixture randomly snaps fully on or off at strobe speed" },
+      "period": { "kind": "ms", "ms": 100 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [{ "id": "density", "type": "percent", "default": 0.3, "label": { "zh": "亮的比例", "en": "On ratio" } }],
+      "look": { "intensity": { "shape": "random", "lo": 0, "hi": 1, "duty": "$density", "seed": true } }
+    },
+    {
+      "id": "comet", "group": "intensity", "icon": "chevronsRight", "scale": "percent",
+      "name": { "zh": "拖尾追逐", "en": "Comet chase" },
+      "hint": { "zh": "亮点沿分组跑动，身后留下渐暗的尾巴", "en": "A bright point runs along the group, leaving a fading tail" },
+      "period": { "kind": "beats", "beats": 2 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "steps", "lo": 0, "hi": 1, "steps": [1, 0.55, 0.28, 0.12, 0.04, 0, 0, 0], "ease": "linear" } }
+    },
+    {
+      "id": "scanBar", "group": "intensity", "icon": "scanLine", "scale": "percent",
+      "name": { "zh": "光带扫描", "en": "Scan bar" },
+      "hint": { "zh": "一段柔和的亮带沿分组移动", "en": "A soft band of light moves along the group" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "look": { "intensity": { "shape": "steps", "lo": 0, "hi": 1, "steps": [0, 0.35, 1, 0.35, 0, 0, 0, 0, 0, 0], "ease": "easeInOut" } }
+    },
+    {
+      "id": "hit", "group": "intensity", "icon": "sun", "scale": "percent",
+      "name": { "zh": "爆闪冲击", "en": "Blinder hit" },
+      "hint": { "zh": "每小节一次全亮冲击并快速衰减，配合重拍", "en": "A full-on hit once per bar that decays quickly, for downbeats" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "params": [{ "id": "decay", "type": "percent", "default": 0.4, "label": { "zh": "衰减时长", "en": "Decay" } }],
+      "look": { "intensity": { "shape": "saw", "lo": 1, "hi": 0, "ease": "easeOut", "transition": "$decay" } }
+    },
+    {
+      "id": "fire", "group": "color", "icon": "flame", "scale": "percent",
+      "name": { "zh": "火焰", "en": "Fire" },
+      "hint": { "zh": "红橙黄之间流动，亮度随机跳动，像火苗", "en": "Flows between red, orange and yellow with flickering brightness, like flames" },
+      "period": { "kind": "ms", "ms": 1200 }, "size": 100, "spread": 1, "spreadBy": "phase",
+      "params": [{ "id": "floor", "type": "percent", "default": 0.5, "label": { "zh": "最暗", "en": "Lowest" } }],
+      "look": {
+        "intensity": { "shape": "noise", "lo": "$floor", "hi": 1, "cycles": 8, "seed": true },
+        "color": { "colors": [[255, 30, 0], [255, 100, 0], [255, 160, 20], [255, 70, 0]], "blend": "smooth" }
+      }
+    },
+    {
+      "id": "police", "group": "color", "icon": "siren", "scale": "percent",
+      "name": { "zh": "红蓝警灯", "en": "Police lights" },
+      "hint": { "zh": "红色连闪后蓝色连闪，相邻灯交替", "en": "Red bursts then blue bursts, alternating between neighbours" },
+      "period": { "kind": "ms", "ms": 800 }, "size": 100, "spread": 0.5, "spreadBy": "phase",
+      "params": [{ "id": "colors", "type": "colors", "default": [[255, 0, 0], [0, 40, 255]], "min": 2, "max": 2, "label": { "zh": "颜色", "en": "Colors" } }],
+      "look": {
+        "intensity": { "shape": "steps", "lo": 0, "hi": 1, "steps": [1, 0, 1, 0, 1, 0, 1, 0] },
+        "color": { "colors": "$colors", "blend": "step" }
+      }
+    },
+    {
+      "id": "colorStrobe", "group": "color", "icon": "partyPopper", "scale": "percent",
+      "name": { "zh": "彩色频闪", "en": "Color strobe" },
+      "hint": { "zh": "每闪一下换一种颜色", "en": "Changes to a new color on every flash" },
+      "period": { "kind": "ms", "ms": 600 }, "size": 100, "spread": 0, "spreadBy": "none",
+      "look": {
+        "intensity": { "shape": "square", "lo": 0, "hi": 1, "duty": 0.5, "cycles": 6 },
+        "color": { "colors": [[255, 0, 0], [255, 200, 0], [0, 255, 0], [0, 200, 255], [0, 0, 255], [255, 0, 255]], "blend": "step" }
+      }
+    },
+    {
+      "id": "sunrise", "group": "color", "icon": "sunrise", "scale": "percent",
+      "name": { "zh": "日出", "en": "Sunrise" },
+      "hint": { "zh": "从暗红渐亮到橙色再到暖白；周期即日出时长，片段比周期长时重新开始", "en": "Rises from deep red through orange to warm white; the period is the sunrise length and it restarts if the clip is longer" },
+      "period": { "kind": "ms", "ms": 8000 }, "size": 100, "spread": 0.3, "spreadBy": "delay",
+      "look": {
+        "intensity": { "shape": "saw", "lo": 0, "hi": 1, "ease": "easeInOut" },
+        "color": { "colors": [[90, 0, 10], [255, 40, 0], [255, 130, 20], [255, 200, 120], [255, 230, 190]], "blend": "smooth", "ease": "linear" }
+      }
+    },
+    {
+      "id": "ballyhoo", "group": "position", "icon": "spline", "scale": "fraction",
+      "name": { "zh": "大幅摇摆", "en": "Ballyhoo" },
+      "hint": { "zh": "Pan 大幅来回、Tilt 以不同速度起伏，光束在台上大范围游走", "en": "Wide pan sweeps with tilt moving at another speed, so beams roam the whole stage" },
+      "period": { "kind": "beats", "beats": 8 }, "size": 0.3, "spread": 0.5, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": {
+          "pan": { "shape": "sine", "center": 0.5, "amp": 1 },
+          "tilt": { "shape": "sine", "center": 0.5, "amp": 0.6, "cycles": 1.5, "phase": 0.25 }
+        }
+      }
+    },
+    {
+      "id": "waveFan", "group": "position", "icon": "waves", "scale": "fraction",
+      "name": { "zh": "波浪扇形", "en": "Wave fan" },
+      "hint": { "zh": "Pan 展开成扇形，Tilt 沿扇面依次起伏形成波浪", "en": "Pan fans out while tilt rises and falls along the fan like a wave" },
+      "period": { "kind": "beats", "beats": 4 }, "size": 0.2, "spread": 1, "spreadBy": "phase",
+      "look": {
+        "intensity": { "value": 1 },
+        "attrs": { "tilt": { "shape": "sine", "center": 0.5, "amp": 1 } }
+      },
+      "fan": { "attr": "pan", "amp": 1.25 }
     }
   ]
 }
