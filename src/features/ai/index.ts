@@ -1,0 +1,12 @@
+export { AiSettingsPanel } from "./components/AiSettingsPanel";
+export { MemoryNoteList } from "./components/MemoryNoteList";
+export { useActiveAiProfile } from "./hooks/useAiProfiles";
+export { aiHistoryLibraryPath, aiHistoryRead, aiHistoryWrite } from "./lib/api";
+export { aiErrorText, isAiAbort } from "./lib/errors";
+export { loadLanguageModel, type LoadedModel } from "./lib/loadModel";
+export { addMemory, memoryListSchema, removeMemory, updateMemory, type MemoryItem } from "./lib/memory";
+export { memoryFile, type MemoryFile } from "./lib/memoryFile";
+export type { AiProfileView } from "./lib/types";
+export { useAiMemoryStore } from "./stores/useAiMemoryStore";
+export { useAiPrefsStore } from "./stores/useAiPrefsStore";
+export { aiPlugin } from "./plugin";

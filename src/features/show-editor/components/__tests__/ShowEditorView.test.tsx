@@ -102,6 +102,28 @@ describe("ShowEditorView 外壳", () => {
     expect(within(library).getByRole("heading", { name: "媒体" })).toBeTruthy();
   });
 
+  it("右侧 AI 对话栏默认收起；工具条按钮与 Ctrl+J 开关", async () => {
+    useEditorUiStore.setState({ aiCollapsed: true });
+    renderView();
+    expect(screen.queryByRole("region", { name: "AI 助手" })).toBeNull();
+    const button = screen.getByRole("button", { name: "AI 助手" });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(button);
+    const dock = await screen.findByRole("region", { name: "AI 助手" });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    // 标题栏的“记忆”切到记忆页，再点回到对话
+    const memory = within(dock).getByRole("button", { name: "记忆" });
+    fireEvent.click(memory);
+    expect(memory.getAttribute("aria-pressed")).toBe("true");
+    expect(within(dock).getByRole("region", { name: "本工程笔记" })).toBeTruthy();
+    fireEvent.click(memory);
+    expect(within(dock).queryByRole("region", { name: "本工程笔记" })).toBeNull();
+    fireEvent.keyDown(document.body, { key: "j", ctrlKey: true });
+    expect(useEditorUiStore.getState().aiCollapsed).toBe(true);
+    fireEvent.keyDown(document.body, { key: "j", ctrlKey: true });
+    expect(useEditorUiStore.getState().aiCollapsed).toBe(false);
+  });
+
   it("左侧：再点一次当前分区收起素材库，收起时点别的分区先展开；Ctrl+Shift+B 切换", () => {
     useEditorUiStore.setState({ libraryCollapsed: false, inspectorCollapsed: false });
     renderView();

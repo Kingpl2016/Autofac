@@ -7,6 +7,8 @@ import i18n from "@/shared/i18n";
 vi.mock("../../hooks/useNetworkInterfaces", () => ({
   useNetworkInterfaces: () => ({ data: [{ name: "全部接口", ip: "0.0.0.0", isLoopback: false }] }),
 }));
+// AI 分区的内容由 AI 插件提供（有自己的测试），这里只要一行占位
+vi.mock("@/features/ai", () => ({ AiSettingsPanel: () => <div data-slot="setting-row">AI</div> }));
 
 import { DEFAULT_SETTINGS } from "../../lib/api";
 import { SettingsBrowser } from "../SettingsBrowser";

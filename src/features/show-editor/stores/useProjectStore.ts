@@ -13,6 +13,8 @@ interface ProjectState {
   project: ShowProject;
   /** 最近一次保存 / 新建 / 打开时的工程快照，用来判断是否有未保存修改 */
   baseline: ShowProject;
+  /** 换了一个工程（新建 / 打开 / 从自动存档恢复）就加一：跟随工程的状态（AI 对话记录）据此切换；保存不变 */
+  generation: number;
   /**
    * 以 immer 草稿的方式修改工程；每次调用产生一个新的不可变快照，可撤销。
    *
@@ -54,6 +56,7 @@ export const useProjectStore = create<ProjectState>()(
     immer((set) => ({
       project: initial,
       baseline: initial,
+      generation: 0,
       update: (recipe) =>
         set((state) => {
           recipe(state.project);
@@ -62,6 +65,7 @@ export const useProjectStore = create<ProjectState>()(
         set((state) => {
           state.project = project;
           state.baseline = project;
+          state.generation += 1;
         });
         useProjectStore.temporal.getState().clear();
         // 编程器里的值属于上一个工程的灯具，换工程时清空
@@ -72,6 +76,7 @@ export const useProjectStore = create<ProjectState>()(
           state.project = project;
           // 基线用一个全新的空工程：与恢复出的工程不是同一个对象，因此判定为有未保存修改
           state.baseline = createEmptyProject("");
+          state.generation += 1;
         });
         useProjectStore.temporal.getState().clear();
         useProgrammerStore.getState().reset();

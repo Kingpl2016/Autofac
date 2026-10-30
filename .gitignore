@@ -37,6 +37,10 @@ scripts/.cache/
 *.pem
 *.key
 
+# AI 一致性评测（npm run ai:eval）：本地的模型配置与报告
+/ai-eval.config.json
+/ai-eval/
+
 # 测试与缓存
 coverage
 .tmp

@@ -22,7 +22,7 @@ tauri-build = { version = "2", features = [] }
 
 [features]
 # 导出 TypeScript 绑定（仅生成类型时开启）。
-ts = ["dep:ts-rs", "recorder/ts", "player/ts", "netdev/ts", "host-core/ts", "signal-gen/ts", "netif/ts", "settings/ts", "show-engine/ts"]
+ts = ["dep:ts-rs", "recorder/ts", "player/ts", "netdev/ts", "host-core/ts", "signal-gen/ts", "netif/ts", "settings/ts", "show-engine/ts", "ai-gateway/ts"]
 [dependencies]
 # 由 DTO 生成前端 TypeScript 类型（仅 `ts` feature；见根目录 package.json 的 gen:types）。
 ts-rs = { workspace = true, optional = true }
@@ -58,6 +58,8 @@ netif = { path = "crates/netif" }
 settings = { path = "crates/settings" }
 # 节目编辑引擎：灯具物模型 / Excel 导入 / 工程求值与烘焙。
 show-engine = { path = "crates/show-engine" }
+# 节目编辑器 AI 助手：厂商配置、API Key（系统凭据管理器）、流式代理、对话记录。
+ai-gateway = { path = "crates/ai-gateway" }
 # 原子文件写入（写临时文件 + fsync + rename）。
 fsutil = { path = "crates/fsutil" }
 # 系统“文档”目录定位（旧版录制目录迁移用）。

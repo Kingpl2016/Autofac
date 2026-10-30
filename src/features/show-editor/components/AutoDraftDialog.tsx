@@ -1,11 +1,19 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useActiveAiProfile } from "@/features/ai";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
+import { colorRgb, NAMED_COLORS, PALETTE_NAMES, PALETTES as AI_PALETTES, type PaletteName } from "../ai/vocab";
+import { useAiDraft } from "../hooks/useAiDraft";
 import { applyDraft, DEFAULT_DRAFT, DRAFT_PALETTES, moverIds, planDraft, type DraftOptions, type DraftPalette } from "../lib/autoDraft";
 import { formatTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -16,14 +24,151 @@ import { SliderField } from "./SliderField";
 const PALETTES = Object.keys(DRAFT_PALETTES) as DraftPalette[];
 
 /**
- * 一键生成灯光草稿：选配色、亮度上限、摇头灯是否加动作，预览每个段落的编排后一键生成（一步撤销）。
+ * 一键生成灯光草稿，两种方式：
  *
- * 需要节拍（没有时在对话框里直接从音乐分析）；有段落时按段落编排，否则按 8 小节切分。
+ * - AI 生成：写一句描述（风格、情绪、颜色），模型按段落给出每段的能量、灯光与动作，结果进入暂存区审阅
+ *   （开了“自动写入”时直接写入）；
+ * - 按规则生成：选配色、亮度上限、摇头灯是否加动作，预览每个段落的编排后一键生成（一步撤销），不需要 AI。
+ *
+ * 有段落时按段落编排，否则按 8 小节切分。规则生成需要节拍（没有时在对话框里直接从音乐分析）。
  */
 export function AutoDraftDialog() {
   const { t } = useTranslation();
   const open = useEditorUiStore((s) => s.draftOpen);
   const setOpen = useEditorUiStore((s) => s.setDraftOpen);
+  const hasProfiles = useActiveAiProfile().profiles.length > 0;
+  const [mode, setMode] = useState<"ai" | "rules" | null>(null);
+  // 有 AI 配置时默认用 AI；用户切换过就记住本次的选择
+  const current = mode ?? (hasProfiles ? "ai" : "rules");
+  const switcher = (
+    <Segmented
+      ariaLabel={t("editor.draft.mode")}
+      value={current}
+      onChange={setMode}
+      size="sm"
+      options={[
+        { value: "ai", label: t("editor.draft.modeAi") },
+        { value: "rules", label: t("editor.draft.modeRules") },
+      ]}
+    />
+  );
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="flex max-h-[88vh] max-w-xl flex-col gap-4 overflow-hidden p-6">
+        <DialogHeader>
+          <DialogTitle>{t("editor.draft.title")}</DialogTitle>
+          <DialogDescription>{t(current === "ai" ? "editor.draft.descriptionAi" : "editor.draft.description")}</DialogDescription>
+        </DialogHeader>
+        {switcher}
+        {current === "ai" ? <AiDraftForm onDone={() => setOpen(false)} /> : <RuleDraftForm onDone={() => setOpen(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** AI 调色板的显示色。 */
+const paletteRgb = (p: PaletteName) => AI_PALETTES[p].map((c) => colorRgb(NAMED_COLORS[c]));
+
+/** 用 AI 生成：描述 + 可选调色板；结果进入暂存区审阅。 */
+function AiDraftForm({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const project = useProjectStore((s) => s.project);
+  const [prompt, setPrompt] = useState("");
+  const [palette, setPalette] = useState<PaletteName | null>(null);
+  const draft = useAiDraft();
+  const noFixtures = project.fixtures.length === 0;
+
+  const generate = async () => {
+    if (await draft.generate(prompt, palette)) onDone();
+  };
+
+  if (!draft.hasProfiles) {
+    return (
+      <div className="grid gap-3 text-sm">
+        <p className="text-muted-foreground">{t("ai.errors.no_profile")}</p>
+        <Button variant="outline" onClick={() => navigate("/settings#ai")}>
+          {t("editor.ai.openSettings")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="grid gap-4 overflow-auto">
+        <div className="grid gap-1.5">
+          <Label htmlFor="ai-draft-prompt">{t("editor.draft.prompt")}</Label>
+          <Textarea
+            id="ai-draft-prompt"
+            value={prompt}
+            maxLength={400}
+            placeholder={t("editor.draft.promptPlaceholder")}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+        </div>
+        <div role="radiogroup" aria-label={t("editor.draft.palette")} className="grid gap-2">
+          <span className="text-sm">{t("editor.draft.palette")}</span>
+          <div className="flex flex-wrap gap-2">
+            {[null, ...PALETTE_NAMES].map((p) => (
+              <button
+                key={p ?? "auto"}
+                type="button"
+                role="radio"
+                aria-checked={palette === p}
+                onClick={() => setPalette(p)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  palette === p ? "border-primary bg-primary/10" : "border-border hover:bg-accent",
+                )}
+              >
+                {p && (
+                  <span aria-hidden className="flex">
+                    {paletteRgb(p).map(([r, g, b], i) => (
+                      <span
+                        key={i}
+                        className="-ml-1 size-3.5 rounded-full border border-background bg-(--swatch) first:ml-0"
+                        style={{ "--swatch": `rgb(${r} ${g} ${b})` } as CSSProperties}
+                      />
+                    ))}
+                  </span>
+                )}
+                {t(`editor.draft.aiPalettes.${p ?? "auto"}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {draft.profile ? t("editor.draft.usingModel", { name: draft.profile.name }) : null}{" "}
+          {project.sections.length > 0 ? t("editor.draft.bySections", { count: project.sections.length }) : t("editor.draft.byBars")}
+        </p>
+        {draft.pending && (
+          <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+            {draft.attempt > 1 ? t("editor.draft.fixing", { attempt: draft.attempt }) : t("editor.draft.thinking")}
+          </p>
+        )}
+        {draft.error && (
+          <p role="alert" className="text-xs text-destructive">
+            {draft.error}
+          </p>
+        )}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={draft.pending ? draft.cancel : onDone}>
+          {draft.pending ? t("editor.ai.stop") : t("editor.draft.cancel")}
+        </Button>
+        <Button type="button" disabled={noFixtures} loading={draft.pending} onClick={() => void generate()}>
+          {noFixtures ? t("editor.draft.noFixtures") : t("editor.draft.generateAi")}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/** 按规则生成（不需要 AI）。 */
+function RuleDraftForm({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const [options, setOptions] = useState<DraftOptions>(DEFAULT_DRAFT);
@@ -37,17 +182,11 @@ export function AutoDraftDialog() {
       created = applyDraft(d, plan, options, { all: t("editor.draft.groupAll"), movers: t("editor.draft.groupMovers") }).cueIds.length;
     });
     announce(t("editor.draft.done", { count: created }));
-    setOpen(false);
+    onDone();
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="flex max-h-[88vh] max-w-xl flex-col gap-4 overflow-hidden p-6">
-        <DialogHeader>
-          <DialogTitle>{t("editor.draft.title")}</DialogTitle>
-          <DialogDescription>{t("editor.draft.description")}</DialogDescription>
-        </DialogHeader>
-
+    <>
         <div className="grid gap-4 overflow-auto">
           {!project.tempo && (
             <div className="grid gap-2 rounded-md border border-border p-3">
@@ -139,14 +278,13 @@ export function AutoDraftDialog() {
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+          <Button type="button" variant="ghost" onClick={onDone}>
             {t("editor.draft.cancel")}
           </Button>
           <Button type="button" disabled={plan.length === 0 || noFixtures} onClick={generate}>
             {noFixtures ? t("editor.draft.noFixtures") : t("editor.draft.generate", { count: plan.length })}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }

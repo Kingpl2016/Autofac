@@ -6,6 +6,7 @@ import {
   Monitor,
   Network,
   Radio,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,6 +18,7 @@ export type SettingsSectionId =
   | "merge"
   | "recording"
   | "player"
+  | "ai"
   | "developer";
 
 export interface SettingsSectionMeta {
@@ -109,6 +111,15 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     icon: Film,
     tileClass: "bg-primary/15 text-primary",
     keywordKeys: ["settings.startInPlayerMode", "settings.startInPlayerModeHint"],
+  },
+  // 内容由 AI 插件提供（`AiSettingsPanel`）
+  {
+    id: "ai",
+    titleKey: "settings.sectionAi",
+    descKey: "settings.descAi",
+    icon: Sparkles,
+    tileClass: "bg-chart-2/15 text-chart-2",
+    keywordKeys: ["ai.settings.apiKey", "ai.settings.model", "ai.settings.autoApply", "ai.settings.userMemory"],
   },
   // 只在开发构建里渲染（见 `SettingsForm` / `visibleSections`）
   {

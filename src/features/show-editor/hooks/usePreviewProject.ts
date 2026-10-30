@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import type { ShowProject } from "../lib/project";
 import { blackoutProject, withHighlight, withProgrammer } from "../lib/programmer";
+import { useAiStagingStore } from "../stores/useAiStagingStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProgrammerStore } from "../stores/useProgrammerStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -10,15 +11,18 @@ import { useProjectStore } from "../stores/useProjectStore";
 const NONE: readonly string[] = [];
 
 /**
- * 预览用的工程：当前工程叠上编程器（置顶层），再叠上高亮（选中的灯满亮白光）；黑场时全部轨道静音。
- * 编程器为空、没开高亮时就是工程本身。
+ * 预览用的工程：当前工程（有待审阅的 AI 改动时为改动后的工程）叠上编程器（置顶层），再叠上高亮（选中的灯满亮白光）；
+ * 黑场时全部轨道静音。编程器为空、没开高亮时就是工程本身。
  *
  * 引用只在工程、编程器内容或（高亮时）选择变化时改变，配合 `compileCached` 拖动播放头不会重新编译。
  *
  * @returns 工程快照。
  */
 export function usePreviewProject(): ShowProject {
-  const project = useProjectStore((s) => s.project);
+  const current = useProjectStore((s) => s.project);
+  // 有待审阅的 AI 改动且开着预览时，预览显示改动后的工程（不写进工程）
+  const staged = useAiStagingStore((s) => (s.previewing ? (s.staged?.next ?? null) : null));
+  const project = staged ?? current;
   const values = useProgrammerStore((s) => s.values);
   const highlight = useProgrammerStore((s) => s.highlight);
   const highlighted = useEditorUiStore((s) => (highlight ? s.selectedFixtureIds : NONE));

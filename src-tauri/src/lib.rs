@@ -5,6 +5,7 @@
 //! 宿主层只做装配与命令注册。
 
 mod about_commands;
+mod ai_commands;
 mod cue_template_commands;
 mod data_dir;
 mod devtools_commands;
@@ -109,6 +110,8 @@ pub fn run() {
                 app.handle(),
                 std::sync::Arc::new(netdev::KeyringStore),
             ));
+            // 节目编辑器 AI 助手：厂商配置（data/ai-profiles.json）、Key（系统凭据管理器）、流式代理。
+            app.manage(ai_commands::AiState::new(app.handle(), std::sync::Arc::new(ai_gateway::KeyringStore)));
             // 灯具素材库：内置模型 + 用户模型（app_data_dir/fixtures.json）。
             app.manage(fixture_commands::FixtureState::new(app.handle()));
             // OFL 整库目录（数据根目录/ofl-catalog.json，首次使用时读取）。
@@ -266,6 +269,16 @@ pub fn run() {
             cue_template_commands::cue_templates_import,
             cue_template_commands::cue_templates_export,
             cue_template_commands::cue_templates_reveal,
+            ai_commands::ai_profiles_list,
+            ai_commands::ai_profile_save,
+            ai_commands::ai_profile_delete,
+            ai_commands::ai_key_set,
+            ai_commands::ai_fetch,
+            ai_commands::ai_fetch_cancel,
+            ai_commands::ai_list_models,
+            ai_commands::ai_history_read,
+            ai_commands::ai_history_write,
+            ai_commands::ai_history_library_path,
             effect_commands::effects_read,
             effect_commands::effects_write,
             effect_commands::effects_import,

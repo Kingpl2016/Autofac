@@ -937,7 +937,9 @@
     "searchClear": "Clear search",
     "navLabel": "Settings sections",
     "noMatch": "No settings match “{{query}}”",
-    "noMatchHint": "Try another keyword, or clear the search to see all settings."
+    "noMatchHint": "Try another keyword, or clear the search to see all settings.",
+    "sectionAi": "AI assistant",
+    "descAi": "Language models for the show editor: endpoint, model and API key"
   },
   "about": {
     "title": "About",
@@ -2111,7 +2113,10 @@
       "length6": "Set clip length to 6 beats (6 s without tempo)",
       "length7": "Set clip length to 7 beats (7 s without tempo)",
       "length8": "Set clip length to 8 beats (8 s without tempo)",
-      "length9": "Set clip length to 9 beats (9 s without tempo)"
+      "length9": "Set clip length to 9 beats (9 s without tempo)",
+      "aiOpen": "Toggle AI assistant",
+      "aiApply": "Apply AI change",
+      "aiDiscard": "Discard AI change"
     },
     "unsaved": "Unsaved changes",
     "toolbarUndo": "Undo",
@@ -2796,7 +2801,31 @@
       "noFixtures": "Add fixtures first",
       "done": "Created {{count}} clips",
       "groupAll": "All fixtures",
-      "groupMovers": "Moving heads"
+      "groupMovers": "Moving heads",
+      "mode": "How to generate",
+      "modeAi": "With AI",
+      "modeRules": "By rules",
+      "descriptionAi": "Describe the style in a sentence and the AI plans the lighting per section. You preview and review the result before it is written, and it can be undone",
+      "prompt": "Description",
+      "promptPlaceholder": "For example: warm and lyrical, the chorus explodes, fade out slowly at the end",
+      "aiPalettes": {
+        "auto": "From description",
+        "warm": "Warm",
+        "cool": "Cool",
+        "neon": "Neon",
+        "sunset": "Sunset",
+        "ocean": "Ocean",
+        "forest": "Forest",
+        "fire": "Fire",
+        "ice": "Ice",
+        "party": "Party",
+        "romance": "Romance",
+        "mono": "White"
+      },
+      "usingModel": "Using {{name}}.",
+      "thinking": "The AI is planning…",
+      "fixing": "The AI is correcting its plan (attempt {{attempt}})…",
+      "generateAi": "Generate and preview"
     },
     "pixelMap": {
       "title": "Pixel map to fixtures",
@@ -3807,6 +3836,172 @@
       "fadeSeconds": "Fade {{seconds}} s",
       "fadesSet": "Fades set to {{seconds}} s",
       "toggleDisabled": "Disable / enable"
+    },
+    "ai": {
+      "reviewTitle": "AI change to review",
+      "pending": "AI change to review",
+      "details": "Details",
+      "preview": "Preview",
+      "previewOnHint": "The preview shows the change; click to compare with the current show",
+      "previewOffHint": "The preview shows the current show; click to see the change",
+      "apply": "Apply",
+      "applySensitive": "Confirm and apply",
+      "discard": "Discard",
+      "applied_one": "AI change applied ({{count}} new clip)",
+      "applied_other": "AI change applied ({{count}} new clips)",
+      "undo": "Undo",
+      "stale": "The show changed after this AI change was generated and it no longer fits; generate it again",
+      "staged": "The AI change is ready; check it in the preview, then apply",
+      "needsReview": "This AI change touches patching, output or deletes many clips, so it needs your confirmation",
+      "noChanges": "No changes",
+      "sensitive": "Needs confirmation",
+      "sensitiveHint": "Changes fixture patching, output settings, or deletes many clips. Check the list before applying",
+      "changeList": "Changes",
+      "showAll": "{{count}} more, show all",
+      "warnings": "{{count}} notes",
+      "sources": {
+        "draft": "Draft",
+        "chat": "Chat"
+      },
+      "ops": {
+        "added": "Added",
+        "removed": "Removed",
+        "changed": "Changed"
+      },
+      "kinds": {
+        "cues": "Clip",
+        "groups": "Group",
+        "fixtures": "Fixture",
+        "sections": "Section",
+        "markers": "Marker",
+        "tempo": "Tempo",
+        "output": "Output",
+        "duration": "Length"
+      },
+      "changes": {
+        "cues": {
+          "added": "{{count}} clips added",
+          "removed": "{{count}} clips removed",
+          "changed": "{{count}} clips changed"
+        },
+        "groups": {
+          "added": "{{count}} groups created",
+          "removed": "{{count}} groups removed",
+          "changed": "{{count}} groups changed"
+        },
+        "fixtures": {
+          "added": "{{count}} fixtures added",
+          "removed": "{{count}} fixtures removed",
+          "changed": "{{count}} fixtures repatched"
+        },
+        "sections": {
+          "added": "{{count}} sections created",
+          "removed": "{{count}} sections removed",
+          "changed": "{{count}} sections changed"
+        },
+        "markers": {
+          "added": "{{count}} markers added",
+          "removed": "{{count}} markers removed",
+          "changed": "{{count}} markers changed"
+        },
+        "tempo": {
+          "changed": "Tempo changed"
+        },
+        "output": {
+          "changed": "Output target changed"
+        },
+        "duration": {
+          "changed": "Show length extended"
+        }
+      },
+      "openSettings": "Add an AI profile",
+      "chatHint": "Ask about or change the show in plain language. AI changes go to review first; apply them after checking the preview.",
+      "suggest": {
+        "selection": "Make the selected clips blue and violet, twice as fast",
+        "chorus": "Add a color chase on all fixtures in the chorus, movers draw circles",
+        "explain": "Which sections and fixtures does this show have?"
+      },
+      "inputLabel": "Message to the AI",
+      "inputPlaceholder": "Describe the lighting you want (Enter to send, Shift+Enter for a new line)",
+      "send": "Send",
+      "stop": "Stop",
+      "tools": {
+        "listCues": "Looking at clips",
+        "getCue": "Looking at a clip",
+        "listEffects": "Looking at effects",
+        "listTemplates": "Looking at templates",
+        "listModels": "Looking at the fixture library",
+        "getOutput": "Looking at output settings",
+        "proposeOps": "Preparing a change",
+        "other": "Tool",
+        "retrying": "fixing problems",
+        "failed": "failed",
+        "listRecipes": "Looking at recipes"
+      },
+      "dockTitle": "AI assistant",
+      "newChat": "New chat",
+      "closeDock": "Close AI assistant",
+      "welcome": "How should the lighting change?",
+      "copy": "Copy",
+      "edit": "Edit",
+      "editLabel": "Edit message",
+      "resend": "Send again",
+      "regenerate": "Regenerate",
+      "retry": "Retry",
+      "thinking": "Thinking…",
+      "scrollToBottom": "Scroll to bottom",
+      "prevBranch": "Previous version",
+      "nextBranch": "Next version",
+      "modelMenu": "Model: {{name}}",
+      "manageModels": "Manage models…",
+      "proposal": "Change prepared by the AI",
+      "notPending": "This change is no longer waiting for review (the show was reopened, or a newer change was prepared)",
+      "outcomes": {
+        "applied": "Applied",
+        "discarded": "Discarded",
+        "replaced": "Replaced by a newer change"
+      },
+      "autoApply": "Auto-apply",
+      "autoApplyOn": "Auto",
+      "autoApplyHintOn": "Auto-apply is on: AI changes go straight into the show (you can undo). Changes to the patch or output, or deleting many clips, still ask first",
+      "autoApplyHintOff": "Auto-apply is off: AI changes wait for your review. Click to turn it on",
+      "memoryCard": {
+        "preparing": "Preparing what to remember",
+        "title": "Remember this?",
+        "save": "Save",
+        "ignore": "Ignore",
+        "saved": "Saved",
+        "ignored": "Ignored"
+      },
+      "memory": {
+        "title": "Memory",
+        "sources_one": "Used {{count}} memory",
+        "sources_other": "Used {{count}} memories",
+        "kinds": {
+          "pref": "Preference",
+          "note": "This show",
+          "exemplar": "Show example",
+          "shared": "Shared example"
+        },
+        "deleted": "(this memory was deleted)",
+        "disable": "Stop using this memory",
+        "enable": "Use this memory again",
+        "remove": "Delete this memory",
+        "notesTitle": "Notes for this show",
+        "notesHint": "Only for this show, saved with its chat history. The AI sees them in every chat and draft",
+        "notePlaceholder": "e.g. G1 is the front pars; choruses are blue-violet",
+        "exemplarsTitle": "Examples from this show",
+        "exemplarsHint": "Changes you applied in the chat. When you ask something similar, the AI follows the closest ones",
+        "sharedTitle": "Examples for all shows",
+        "sharedHint": "Applied changes that do not depend on specific fixtures or clips; used in every show",
+        "clearShared": "Clear all",
+        "confirmClear": "Confirm",
+        "noExemplars": "No examples yet. Apply an AI change in the chat and it is recorded here",
+        "prefsTitle": "Personal preferences",
+        "prefsHint_one": "{{count}} preference for all shows, managed in Settings → AI assistant",
+        "prefsHint_other": "{{count}} preferences for all shows, managed in Settings → AI assistant",
+        "openPrefs": "Manage preferences"
+      }
     }
   },
   "fixtures": {
@@ -4834,5 +5029,100 @@
   },
   "dataDir": {
     "fallback": "The application folder is not writable, so data is stored in: {{path}}. To keep data in the app's data folder, install the app in a location the current user can write to."
+  },
+  "ai": {
+    "kinds": {
+      "openaiCompatible": "OpenAI compatible",
+      "anthropic": "Anthropic",
+      "google": "Google Gemini"
+    },
+    "presets": {
+      "deepseek": "DeepSeek",
+      "qwen": "Qwen (Alibaba Cloud Model Studio)",
+      "glm": "Zhipu GLM",
+      "kimi": "Kimi (Moonshot)",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic Claude",
+      "gemini": "Google Gemini",
+      "ollama": "Ollama (this computer)",
+      "lmstudio": "LM Studio (this computer)"
+    },
+    "settings": {
+      "add": "Add profile",
+      "addHint": "You can add several profiles; the starred one is used by default",
+      "empty": "No AI profile yet. Add one to create and edit lighting with natural language in the show editor",
+      "addTitle": "Add AI profile",
+      "editTitle": "Edit AI profile",
+      "editorHint": "The API key is stored in the system credential manager, never in the settings file or the UI",
+      "preset": "Service",
+      "name": "Name",
+      "kind": "Protocol",
+      "baseUrl": "Endpoint",
+      "model": "Model",
+      "apiKey": "API key",
+      "keyKeep": "Saved; leave empty to keep it",
+      "keyEmpty": "Not set (optional for local services)",
+      "keyClear": "Clear key",
+      "keyUndoClear": "Keep key",
+      "keyHint": "Write-only: it is not shown again after saving",
+      "keySet": "Key set",
+      "keyNone": "No key",
+      "temperature": "Temperature",
+      "seed": "Seed",
+      "seedNone": "None",
+      "consistencyHint": "Temperature 0 with a fixed seed gives the most repeatable results",
+      "structured": "Structured outputs",
+      "structuredHint": "Turn on if the service supports response_format: json_schema; if unsure, leave it off and the app validates the result itself",
+      "setDefault": "Set as default",
+      "test": "Test",
+      "testOk": "Connected ({{ms}} ms): {{reply}}",
+      "confirmDelete": "Confirm delete",
+      "saved": "AI profile saved",
+      "deleted": "AI profile deleted",
+      "autoApply": "Apply automatically",
+      "autoApplyHint": "Write AI changes into the show without review (undoable). Changes to patching, output settings or deleting many clips still ask first",
+      "modelPick": "Choose or type a model",
+      "modelSearch": "Search or type a model id",
+      "modelRefresh": "Refresh model list",
+      "modelLoadFailed": "Cannot load the model list: {{reason}}. Pick a suggestion or type the id",
+      "modelUse": "Use \"{{model}}\"",
+      "modelSuggested": "Suggested",
+      "modelEmpty": "No matching model; type an id to use it",
+      "userMemory": "Personal preferences",
+      "userMemoryHint": "Apply to every show; the AI sees them in every chat and draft. You can also say \"remember …\" in the chat and confirm it",
+      "userMemoryPlaceholder": "e.g. no strobes; prefer warm colors; keep replies short"
+    },
+    "errors": {
+      "invalid_profile": "Invalid profile; check the endpoint, model and temperature",
+      "unknown_profile": "The AI profile no longer exists",
+      "url_not_allowed": "The request URL is outside the configured endpoint",
+      "insecure_url": "Only HTTPS is allowed; HTTP only for this computer or the local network",
+      "bad_request": "Invalid request",
+      "network": "Cannot reach the model service; check the network or proxy",
+      "timeout": "The model service timed out",
+      "cancelled": "Cancelled",
+      "aborted": "Stopped",
+      "response_too_large": "The model response is too large",
+      "secret": "Cannot access the system credential manager",
+      "io": "File read/write failed",
+      "file_too_large": "File too large",
+      "invalid_json": "Not valid JSON",
+      "bad_path": "Invalid path",
+      "no_object": "The model did not answer in the required format; try again or use another model",
+      "no_profile": "No AI profile yet; add one in Settings → AI assistant",
+      "http": "The model service returned {{status}}: {{message}}",
+      "unauthorized": "The model service rejected the API key; check that it is correct",
+      "http_status": "The model service returned an error; check the endpoint",
+      "bad_response": "The model service's response could not be read; check the endpoint and protocol"
+    },
+    "memory": {
+      "add": "Add",
+      "editLabel": "Edit memory",
+      "enabled": "Use: {{text}}",
+      "edit": "Edit: {{text}}",
+      "remove": "Delete: {{text}}",
+      "duplicate": "This is already saved",
+      "full": "Up to {{max}} items; adding more replaces the oldest"
+    }
   }
 }

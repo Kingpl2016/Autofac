@@ -1,0 +1,31 @@
+{
+  "case": "edit-recolor-chorus",
+  "model": "handwritten",
+  "promptVersion": 2,
+  "skills": true,
+  "run": 1,
+  "ops": {
+    "summary": "把副歌改成蓝紫色",
+    "ops": [
+      {
+        "op": "editCues",
+        "cues": ["C3"],
+        "colors": ["blue", "violet"],
+        "brightness": null,
+        "speed": null,
+        "size": null,
+        "fadeIn": null,
+        "fadeOut": null,
+        "label": null,
+        "tag": null,
+        "disabled": null
+      }
+    ]
+  },
+  "features": [
+    { "kind": "intensity", "hue": "h1", "level": "mid", "moves": false },
+    { "kind": "intensity", "hue": "h1", "level": "mid", "moves": false },
+    { "kind": "color", "hue": "h5", "level": "high", "moves": false },
+    { "kind": "intensity", "hue": "h1", "level": "mid", "moves": false }
+  ]
+}

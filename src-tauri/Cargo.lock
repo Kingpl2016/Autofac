@@ -29,6 +29,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-gateway"
+version = "0.1.0"
+dependencies = [
+ "fsutil",
+ "futures-util",
+ "keyring",
+ "parking_lot",
+ "reqwest 0.13.5",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "ts-rs",
+ "url",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -120,6 +143,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 name = "art-net-studio"
 version = "0.1.0"
 dependencies = [
+ "ai-gateway",
  "artrec-core",
  "dirs",
  "fsutil",
@@ -3948,6 +3972,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
+ "h2",
  "http",
  "http-body",
  "http-body-util",

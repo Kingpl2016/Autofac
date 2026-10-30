@@ -937,7 +937,9 @@
     "searchClear": "清除搜索",
     "navLabel": "设置分区",
     "noMatch": "没有与“{{query}}”匹配的设置",
-    "noMatchHint": "换个关键词试试，或清除搜索查看全部设置。"
+    "noMatchHint": "换个关键词试试，或清除搜索查看全部设置。",
+    "sectionAi": "AI 助手",
+    "descAi": "节目编辑器用的大模型：接口、模型与 API Key"
   },
   "about": {
     "title": "关于",
@@ -2111,7 +2113,10 @@
       "length6": "片段长度设为 6 拍（无节拍时 6 秒）",
       "length7": "片段长度设为 7 拍（无节拍时 7 秒）",
       "length8": "片段长度设为 8 拍（无节拍时 8 秒）",
-      "length9": "片段长度设为 9 拍（无节拍时 9 秒）"
+      "length9": "片段长度设为 9 拍（无节拍时 9 秒）",
+      "aiOpen": "打开 / 收起 AI 助手",
+      "aiApply": "应用 AI 改动",
+      "aiDiscard": "放弃 AI 改动"
     },
     "unsaved": "有未保存的修改",
     "toolbarUndo": "撤销",
@@ -2796,7 +2801,31 @@
       "noFixtures": "先添加灯具",
       "done": "已生成 {{count}} 个片段",
       "groupAll": "全部灯具",
-      "groupMovers": "摇头灯"
+      "groupMovers": "摇头灯",
+      "mode": "生成方式",
+      "modeAi": "AI 生成",
+      "modeRules": "按规则生成",
+      "descriptionAi": "用一句话描述想要的风格，AI 按段落编排灯光。生成后先预览、审阅，确认后才写入，可以撤销",
+      "prompt": "描述",
+      "promptPlaceholder": "例如：温暖抒情，副歌爆发，结尾慢慢暗下去",
+      "aiPalettes": {
+        "auto": "按描述选",
+        "warm": "暖色",
+        "cool": "冷色",
+        "neon": "霓虹",
+        "sunset": "日落",
+        "ocean": "海洋",
+        "forest": "森林",
+        "fire": "火焰",
+        "ice": "冰雪",
+        "party": "派对",
+        "romance": "浪漫",
+        "mono": "单色白"
+      },
+      "usingModel": "使用 {{name}}。",
+      "thinking": "AI 正在编排…",
+      "fixing": "AI 正在修正（第 {{attempt}} 次）…",
+      "generateAi": "生成并预览"
     },
     "pixelMap": {
       "title": "像素映射到灯具",
@@ -3807,6 +3836,172 @@
       "fadeSeconds": "淡入淡出 {{seconds}} 秒",
       "fadesSet": "淡入淡出设为 {{seconds}} 秒",
       "toggleDisabled": "禁用 / 启用"
+    },
+    "ai": {
+      "reviewTitle": "AI 改动待审阅",
+      "pending": "AI 改动待审阅",
+      "details": "查看详情",
+      "preview": "预览",
+      "previewOnHint": "预览里显示改动后的效果；点击切回当前工程对比",
+      "previewOffHint": "预览里显示当前工程；点击查看改动后的效果",
+      "apply": "应用",
+      "applySensitive": "确认并应用",
+      "discard": "放弃",
+      "applied_one": "已应用 AI 改动（新增 {{count}} 个片段）",
+      "applied_other": "已应用 AI 改动（新增 {{count}} 个片段）",
+      "undo": "撤销",
+      "stale": "工程在生成之后改动过，这份 AI 改动已经对不上了，请重新生成",
+      "staged": "AI 改动已准备好，请在预览里查看后应用",
+      "needsReview": "这份 AI 改动涉及配接、输出或大批量删除，需要你确认后才写入",
+      "noChanges": "没有改动",
+      "sensitive": "需要确认",
+      "sensitiveHint": "会修改灯具配接、输出设置，或删除较多片段。请核对清单后再应用",
+      "changeList": "改动清单",
+      "showAll": "还有 {{count}} 项，全部显示",
+      "warnings": "{{count}} 条提示",
+      "sources": {
+        "draft": "一键草稿",
+        "chat": "对话"
+      },
+      "ops": {
+        "added": "新增",
+        "removed": "删除",
+        "changed": "修改"
+      },
+      "kinds": {
+        "cues": "片段",
+        "groups": "分组",
+        "fixtures": "灯具",
+        "sections": "段落",
+        "markers": "标记",
+        "tempo": "节拍",
+        "output": "输出",
+        "duration": "时长"
+      },
+      "changes": {
+        "cues": {
+          "added": "新增 {{count}} 个片段",
+          "removed": "删除 {{count}} 个片段",
+          "changed": "修改 {{count}} 个片段"
+        },
+        "groups": {
+          "added": "新建 {{count}} 个分组",
+          "removed": "删除 {{count}} 个分组",
+          "changed": "修改 {{count}} 个分组"
+        },
+        "fixtures": {
+          "added": "添加 {{count}} 台灯具",
+          "removed": "删除 {{count}} 台灯具",
+          "changed": "修改 {{count}} 台灯具的配接"
+        },
+        "sections": {
+          "added": "新建 {{count}} 个段落",
+          "removed": "删除 {{count}} 个段落",
+          "changed": "修改 {{count}} 个段落"
+        },
+        "markers": {
+          "added": "新增 {{count}} 个标记",
+          "removed": "删除 {{count}} 个标记",
+          "changed": "修改 {{count}} 个标记"
+        },
+        "tempo": {
+          "changed": "修改节拍"
+        },
+        "output": {
+          "changed": "修改输出目标"
+        },
+        "duration": {
+          "changed": "延长节目时长"
+        }
+      },
+      "openSettings": "去添加 AI 配置",
+      "chatHint": "用自然语言查询或修改节目。AI 的改动会先放进待审阅区，在预览里确认后再应用。",
+      "suggest": {
+        "selection": "把选中的片段改成蓝紫色，速度快一倍",
+        "chorus": "给副歌加上全部灯的彩色追逐，摇头灯画圆",
+        "explain": "这个节目现在有哪些段落和灯具？"
+      },
+      "inputLabel": "给 AI 的消息",
+      "inputPlaceholder": "描述你想要的灯光（Enter 发送，Shift+Enter 换行）",
+      "send": "发送",
+      "stop": "停止",
+      "tools": {
+        "listCues": "查看片段",
+        "getCue": "查看片段详情",
+        "listEffects": "查看特效库",
+        "listTemplates": "查看模板库",
+        "listModels": "查看灯具素材库",
+        "getOutput": "查看输出设置",
+        "proposeOps": "生成改动",
+        "other": "工具",
+        "retrying": "有问题，正在修正",
+        "failed": "失败",
+        "listRecipes": "查看编排配方"
+      },
+      "dockTitle": "AI 助手",
+      "newChat": "新对话",
+      "closeDock": "收起 AI 助手",
+      "welcome": "想让灯光怎么变？",
+      "copy": "复制",
+      "edit": "编辑",
+      "editLabel": "编辑消息",
+      "resend": "重新发送",
+      "regenerate": "重新生成",
+      "retry": "重试",
+      "thinking": "思考中…",
+      "scrollToBottom": "回到底部",
+      "prevBranch": "上一个版本",
+      "nextBranch": "下一个版本",
+      "modelMenu": "使用的模型：{{name}}",
+      "manageModels": "管理模型…",
+      "proposal": "AI 准备的改动",
+      "notPending": "这份改动已经不在待审阅区（工程重新打开过，或之后又生成了新的改动）",
+      "outcomes": {
+        "applied": "已应用",
+        "discarded": "已放弃",
+        "replaced": "已被新的改动替换"
+      },
+      "autoApply": "自动写入",
+      "autoApplyOn": "自动",
+      "autoApplyHintOn": "自动写入已打开：AI 的改动直接写入工程（可以撤销）。改配接、输出或一次删除很多片段时仍然先让你确认",
+      "autoApplyHintOff": "自动写入已关闭：AI 的改动先暂存，审阅后再写入。点一下打开",
+      "memoryCard": {
+        "preparing": "正在整理要记住的内容",
+        "title": "要记住吗？",
+        "save": "保存",
+        "ignore": "忽略",
+        "saved": "已保存",
+        "ignored": "已忽略"
+      },
+      "memory": {
+        "title": "记忆",
+        "sources_one": "参考了 {{count}} 条记忆",
+        "sources_other": "参考了 {{count}} 条记忆",
+        "kinds": {
+          "pref": "个人偏好",
+          "note": "本工程",
+          "exemplar": "本工程范例",
+          "shared": "共用范例"
+        },
+        "deleted": "（这条记忆已删除）",
+        "disable": "停用这条记忆",
+        "enable": "启用这条记忆",
+        "remove": "删除这条记忆",
+        "notesTitle": "本工程笔记",
+        "notesHint": "只对这个工程生效，跟着工程的对话记录保存。每次对话和生成草稿时都会告诉 AI",
+        "notePlaceholder": "例如：G1 是前排帕灯；副歌都用蓝紫",
+        "exemplarsTitle": "本工程范例",
+        "exemplarsHint": "你在对话里应用过的改动。之后说类似的话时，AI 会参考最相关的几条",
+        "sharedTitle": "所有工程共用的范例",
+        "sharedHint": "应用过、且不依赖具体灯具和片段的改动，在所有工程里都会参考",
+        "clearShared": "全部清空",
+        "confirmClear": "确认清空",
+        "noExemplars": "还没有范例。在对话里应用一次 AI 的改动就会记下",
+        "prefsTitle": "个人偏好",
+        "prefsHint_one": "共 {{count}} 条，对所有工程生效，在设置 → AI 助手里管理",
+        "prefsHint_other": "共 {{count}} 条，对所有工程生效，在设置 → AI 助手里管理",
+        "openPrefs": "管理个人偏好"
+      }
     }
   },
   "fixtures": {
@@ -4834,5 +5029,100 @@
   },
   "dataDir": {
     "fallback": "软件所在目录没有写入权限，数据改为保存在：{{path}}。要保存到软件目录下的 data，请把软件安装到当前用户可写的位置。"
+  },
+  "ai": {
+    "kinds": {
+      "openaiCompatible": "OpenAI 兼容",
+      "anthropic": "Anthropic",
+      "google": "Google Gemini"
+    },
+    "presets": {
+      "deepseek": "DeepSeek",
+      "qwen": "通义千问（阿里云百炼）",
+      "glm": "智谱 GLM",
+      "kimi": "Kimi（月之暗面）",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic Claude",
+      "gemini": "Google Gemini",
+      "ollama": "Ollama（本机）",
+      "lmstudio": "LM Studio（本机）"
+    },
+    "settings": {
+      "add": "添加配置",
+      "addHint": "可以添加多个配置，星标的是默认使用的模型",
+      "empty": "还没有 AI 配置。添加一个后，节目编辑器里就能用自然语言生成和修改灯光",
+      "addTitle": "添加 AI 配置",
+      "editTitle": "编辑 AI 配置",
+      "editorHint": "API Key 存在系统凭据管理器里，不会写入配置文件，也不会发给界面",
+      "preset": "服务",
+      "name": "名称",
+      "kind": "接口协议",
+      "baseUrl": "接口地址",
+      "model": "模型",
+      "apiKey": "API Key",
+      "keyKeep": "已保存，留空保持不变",
+      "keyEmpty": "未设置（本机服务可以不填）",
+      "keyClear": "清除 Key",
+      "keyUndoClear": "保留 Key",
+      "keyHint": "只能写入，保存后不会再显示",
+      "keySet": "已设置 Key",
+      "keyNone": "无 Key",
+      "temperature": "温度",
+      "seed": "随机种子",
+      "seedNone": "不指定",
+      "consistencyHint": "温度为 0 并固定种子时，同一模型多次生成的结果最接近",
+      "structured": "支持结构化输出",
+      "structuredHint": "服务支持 response_format: json_schema 时打开；不确定就关闭，软件会自己校验结果",
+      "setDefault": "设为默认",
+      "test": "测试",
+      "testOk": "连接成功（{{ms}} ms）：{{reply}}",
+      "confirmDelete": "确认删除",
+      "saved": "AI 配置已保存",
+      "deleted": "AI 配置已删除",
+      "autoApply": "自动写入",
+      "autoApplyHint": "AI 的修改不经审阅直接写入工程（可以撤销）。改灯具配接、输出设置或一次删除很多片段时仍然会先让你确认",
+      "modelPick": "选择或输入模型",
+      "modelSearch": "搜索或输入模型 id",
+      "modelRefresh": "刷新模型列表",
+      "modelLoadFailed": "无法获取模型列表：{{reason}}。可以从建议里选，或直接输入",
+      "modelUse": "使用“{{model}}”",
+      "modelSuggested": "建议",
+      "modelEmpty": "没有匹配的模型，输入 id 后可以直接使用",
+      "userMemory": "个人偏好记忆",
+      "userMemoryHint": "对所有工程生效，每次对话和生成草稿时都会告诉 AI。也可以在对话里说“记住……”，确认后会加到这里",
+      "userMemoryPlaceholder": "例如：不要频闪；偏暖色；回复简短"
+    },
+    "errors": {
+      "invalid_profile": "配置不合法，请检查接口地址、模型与温度",
+      "unknown_profile": "AI 配置不存在，可能已被删除",
+      "url_not_allowed": "请求地址不在配置的接口地址之下",
+      "insecure_url": "只允许 HTTPS；HTTP 仅限本机或局域网地址",
+      "bad_request": "请求不合法",
+      "network": "无法连接到模型服务，请检查网络或代理",
+      "timeout": "模型服务响应超时",
+      "cancelled": "已取消",
+      "aborted": "已停止",
+      "response_too_large": "模型返回的内容过大",
+      "secret": "无法访问系统凭据管理器",
+      "io": "读写文件失败",
+      "file_too_large": "文件过大",
+      "invalid_json": "内容不是合法的 JSON",
+      "bad_path": "路径不合法",
+      "no_object": "模型没有按要求的格式回答，请重试或换一个模型",
+      "no_profile": "还没有 AI 配置，请先到“设置 → AI 助手”添加",
+      "http": "模型服务返回错误 {{status}}：{{message}}",
+      "unauthorized": "模型服务拒绝了 API Key，请检查 Key 是否正确",
+      "http_status": "模型服务返回错误，请检查接口地址",
+      "bad_response": "模型服务的响应无法解析，请检查接口地址和协议"
+    },
+    "memory": {
+      "add": "添加",
+      "editLabel": "编辑记忆",
+      "enabled": "启用：{{text}}",
+      "edit": "编辑：{{text}}",
+      "remove": "删除：{{text}}",
+      "duplicate": "记忆里已经有这一条",
+      "full": "最多 {{max}} 条，再添加会替换最早的一条"
+    }
   }
 }

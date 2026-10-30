@@ -67,7 +67,9 @@ interface EditorUiState {
    * @param panel 面板。
    * @param collapsed 是否收起。
    */
-  setPanelCollapsed: (panel: "library" | "inspector", collapsed: boolean) => void;
+  setPanelCollapsed: (panel: "library" | "inspector" | "ai", collapsed: boolean) => void;
+  /** 右侧 AI 对话栏是否已收起（默认收起；由面板尺寸回写） */
+  aiCollapsed: boolean;
   /** 在 Patch 面板里选中的分组 */
   selectedGroupId: string | null;
   /** 在时间线上选中的 Cue */
@@ -389,16 +391,12 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   revealFixtures: (ids) => set((s) => ({ revealRequest: { ids: [...ids], seq: (s.revealRequest?.seq ?? 0) + 1 } })),
   libraryCollapsed: false,
   inspectorCollapsed: false,
+  aiCollapsed: true,
   setPanelCollapsed: (panel, collapsed) =>
-    set((s) =>
-      panel === "library"
-        ? s.libraryCollapsed === collapsed
-          ? s
-          : { libraryCollapsed: collapsed }
-        : s.inspectorCollapsed === collapsed
-          ? s
-          : { inspectorCollapsed: collapsed },
-    ),
+    set((s) => {
+      const key = panel === "library" ? "libraryCollapsed" : panel === "inspector" ? "inspectorCollapsed" : "aiCollapsed";
+      return s[key] === collapsed ? s : { [key]: collapsed };
+    }),
   selectGroup: (id) => set({ selectedGroupId: id }),
   selectCues: (ids) =>
     set(ids.length > 0 ? { selectedCueIds: ids, selectedMediaClipIds: [], selectedTimelineObject: null } : { selectedCueIds: ids }),

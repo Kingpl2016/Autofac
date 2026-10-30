@@ -1,0 +1,109 @@
+{
+  "case": "pop-warm",
+  "model": "handwritten",
+  "promptVersion": 1,
+  "run": 1,
+  "plan": {
+    "summary": "暖色流行：主歌柔和波浪，副歌追逐加摇头画圆",
+    "palette": "warm",
+    "items": [
+      {
+        "section": "S1",
+        "energy": "low",
+        "light": "mood-cozy",
+        "colors": null,
+        "period": null,
+        "move": null
+      },
+      {
+        "section": "S2",
+        "energy": "mid",
+        "light": "intensityWave",
+        "colors": [
+          "amber"
+        ],
+        "period": "2",
+        "move": "panSweep"
+      },
+      {
+        "section": "S3",
+        "energy": "high",
+        "light": "colorChase",
+        "colors": [
+          "red",
+          "orange"
+        ],
+        "period": "1",
+        "move": "circle"
+      },
+      {
+        "section": "S4",
+        "energy": "mid",
+        "light": "breathe",
+        "colors": [
+          "amber"
+        ],
+        "period": "4",
+        "move": "panSweep"
+      },
+      {
+        "section": "S5",
+        "energy": "high",
+        "light": "intensityChase",
+        "colors": [
+          "rose"
+        ],
+        "period": "1",
+        "move": "circle"
+      },
+      {
+        "section": "S6",
+        "energy": "low",
+        "light": "fadeOut",
+        "colors": [
+          "orange"
+        ],
+        "period": "16",
+        "move": null
+      }
+    ]
+  },
+  "features": [
+    {
+      "kind": "static",
+      "hue": "white",
+      "level": "high",
+      "moves": false
+    },
+    {
+      "kind": "intensity",
+      "hue": "h1",
+      "level": "mid",
+      "moves": true
+    },
+    {
+      "kind": "color",
+      "hue": "h0",
+      "level": "high",
+      "moves": true
+    },
+    {
+      "kind": "intensity",
+      "hue": "h1",
+      "level": "mid",
+      "moves": true
+    },
+    {
+      "kind": "intensity",
+      "hue": "h0",
+      "level": "mid",
+      "moves": true
+    },
+    {
+      "kind": "intensity",
+      "hue": "h1",
+      "level": "mid",
+      "moves": false
+    }
+  ]
+}

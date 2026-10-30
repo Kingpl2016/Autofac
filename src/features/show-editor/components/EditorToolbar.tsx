@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { Clapperboard, Command, Flag, Redo2, Undo2, WandSparkles } from "lucide-react";
+import { Bot, Clapperboard, Command, Flag, Redo2, Undo2, WandSparkles } from "lucide-react";
 import { useStore } from "zustand";
 
 import { Button } from "@/components/ui/button";
 import { addMarkerAtPlayhead } from "../hooks/editorActions";
+import { togglePanel } from "../hooks/panelControl";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { selectDirty, useProjectStore } from "../stores/useProjectStore";
 import type { ShowFileController } from "../hooks/useShowFile";
@@ -19,6 +20,7 @@ const redoable = (s: { futureStates: unknown[] }) => s.futureStates.length > 0;
 /** 顶部工具条：工程名与未保存标记、文件操作（保存 / 文件菜单）、标记点与节拍、撤销 / 重做。 */
 export function EditorToolbar({ file }: { file: ShowFileController }) {
   const { t } = useTranslation();
+  const aiCollapsed = useEditorUiStore((s) => s.aiCollapsed);
   const name = useProjectStore((s) => s.project.name);
   const dirty = useProjectStore(selectDirty);
   const canUndo = useStore(useProjectStore.temporal, undoable);
@@ -100,6 +102,19 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
           onClick={() => useEditorUiStore.getState().setDraftOpen(true)}
         >
           <WandSparkles aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={t("editor.ai.dockTitle")}
+          aria-pressed={!aiCollapsed}
+          aria-keyshortcuts="Control+J"
+          title={`${t("editor.ai.dockTitle")} (Ctrl+J)`}
+          onClick={() => togglePanel("ai")}
+        >
+          <Bot aria-hidden />
         </Button>
         <Button
           type="button"

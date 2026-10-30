@@ -3,7 +3,7 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 
 /** 可以收起的编辑器侧栏。 */
-export type CollapsiblePanel = "library" | "inspector";
+export type CollapsiblePanel = "library" | "inspector" | "ai";
 
 /** 布局挂载时登记的面板句柄（编辑器同一时间只挂载一个）。 */
 const handles: Partial<Record<CollapsiblePanel, PanelImperativeHandle | null>> = {};
@@ -26,7 +26,7 @@ export function registerPanel(panel: CollapsiblePanel, handle: PanelImperativeHa
  */
 export function isPanelCollapsed(panel: CollapsiblePanel): boolean {
   const ui = useEditorUiStore.getState();
-  return panel === "library" ? ui.libraryCollapsed : ui.inspectorCollapsed;
+  return panel === "library" ? ui.libraryCollapsed : panel === "inspector" ? ui.inspectorCollapsed : ui.aiCollapsed;
 }
 
 /**

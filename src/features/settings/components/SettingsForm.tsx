@@ -16,6 +16,7 @@ import { SettingRow } from "./SettingRow";
 import { useNetworkInterfaces } from "../hooks/useNetworkInterfaces";
 import type { AppSettings } from "../lib/types";
 import { usePrefsStore } from "@/shared/stores/prefsStore";
+import { AiSettingsPanel } from "@/features/ai";
 
 /** 录制光晕开关：界面偏好，立即生效（不随设置草稿保存）。 */
 function RecordingGlowRow() {
@@ -461,6 +462,11 @@ export function SettingsForm({ settings, update }: SettingsFormProps) {
             }
           />
         </SettingRow>
+      </SettingsSectionById>
+
+      {/* AI 助手（节目编辑器用的模型配置；立即生效，不随设置草稿保存） */}
+      <SettingsSectionById id="ai">
+        <AiSettingsPanel />
       </SettingsSectionById>
 
       {/* 开发者（只在开发构建里显示） */}

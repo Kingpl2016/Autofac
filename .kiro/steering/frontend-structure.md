@@ -67,6 +67,8 @@ src/
 | Tauri 事件 | 组件里 `useTauriEvent(name, handler)`；组件外 `tauriEvent$(name)`（引用稳定的冷 Observable）。没有 Tauri 运行时时订阅失败被静默忽略 |
 | 持久化界面偏好 | `shared/stores/persistPrefs`：`persistPrefs({ name, version, schema })`，schema 是每个字段带 `.catch(默认值)` 的 `z.object`；`prefsSanitizer(schema)` 得到清洗函数。`name` / `version` 是已有用户数据的键，不能改 |
 | 分段选择 | `shared/components/Segmented`（单选，`radiogroup`）；只改筛选的按钮组用 `SegmentedControl`（`aria-pressed`） |
+| 调用大模型 | `@/features/ai`：`useActiveAiProfile`（当前配置）、`loadLanguageModel(profile)`（经后端代理，Key 只在后端注入；AI SDK 在这里才按需加载）、`aiErrorText`。不要在前端直接 `fetch` 模型接口或接触 API Key。编辑器的中间语言、编译器、配方、内置技能、记忆挑选与长对话压缩在 `show-editor/ai/`，说明见 `doc/AI 助手说明.md` |
+| AI 记忆 | `@/features/ai`：`addMemory` / `updateMemory` / `removeMemory`（条目的纯函数，去重与上限）、`memoryFile(entry)`（数据目录 `ai-history/<entry>.ai.json` 的排队读写）、`useAiMemoryStore`（个人偏好）、`MemoryNoteList`（可编辑列表）。工程笔记与范例跟着工程的对话记录（`useAiChatStore`），共用范例在 `useAiExemplarStore` |
 
 ## 4. 测试
 
@@ -92,7 +94,9 @@ src/
 ## 5. 依赖与提交前检查
 
 - 依赖版本写精确版本（不用 `^` / `~`）；构建期工具放 `devDependencies`。
-- 重依赖（React Flow、tsParticles、着色器、driver.js、idb-keyval、dnd-kit 等）只能出现在按需加载的路径（路由页或 `lazy()` / 动态 `import()`）。
+- 重依赖（React Flow、tsParticles、着色器、driver.js、idb-keyval、dnd-kit、AI SDK（`ai`、`@ai-sdk/*`）、assistant-ui（`@assistant-ui/*`）与 `remark-gfm` 等）只能出现在按需加载的路径（路由页或 `lazy()` / 动态 `import()`）。
+  编辑器的 AI 对话界面在 `show-editor/components/ai/`：`AiDockLayout` 经 `lazy()` 加载 `AiDock`，`AiDock` 再 `lazy()` 加载 `AiChatPanel`；对话界面是照 assistant-ui 官方组件、用它的原语手写的（`components/ai/thread/`），不经 shadcn CLI 生成。
+- AI 一致性评测（真实调用模型）：`npm run ai:eval`（`vitest.eval.config.ts`，只收集 `*.eval.ts`，不在 `verify` 里）。
 - 提交前运行 `npm run verify`：`tsc -b && eslint . && vitest run && knip`。
   knip 检查未使用的文件、依赖与导出（未使用的导出也算错误）；配置在 `knip.json`，忽略 `src/components/ui/**` 与 `src/bindings/**`。
 

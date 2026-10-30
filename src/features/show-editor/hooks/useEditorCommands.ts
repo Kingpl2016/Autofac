@@ -44,7 +44,9 @@ import { useCueActions } from "./useCueActions";
 import { clearLoop, deleteSelectedObject } from "./timelineObjectActions";
 import { runTour } from "../onboarding/runTour";
 import { useOnboardingStore } from "../stores/useOnboardingStore";
-import { togglePanel } from "./panelControl";
+import { commitStaged, discardStaged, focusAiInput } from "../ai/actions";
+import { useAiStagingStore } from "../stores/useAiStagingStore";
+import { collapsePanel, togglePanel } from "./panelControl";
 
 /** 一帧的毫秒数（逐帧移动播放头 / 微调片段用）。 */
 const FRAME = Math.round(1000 / OUTPUT_FPS);
@@ -774,6 +776,17 @@ export function useEditorCommands(onSave?: () => void, file?: FileCommandHandler
         run: () => programmer().setLive(!programmer().live),
       },
       { id: "draft.open", titleKey: "editor.draft.title", category: "edit", run: () => ui().setDraftOpen(true) },
+      {
+        id: "ai.open",
+        titleKey: "editor.commands.aiOpen",
+        category: "view",
+        keys: ["mod+j"],
+        global: true,
+        // 收起时打开并聚焦输入框；开着时收起
+        run: () => (ui().aiCollapsed ? focusAiInput() : collapsePanel("ai")),
+      },
+      { id: "ai.apply", titleKey: "editor.commands.aiApply", category: "edit", enabled: () => useAiStagingStore.getState().staged !== null, run: () => void commitStaged(t) },
+      { id: "ai.discard", titleKey: "editor.commands.aiDiscard", category: "edit", enabled: () => useAiStagingStore.getState().staged !== null, run: discardStaged },
       {
         id: "view.contextMenu",
         titleKey: "editor.commands.contextMenu",

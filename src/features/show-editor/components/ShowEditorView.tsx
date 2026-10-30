@@ -18,6 +18,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { announce } from "@/shared/stores/announcerStore";
+import { useAiHistorySync } from "../hooks/useAiHistorySync";
 import { useBakeEvents } from "../hooks/useBakeEvents";
 import { dropFixtureModel, resolveFixtureDrop } from "../hooks/fixtureDrop";
 import { useEditorHotkeys } from "../hooks/useEditorHotkeys";
@@ -38,6 +39,8 @@ import { addEffectDefCue, effectDefNeeds, effectName } from "../lib/effectLibrar
 import type { FixtureCapability } from "../lib/fixtureProfile";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { AiDockLayout } from "./ai/AiDockLayout";
+import { AiStagedBar } from "./ai/AiStagedBar";
 import { AutoDraftDialog } from "./AutoDraftDialog";
 import { CommandPalette } from "./CommandPalette";
 import { DurationConfirmDialog } from "./DurationConfirmDialog";
@@ -101,6 +104,7 @@ export function ShowEditorView() {
   useShowPlayback();
   useBakeEvents();
   useMediaRuntime();
+  useAiHistorySync();
   const dropHover = useMediaDrop();
 
   // 从节目库跳转而来（?open=<节目路径>）：打开那个工程，并把参数从地址栏去掉
@@ -267,7 +271,9 @@ export function ShowEditorView() {
       <div className="flex h-full min-h-0 flex-col bg-background">
         <EditorToolbar file={file} />
         <ModelUpdatesBanner />
-        <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
+        <AiStagedBar />
+        <AiDockLayout>
+        <ResizablePanelGroup orientation="vertical" className="h-full min-h-0">
           <ResizablePanel defaultSize="62%" minSize="30%">
             <div className="flex h-full min-h-0">
               <IconRail />
@@ -283,6 +289,7 @@ export function ShowEditorView() {
             <TimelinePanel commands={commands} />
           </ResizablePanel>
         </ResizablePanelGroup>
+        </AiDockLayout>
       </div>
       {dropHover && (
         <div

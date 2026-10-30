@@ -13,6 +13,19 @@ import { useEditorUiStore } from "../../stores/useEditorUiStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { AutoDraftDialog } from "../AutoDraftDialog";
 
+// 没有 AI 配置：对话框默认用“按规则生成”（AI 生成另有测试）
+vi.mock("@/features/ai", async () => ({
+  // 记忆的纯函数与 schema 用真的（对话记录的结构依赖它们）
+  ...(await vi.importActual<typeof import("@/features/ai/lib/memory")>("@/features/ai/lib/memory")),
+  memoryFile: () => ({ read: async () => null, write: async () => undefined }),
+  useAiMemoryStore: { getState: () => ({ prefs: [], load: async () => undefined }) },
+  useActiveAiProfile: () => ({ profiles: [], profile: null, loading: false }),
+  useAiPrefsStore: { getState: () => ({ autoApply: false }) },
+  loadLanguageModel: vi.fn(),
+  aiErrorText: (_t: unknown, e: unknown) => String(e),
+  isAiAbort: () => false,
+}));
+
 beforeAll(() => {
   // Radix 对话框在 jsdom 里需要
   vi.stubGlobal(

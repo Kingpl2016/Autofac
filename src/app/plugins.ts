@@ -7,6 +7,7 @@
  * - 移除能力：删除对应 feature 目录并去掉这里的一行。
  */
 import { aboutPlugin } from "@/features/about";
+import { aiPlugin } from "@/features/ai";
 import { appearancePlugin } from "@/features/appearance";
 import { appModePlugin } from "@/features/app-mode";
 import { dashboardPlugin } from "@/features/dashboard";
@@ -42,6 +43,7 @@ export const appPlugins: readonly AppPlugin[] = [
   forwardingPlugin,
   signalFlowPlugin,
   libraryPlugin,
+  aiPlugin,
   showEditorPlugin,
   fixturesPlugin,
   networkPlugin,
