@@ -111,6 +111,7 @@ export function EditorToolbar({ file }: { file: ShowFileController }) {
           aria-label={t("editor.ai.dockTitle")}
           aria-pressed={!aiCollapsed}
           aria-keyshortcuts="Control+J"
+          data-tour="ai-toggle"
           title={`${t("editor.ai.dockTitle")} (Ctrl+J)`}
           onClick={() => togglePanel("ai")}
         >

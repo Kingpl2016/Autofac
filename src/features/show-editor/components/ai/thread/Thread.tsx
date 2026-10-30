@@ -131,7 +131,10 @@ const ThreadError: FC = () => {
 const Composer: FC = () => {
   const { t } = useTranslation();
   return (
-    <ComposerPrimitive.Root className="flex w-full flex-col rounded-xl border border-border bg-background p-1.5 shadow-sm transition-colors focus-within:border-ring/60">
+    <ComposerPrimitive.Root
+      data-tour="ai-composer"
+      className="flex w-full flex-col rounded-xl border border-border bg-background p-1.5 shadow-sm transition-colors focus-within:border-ring/60"
+    >
       <ComposerPrimitive.Input
         data-ai-input
         rows={1}

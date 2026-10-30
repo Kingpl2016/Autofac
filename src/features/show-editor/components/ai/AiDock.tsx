@@ -41,6 +41,7 @@ export function AiDock() {
           aria-label={t("editor.ai.memory.title")}
           title={t("editor.ai.memory.title")}
           aria-pressed={memoryOpen}
+          data-tour="ai-memory"
           onClick={() => setMemoryOpen((v) => !v)}
         >
           <Brain aria-hidden />

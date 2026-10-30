@@ -17,7 +17,11 @@ export interface TourStepDef {
   optional?: boolean;
 }
 
-/** 整体导览：素材库 → 预览 → 检查器 → 时间线 → 顶栏模式 → 快捷操作与帮助按钮。 */
+/**
+ * 整体导览：素材库 → 预览 → 检查器 → 时间线 → 顶栏模式 → AI 助手 → 快捷操作与帮助按钮。
+ *
+ * 加了 AI 助手一步但没有递增 `TOUR_VERSION`：看过导览的用户不必整段重看，由下面的 AI 局部提示补上。
+ */
 export const TOUR_STEPS: readonly TourStepDef[] = [
   { id: "welcome" },
   { id: "library", target: "library", side: "right" },
@@ -25,6 +29,7 @@ export const TOUR_STEPS: readonly TourStepDef[] = [
   { id: "inspector", target: "inspector", side: "left" },
   { id: "timeline", target: "timeline", side: "top" },
   { id: "mode", target: "app-mode", side: "bottom" },
+  { id: "ai", target: "ai-toggle", side: "bottom" },
   // 最后一步指向帮助按钮（之后从这里重播 / 显示提示）；找不到按钮时为居中卡片
   { id: "shortcuts", target: "help", side: "bottom", optional: true },
 ];
@@ -36,7 +41,10 @@ export interface HintDef {
   side?: GuideSide;
 }
 
-/** 局部提示（按出现的优先顺序；同一时间只显示第一条可用的）。 */
+/**
+ * 局部提示（按出现的优先顺序；同一时间只显示第一条可用的）。
+ * AI 助手的四条排在最后：入口按钮一直在工具条上，排在前面会挡住各面板自己的提示。
+ */
 export const HINTS: readonly HintDef[] = [
   { id: "swatches", target: "preview-swatch-tools", side: "bottom" },
   { id: "trackHeaders", target: "track-headers", side: "right" },
@@ -48,6 +56,11 @@ export const HINTS: readonly HintDef[] = [
   { id: "universeView", target: "universe-view", side: "left" },
   { id: "colorInput", target: "color-input", side: "left" },
   { id: "programmer", target: "programmer-tools", side: "left" },
+  // AI 助手：入口 → 输入框（模型、自动写入）→ 待审阅的改动 → 记忆
+  { id: "aiToggle", target: "ai-toggle", side: "bottom" },
+  { id: "aiComposer", target: "ai-composer", side: "top" },
+  { id: "aiReview", target: "ai-review", side: "left" },
+  { id: "aiMemory", target: "ai-memory", side: "bottom" },
 ];
 
 /**

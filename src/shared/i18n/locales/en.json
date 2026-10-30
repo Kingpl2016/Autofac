@@ -3137,6 +3137,10 @@
         "shortcuts": {
           "title": "Handy shortcuts",
           "body": "Ctrl+K command palette (every action is searchable)\nSpace play / pause, J / K / L back one frame / pause / play\nShift+Q radial menu, Shift+F10 context menu\nThe ? menu (F1) has the shortcut cheat sheet, what's new, feedback, the tour and page tips."
+        },
+        "ai": {
+          "title": "AI assistant",
+          "body": "Click here or press Ctrl+J to open the AI assistant on the right, and create or change lighting with one sentence, such as \"make the chorus blue-violet and twice as fast\".\nAdd a model first in Settings → AI assistant. AI changes wait for your review by default; check them in the preview before applying, and you can undo."
         }
       },
       "hints": {
@@ -3179,6 +3183,22 @@
         "programmer": {
           "title": "New programmer tools",
           "body": "“Highlight” turns the selected fixtures full white so you can step through them with Alt+← / Alt+→. Below you'll find attributes, fan (A→B) and the programmer's own undo. Every section has a “?” with details."
+        },
+        "aiToggle": {
+          "title": "Change lighting with one sentence",
+          "body": "Click here or press Ctrl+J to open the AI assistant. Add a model in Settings → AI assistant first (endpoint and API key, then click Test).\nThe wand button on the toolbar can also have the AI draft the whole song from a description."
+        },
+        "aiComposer": {
+          "title": "How to ask",
+          "body": "Say where and what: \"all lights breathe slowly in the second chorus\", \"make the selected clips warm\". Select clips on the timeline first and you can just say \"these\".\nEnter sends, Shift+Enter adds a line. Switch models at the bottom left; the lightning button at the bottom right is auto-apply (changes go straight in; patch and output changes still ask).\nNot happy with a reply? Regenerate it, or edit your message and resend; switch between versions with ‹ ›."
+        },
+        "aiReview": {
+          "title": "Look before you apply",
+          "body": "AI changes wait here: the preview shows the result, and the Preview switch flips back to the current show for comparison; click a clip in the list to jump to it.\nApply is one undo step (Ctrl+Z). Not right? Discard it, or tell the AI in the chat what to change."
+        },
+        "aiMemory": {
+          "title": "Let the AI learn your habits",
+          "body": "Say \"remember: no strobes from now on\" in the chat; the AI shows a card and saves it only when you click Save. Changes you apply are also kept as examples, and the AI follows them when you ask something similar.\nManage this show's notes and examples here; personal preferences are in Settings → AI assistant. \"Used N memories\" under a reply lets you turn one off at any time."
         }
       },
       "help": "Help",

@@ -1,6 +1,6 @@
 [package]
 name = "art-net-studio"
-version = "0.1.0"
+version = "0.2.1"
 description = "Art-Net Studio —— Art-Net / sACN 灯光控制与录制平台"
 authors = ["Art-Net Studio"]
 edition = "2024"

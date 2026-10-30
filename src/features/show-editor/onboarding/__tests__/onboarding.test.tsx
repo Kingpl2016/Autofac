@@ -81,11 +81,30 @@ function mount(...targets: string[]) {
 describe("引导内容", () => {
   it("缺少目标的步骤跳过，说明卡片保留；局部提示取第一条没关闭且在页面上的", () => {
     const ids = availableSteps(TOUR_STEPS, (t) => t !== "app-mode").map((s) => s.id);
-    expect(ids).toEqual(["welcome", "library", "preview", "inspector", "timeline", "shortcuts"]);
+    expect(ids).toEqual(["welcome", "library", "preview", "inspector", "timeline", "ai", "shortcuts"]);
     const present = new Set(["patch-batch", "track-headers"]);
     expect(nextHint(HINTS, [], (t) => present.has(t))?.id).toBe("trackHeaders");
     expect(nextHint(HINTS, ["trackHeaders"], (t) => present.has(t))?.id).toBe("patchBatch");
     expect(nextHint(HINTS, ["trackHeaders", "patchBatch"], (t) => present.has(t))).toBeNull();
+  });
+
+  it("AI 助手的提示排在各面板之后，按入口 → 输入框 → 审阅 → 记忆依次出现；每条都有中英文文案", () => {
+    const present = new Set(["track-headers", "ai-toggle", "ai-composer", "ai-review", "ai-memory"]);
+    const exists = (t: string) => present.has(t);
+    expect(nextHint(HINTS, [], exists)?.id).toBe("trackHeaders");
+    const order: string[] = [];
+    for (let dismissed = ["trackHeaders"], h = nextHint(HINTS, dismissed, exists); h; h = nextHint(HINTS, dismissed, exists)) {
+      order.push(h.id);
+      dismissed = [...dismissed, h.id];
+    }
+    expect(order).toEqual(["aiToggle", "aiComposer", "aiReview", "aiMemory"]);
+    for (const lang of ["zh", "en"]) {
+      for (const id of order) {
+        expect(i18n.exists(`editor.guide.hints.${id}.title`, { lng: lang }), `${lang} ${id}`).toBe(true);
+        expect(i18n.exists(`editor.guide.hints.${id}.body`, { lng: lang }), `${lang} ${id}`).toBe(true);
+      }
+      expect(i18n.exists("editor.guide.tour.ai.body", { lng: lang })).toBe(true);
+    }
   });
 
   it("读回的数据逐项校验", () => {

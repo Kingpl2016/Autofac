@@ -99,7 +99,7 @@ export function AiReviewCard({ staged }: { staged: StagedChange }) {
   const warnings = staged.issues.filter((i) => i.level === "warning");
 
   return (
-    <section aria-label={t("editor.ai.reviewTitle")} className="grid gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+    <section aria-label={t("editor.ai.reviewTitle")} data-tour="ai-review" className="grid gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-medium">{t("editor.ai.reviewTitle")}</h3>
         <Badge variant="secondary">{t(`editor.ai.sources.${staged.source}`)}</Badge>
