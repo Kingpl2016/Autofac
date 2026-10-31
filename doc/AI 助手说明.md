@@ -31,6 +31,9 @@ src/features/ai/                      AI 插件（与业务无关）
   lib/model.ts                        按配置创建模型（OpenAI 兼容 / Anthropic / Gemini），只经动态 import 加载
   lib/loadModel.ts                    loadLanguageModel / testConnection
   components/AiSettingsPanel.tsx      设置页“AI 助手”分区的内容
+  components/AiProfileList.tsx        AI 配置列表（设置页与“模型配置”对话框共用）
+  components/AiModelsDialog.tsx       “模型配置”对话框（挂在全局覆盖层，openAiModelsDialog() 打开，不跳设置页）
+  lib/contextWindow.ts                常见模型的上下文上限（对话框底部的上下文用量用）
   components/ModelCombobox.tsx        可搜索的模型下拉框（ai_list_models 拉取列表）
   components/MemoryNoteList.tsx       可编辑的记忆列表（个人偏好、工程笔记共用）
   lib/memory.ts / lib/memoryFile.ts   记忆条目的纯函数；数据目录里记忆文件的读写
@@ -39,13 +42,13 @@ src/features/show-editor/components/ai/
   AiDockLayout.tsx / AiDock.tsx       悬浮在编辑器右侧的对话面板（不挤压编辑器，左边缘拖动调宽，按需加载）
   AiChatPanel.tsx                     对话：AI SDK useChat + DirectChatTransport → assistant-ui 运行时（灌入消息树、挂记忆元数据）
   AiMemoryPage.tsx                    记忆页
-  thread/                             基于 assistant-ui 原语的对话界面（消息、操作栏、工具步骤、提议卡片、记忆卡片、记忆来源、模型切换、自动写入开关）
+  thread/                             基于 assistant-ui 原语的对话界面（消息、操作栏、工具步骤、提议卡片、记忆卡片、记忆来源、模型切换、上下文用量、自动写入开关）
 src/features/show-editor/ai/          编辑器专属
   vocab.ts                            受控词汇：命名色、调色板、周期 / 大小 / 速度 / 淡入淡出档位与量化
   timeRef.ts                          时间引用（小节、段落、秒）的解析与量化
   aliases.ts                          短别名 F1 / G1 / T1 / C1 / S1 / M1
   opsSchema.ts                        AiOps 与草稿计划的 zod 结构
-  portableSchema.ts                   zod → 各家都接受的 JSON Schema 子集
+  portableSchema.ts                   zod → 各家都接受的 JSON Schema 子集（元组改成单个 items，OpenAI 不接受数组形式的 items）
   compile.ts                          AiOps 编译器：复用编辑器的纯函数写入工程，试运行与语义校验
   context.ts                          发给模型的工程摘要与只读查询
   prompt.ts                           系统提示词（带 PROMPT_VERSION）

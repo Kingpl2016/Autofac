@@ -5,7 +5,7 @@ export { useProfileModels, useSetProfileModel, type ProfileModelOption } from ".
 export { aiHistoryLibraryPath, aiHistoryRead, aiHistoryWrite } from "./lib/api";
 export { contextWindowOf } from "./lib/contextWindow";
 export { useDisableModality } from "./hooks/useDisableModality";
-export { aiErrorText, isAiAbort, unsupportedInput } from "./lib/errors";
+export { aiErrorText, encodeAiError, isAiAbort, unsupportedInput } from "./lib/errors";
 export { loadLanguageModel, type LoadedModel } from "./lib/loadModel";
 export { addMemory, memoryListSchema, removeMemory, updateMemory, type MemoryItem } from "./lib/memory";
 export { memoryFile, type MemoryFile } from "./lib/memoryFile";

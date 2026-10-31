@@ -74,7 +74,8 @@ export const SkillTriggerPopover: FC<{ skills: readonly SlashSkill[] }> = ({ ski
       className="absolute inset-x-0 bottom-full z-30 mb-2 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
     >
       <ComposerPrimitive.TriggerPopover.Directive formatter={SLASH_FORMATTER} />
-      <div className="flex items-center gap-1.5 border-b border-border px-2.5 py-1.5 text-[11px] text-muted-foreground">
+      {/* TriggerPopover 关闭时仍会渲染子元素（只是不包外框）：提示条只在弹层（listbox）里显示 */}
+      <div className="hidden items-center gap-1.5 border-b border-border px-2.5 py-1.5 text-[11px] text-muted-foreground in-[[role=listbox]]:flex">
         <Sparkles className="size-3.5 text-primary" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{t("editor.ai.skills.popoverHint")}</span>
       </div>

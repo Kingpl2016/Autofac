@@ -271,7 +271,7 @@ const AssistantMessage: FC = () => {
         <MessagePrimitive.Parts components={{ Text: MarkdownText, Empty: Thinking, tools: { Fallback: ToolCallPart } }} />
         <MessagePrimitive.Error>
           <ErrorPrimitive.Root className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-            <ErrorPrimitive.Message className="line-clamp-3" />
+            <MessageErrorText />
           </ErrorPrimitive.Root>
         </MessagePrimitive.Error>
       </div>
@@ -289,6 +289,14 @@ const AssistantMessage: FC = () => {
       <MemorySources />
     </MessagePrimitive.Root>
   );
+};
+
+/** 回复失败的原因（本地化；可选中复制，便于反馈）。 */
+const MessageErrorText: FC = () => {
+  const { t } = useTranslation();
+  const error = useAuiState((s) => (s.message.status?.type === "incomplete" && s.message.status.reason === "error" ? s.message.status.error : undefined));
+  if (error === undefined) return null;
+  return <p className="line-clamp-6 select-text break-words">{aiErrorText(t, error)}</p>;
 };
 
 /** 复制消息文字（复制后短暂显示对勾）。 */

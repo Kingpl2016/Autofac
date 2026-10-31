@@ -29,6 +29,23 @@ const CONSTRAINTS: Record<string, (v: unknown) => string> = {
   format: (v) => `format ${String(v)}`,
 };
 
+/**
+ * 元组各位置的 schema 合成一个 `items`。
+ *
+ * @param list 各位置的 schema。
+ * @returns 全都相同时为其中一个，否则为 `anyOf`。
+ */
+function tupleItems(list: readonly unknown[]): unknown {
+  const seen = new Map<string, unknown>();
+  for (const item of list) {
+    const r = rewrite(item);
+    seen.set(JSON.stringify(r), r);
+  }
+  const unique = [...seen.values()];
+  if (unique.length === 0) return {};
+  return unique.length === 1 ? unique[0] : { anyOf: unique };
+}
+
 /** 递归改写一个节点。 */
 function rewrite(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(rewrite);
@@ -40,6 +57,15 @@ function rewrite(node: unknown): unknown {
     if (k === "$schema" || k === "default" || k === "description") continue;
     if (k in CONSTRAINTS) {
       notes.push(CONSTRAINTS[k](v));
+      continue;
+    }
+    if (k === "additionalItems") continue;
+    // 元组（`z.tuple`）：draft-7 写成 `items: [a, b]`、2020-12 写成 `prefixItems`，
+    // OpenAI 等接口只接受对象形式的 `items`（否则 400 “is not of types boolean, object”）。
+    // 改成单个 `items`（各位置的 schema 去重，不同时 anyOf），个数写进说明，按位置的类型由 zod 校验兜底
+    if ((k === "items" || k === "prefixItems") && Array.isArray(v)) {
+      out.items = tupleItems(v);
+      notes.push(`exactly ${v.length} items`);
       continue;
     }
     if (k === "oneOf") out.anyOf = rewrite(v);

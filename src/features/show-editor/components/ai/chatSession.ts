@@ -2,7 +2,7 @@ import { Chat } from "@ai-sdk/react";
 import { DirectChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses, type ChatTransport, type UIMessage } from "ai";
 import type { TFunction } from "i18next";
 
-import { enabledSkills, loadLanguageModel, mcpCallTool, mcpToolSpecs, useAiPrefsStore, type AiProfileView, type LoadedModel } from "@/features/ai";
+import { enabledSkills, encodeAiError, loadLanguageModel, mcpCallTool, mcpToolSpecs, useAiPrefsStore, type AiProfileView, type LoadedModel } from "@/features/ai";
 import { buildMcpTools } from "../../ai/mcpTools";
 import { userSkillOf, type UserSkill } from "../../ai/skills";
 import { offerChange } from "../../ai/actions";
@@ -68,6 +68,11 @@ function createTransport(loaded: LoadedModel, lang: string, t: TFunction): ChatT
   // 消息按通用的 UIMessage 处理（工具部件按名字渲染），不需要按工具推导的精确类型
   return new DirectChatTransport({
     agent,
+    // 不传时 SDK 只给界面 “An error occurred.”：把真正的错误编码后传过去，由 aiErrorText 还原成说明
+    onError: (error) => {
+      console.error("[ai] 对话请求失败", error);
+      return encodeAiError(error);
+    },
     messageMetadata: ({ part }): ReplyMetadata | undefined => {
       if (part.type === "start") return { memory: used };
       // 每一步结束时记下这一步的用量（后一步覆盖前一步）：最后一步的输入 + 输出就是对话此刻占用的上下文

@@ -44,6 +44,10 @@ const KNOWN_CODES = new Set([
  * @returns 一定带 `code` 与 `message` 的错误。
  */
 export function toAiError(e: unknown): AiError {
+  // 经消息流传回的错误：可能是字符串、Error，或带 message 的普通对象
+  const text = typeof e === "string" ? e : typeof e === "object" && e !== null && typeof (e as { message?: unknown }).message === "string" ? (e as { message: string }).message : null;
+  const encoded = decodeAiError(text?.trim() ?? null);
+  if (encoded) return encoded;
   if (typeof e === "object" && e !== null) {
     const o = e as Record<string, unknown>;
     if (o.name === "AbortError") return { code: "aborted", message: String(o.message ?? "") };
@@ -62,6 +66,32 @@ export function toAiError(e: unknown): AiError {
     if (e instanceof Error) return { code: "unknown", message: e.message };
   }
   return { code: "unknown", message: typeof e === "string" ? e : String(e) };
+}
+
+/** 经消息流传回界面的错误文字的前缀（见 {@link encodeAiError}）。 */
+const ENCODED_PREFIX = "ai-error:";
+
+/**
+ * 把错误编码成一段文字，交给 AI SDK 的消息流（`onError`）：流里只能传字符串，
+ * 不编码的话 SDK 只给界面一句 “An error occurred.”，看不到真正的原因。界面用 {@link aiErrorText} 还原。
+ *
+ * @param e 捕获到的值。
+ * @returns 编码后的文字。
+ */
+export function encodeAiError(e: unknown): string {
+  return ENCODED_PREFIX + JSON.stringify(toAiError(e));
+}
+
+/** 还原 {@link encodeAiError} 的结果；不是编码过的文字时为 `null`。 */
+function decodeAiError(text: string | null): AiError | null {
+  if (!text?.startsWith(ENCODED_PREFIX)) return null;
+  try {
+    const o = JSON.parse(text.slice(ENCODED_PREFIX.length)) as Partial<AiError>;
+    if (typeof o.code !== "string") return null;
+    return { code: o.code, message: typeof o.message === "string" ? o.message : "", ...(typeof o.status === "number" ? { status: o.status } : {}) };
+  } catch {
+    return null;
+  }
 }
 
 /**
