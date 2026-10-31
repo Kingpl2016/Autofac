@@ -24,18 +24,22 @@ use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 
+use super::color_names::lookup_color_name;
 use super::import::{ImportError, ImportReport, ImportWarning, ImportWarningKind};
 use super::model::{
-    validate_layout, Capability, CapabilityTag, ChannelFunction, Emitter, FixtureMode, FixtureModel,
-    FixtureProperty, MatrixLayout, ModelSource, Physical, Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS,
-    MAX_ID_LEN, MAX_MODES,
+    validate_layout, Appearance, AppearanceOrigin, Capability, CapabilityTag, ChannelFunction, Emitter,
+    FixtureMode, FixtureModel, FixtureProperty, FixtureShape, FocusType, MatrixLayout, ModelSource, Physical,
+    Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS, MAX_ID_LEN, MAX_MODES,
 };
 
 /// OFL 导入时的工作表名占位（警告里的 `sheet` 字段）。
 const SHEET: &str = "OFL";
 
 /// OFL 识别规则的版本：映射规则变化时递增，库里旧版本识别的模型会被标为“可更新”。
-pub const OFL_RECOGNIZER_VERSION: u32 = 2;
+///
+/// - 3：导入外形尺寸 / 重量 / 功率 / 镜头名 / 运动方式，按规则推断外形模板，
+///   色轮槽位按名字查色、分色片保留第二种颜色。
+pub const OFL_RECOGNIZER_VERSION: u32 = 3;
 
 type Obj = Map<String, Value>;
 
@@ -161,6 +165,12 @@ pub fn import_ofl_as(text: &str, key: &str, manufacturer: Option<&str>) -> Resul
         .map(|a| a.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
     let emitters = emitters_of(root, std::iter::once(&properties).chain(extra_modes.iter().map(|m| &m.properties)));
+    let physical = physical_of(root);
+    let appearance = Appearance {
+        shape: shape_of(&categories, physical.as_ref(), matrix, &properties),
+        origin: AppearanceOrigin::Rule,
+        ..Appearance::default()
+    };
     let model = FixtureModel {
         id: id.clone(),
         name: if name.is_empty() { id.clone() } else { name },
@@ -173,7 +183,8 @@ pub fn import_ofl_as(text: &str, key: &str, manufacturer: Option<&str>) -> Resul
         modes: extra_modes,
         matrix,
         emitters,
-        physical: physical_of(root),
+        physical,
+        appearance: Some(appearance),
         source: Some(ModelSource { kind: "ofl".into(), key: key.to_owned(), recognizer: OFL_RECOGNIZER_VERSION }),
     };
     let mut report = ImportReport { models: Vec::new(), warnings: ctx.into_warnings() };
@@ -1081,21 +1092,34 @@ impl<'a> Context<'a> {
             .or(detail)
             .unwrap_or_else(|| kind.to_owned());
         let (physical, unit_str, proportional) = cap_physical(cap);
-        let color = cap
-            .get("colors")
-            .and_then(Value::as_array)
-            .and_then(|a| a.first())
-            .and_then(Value::as_str)
-            .and_then(hex_color)
-            .or_else(|| {
-                slot.and_then(|s| s.get("colors"))
-                    .and_then(Value::as_array)
-                    .and_then(|a| a.first())
-                    .and_then(Value::as_str)
-                    .and_then(hex_color)
-            });
-        Capability { range, label, proportional, physical, unit: unit_str, color, tag: capability_tag(cap) }
+        let (color, color_alt) = capability_colors(cap, slot);
+        Capability { range, label, proportional, physical, unit: unit_str, color, color_alt, pattern: None, tag: capability_tag(cap) }
     }
+}
+
+/// 能力区间的颜色：先取能力自己的 `colors`，再取槽位的 `colors`；都没有时按槽位名（颜色槽位）
+/// 或能力注释（`ColorPreset`）查颜色名字典。第二种不同的颜色记为分色片的 `color_alt`。
+fn capability_colors(cap: &Obj, slot: Option<&Obj>) -> (Option<[u8; 3]>, Option<[u8; 3]>) {
+    let hexes = |o: &Obj| -> Vec<[u8; 3]> {
+        o.get("colors")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).filter_map(hex_color).collect())
+            .unwrap_or_default()
+    };
+    let mut colors = hexes(cap);
+    if colors.is_empty() {
+        colors = slot.map(hexes).unwrap_or_default();
+    }
+    if let Some(&first) = colors.first() {
+        let alt = colors.iter().copied().find(|c| *c != first);
+        return (Some(first), alt);
+    }
+    let by_name = match (slot, str_of(cap, "type")) {
+        (Some(s), _) if str_of(s, "type") == Some("Color") => str_of(s, "name").and_then(lookup_color_name),
+        (_, Some("ColorPreset")) => str_of(cap, "comment").and_then(lookup_color_name),
+        _ => None,
+    };
+    (by_name, None)
 }
 
 /// 轮子的类别（按槽位的主要类型）。
@@ -1292,18 +1316,107 @@ fn emitters_of<'p>(root: &Obj, layouts: impl Iterator<Item = &'p Vec<FixtureProp
     vec![Emitter { function: ChannelFunction::White, rgb: None, kelvin: Some(kelvin.round() as u16), intensity: 1.0 }]
 }
 
+/// 镜头名的最大长度（字符数，与模型校验一致）。
+const MAX_LENS_NAME: usize = 64;
+
 fn physical_of(root: &Obj) -> Option<Physical> {
     let p = root.get("physical")?.as_object()?;
-    let lens = p.get("lens").and_then(|l| l.get("degreesMinMax")).and_then(Value::as_array);
+    let lens_obj = p.get("lens").and_then(Value::as_object);
+    let lens = lens_obj.and_then(|l| l.get("degreesMinMax")).and_then(Value::as_array);
     let focus = p.get("focus").and_then(Value::as_object);
     let num = |v: Option<&Value>| v.and_then(Value::as_f64).filter(|x| *x > 0.0 && x.is_finite());
+    let dimensions = p.get("dimensions").and_then(Value::as_array).and_then(|d| {
+        let [w, h, depth] = [num(d.first())?, num(d.get(1))?, num(d.get(2))?];
+        Some([w, h, depth])
+    });
+    let lens_name = lens_obj
+        .and_then(|l| str_of(l, "name"))
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(|n| n.chars().take(MAX_LENS_NAME).collect());
+    let focus_type = focus.and_then(|f| str_of(f, "type")).and_then(|t| match t {
+        "Head" => Some(FocusType::Head),
+        "Mirror" => Some(FocusType::Mirror),
+        "Barrel" => Some(FocusType::Barrel),
+        "Fixed" => Some(FocusType::Fixed),
+        _ => None,
+    });
     let physical = Physical {
         pan_range_deg: num(focus.and_then(|f| f.get("panMax"))),
         tilt_range_deg: num(focus.and_then(|f| f.get("tiltMax"))),
         beam_min_deg: num(lens.and_then(|l| l.first())),
         beam_max_deg: num(lens.and_then(|l| l.get(1))),
+        dimensions_mm: dimensions,
+        weight_kg: num(p.get("weight")),
+        power_w: num(p.get("power")),
+        lens_name,
+        focus_type,
     };
     (physical != Physical::default()).then_some(physical)
+}
+
+/// 按 OFL 分类、物理参数与通道推断外形模板（导入时的默认外观，来源记为规则）。
+///
+/// 分类优先；只有“变色 / 调光”这类不说明外形的分类时，再看像素排布、光束运动方式、镜头名与外形比例。
+fn shape_of(categories: &[&str], physical: Option<&Physical>, matrix: Option<MatrixLayout>, props: &[FixtureProperty]) -> FixtureShape {
+    let has = |c: &str| categories.contains(&c);
+    let moves = props.iter().any(|p| matches!(p.function, ChannelFunction::Pan | ChannelFunction::Tilt));
+    let focus = physical.and_then(|p| p.focus_type);
+    if has("Moving Head") {
+        return FixtureShape::MovingHead;
+    }
+    if has("Scanner") || has("Barrel Scanner") {
+        return FixtureShape::Scanner;
+    }
+    if has("Laser") {
+        return FixtureShape::Laser;
+    }
+    if has("Smoke") || has("Hazer") {
+        return FixtureShape::Fogger;
+    }
+    if has("Blinder") {
+        return FixtureShape::Blinder;
+    }
+    if has("Pixel Bar") {
+        return FixtureShape::Bar;
+    }
+    if has("Matrix") {
+        return FixtureShape::PixelPanel;
+    }
+    if has("Strobe") {
+        return FixtureShape::Strobe;
+    }
+    match focus {
+        Some(FocusType::Head) => return FixtureShape::MovingHead,
+        Some(FocusType::Mirror | FocusType::Barrel) => return FixtureShape::Scanner,
+        _ if moves => return FixtureShape::MovingHead,
+        _ => {}
+    }
+    if let Some(m) = matrix {
+        if m.rows == 1 && m.cols >= 4 {
+            return FixtureShape::Bar;
+        }
+        if m.rows > 1 && m.cols > 1 {
+            return FixtureShape::PixelPanel;
+        }
+    }
+    let lens = physical.and_then(|p| p.lens_name.as_deref()).unwrap_or_default().to_ascii_lowercase();
+    if lens.contains("profile") || lens.contains("ellips") {
+        return FixtureShape::Profile;
+    }
+    if let Some([w, h, d]) = physical.and_then(|p| p.dimensions_mm) {
+        // 宽度远大于高和深：灯条；宽高都远大于深：面板 / 泛光
+        if w >= 3.0 * h.max(d) {
+            return FixtureShape::Bar;
+        }
+        if w.min(h) >= 2.0 * d {
+            return FixtureShape::Wash;
+        }
+    }
+    if has("Color Changer") || has("Dimmer") {
+        return FixtureShape::Par;
+    }
+    FixtureShape::Generic
 }
 
 fn str_of<'a>(obj: &'a Obj, key: &str) -> Option<&'a str> {
@@ -1584,6 +1697,55 @@ mod tests {
         assert_eq!(props[0].function, ChannelFunction::Dimmer);
         assert_eq!(props[1].function, ChannelFunction::Other);
         assert!(has_warning(&r, ImportWarningKind::DuplicateFunctionDemoted, "Strobe Dimmer"));
+    }
+
+    #[test]
+    fn 物理参数与外形模板() {
+        let j = r#"{"name":"Spot","categories":["Moving Head"],
+          "physical":{"dimensions":[300,450,250],"weight":12.5,"power":250,
+            "lens":{"name":"PC","degreesMinMax":[12,30]},"focus":{"type":"Head","panMax":540,"tiltMax":270}},
+          "availableChannels":{"Pan":{"capability":{"type":"Pan","angleStart":"0deg","angleEnd":"540deg"}}},
+          "modes":[{"name":"1ch","channels":["Pan"]}]}"#;
+        let m = &import_ofl(j, "acme/spot").expect("应能导入").models[0];
+        let p = m.physical.as_ref().expect("有物理参数");
+        assert_eq!(p.dimensions_mm, Some([300.0, 450.0, 250.0]));
+        assert_eq!((p.weight_kg, p.power_w), (Some(12.5), Some(250.0)));
+        assert_eq!(p.lens_name.as_deref(), Some("PC"));
+        assert_eq!(p.focus_type, Some(FocusType::Head));
+        let a = m.appearance.as_ref().expect("有外观");
+        assert_eq!((a.shape, a.origin), (FixtureShape::MovingHead, AppearanceOrigin::Rule));
+        assert_eq!(m.source.as_ref().map(|s| s.recognizer), Some(OFL_RECOGNIZER_VERSION));
+
+        // 尺寸缺一维时不导入尺寸；分类不说明外形时按像素排布判断
+        let j = r#"{"name":"Bar","categories":["Color Changer"],"matrix":{"pixelCount":[8,1,1]},
+          "physical":{"dimensions":[1000,80]},
+          "templateChannels":{"Red $pixelKey":{"capability":{"type":"ColorIntensity","color":"Red"}}},
+          "modes":[{"name":"8ch","channels":[{"insert":"matrixChannels","repeatFor":"eachPixelXYZ","channelOrder":"perPixel","templateChannels":["Red $pixelKey"]}]}]}"#;
+        let m = &import_ofl(j, "acme/bar").expect("应能导入").models[0];
+        assert!(m.physical.is_none());
+        assert_eq!(m.appearance.as_ref().map(|a| a.shape), Some(FixtureShape::Bar));
+        assert_eq!(shape_of(&["Color Changer"], None, None, &[]), FixtureShape::Par);
+        assert_eq!(shape_of(&["Smoke"], None, None, &[]), FixtureShape::Fogger);
+        assert_eq!(shape_of(&[], None, None, &[]), FixtureShape::Generic);
+    }
+
+    #[test]
+    fn 色轮槽位按名字查色_分色片保留第二种颜色() {
+        let j = r##"{"name":"x",
+          "wheels":{"Color Wheel":{"slots":[{"type":"Open"},{"type":"Color","name":"Congo Blue"},
+            {"type":"Color","colors":["#ff0000","#0000ff"]},{"type":"Color","name":"Mystery"}]}},
+          "availableChannels":{"Color Wheel":{"capabilities":[
+            {"dmxRange":[0,63],"type":"WheelSlot","slotNumber":1},
+            {"dmxRange":[64,127],"type":"WheelSlot","slotNumber":2},
+            {"dmxRange":[128,191],"type":"WheelSlot","slotNumber":3},
+            {"dmxRange":[192,255],"type":"WheelSlot","slotNumber":4}]}},
+          "modes":[{"name":"1ch","channels":["Color Wheel"]}]}"##;
+        let m = &import_ofl(j, "x/y").expect("应能导入").models[0];
+        let caps = &m.properties[0].capabilities;
+        assert_eq!(caps[0].color, None);
+        assert_eq!(caps[1].color, lookup_color_name("Congo Blue"));
+        assert_eq!((caps[2].color, caps[2].color_alt), (Some([255, 0, 0]), Some([0, 0, 255])));
+        assert_eq!(caps[3].color, None);
     }
 
     #[test]

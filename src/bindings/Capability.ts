@@ -33,6 +33,15 @@ unit?: string,
  */
 color?: [number, number, number], 
 /**
+ * 分色片的第二种颜色（sRGB）；预览取两色平均，按颜色选槽位时跳过分色片。
+ */
+colorAlt?: [number, number, number], 
+/**
+ * 图案槽位的图案（3D 舞台投射用）：`builtin:<名称>` 为内置图案，64 位十六进制为资源库里的图案图片；
+ * 省略时按槽位名自动匹配。
+ */
+pattern?: string, 
+/**
  * 区间的语义（开光、关光、频闪、槽位…），供引擎与特效生成器按语义选值；未知时为 `None`。
  */
 tag?: CapabilityTag, };

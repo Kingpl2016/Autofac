@@ -67,6 +67,22 @@ describe("validateModel", () => {
     expect(validateModel(model(props, { matrix: { cols: 0, rows: 1 } }))?.code).toBe("badMatrix");
   });
 
+  it("物理参数与外观：数值为正，图标是图片、3D 模型是 GLB", () => {
+    const hash = "a".repeat(64);
+    const ok = model([prop()], {
+      physical: { dimensionsMm: [300, 450, 250], weightKg: 12, lensName: "PC", focusType: "head" },
+      appearance: { shape: "movingHead", origin: "ai", icon: { hash, format: "svg", name: "a.svg" }, model3d: { hash, format: "glb", name: "a.glb" } },
+    });
+    expect(validateModel(ok)).toBeNull();
+    expect(validateModel({ ...ok, physical: { dimensionsMm: [0, 1, 1] } })?.code).toBe("badPhysical");
+    expect(validateModel({ ...ok, appearance: { shape: "par", origin: "user", model3d: { hash, format: "png", name: "" } } })?.code).toBe(
+      "badAppearance",
+    );
+    expect(validateModel({ ...ok, appearance: { shape: "par", origin: "user", icon: { hash: "ABC", format: "svg", name: "" } } })?.code).toBe(
+      "badAppearance",
+    );
+  });
+
   it("附加模式：编号非空且唯一，布局各自校验", () => {
     const mode = { id: "5ch", name: "5ch", properties: [prop()] };
     expect(validateModel(model([prop()], { modes: [mode] }))).toBeNull();

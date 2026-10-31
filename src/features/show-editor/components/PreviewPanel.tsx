@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -17,6 +17,9 @@ import { MediaPlayers } from "./MediaPlayers";
 import { PanelFrame } from "./PanelFrame";
 import { RecentFilesList } from "./RecentFilesList";
 import { SwatchView } from "./SwatchView";
+
+/** 3D 舞台（three.js）按需加载：不进编辑器首屏，切回别的视图时整个卸载并释放 WebGL 资源。 */
+const Stage3DView = lazy(() => import("../stage3d/Stage3DView").then((m) => ({ default: m.Stage3DView })));
 
 /**
  * 中间预览区：视频画面（有视频素材时）和每台灯具在播放头时刻的颜色。
@@ -57,11 +60,17 @@ export function PreviewPanel({ onOpenRecent }: { onOpenRecent?: (item: RecentFil
     </div>
   );
 
-  if (view === "stage") {
+  if (view === "stage" || view === "stage3d") {
     return (
       <PanelFrame title={t("editor.preview.title")} className="bg-surface-1" actions={viewSwitch} noScroll>
         <div className="relative h-full min-h-0">
-          <StageMonitor />
+          {view === "stage" ? (
+            <StageMonitor />
+          ) : (
+            <Suspense fallback={<p className="p-3 text-xs text-muted-foreground">{t("common.loading")}</p>}>
+              <Stage3DView />
+            </Suspense>
+          )}
           {/* 视频画中画（没有视频时这里不显示任何东西，音频元素本身是隐藏的） */}
           <div className="pointer-events-none absolute bottom-10 right-2 w-1/3 max-w-72 [&_video]:max-h-40 [&_video]:shadow-lg">
             <MediaPlayers />

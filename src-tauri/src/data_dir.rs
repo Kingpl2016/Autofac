@@ -20,7 +20,10 @@
 //! data/
 //!   settings.json  devices.json  forwarding.json  net-devices.json
 //!   fixtures.json  ui-prefs.json  signal-checker.json  show-autosave.artshow
+//!   ofl-catalog.json  ai-profiles.json  mcp-servers.json
 //!   recordings/    节目库（.artrec / .artrec.show / .artrec.json …）
+//!   fixture-assets/  灯具资源库：index.json、icons/、models/、thumbs/（文件按内容 SHA-256 命名）
+//!   skills/  trash/  ai-history/  AI 助手的技能、回收站（30 天）与对话记录
 //!   cache/         可随时删除的缓存（波形峰值等）
 //!   logs/          日志
 //! ```

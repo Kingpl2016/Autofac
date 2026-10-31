@@ -1,12 +1,13 @@
 import { z } from "zod";
 
 import { errorMessage } from "@/shared/lib/errors";
-import { CHANNEL_FUNCTIONS } from "@/features/fixtures";
+import { APPEARANCE_ORIGINS, ASSET_FORMATS, CHANNEL_FUNCTIONS, FIXTURE_SHAPES, FOCUS_TYPES } from "@/features/fixtures";
 import {
   CUE_TAGS,
   DMX_CHANNELS,
   MAX_UNIVERSE,
   PROJECT_VERSION,
+  STAGE_OBJECT_KINDS,
   TRACK_HEIGHT_PX,
   type ShowProject,
 } from "./project";
@@ -27,6 +28,11 @@ const capability = z.object({
   physical: z.tuple([z.number(), z.number()]).optional(),
   unit: z.string().optional(),
   color: rgb.optional(),
+  colorAlt: rgb.optional(),
+  pattern: z
+    .string()
+    .regex(/^(builtin:[a-z0-9-]{1,32}|[0-9a-f]{64})$/)
+    .optional(),
   tag: z
     .enum(["shutterOpen", "shutterClosed", "strobe", "noFunction", "slot", "rotation", "effect", "maintenance"])
     .optional(),
@@ -47,6 +53,12 @@ const fixtureProperty = z.object({
   invert: z.boolean().optional(),
   head: z.number().int().min(0).optional(),
   capabilities: z.array(capability).optional(),
+});
+
+const assetRef = z.object({
+  hash: z.string().regex(/^[0-9a-f]{64}$/),
+  format: z.enum(ASSET_FORMATS),
+  name: z.string().max(255).default(""),
 });
 
 const fixtureModel = z.object({
@@ -78,6 +90,19 @@ const fixtureModel = z.object({
       tiltRangeDeg: z.number().positive().optional(),
       beamMinDeg: z.number().positive().optional(),
       beamMaxDeg: z.number().positive().optional(),
+      dimensionsMm: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]).optional(),
+      weightKg: z.number().positive().optional(),
+      powerW: z.number().positive().optional(),
+      lensName: z.string().max(64).optional(),
+      focusType: z.enum(FOCUS_TYPES).optional(),
+    })
+    .optional(),
+  appearance: z
+    .object({
+      shape: z.enum(FIXTURE_SHAPES).default("generic"),
+      icon: assetRef.refine((r) => r.format !== "glb").optional(),
+      model3d: assetRef.refine((r) => r.format === "glb").optional(),
+      origin: z.enum(APPEARANCE_ORIGINS).default("rule"),
     })
     .optional(),
   source: z.object({ kind: z.string(), key: z.string(), recognizer: z.number().int().min(0) }).optional(),
@@ -294,13 +319,33 @@ const patchAddress = z.object({
 
 const stageObject = z.object({
   id: z.string().min(1),
-  kind: z.enum(["truss", "rect", "circle", "label"]),
+  kind: z.enum(STAGE_OBJECT_KINDS),
   x: z.number(),
   y: z.number(),
   w: z.number().min(0),
   h: z.number().min(0),
   rotation: z.number(),
   label: z.string(),
+  z: z.number().min(0).max(100).optional(),
+  height: z.number().min(0).max(100).optional(),
+  points: z.array(z.tuple([z.number().min(-200).max(200), z.number().min(-200).max(200)])).min(3).max(64).optional(),
+  steps: z.number().int().min(1).max(50).optional(),
+  content: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("media"), mediaId: z.string().min(1) }),
+      z.object({ kind: z.literal("fixture"), fixtureId: z.string().min(1) }),
+    ])
+    .optional(),
+});
+
+const stageVenue = z.object({
+  hash: z.string().regex(/^[0-9a-f]{64}$/),
+  name: z.string().max(255),
+  x: z.number().min(-1000).max(1000),
+  y: z.number().min(-1000).max(1000),
+  z: z.number().min(-100).max(100),
+  rotation: z.number(),
+  scale: z.number().positive().max(1000),
 });
 
 const DEFAULT_STAGE_SHAPE = { width: 12, depth: 8, objects: [], backgroundPath: null };
@@ -326,6 +371,7 @@ export const projectSchema = z.object({
           y: z.number(),
           z: z.number().optional(),
           rotation: z.number().optional(),
+          pitch: z.number().min(-90).max(90).optional(),
           hanging: z.boolean().optional(),
         })
         .optional(),
@@ -434,6 +480,9 @@ export const projectSchema = z.object({
     .object({
       width: z.number().positive(),
       depth: z.number().positive(),
+      height: z.number().min(0).max(20).optional(),
+      haze: fraction.optional(),
+      venue: stageVenue.optional(),
       objects: z.array(stageObject),
       backgroundPath: z.string().nullable(),
     })
@@ -489,6 +538,10 @@ const MIGRATIONS: Record<number, (raw: RawProject) => RawProject> = {
   },
   // v3 → v4：新增像素引用（`灯具id#像素号`），结构不变。
   3: (raw) => ({ ...raw, version: 4 }),
+  // v4 → v5：三维舞台的可选字段（俯仰角、台面高度、物件高度）与模型外观，结构不变。
+  4: (raw) => ({ ...raw, version: 5 }),
+  // v5 → v6：新的布景类型、烟雾浓度、场馆模型与图案槽位，都可省略，结构不变。
+  5: (raw) => ({ ...raw, version: 6 }),
 };
 
 /** 迁移结果。 */

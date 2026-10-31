@@ -24,6 +24,7 @@ vi.mock("@/features/ai", async () => ({
   loadLanguageModel: vi.fn(),
   aiErrorText: (_t: unknown, e: unknown) => String(e),
   isAiAbort: () => false,
+  openAiModelsDialog: () => undefined,
 }));
 
 beforeAll(() => {

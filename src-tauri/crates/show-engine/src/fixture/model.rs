@@ -375,6 +375,15 @@ pub struct Capability {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub color: Option<[u8; 3]>,
+    /// 分色片的第二种颜色（sRGB）；预览取两色平均，按颜色选槽位时跳过分色片。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub color_alt: Option<[u8; 3]>,
+    /// 图案槽位的图案（3D 舞台投射用）：`builtin:<名称>` 为内置图案，64 位十六进制为资源库里的图案图片；
+    /// 省略时按槽位名自动匹配。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub pattern: Option<String>,
     /// 区间的语义（开光、关光、频闪、槽位…），供引擎与特效生成器按语义选值；未知时为 `None`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -599,6 +608,207 @@ pub struct Physical {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub beam_max_deg: Option<f64>,
+    /// 外形尺寸 `[宽, 高, 深]`（毫米），3D 舞台据此缩放外形。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub dimensions_mm: Option<[f64; 3]>,
+    /// 重量（千克）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub weight_kg: Option<f64>,
+    /// 功率（瓦）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub power_w: Option<f64>,
+    /// 镜头名称，例如 `Fresnel`、`PC`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub lens_name: Option<String>,
+    /// 光束的运动方式（摇头、扫描镜、筒体、固定）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub focus_type: Option<FocusType>,
+}
+
+/// 光束的运动方式（对应 OFL 的 `physical.focus.type`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub enum FocusType {
+    /// 整个灯头转动（摇头灯）。
+    Head,
+    /// 镜子反射（扫描灯）。
+    Mirror,
+    /// 筒体转动。
+    Barrel,
+    /// 固定不动。
+    Fixed,
+}
+
+/// 灯具外形模板：3D 舞台按它生成默认几何体，2D 图标按它选内置图标。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub enum FixtureShape {
+    /// 摇头灯（底座 + 摇臂 + 灯头）。
+    MovingHead,
+    /// 扫描灯（固定灯体 + 反射镜）。
+    Scanner,
+    /// 帕灯（圆筒）。
+    Par,
+    /// 泛光 / 洗墙（宽扁灯体）。
+    Wash,
+    /// 成像灯（长筒）。
+    Profile,
+    /// 灯条。
+    Bar,
+    /// 像素面板 / 矩阵。
+    PixelPanel,
+    /// 频闪灯。
+    Strobe,
+    /// 观众灯（多灯珠面板）。
+    Blinder,
+    /// 烟机 / 雾机。
+    Fogger,
+    /// 激光。
+    Laser,
+    /// 通用方盒（无法判断时）。
+    #[default]
+    Generic,
+}
+
+/// 资源文件格式（3D 文件导入时统一转成 GLB）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub enum AssetFormat {
+    /// SVG 矢量图标。
+    Svg,
+    /// PNG 图标。
+    Png,
+    /// WebP 图标。
+    Webp,
+    /// glTF 二进制 3D 模型。
+    Glb,
+}
+
+impl AssetFormat {
+    /// 是否是 2D 图标格式。
+    ///
+    /// # Returns
+    ///
+    /// `Svg` / `Png` / `Webp` 为 `true`。
+    #[must_use]
+    pub fn is_image(self) -> bool {
+        matches!(self, Self::Svg | Self::Png | Self::Webp)
+    }
+
+    /// 资源文件的扩展名（小写，不含点）。
+    ///
+    /// # Returns
+    ///
+    /// 例如 `svg`、`glb`。
+    #[must_use]
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Svg => "svg",
+            Self::Png => "png",
+            Self::Webp => "webp",
+            Self::Glb => "glb",
+        }
+    }
+}
+
+/// 资源库里一个文件的引用（文件按内容的 SHA-256 命名，见 `data/fixture-assets/`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct AssetRef {
+    /// 内容散列：64 位小写十六进制 SHA-256。
+    pub hash: String,
+    /// 文件格式。
+    pub format: AssetFormat,
+    /// 原始文件名（只用于显示）。
+    #[serde(default)]
+    pub name: String,
+}
+
+impl AssetRef {
+    /// 散列是否是 64 位小写十六进制。
+    ///
+    /// # Returns
+    ///
+    /// 合法时为 `true`。
+    #[must_use]
+    pub fn has_valid_hash(&self) -> bool {
+        is_sha256_hex(&self.hash)
+    }
+}
+
+/// 字符串是否是 64 位小写十六进制（SHA-256 散列）。
+///
+/// # Arguments
+///
+/// * `s` - 待检查的字符串。
+///
+/// # Returns
+///
+/// 合法时为 `true`。
+#[must_use]
+pub fn is_sha256_hex(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// 图案引用是否合法：`builtin:` 加 1~32 个小写字母、数字或连字符，或 64 位小写十六进制散列。
+///
+/// # Arguments
+///
+/// * `s` - 引用。
+///
+/// # Returns
+///
+/// 合法时为 `true`。
+#[must_use]
+pub fn is_pattern_ref(s: &str) -> bool {
+    match s.strip_prefix("builtin:") {
+        Some(id) => (1..=32).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+        None => is_sha256_hex(s),
+    }
+}
+
+/// 外形是怎么来的。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub enum AppearanceOrigin {
+    /// 导入时按规则推断。
+    #[default]
+    Rule,
+    /// AI 助手建议、用户确认。
+    Ai,
+    /// 用户手动设置。
+    User,
+}
+
+/// 灯具外观：外形模板与可选的 2D 图标、3D 模型。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct Appearance {
+    /// 外形模板（没有 3D 文件或文件缺失时按它生成几何体）。
+    #[serde(default)]
+    pub shape: FixtureShape,
+    /// 2D 图标（SVG / PNG / WebP）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub icon: Option<AssetRef>,
+    /// 3D 模型（GLB）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub model3d: Option<AssetRef>,
+    /// 来源。
+    #[serde(default)]
+    pub origin: AppearanceOrigin,
 }
 
 /// 灯具物模型（一类灯具的模板）。
@@ -645,6 +855,10 @@ pub struct FixtureModel {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub physical: Option<Physical>,
+    /// 外观（外形模板、2D 图标、3D 模型）；省略时界面按通道推断外形。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub appearance: Option<Appearance>,
     /// 模型来源（OFL 导入时记录灯具标识与识别规则版本，用于判断是否需要重新导入）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -753,6 +967,12 @@ impl FixtureModel {
                 return Err(FixtureError::BadMode { id: mode.id.clone() });
             }
         }
+        if let Some(p) = &self.physical {
+            validate_physical(p)?;
+        }
+        if let Some(a) = &self.appearance {
+            validate_appearance(a)?;
+        }
         let heads = self.head_count();
         validate_layout(&self.properties, heads)?;
         for mode in &self.modes {
@@ -760,6 +980,33 @@ impl FixtureModel {
         }
         Ok(())
     }
+}
+
+/// 镜头名称的最大长度（字符数）。
+const MAX_LENS_NAME: usize = 64;
+/// 资源原始文件名的最大长度（字符数）。
+const MAX_ASSET_NAME: usize = 255;
+
+/// 校验物理参数：数值有限且为正，镜头名不过长。
+fn validate_physical(p: &Physical) -> Result<(), FixtureError> {
+    let positive = |v: Option<f64>| v.is_none_or(|x| x.is_finite() && x > 0.0);
+    let ok = positive(p.pan_range_deg)
+        && positive(p.tilt_range_deg)
+        && positive(p.beam_min_deg)
+        && positive(p.beam_max_deg)
+        && positive(p.weight_kg)
+        && positive(p.power_w)
+        && p.dimensions_mm.is_none_or(|d| d.iter().all(|x| x.is_finite() && *x > 0.0))
+        && p.lens_name.as_ref().is_none_or(|n| n.chars().count() <= MAX_LENS_NAME);
+    if ok { Ok(()) } else { Err(FixtureError::BadPhysical) }
+}
+
+/// 校验外观：散列合法，图标是图片格式、3D 模型是 GLB。
+fn validate_appearance(a: &Appearance) -> Result<(), FixtureError> {
+    let valid = |r: &AssetRef| r.has_valid_hash() && r.name.chars().count() <= MAX_ASSET_NAME;
+    let icon_ok = a.icon.as_ref().is_none_or(|r| valid(r) && r.format.is_image());
+    let model_ok = a.model3d.as_ref().is_none_or(|r| valid(r) && r.format == AssetFormat::Glb);
+    if icon_ok && model_ok { Ok(()) } else { Err(FixtureError::BadAppearance) }
 }
 
 /// 一个通道布局占用的通道数。
@@ -861,6 +1108,9 @@ fn validate_capabilities(p: &FixtureProperty) -> Result<(), FixtureError> {
             && (!a.is_finite() || !b.is_finite()) {
                 return Err(bad());
             }
+        if c.pattern.as_deref().is_some_and(|s| !is_pattern_ref(s)) {
+            return Err(bad());
+        }
         prev_end = Some(hi);
     }
     Ok(())
@@ -938,6 +1188,12 @@ pub enum FixtureError {
         /// 属性英文代码。
         code: String,
     },
+    /// 物理参数不是有限正数，或镜头名过长。
+    #[error("物理参数无效")]
+    BadPhysical,
+    /// 外观引用的资源散列或格式无效。
+    #[error("外观资源引用无效")]
+    BadAppearance,
 }
 
 impl FixtureError {
@@ -963,6 +1219,8 @@ impl FixtureError {
             Self::BadMode { .. } => "bad_mode",
             Self::BadMatrix => "bad_matrix",
             Self::HeadOutOfRange { .. } => "head_out_of_range",
+            Self::BadPhysical => "bad_physical",
+            Self::BadAppearance => "bad_appearance",
         }
     }
 }
@@ -1243,6 +1501,54 @@ mod tests {
         assert!(out.get("modes").is_none());
         assert!(out["properties"][0].get("head").is_none());
         assert!(out["properties"][0].get("capabilities").is_none());
+        assert!(out.get("appearance").is_none() && out.get("physical").is_none());
+    }
+
+    #[test]
+    fn 物理参数与外观_往返并校验() {
+        let hash = "a".repeat(64);
+        let mut m = model(vec![prop("D", ChannelFunction::Dimmer, 1, 1)]);
+        m.physical = Some(Physical {
+            dimensions_mm: Some([300.0, 450.0, 250.0]),
+            weight_kg: Some(12.5),
+            lens_name: Some("PC".into()),
+            focus_type: Some(FocusType::Head),
+            ..Physical::default()
+        });
+        m.appearance = Some(Appearance {
+            shape: FixtureShape::MovingHead,
+            icon: Some(AssetRef { hash: hash.clone(), format: AssetFormat::Svg, name: "a.svg".into() }),
+            model3d: Some(AssetRef { hash: hash.clone(), format: AssetFormat::Glb, name: "a.glb".into() }),
+            origin: AppearanceOrigin::Ai,
+        });
+        assert_eq!(m.validate(), Ok(()));
+        let json = serde_json::to_value(&m).expect("应能序列化");
+        assert_eq!(json["physical"]["dimensionsMm"][1], 450.0);
+        assert_eq!(json["physical"]["focusType"], "head");
+        assert_eq!(json["appearance"]["shape"], "movingHead");
+        assert_eq!(json["appearance"]["model3d"]["format"], "glb");
+        let back: FixtureModel = serde_json::from_value(json).expect("应能解析");
+        assert_eq!(back, m);
+
+        // 3D 模型必须是 GLB，图标必须是图片
+        let mut bad = m.clone();
+        bad.appearance.as_mut().expect("有外观").model3d.as_mut().expect("有模型").format = AssetFormat::Png;
+        assert_eq!(bad.validate(), Err(FixtureError::BadAppearance));
+        let mut bad = m.clone();
+        bad.appearance.as_mut().expect("有外观").icon.as_mut().expect("有图标").hash = "ABC".into();
+        assert_eq!(bad.validate(), Err(FixtureError::BadAppearance));
+        let mut bad = m.clone();
+        bad.physical.as_mut().expect("有参数").dimensions_mm = Some([0.0, 1.0, 1.0]);
+        assert_eq!(bad.validate(), Err(FixtureError::BadPhysical));
+        assert!(is_sha256_hex(&hash) && !is_sha256_hex(&"A".repeat(64)));
+        assert!(is_pattern_ref("builtin:dots") && is_pattern_ref(&hash));
+        assert!(!is_pattern_ref("builtin:") && !is_pattern_ref("builtin:Dots") && !is_pattern_ref("dots"));
+        let mut gobo = model(vec![prop("G", ChannelFunction::Gobo, 1, 1)]);
+        gobo.properties[0].capabilities =
+            vec![Capability { range: [0, 255], label: "Dots".into(), pattern: Some("builtin:dots".into()), ..Capability::default() }];
+        assert_eq!(gobo.validate(), Ok(()));
+        gobo.properties[0].capabilities[0].pattern = Some("../x.png".into());
+        assert!(matches!(gobo.validate(), Err(FixtureError::BadCapability { .. })));
     }
 
     #[test]

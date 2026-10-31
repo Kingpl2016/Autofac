@@ -1,11 +1,10 @@
 import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { Bot, Brain, Loader2, SquarePen, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { useActiveAiProfile } from "@/features/ai";
+import { openAiModelsDialog, useActiveAiProfile } from "@/features/ai";
 import { cn } from "@/lib/utils";
 import { collapsePanel } from "../../hooks/panelControl";
 import { useSkillDrop } from "../../hooks/useSkillDrop";
@@ -23,7 +22,6 @@ const AiChatPanel = lazy(() => import("./AiChatPanel").then((m) => ({ default: m
  */
 export function AiDock() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { profile, loading } = useActiveAiProfile(useAiChatStore((s) => s.profileId));
   const staged = useAiStagingStore((s) => s.staged);
   const epoch = useAiChatStore((s) => s.epoch);
@@ -91,7 +89,7 @@ export function AiDock() {
         {loading ? null : !profile ? (
           <div className="grid gap-2 p-4 text-sm">
             <p className="text-muted-foreground">{t("ai.errors.no_profile")}</p>
-            <Button variant="outline" size="sm" onClick={() => navigate("/settings#ai")}>
+            <Button variant="outline" size="sm" onClick={openAiModelsDialog}>
               {t("editor.ai.openSettings")}
             </Button>
           </div>

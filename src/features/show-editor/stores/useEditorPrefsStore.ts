@@ -8,8 +8,8 @@ import { effectParamsSchema, type EffectParams } from "../lib/effectDefSchema";
 import { SHEET_FILTERS, SHEET_READOUTS, SHEET_SORTS, type SheetFilter, type SheetReadout, type SheetSort } from "../lib/fixtureSheet";
 import { ATTRIBUTE_GROUPS, FIXTURE_TYPES, type AttributeGroup } from "@/features/fixtures";
 
-/** 中间区域的视图：色块预览、舞台监视器、灯具表（色块为默认）。 */
-export const CENTER_VIEWS = ["swatches", "stage", "sheet"] as const;
+/** 中间区域的视图：色块预览、舞台监视器（俯视）、3D 舞台、灯具表（色块为默认）。 */
+export const CENTER_VIEWS = ["swatches", "stage", "stage3d", "sheet"] as const;
 
 /** 中间区域的视图。 */
 export type CenterView = (typeof CENTER_VIEWS)[number];
@@ -95,10 +95,26 @@ export interface StagePrefs {
   arcSweep: number;
   /** “排成网格”的列数；0 为自动（约为平方根） */
   gridColumns: number;
+  /** 3D 舞台的光束画质 */
+  beamQuality: BeamQuality;
 }
 
+/** 3D 舞台的光束画质：自动（按帧率调节）、高、中、低（含义见 `stage3d/quality.ts`）。 */
+export const BEAM_QUALITIES = ["auto", "high", "mid", "low"] as const;
+
+/** 3D 舞台的光束画质。 */
+export type BeamQuality = (typeof BEAM_QUALITIES)[number];
+
 /** 舞台偏好的默认值。 */
-export const DEFAULT_STAGE_PREFS: StagePrefs = { bloom: true, labels: "selected", snapM: 0.25, backgroundOpacity: 0.45, arcSweep: 90, gridColumns: 0 };
+export const DEFAULT_STAGE_PREFS: StagePrefs = {
+  bloom: true,
+  labels: "selected",
+  snapM: 0.25,
+  backgroundOpacity: 0.45,
+  arcSweep: 90,
+  gridColumns: 0,
+  beamQuality: "auto",
+};
 
 /**
  * 规整舞台偏好：逐字段兜底。
@@ -117,6 +133,7 @@ export function sanitizeStagePrefs(raw: unknown, fallback: StagePrefs): StagePre
     backgroundOpacity: finite(r.backgroundOpacity) ? Math.min(1, Math.max(0.05, r.backgroundOpacity)) : fallback.backgroundOpacity,
     arcSweep: finite(r.arcSweep) ? Math.round(Math.min(359, Math.max(10, r.arcSweep))) : fallback.arcSweep,
     gridColumns: finite(r.gridColumns) ? Math.round(Math.min(64, Math.max(0, r.gridColumns))) : fallback.gridColumns,
+    beamQuality: BEAM_QUALITIES.includes(r.beamQuality as BeamQuality) ? (r.beamQuality as BeamQuality) : fallback.beamQuality,
   };
 }
 

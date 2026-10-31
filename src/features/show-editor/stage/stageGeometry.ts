@@ -240,14 +240,83 @@ export function hitObject(
     const o = objects[i];
     const dx = s.x - o.x;
     const dy = s.y - o.y;
-    if (o.kind === "circle") {
+    if (o.kind === "circle" || o.kind === "pillar") {
       if (Math.hypot(dx, dy) <= o.w / 2 + tol) return o.id;
       continue;
     }
     const a = (o.rotation * Math.PI) / 180;
     const lx = dx * Math.cos(a) + dy * Math.sin(a);
     const ly = -dx * Math.sin(a) + dy * Math.cos(a);
+    if (o.kind === "polygon" && o.points && o.points.length >= 3) {
+      if (pointInPolygon(o.points, lx, ly) || nearPolygonEdge(o.points, lx, ly, tol)) return o.id;
+      continue;
+    }
     if (Math.abs(lx) <= o.w / 2 + tol && Math.abs(ly) <= o.h / 2 + tol) return o.id;
   }
   return null;
+}
+
+/**
+ * 点是否在多边形内（射线法，非零 / 奇偶在简单多边形上一致）。
+ *
+ * @param pts 顶点。
+ * @param x 点 x。
+ * @param y 点 y。
+ * @returns 是否在内部。
+ */
+export function pointInPolygon(pts: readonly (readonly [number, number])[], x: number, y: number): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i];
+    const [xj, yj] = pts[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** 点到多边形任一条边的距离是否在容差内。 */
+function nearPolygonEdge(pts: readonly (readonly [number, number])[], x: number, y: number, tol: number): boolean {
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [ax, ay] = pts[j];
+    const [bx, by] = pts[i];
+    const vx = bx - ax;
+    const vy = by - ay;
+    const len2 = vx * vx + vy * vy;
+    const t = len2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * vx + (y - ay) * vy) / len2)) : 0;
+    if (Math.hypot(x - ax - vx * t, y - ay - vy * t) <= tol) return true;
+  }
+  return false;
+}
+
+/**
+ * 点选多边形物件的顶点手柄（编辑顶点用）。
+ *
+ * @param o 多边形物件。
+ * @param view 换算。
+ * @param px 指针 x（画布）。
+ * @param py 指针 y（画布）。
+ * @param tolerancePx 容差（像素）。
+ * @returns 顶点下标；没有命中时为 `-1`。
+ */
+export function hitPolygonVertex(o: StageObject, view: StageView, px: number, py: number, tolerancePx = 6): number {
+  if (o.kind !== "polygon" || !o.points) return -1;
+  const s = toStage(view, px, py);
+  const { x, y } = objectLocal(o, s.x, s.y);
+  const tol = tolerancePx / view.scale;
+  return o.points.findIndex(([vx, vy]) => Math.abs(vx - x) <= tol && Math.abs(vy - y) <= tol);
+}
+
+/**
+ * 舞台坐标换算到物件自身坐标（相对中心、旋转前）。
+ *
+ * @param o 物件。
+ * @param x 舞台 x。
+ * @param y 舞台 y。
+ * @returns 本地坐标。
+ */
+export function objectLocal(o: Pick<StageObject, "x" | "y" | "rotation">, x: number, y: number): { x: number; y: number } {
+  const a = (o.rotation * Math.PI) / 180;
+  const dx = x - o.x;
+  const dy = y - o.y;
+  return { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
 }

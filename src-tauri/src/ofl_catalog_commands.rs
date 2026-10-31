@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 use serde::Serialize;
 use show_engine::fixture::{
-    build_catalog, import_from_bundle, Catalog, CatalogPage, CatalogQuery, CatalogStatus, CatalogSummary,
+    build_catalog, import_from_bundle, ofl_digest, Catalog, CatalogPage, CatalogQuery, CatalogStatus, CatalogSummary,
     FixtureModel, OflBundle, CATALOG_VERSION, OFL_RECOGNIZER_VERSION,
 };
 use tauri::{AppHandle, Emitter as _, Manager, State};
@@ -213,6 +213,43 @@ pub fn ofl_catalog_keys(
     let catalog = state.current().ok_or_else(|| ERR_CATALOG_MISSING.to_owned())?;
     let status = status_lookup(fixtures.with(|lib| lib.list()));
     Ok(catalog.matching_keys(&query, &status))
+}
+
+/// AI 助手读到的 OFL 摘要的大小上限（字节）。
+const MAX_DIGEST_BYTES: usize = 16 * 1024;
+
+/// 读一个灯具的 OFL 原文摘要（名称、分类、物理参数、轮子槽位、通道能力、模式、说明书链接），给 AI 助手看。
+///
+/// 按目录记录的路径重新打开包并核对指纹；重定向项读它指向的灯具。
+///
+/// # Arguments
+///
+/// * `state` - 目录状态。
+/// * `key` - 灯具标识（`制造商/灯具`，即模型来源里的 `key`）。
+///
+/// # Returns
+///
+/// 摘要 JSON 文本（不超过 16 KiB）。
+///
+/// # Errors
+///
+/// 没有目录（`catalog_missing`）、目录里没有这个灯具（`not_found`）、包已变化（`catalog_stale`）或无法打开（`bundle_*`）、
+/// 原文不是 JSON（`import_failed:open`）。
+#[tauri::command]
+pub async fn ofl_fixture_digest(state: State<'_, OflCatalogState>, key: String) -> Result<String, String> {
+    let catalog = state.current().ok_or_else(|| ERR_CATALOG_MISSING.to_owned())?;
+    let entry = catalog.entries.iter().find(|e| e.key == key).ok_or_else(|| "not_found".to_owned())?;
+    let target = entry.redirect_to.clone().unwrap_or_else(|| key.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut bundle = OflBundle::open(Path::new(&catalog.source)).map_err(|e| e.code().to_owned())?;
+        if bundle.fingerprint() != catalog.fingerprint {
+            return Err("catalog_stale".to_owned());
+        }
+        let text = bundle.read(&target).map_err(|e| e.code().to_owned())?;
+        ofl_digest(&text, MAX_DIGEST_BYTES).map_err(|e| e.code())
+    })
+    .await
+    .map_err(|_| "io".to_owned())?
 }
 
 /// 从目录导入勾选的灯具，合并进灯具库（同编号覆盖）。

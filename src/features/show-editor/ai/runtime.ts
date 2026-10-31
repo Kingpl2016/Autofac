@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 
 import type { LoadedModel } from "@/features/ai";
+import { oflFixtureDigest } from "@/features/fixtures";
 import { errorMessage } from "@/shared/lib/errors";
 import { moverIds } from "../lib/autoDraft";
 import type { TimelineAnalysis } from "../lib/mediaAnalysis";
@@ -29,6 +30,7 @@ import {
 } from "./context";
 import { draftAccentOps, draftPlanToOps, draftSpans, spansText, withAnalysedEnergy } from "./draft";
 import type { EditorSnapshot } from "./env";
+import { fixtureAssetsText, fixtureModelText, resolveModelRef } from "./fixtureAdapt";
 import { aiOpsSchema, draftPlanSchema, type AiOps, type DraftPlan } from "./opsSchema";
 import { toPortableJsonSchema, validateWith } from "./portableSchema";
 import { compactHistory } from "./compact";
@@ -237,6 +239,7 @@ function rangeOf(turn: EditorSnapshot, from: string | null, to: string | null): 
 }
 const groupInput = z.object({ group: z.string().max(32).nullable().default(null).describe("Only this group (e.g. 'color', 'position'); null for all") });
 const emptyInput = z.object({});
+const modelInput = z.object({ model: z.string().min(2).max(12).describe("A fixture in the show 'F3' (its model) or a library model 'L2'") });
 const readSkillInput = z.object({ name: z.string().min(1).max(64).describe("Skill name from the 'More skills' list") });
 const rememberInput = z.object({
   scope: z.enum(["user", "show"]).describe("'user': a personal preference for every show; 'show': a fact about this show"),
@@ -314,13 +317,47 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
       inputSchema: portable(emptyInput),
       execute: async () => modelsVocab(turn.env.libraryModels),
     }),
+    get_fixture_model: tool({
+      description:
+        "Details of one fixture model (the model of fixture 'F#' or library model 'L#'): source, shape, size, optics, emitter calibration, color wheel slots (W#), gobo slots (G#) with the pattern each projects, and what is missing. Read it before adaptFixtureModel.",
+      inputSchema: portable(modelInput),
+      execute: async ({ model }) => {
+        const target = resolveModelRef(model, turn.project, turn.aliases, turn.env.libraryModels);
+        return typeof target === "string" ? target : fixtureModelText(target, turn.project, turn.aliases, turn.env.fixtureAssets ?? []);
+      },
+    }),
+    get_ofl_source: tool({
+      description:
+        "The original Open Fixture Library definition of a model imported from OFL (name, categories, physical data, wheels and slots, channel capabilities, modes, manual link), as JSON. Only for models whose source is 'ofl'.",
+      inputSchema: portable(modelInput),
+      execute: async ({ model }) => {
+        const target = resolveModelRef(model, turn.project, turn.aliases, turn.env.libraryModels);
+        if (typeof target === "string") return target;
+        const source = (target.snapshot ?? target.library)?.source;
+        if (source?.kind !== "ofl") return "This model was not imported from the Open Fixture Library.";
+        try {
+          return { untrusted: true, ofl: await oflFixtureDigest(source.key) };
+        } catch (e) {
+          const code = e instanceof Error ? e.message : String(e);
+          if (code === "catalog_missing" || code === "not_found") return "The OFL library is not open on this computer (the user can open it in the fixture library: Browse OFL library). Work from get_fixture_model instead.";
+          if (code === "catalog_stale") return "The OFL library file changed since it was opened; ask the user to open it again.";
+          return `Could not read the OFL definition (${code}).`;
+        }
+      },
+    }),
+    list_fixture_assets: tool({
+      description: "Icons, 3D models, gobo images and venue models in the user's asset library (aliases A#) for adaptFixtureModel.",
+      inputSchema: portable(emptyInput),
+      execute: async () => fixtureAssetsText(turn.env.fixtureAssets ?? []),
+    }),
     get_output: tool({
       description: "Current output target, universes in use and the routing table.",
       inputSchema: portable(emptyInput),
       execute: async () => outputText(turn.project),
     }),
     get_stage: tool({
-      description: "The stage preview layout: stage size, the position/height/facing of every fixture, and the set pieces (O#). Read it before moving fixtures.",
+      description:
+        "The stage preview layout: stage size, haze, the position/height/facing of every fixture, the set pieces (O#, with stairs steps, polygon vertices and what each LED screen shows), and the videos for LED screens (V#). Read it before moving fixtures.",
       inputSchema: portable(emptyInput),
       execute: async () => stageText(turn.project, turn.aliases),
     }),

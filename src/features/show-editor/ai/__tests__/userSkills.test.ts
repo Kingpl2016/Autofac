@@ -23,7 +23,7 @@ const skill = (name: string, triggers: string, body?: string) => userSkillOf(fil
 describe("技能文件", () => {
   it("内置技能都是合规的 SKILL.md，正文不含前言", () => {
     const list = builtinSkills();
-    expect(list).toHaveLength(9);
+    expect(list).toHaveLength(10);
     for (const { file: f } of list) {
       expect(f.name).toMatch(/^[a-z0-9-]+$/);
       expect(f.description.length).toBeGreaterThan(20);

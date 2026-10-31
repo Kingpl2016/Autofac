@@ -5,7 +5,7 @@ import { ChevronDown, Plus, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { channelCount, FixtureTypeIcon, type FixtureModel, type FixtureType } from "@/features/fixtures";
+import { channelCount, FixtureModelIcon, type FixtureModel, type FixtureType } from "@/features/fixtures";
 import { cn } from "@/lib/utils";
 import { addModelToShow } from "../hooks/fixtureAddActions";
 import { useEditorPrefsStore, type FixtureLibraryDensity } from "../stores/useEditorPrefsStore";
@@ -97,7 +97,7 @@ export function FixtureModelCard({ model, type, section, density, batch }: Fixtu
               FIXTURE_TYPE_TINT[type],
             )}
           >
-            <FixtureTypeIcon type={type} labelled={false} className={compact ? "size-3.5" : "size-4"} />
+            <FixtureModelIcon model={model} labelled={false} className={compact ? "size-3.5" : "size-4"} />
           </button>
         </FixtureChannelsPopover>
 
@@ -183,7 +183,7 @@ function FixtureChannelsPopover({ model, type, children }: { model: FixtureModel
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-md", FIXTURE_TYPE_TINT[type])} aria-hidden>
-            <FixtureTypeIcon type={type} labelled={false} className="size-4" />
+            <FixtureModelIcon model={model} labelled={false} className="size-4" />
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{model.name}</p>

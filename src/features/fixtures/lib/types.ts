@@ -6,8 +6,12 @@
  * - 可选字段在后端序列化时会省略默认值，因此前端读到的对象里它们可能不存在。
  */
 
+import type { AppearanceOrigin } from "@/bindings/AppearanceOrigin";
+import type { AssetFormat } from "@/bindings/AssetFormat";
 import type { AttributeGroup } from "@/bindings/AttributeGroup";
 import type { ChannelFunction } from "@/bindings/ChannelFunction";
+import type { FixtureShape } from "@/bindings/FixtureShape";
+import type { FocusType } from "@/bindings/FocusType";
 
 export type { AttributeGroup, ChannelFunction };
 /** 合成规则：HTP 取最大值，LTP 后来者优先。 */
@@ -20,6 +24,39 @@ export type { FixtureProperty } from "@/bindings/FixtureProperty";
 export type { Emitter } from "@/bindings/Emitter";
 /** 物理参数。 */
 export type { Physical } from "@/bindings/Physical";
+/** 光束的运动方式。 */
+export type { FocusType } from "@/bindings/FocusType";
+/** 外观：外形模板与 2D / 3D 资源引用。 */
+export type { Appearance } from "@/bindings/Appearance";
+export type { AppearanceOrigin } from "@/bindings/AppearanceOrigin";
+export type { AssetFormat } from "@/bindings/AssetFormat";
+export type { AssetRef } from "@/bindings/AssetRef";
+export type { FixtureShape };
+
+/** 外形模板（下拉菜单顺序）。 */
+export const FIXTURE_SHAPES = [
+  "movingHead",
+  "scanner",
+  "par",
+  "wash",
+  "profile",
+  "bar",
+  "pixelPanel",
+  "strobe",
+  "blinder",
+  "fogger",
+  "laser",
+  "generic",
+] as const satisfies readonly FixtureShape[];
+
+/** 光束运动方式。 */
+export const FOCUS_TYPES = ["head", "mirror", "barrel", "fixed"] as const satisfies readonly FocusType[];
+
+/** 资源格式。 */
+export const ASSET_FORMATS = ["svg", "png", "webp", "glb"] as const satisfies readonly AssetFormat[];
+
+/** 外观来源。 */
+export const APPEARANCE_ORIGINS = ["rule", "ai", "user"] as const satisfies readonly AppearanceOrigin[];
 /** 灯具物模型（一类灯具的模板）。 */
 export type { FixtureModel } from "@/bindings/FixtureModel";
 /** 一条导入警告。 */

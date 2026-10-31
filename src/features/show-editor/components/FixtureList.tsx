@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ChevronRight, Crosshair, Search, X } from "lucide-react";
 
-import { FixtureTypeIcon, modelType, type FixtureModel, type FixtureType } from "@/features/fixtures";
+import { FixtureModelIcon, FixtureTypeIcon, modelType, type FixtureModel, type FixtureType } from "@/features/fixtures";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
 import { headsOf, refOf } from "../lib/fixtureRef";
@@ -310,7 +310,11 @@ export function FixtureList({ fixtures, models, status, selected }: FixtureListP
                     <ChevronRight aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
                   </button>
                 ) : null}
-                <FixtureTypeIcon type={typeOf.get(f.modelId) ?? "other"} labelled={false} className="text-clip-light" />
+                {model ? (
+                  <FixtureModelIcon model={model} labelled={false} className="text-clip-light" />
+                ) : (
+                  <FixtureTypeIcon type={typeOf.get(f.modelId) ?? "other"} labelled={false} className="text-clip-light" />
+                )}
                 <span className="min-w-0 flex-1 truncate font-medium" title={f.name}>
                   {f.name}
                 </span>

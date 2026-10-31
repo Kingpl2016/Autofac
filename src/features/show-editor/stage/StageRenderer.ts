@@ -1,4 +1,5 @@
 import type { Rgb, StageLayout } from "../lib/project";
+import { DEFAULT_STAIR_STEPS } from "../lib/stageOps";
 import { beamOf, toCanvas, type StageView } from "./stageGeometry";
 
 /**
@@ -240,6 +241,52 @@ export class Canvas2DStageRenderer implements StageRenderer {
         ctx.stroke();
       } else if (o.kind === "rect") {
         ctx.strokeRect(-w / 2, -h / 2, w, h);
+      } else if (o.kind === "pillar") {
+        ctx.beginPath();
+        ctx.arc(0, 0, w / 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(1, w / 4), 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (o.kind === "screen") {
+        // 屏体 + 加粗的屏面（朝观众一侧，画布下方）
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+        ctx.beginPath();
+        ctx.lineWidth += 2;
+        ctx.moveTo(-w / 2, h / 2);
+        ctx.lineTo(w / 2, h / 2);
+        ctx.stroke();
+      } else if (o.kind === "stairs") {
+        // 每级一条横线，前低后高；箭头指向上行方向（舞台后方）
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+        const n = o.steps ?? DEFAULT_STAIR_STEPS;
+        ctx.beginPath();
+        for (let i = 1; i < n; i++) {
+          const y = h / 2 - (h * i) / n;
+          ctx.moveTo(-w / 2, y);
+          ctx.lineTo(w / 2, y);
+        }
+        const ah = Math.min(h / 3, w / 3, 12);
+        ctx.moveTo(0, h / 2 - 2);
+        ctx.lineTo(0, -h / 2 + 2);
+        ctx.moveTo(-ah / 2, -h / 2 + 2 + ah / 2);
+        ctx.lineTo(0, -h / 2 + 2);
+        ctx.lineTo(ah / 2, -h / 2 + 2 + ah / 2);
+        ctx.stroke();
+      } else if (o.kind === "polygon" && o.points && o.points.length >= 3) {
+        ctx.beginPath();
+        o.points.forEach(([px, py], i) => {
+          if (i === 0) ctx.moveTo(px * view.scale, -py * view.scale);
+          else ctx.lineTo(px * view.scale, -py * view.scale);
+        });
+        ctx.closePath();
+        ctx.stroke();
+        if (isSelected && frame.editing) {
+          // 顶点手柄
+          ctx.fillStyle = theme.selection;
+          for (const [px, py] of o.points) ctx.fillRect(px * view.scale - 3, -py * view.scale - 3, 6, 6);
+          ctx.fillStyle = theme.text;
+        }
       }
       if (o.label) ctx.fillText(o.label, -w / 2, -h / 2 - 3);
       ctx.restore();

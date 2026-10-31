@@ -10,6 +10,7 @@ import { filterModels } from "../lib/format";
 import { FIXTURE_TYPES, modelType, type FixtureType } from "../lib/profile";
 import type { FixtureModel } from "../lib/types";
 import { channelCount } from "../lib/validate";
+import { FixtureModelIcon } from "./FixtureModelIcon";
 import { FixtureTypeIcon } from "./FixtureTypeIcon";
 
 /** 来源筛选。 */
@@ -126,7 +127,7 @@ export function FixtureList({ models, selectedId, onSelect, query, onQueryChange
               <ul className="flex flex-col gap-0.5">
                 {group.items.map((m) => (
                   <li key={m.id}>
-                    <ModelItem model={m} type={typed.get(m.id) ?? "other"} current={m.id === selectedId} onSelect={onSelect} />
+                    <ModelItem model={m} current={m.id === selectedId} onSelect={onSelect} />
                   </li>
                 ))}
               </ul>
@@ -140,12 +141,10 @@ export function FixtureList({ models, selectedId, onSelect, query, onQueryChange
 /** 列表里的一个模型。 */
 function ModelItem({
   model,
-  type,
   current,
   onSelect,
 }: {
   model: FixtureModel;
-  type: FixtureType;
   current: boolean;
   onSelect: (id: string) => void;
 }) {
@@ -163,7 +162,7 @@ function ModelItem({
       )}
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-2 text-primary">
-        <FixtureTypeIcon type={type} labelled={false} className="size-4" />
+        <FixtureModelIcon model={model} labelled={false} className="size-4" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{model.name}</span>

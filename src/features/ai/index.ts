@@ -1,7 +1,9 @@
 export { AiSettingsPanel } from "./components/AiSettingsPanel";
 export { MemoryNoteList } from "./components/MemoryNoteList";
 export { useActiveAiProfile } from "./hooks/useAiProfiles";
+export { useProfileModels, useSetProfileModel, type ProfileModelOption } from "./hooks/useProfileModels";
 export { aiHistoryLibraryPath, aiHistoryRead, aiHistoryWrite } from "./lib/api";
+export { contextWindowOf } from "./lib/contextWindow";
 export { useDisableModality } from "./hooks/useDisableModality";
 export { aiErrorText, isAiAbort, unsupportedInput } from "./lib/errors";
 export { loadLanguageModel, type LoadedModel } from "./lib/loadModel";
@@ -10,6 +12,7 @@ export { memoryFile, type MemoryFile } from "./lib/memoryFile";
 export type { AiModality, AiProfileView } from "./lib/types";
 export { importSkillWithToast, isSkillPath } from "./lib/skillActions";
 export { useAiMemoryStore } from "./stores/useAiMemoryStore";
+export { openAiModelsDialog } from "./stores/useAiModelsDialogStore";
 export { useAiPrefsStore } from "./stores/useAiPrefsStore";
 export { enabledSkills, ensureSkills, useEnabledSkillInfos } from "./stores/useSkillStore";
 export { BUILTIN_SKILL_NAMES } from "./lib/builtinSkills";

@@ -547,7 +547,8 @@ fn derive_color_attrs(fixture: &CompiledFixture, color: &ColorState, gamma: f64,
         && values[wi].is_none()
     {
         let dist = |s: &WheelSlot| s.rgb.iter().zip(&n).map(|(a, b)| (a - b) * (a - b)).sum::<f64>();
-        if let Some(best) = ca.slots.iter().min_by(|a, b| dist(a).total_cmp(&dist(b))) {
+        // 分色片只用于预览：选槽位时跳过，避免把“半红半蓝”当成紫色
+        if let Some(best) = ca.slots.iter().filter(|s| !s.split).min_by(|a, b| dist(a).total_cmp(&dist(b))) {
             values[wi] = Some(best.mid);
         }
     }
@@ -1029,6 +1030,26 @@ mod tests {
         let c = compile(&p);
         c.evaluate_into(10, &mut set);
         assert_eq!(&frame_at(&set, 0)[1..5], &[0, 0, 0, 32]);
+    }
+
+    #[test]
+    fn 分色片只用于预览_按颜色选槽位时跳过() {
+        let json = r#"{"durationMs":10000,"fixtureModels":[{"id":"m","name":"m","properties":[
+            {"name":"d","code":"D","function":"dimmer","channel":1,"width":1,"bigEndian":true,"defaultValue":0},
+            {"name":"w","code":"CW","function":"colorWheel","channel":2,"width":1,"bigEndian":true,"defaultValue":0,"capabilities":[
+              {"range":[0,63],"label":"Open"},
+              {"range":[64,127],"label":"Red/Blue","color":[255,0,0],"colorAlt":[0,0,255]},
+              {"range":[128,191],"label":"Magenta","color":[255,0,255]}]}]}],
+           "fixtures":[{"id":"f","modelId":"m","universe":0,"address":1}],
+           "tracks":[{"id":"t","target":{"kind":"fixture","id":"f"}}],
+           "cues":[{"kind":"look","id":"c","trackId":"t","startMs":0,"endMs":1000,"brightness":100,"fadeInMs":0,"fadeOutMs":0,"easing":"linear",
+             "look":{"intensity":{"kind":"value","value":100},"color":{"kind":"value","value":{"kind":"rgb","rgb":[255,0,255]}}}}],
+           "output":{"gamma":1}}"#;
+        let c = compile(&serde_json::from_str(json).expect("工程 JSON 应合法"));
+        let mut set = c.new_frames();
+        c.evaluate_into(10, &mut set);
+        // 分色片平均后也是品红，但不应被选中：选品红槽位的中点
+        assert_eq!(frame_at(&set, 0)[1], 160);
     }
 
     /// 标注了色温的能力区间：0~9 关闭，10~255 对应 2700K→6500K。

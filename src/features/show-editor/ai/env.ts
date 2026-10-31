@@ -1,5 +1,5 @@
 import { ensureMcp, ensureSkills, useAiMemoryStore } from "@/features/ai";
-import { useFixtureStore } from "@/features/fixtures";
+import { useFixtureAssetStore, useFixtureStore } from "@/features/fixtures";
 import type { ShowProject } from "../lib/project";
 import { useAiChatStore } from "../stores/useAiChatStore";
 import { useAiExemplarStore } from "../stores/useAiExemplarStore";
@@ -63,6 +63,8 @@ export async function ensureLibraries(): Promise<void> {
   if (templates.status === "idle") jobs.push(templates.load());
   const fixtures = useFixtureStore.getState();
   if (fixtures.status === "idle") jobs.push(fixtures.load());
+  // 灯具资源库（图标、3D 模型）：灯具适配时引用 A#
+  jobs.push(useFixtureAssetStore.getState().ensure().catch(() => undefined));
   await Promise.all(jobs);
 }
 
@@ -85,6 +87,7 @@ export function editorSnapshot(lang: string): EditorSnapshot {
       effects: allEffects(useEffectLibraryStore.getState()),
       templates: allTemplates(useCueTemplateStore.getState()),
       libraryModels: useFixtureStore.getState().models,
+      fixtureAssets: [...useFixtureAssetStore.getState().byHash.values()],
       lang,
       playheadMs: ui.playheadMs,
       selection,

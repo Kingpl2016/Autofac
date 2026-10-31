@@ -1415,10 +1415,109 @@
       "view": "Preview mode",
       "views": {
         "stage": "Stage",
+        "stage3d": "3D",
         "swatches": "Swatches",
         "sheet": "Fixture sheet"
       },
       "video": "Video of {{name}}"
+    },
+    "stage3d": {
+      "roleDescription": "3D stage",
+      "label": "3D stage: {{count}} fixtures, {{selected}} selected. Drag with the left button to orbit, right button to pan, wheel to zoom; click to select, Shift-drag to box-select, Ctrl+A selects all, Esc clears, F returns to the audience view",
+      "hint": "Left: orbit · Right: pan · Wheel: zoom · Shift-drag: box select",
+      "empty": "After adding fixtures, their bodies and beams appear here at their stage positions",
+      "contextLost": "The 3D view is not available (the graphics context was lost or WebGL is not supported). Switch to another view and back to retry.",
+      "beams": "Beams",
+      "stats": "Stats",
+      "statsText": "Geometries {{geometries}} · Textures {{textures}} · Draw calls {{calls}} · Triangles {{triangles}} · Volumetric {{volumetric}}",
+      "hintEditing": "Drag fixtures or scenery to move them on the plane (Alt: no snapping) · handles change height / heading · Delete removes the selected scenery",
+      "moved": "Moved {{count}} fixtures",
+      "objectMoved": "Moved {{kind}}",
+      "scene": {
+        "title": "Scene",
+        "quality": "Beam quality",
+        "qualities": {
+          "auto": "Auto",
+          "high": "High",
+          "mid": "Medium",
+          "low": "Low"
+        },
+        "autoNow": "Adjusted to the frame rate, currently: {{tier}}. Drawn one level higher while paused.",
+        "qualityHint": "High: all beams volumetric; Medium: the 32 brightest volumetric; Low: simple cones. Drawn one level higher while paused.",
+        "haze": "Haze",
+        "hazeValue": "Haze (%)"
+      },
+      "venue": {
+        "title": "Venue model",
+        "none": "None",
+        "import": "Import…",
+        "choose": "Choose from library",
+        "clear": "Remove venue model",
+        "x": "X",
+        "y": "Y",
+        "z": "Height",
+        "rotation": "Angle",
+        "scale": "Scale",
+        "failed": "The venue model could not be loaded",
+        "missing": "The venue model is not in this computer's asset library",
+        "importTitle": "Import venue model",
+        "importDescription": "GLB, glTF and OBJ are supported. The model is turned Y-up, converted to meters, centered horizontally with its bottom at 0, merged into one mesh (simplified above {{tris}} triangles) and saved to the asset library. Textures are not kept.",
+        "unit": "Source units",
+        "units": {
+          "auto": "Auto (guess from size)",
+          "m": "Meters",
+          "cm": "Centimeters",
+          "mm": "Millimeters",
+          "in": "Inches"
+        },
+        "zUp": "Source is Z-up (most CAD / SketchUp exports)",
+        "done": "Imported: {{tris}} triangles, {{size}}, {{dims}} m (units: {{unit}}).",
+        "imported": "Imported venue model \"{{name}}\"",
+        "tooLarge": "The file is too large (over 64 MB after normalizing, or the source is over 256 MB)"
+      },
+      "missing": "3D files of {{count}} models are not on this computer; their shapes are shown instead",
+      "import": "Import a 3D model for the selected fixture's model",
+      "imported": "Imported a 3D model for \"{{name}}\"",
+      "camera": {
+        "group": "View",
+        "front": "Audience view",
+        "top": "Top",
+        "side": "Side"
+      },
+      "gizmo": {
+        "group": "Handles",
+        "height": "Height",
+        "rotate": "Facing / pitch",
+        "heightHint": "Drag the handle up or down to change the mounting height (5 cm steps)",
+        "rotateHint": "Drag the green ring to change the facing, the red ring to change the pitch"
+      },
+      "importTitle": "Import a 3D model for \"{{name}}\"",
+      "importDescription": "GLB, glTF and OBJ are supported. The file is turned, scaled, merged per part and simplified, then stored as GLB in the asset library; textures are dropped and material colors are baked into the vertices. Nodes named pan / yoke and tilt / head become the joints of a moving head.",
+      "modelFileType": "3D model (GLB / glTF / OBJ)",
+      "pickFile": "Choose file…",
+      "noFile": "No file chosen",
+      "beamAxis": "Beam direction in the file",
+      "beamAxisHint": "The direction the lens points; moving heads usually point up when standing.",
+      "axes": {
+        "up": "Up (+Y)",
+        "front": "Front (+Z)",
+        "back": "Back (−Z)",
+        "down": "Down (−Y)"
+      },
+      "useDims": "Scale to the model size ({{dims}} mm)",
+      "importRun": "Import",
+      "importDone": "Imported: {{tris}} triangles, {{size}}.",
+      "simplified": "(simplified from {{from}} triangles)",
+      "jointed": "Pan / Tilt joints found; the head follows the channels.",
+      "notJointed": "No Pan / Tilt joints found; the body stays still and the beam still follows the channels.",
+      "importErrors": {
+        "no_mesh": "The file has no mesh to show",
+        "too_large": "The file is too large (over 16 MB after normalizing, or over 256 MB as source)",
+        "bad_path": "Only GLB, glTF or OBJ files can be imported",
+        "bad_format": "The file content does not match its format",
+        "draco": "Draco-compressed glTF is not supported; export it uncompressed or with Meshopt",
+        "other": "Import failed: {{reason}}"
+      }
     },
     "stage": {
       "label": "Stage monitor: {{count}} fixtures, {{selected}} selected. Wheel to zoom, Ctrl+A selects all, Esc clears, right-click for more",
@@ -1437,14 +1536,37 @@
           "truss": "Truss",
           "rect": "Rectangle",
           "circle": "Circle",
-          "label": "Text"
+          "label": "Text",
+          "screen": "LED screen",
+          "stairs": "Stairs",
+          "pillar": "Pillar",
+          "polygon": "Polygon"
         },
         "kinds": {
           "truss": "Truss",
           "rect": "Rectangle",
           "circle": "Circle",
-          "label": "Text"
+          "label": "Text",
+          "screen": "LED screen",
+          "stairs": "Stairs",
+          "pillar": "Pillar",
+          "polygon": "Polygon deck"
         },
+        "steps": "Steps",
+        "stepsUnit": "steps",
+        "sides": "Sides",
+        "sidesUnit": "sides",
+        "vertexHint": "Drag the vertices on the canvas to change the shape",
+        "screenContent": "Screen content",
+        "screenNone": "Black",
+        "screenMedia": "Video: {{name}}",
+        "screenFixture": "Pixel fixture: {{name}}",
+        "hangGroup": "Hang on truss",
+        "hangTruss": "Choose truss",
+        "trussN": "Truss {{n}}",
+        "hang": "Hang on truss",
+        "hangDistribute": "Spread along truss",
+        "hung": "Hung {{count}} fixtures on {{truss}}",
         "added": "Added {{kind}}",
         "labelDefault": "Text",
         "imageFilter": "Images",
@@ -1468,6 +1590,10 @@
         "text": "Text",
         "objectWidth": "W",
         "objectHeight": "H",
+        "objectZ": "Elevation",
+        "objectThickness": "Thickness",
+        "pitch": "Pitch",
+        "deckHeight": "Deck height",
         "removeObject": "Delete object",
         "arcSweep": "Arc sweep",
         "gridColumns": "Grid columns",
@@ -4038,7 +4164,8 @@
       "suggest": {
         "selection": "Make the selected clips blue and violet, twice as fast",
         "chorus": "Add a color chase on all fixtures in the chorus, movers draw circles",
-        "explain": "Which sections and fixtures does this show have?"
+        "explain": "Which sections and fixtures does this show have?",
+        "adapt": "Adapt the fixture models in this show: shape, size and color wheel colors"
       },
       "inputLabel": "Message to the AI",
       "inputPlaceholder": "Describe the lighting you want, type / for skills (Enter to send, Shift+Enter for a new line)",
@@ -4076,7 +4203,22 @@
       "prevBranch": "Previous version",
       "nextBranch": "Next version",
       "modelMenu": "Model: {{name}}",
-      "manageModels": "Manage models…",
+      "manageModels": "Model settings…",
+      "modelSwitch": "Switch model",
+      "modelSwitchHint": "Models available for “{{name}}”",
+      "modelListFailed": "Could not get the list from the model service; these are suggested models",
+      "modelSwitched": "Switched to {{model}}",
+      "context": {
+        "title": "Context usage",
+        "label": "Context used {{used}} of {{total}}",
+        "labelUnknown": "Context used {{used}}",
+        "empty": "After you send a message, this shows the context the last request used",
+        "detail": "{{used}} / {{total}} tokens used ({{percent}}%)",
+        "detailUnknown": "{{used}} tokens used (the context limit of this model is not known)",
+        "breakdown": "Last request: {{input}} in, {{output}} out",
+        "model": "Model: {{model}}",
+        "full": "The context is nearly full. Older turns are compacted before sending, or you can start a new chat"
+      },
       "proposal": "Change prepared by the AI",
       "notPending": "This change is no longer waiting for review (the show was reopened, or a newer change was prepared)",
       "outcomes": {
@@ -4428,7 +4570,97 @@
       "pan": "Pan range",
       "tilt": "Tilt range",
       "beam": "Beam angle",
+      "dimensions": "Size (mm)",
+      "weight": "Weight",
+      "power": "Power",
       "legend": "Channel group legend"
+    },
+    "shape": {
+      "movingHead": "Moving head",
+      "scanner": "Scanner",
+      "par": "Par",
+      "wash": "Wash / flood",
+      "profile": "Profile",
+      "bar": "Bar",
+      "pixelPanel": "Pixel panel",
+      "strobe": "Strobe",
+      "blinder": "Blinder",
+      "fogger": "Fogger",
+      "laser": "Laser",
+      "generic": "Generic"
+    },
+    "focus": {
+      "head": "Moving head",
+      "mirror": "Mirror",
+      "barrel": "Barrel",
+      "fixed": "Fixed"
+    },
+    "origin": {
+      "rule": "Inferred on import",
+      "ai": "Suggested by AI",
+      "user": "Set manually",
+      "inferred": "Inferred from channels"
+    },
+    "gobos": {
+      "pattern": "Pattern",
+      "auto": "Auto",
+      "autoShort": "Auto",
+      "change": "Change",
+      "import": "Import pattern image…",
+      "fileType": "Pattern image (SVG / PNG / WebP)",
+      "names": {
+        "dot": "Dot",
+        "dots": "Dot ring",
+        "ring": "Ring",
+        "rings": "Concentric rings",
+        "star": "Star",
+        "stars": "Starfield",
+        "flower": "Flower",
+        "rays": "Sunburst",
+        "spiral": "Spiral",
+        "bars": "Bars",
+        "grid": "Grid",
+        "cross": "Cross",
+        "triangle": "Triangle",
+        "square": "Square",
+        "honeycomb": "Honeycomb",
+        "breakup": "Leaf breakup",
+        "waves": "Waves",
+        "flame": "Flame",
+        "moon": "Crescent",
+        "shatter": "Shattered glass"
+      }
+    },
+    "assets": {
+      "icon": "2D icon",
+      "importIcon": "Import icon…",
+      "chooseIcon": "Choose from library",
+      "removeIcon": "Remove icon",
+      "iconFileType": "Icon (SVG / PNG / WebP)",
+      "iconHint": "SVG up to 1 MB, PNG / WebP up to 4 MB. Shown in the fixture library, fixture lists and on the stage.",
+      "model3d": "3D model",
+      "chooseModel": "Choose from library",
+      "removeModel": "Remove 3D model",
+      "noModel": "Not set (generated from the shape)",
+      "modelHint": "Import GLB / glTF / OBJ files in the 3D stage. Without a file, or when the file is missing, the body is generated from the shape.",
+      "missing": "The asset file is not in this computer's asset library; the shape is shown instead.",
+      "pick": "Choose {{name}}",
+      "importFailed": "Import failed: {{reason}}",
+      "cleanup": "Clean up unused assets",
+      "cleanupHint": "Moves icons, 3D models, patterns and venue models that neither the fixture library nor the open show use to the trash",
+      "cleanupTitle": "Clean up unused fixture assets?",
+      "cleanupDescription": "Icons, 3D models, patterns and venue models that neither the fixture library nor the open show refer to are moved to the trash (data/trash) and can be recovered for 30 days. Assets used only by show files that are not open may be moved too; those shows then show the generated shapes.",
+      "cleanupDone": "Moved {{count}} unused assets ({{size}}) to the trash; they can be recovered for 30 days",
+      "cleanupNone": "There are no unused assets",
+      "errors": {
+        "bad_path": "Only SVG, PNG or WebP files can be imported",
+        "bad_format": "The file content does not match its format",
+        "too_large": "The file is too large",
+        "unsafe_svg": "The SVG contains scripts, event attributes or external links and was rejected",
+        "full": "The asset library is full (at most 4096 files)",
+        "not_found": "The asset does not exist",
+        "io": "Could not read or write the asset library"
+      }
     },
     "table": {
       "channel": "Channel",
@@ -4502,7 +4734,7 @@
       "saved": "Saved model \"{{name}}\"",
       "manufacturer": "Manufacturer",
       "tabLayout": "Channel layout",
-      "tabPhysical": "Pixels & physical",
+      "tabPhysical": "Pixels, physical & appearance",
       "tabEmitters": "Emitter calibration",
       "modes": "Channel modes",
       "defaultMode": "Default mode",
@@ -4546,6 +4778,23 @@
       "tiltRange": "Tilt range (°)",
       "beamMin": "Min beam angle (°)",
       "beamMax": "Max beam angle (°)",
+      "dim": {
+        "width": "Width (mm)",
+        "height": "Height (mm)",
+        "depth": "Depth (mm)"
+      },
+      "weight": "Weight (kg)",
+      "power": "Power (W)",
+      "lensName": "Lens",
+      "focusType": "Beam movement",
+      "unset": "Not set",
+      "appearance": "Appearance",
+      "shape": "Shape",
+      "shapeAuto": "Automatic ({{shape}})",
+      "shapeHint": "The 3D stage draws the body from this shape and scales it to the size; an imported 3D file is used instead when there is one.",
+      "typicalLed": "Use \"typical LED\"",
+      "typicalLedHint": "Fills in approximate colors of common stage LEDs and white color temperatures; relative brightness is not changed",
+      "clearEmitters": "Clear calibration",
       "emitters": "Emitter calibration",
       "emittersHint": "Enter the real color temperature or color of the fixture's LEDs. Color mixing and the preview use it to match the real light. Blank means ideal colors.",
       "emitterCalibration": "Color temp / color",
@@ -4578,7 +4827,9 @@
       "badCapability": "Property {{code}} has capability ranges that are out of range, reversed, or overlapping",
       "badMode": "Channel mode \"{{id}}\" has an empty or duplicate ID",
       "badMatrix": "The pixel layout needs at least 1 row and column, and at most 512 pixels",
-      "headOutOfRange": "Property {{code}} belongs to a pixel head that does not exist"
+      "headOutOfRange": "Property {{code}} belongs to a pixel head that does not exist",
+      "badPhysical": "Physical values must be greater than 0, and the lens name can have at most 64 characters",
+      "badAppearance": "The appearance refers to an invalid asset: icons must be SVG / PNG / WebP and 3D models must be GLB"
     },
     "errors": {
       "invalidModel": "The model failed validation ({{reason}})",
@@ -5430,6 +5681,10 @@
       "ollama": "Ollama (this computer)",
       "lmstudio": "LM Studio (this computer)"
     },
+    "models": {
+      "title": "Model settings",
+      "hint": "Add, edit or test AI profiles; the starred one is used by default. API keys are kept in the system credential manager."
+    },
     "settings": {
       "add": "Add profile",
       "addHint": "You can add several profiles; the starred one is used by default",
@@ -5671,7 +5926,11 @@
         },
         "stage-layout": {
           "title": "Stage layout",
-          "desc": "Places fixtures in the stage preview: position, height, facing, hanging, plus trusses, risers and other set pieces."
+          "desc": "Places fixtures on the stage: position, height, facing, pitch, hanging, plus trusses, risers, other set pieces and the deck height."
+        },
+        "fixture-adapt": {
+          "title": "Fixture adaptation",
+          "desc": "Completes fixture models from the OFL definition, a spec sheet or your description: shape, size, beam angle, icon and 3D model, emitter calibration, color wheel slot colors."
         },
         "custom-content": {
           "title": "Custom content",

@@ -36,7 +36,7 @@ function ChatSession({ loaded, sessionId }: { loaded: LoadedModel; sessionId: st
 
   const chat = useChat({ chat: shared });
   const suggestions = useMemo(
-    () => (["selection", "chorus", "explain"] as const).map((k) => ({ prompt: t(`editor.ai.suggest.${k}`) })),
+    () => (["selection", "chorus", "explain", "adapt"] as const).map((k) => ({ prompt: t(`editor.ai.suggest.${k}`) })),
     [t],
   );
   const runtime = useAISDKRuntime(chat, { suggestions, messageRepository: repository });

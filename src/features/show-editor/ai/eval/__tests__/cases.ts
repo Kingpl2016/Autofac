@@ -293,6 +293,25 @@ export const EDIT_CASES: readonly EditCase[] = [
     checks: [{ name: "尾声是呼吸", ok: (p) => hasFx(p, 3, (fx) => fx.def.id === "breathe") }],
     reference: [{ op: "addEffect", target: "all", from: "S4", to: "S4:end", effect: "breathe", colors: ["blue"], fadeIn: "medium" }],
   },
+  // ---- 灯具适配（提示词版本 9 起新增） ----
+  {
+    id: "edit-adapt-fixture",
+    prompt: "摇头灯的规格是 350×550×300 mm，光束角 12–30°，帮我把这个型号的外形和尺寸补上",
+    project: EDIT_BASE,
+    selection: [],
+    expect: [],
+    checks: [
+      {
+        name: "摇头灯型号有外形与尺寸",
+        ok: (p) => {
+          const m = p.fixtureModels.find((x) => x.id === HEAD16.id);
+          return m?.appearance?.shape === "movingHead" && m.physical?.dimensionsMm?.join("x") === "350x550x300";
+        },
+      },
+      { name: "光束角", ok: (p) => p.fixtureModels.find((x) => x.id === HEAD16.id)?.physical?.beamMinDeg === 12 },
+    ],
+    reference: [{ op: "adaptFixtureModel", model: "F9", shape: "movingHead", widthMm: 350, heightMm: 550, depthMm: 300, beamMinDeg: 12, beamMaxDeg: 30 }],
+  },
 ];
 
 /**

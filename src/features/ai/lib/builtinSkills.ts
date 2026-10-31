@@ -13,5 +13,6 @@ export const BUILTIN_SKILL_NAMES = [
   "edit-clips",
   "custom-content",
   "stage-layout",
+  "fixture-adapt",
   "patch-output",
 ] as const;

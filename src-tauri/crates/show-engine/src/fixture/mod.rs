@@ -4,9 +4,11 @@
 //! （WASM 构建两者都关闭）。
 
 mod builtin;
+mod color_names;
 mod import;
 mod model;
 mod ofl;
+mod ofl_digest;
 #[cfg(feature = "ofl-bundle")]
 mod ofl_bundle;
 mod store;
@@ -14,14 +16,16 @@ mod store;
 mod xlsx;
 
 pub use builtin::builtin_models;
+pub use color_names::lookup_color_name;
 pub use import::{ImportError, ImportReport, ImportWarning, ImportWarningKind};
 pub use model::{
-    find_overlap, footprint, reassign_sequential, validate_layout, AttributeGroup, Capability,
-    CapabilityTag, ChannelFunction, Emitter, FixtureError, FixtureMode, FixtureModel, FixtureProperty,
-    MatrixLayout, ModelSource, Physical, Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS, MAX_ID_LEN,
-    MAX_MODES, MAX_PROPERTIES,
+    find_overlap, footprint, is_pattern_ref, is_sha256_hex, reassign_sequential, validate_layout, Appearance, AppearanceOrigin,
+    AssetFormat, AssetRef, AttributeGroup, Capability, CapabilityTag, ChannelFunction, Emitter, FixtureError,
+    FixtureMode, FixtureModel, FixtureProperty, FixtureShape, FocusType, MatrixLayout, ModelSource, Physical,
+    Precedence, DMX_CHANNELS, MAX_CAPABILITIES, MAX_HEADS, MAX_ID_LEN, MAX_MODES, MAX_PROPERTIES,
 };
 pub use ofl::{import_ofl, import_ofl_as, ofl_model_id, OFL_RECOGNIZER_VERSION};
+pub use ofl_digest::ofl_digest;
 #[cfg(feature = "ofl-bundle")]
 pub use ofl_bundle::{
     build_catalog, entry_model_id, import_from_bundle, BundleError, BundleImport, Catalog, CatalogEntry, CatalogItem,

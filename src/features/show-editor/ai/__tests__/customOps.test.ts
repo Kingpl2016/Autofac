@@ -169,6 +169,31 @@ describe("舞台布置", () => {
     expect(run(r.next, [{ op: "removeStageObjects", objects: ["O9"] }]).issues[0].message).toMatch(/no set piece/);
   });
 
+  it("3D 安装参数：俯仰、台高、物件离地高度与 setStageObject", () => {
+    const p = show();
+    const r = run(p, [
+      { op: "setStage", height: 1.2 },
+      { op: "addStageObject", kind: "truss", x: 0, y: 6, width: 10, z: 5, height: 0.4 },
+      { op: "placeFixtures", fixtures: ["F1", "F2"], layout: "line", x: 0, y: 0.5, width: 4, z: 6, pitch: 35 },
+    ]);
+    expect(r.issues).toEqual([]);
+    expect(r.next.stage.height).toBe(1.2);
+    expect(r.next.stage.objects[0]).toMatchObject({ z: 5, height: 0.4 });
+    expect(r.next.fixtures[0].stage).toMatchObject({ z: 6, pitch: 35 });
+    const text = stageText(r.next, buildAliases(r.next));
+    expect(text).toMatch(/deck 1\.2 m high/);
+    expect(text).toMatch(/F1 .* z=6 pitch 35°/);
+    expect(text).toMatch(/O1 truss .* z=5 height 0\.4 m/);
+
+    const raised = run(r.next, [{ op: "setStageObject", objects: ["O1"], z: 7 }]);
+    expect(raised.issues).toEqual([]);
+    expect(raised.next.stage.objects[0]).toMatchObject({ z: 7, height: 0.4, w: 10 });
+    expect(run(r.next, [{ op: "setStageObject", objects: ["O1"] }]).issues[0].message).toMatch(/at least one field/);
+    // 俯仰 0 时去掉字段
+    const flat = run(r.next, [{ op: "setPlacement", fixtures: ["F1"], pitch: 0 }]);
+    expect(flat.next.fixtures[0].stage?.pitch).toBeUndefined();
+  });
+
   it("get_stage 的文字：舞台尺寸、灯具位置（自动排布的标 auto）", () => {
     const p = show();
     const text = stageText(p, buildAliases(p));

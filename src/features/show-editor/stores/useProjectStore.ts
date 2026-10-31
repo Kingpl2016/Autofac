@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { temporal } from "zundo";
 
+import { modelAssetHashes, registerAssetReferences } from "@/features/fixtures";
 import { createEmptyProject, type ShowProject } from "../lib/project";
 import { useProgrammerStore } from "./useProgrammerStore";
 
@@ -101,3 +102,11 @@ export const useProjectStore = create<ProjectState>()(
  */
 export const selectDirty = (state: Pick<ProjectState, "project" | "baseline">): boolean =>
   state.project !== state.baseline;
+
+// 打开的节目里模型快照引用的图标、3D 模型、图案与场馆模型：清理灯具资源库时保留（编辑器加载后整个会话都有效）
+registerAssetReferences(() => {
+  const { fixtureModels, stage } = useProjectStore.getState().project;
+  const out = modelAssetHashes(fixtureModels);
+  if (stage.venue) out.push(stage.venue.hash);
+  return out;
+});

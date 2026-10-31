@@ -1415,10 +1415,109 @@
       "view": "预览方式",
       "views": {
         "stage": "舞台",
+        "stage3d": "3D",
         "swatches": "色块",
         "sheet": "灯具表"
       },
       "video": "{{name}} 的视频画面"
+    },
+    "stage3d": {
+      "roleDescription": "3D 舞台",
+      "label": "3D 舞台：{{count}} 台灯具，已选 {{selected}} 台。左键拖动旋转视角，右键拖动平移，滚轮缩放；单击选灯，Shift 拖动框选，Ctrl+A 全选，Esc 取消选择，F 回到观众视角",
+      "hint": "左键旋转 · 右键平移 · 滚轮缩放 · Shift 拖动框选",
+      "hintEditing": "拖动灯具或布景在平面上移动（Alt 不吸附）· 手柄改高度 / 朝向 · Delete 删除选中的布景",
+      "empty": "添加灯具后，这里按舞台位置显示 3D 灯体和光束",
+      "contextLost": "3D 显示不可用（显卡上下文丢失或不支持 WebGL）。切换到其它视图再切回来可重试。",
+      "beams": "光束",
+      "stats": "统计",
+      "statsText": "几何体 {{geometries}} · 纹理 {{textures}} · 绘制 {{calls}} · 三角面 {{triangles}} · 体积光 {{volumetric}}",
+      "moved": "已移动 {{count}} 台灯具",
+      "objectMoved": "已移动{{kind}}",
+      "scene": {
+        "title": "场景",
+        "quality": "光束画质",
+        "qualities": {
+          "auto": "自动",
+          "high": "高",
+          "mid": "中",
+          "low": "低"
+        },
+        "autoNow": "按帧率自动调节，当前：{{tier}}。暂停时按高一档画。",
+        "qualityHint": "高：全部体积光；中：最亮的 32 束体积光；低：简单光锥。暂停时按高一档画。",
+        "haze": "烟雾浓度",
+        "hazeValue": "烟雾浓度（%）"
+      },
+      "venue": {
+        "title": "场馆模型",
+        "none": "没有",
+        "import": "导入…",
+        "choose": "从资源库选",
+        "clear": "移除场馆模型",
+        "x": "X",
+        "y": "Y",
+        "z": "高",
+        "rotation": "角度",
+        "scale": "缩放",
+        "failed": "场馆模型无法加载",
+        "missing": "场馆模型不在本机的资源库里",
+        "importTitle": "导入场馆模型",
+        "importDescription": "支持 GLB、glTF、OBJ。模型会转到 Y 向上、换算成米、水平居中且底面放在 0，合并成一个网格（超过 {{tris}} 个三角面时简化），保存进资源库。贴图不保留。",
+        "unit": "源文件单位",
+        "units": {
+          "auto": "自动（按尺寸猜）",
+          "m": "米",
+          "cm": "厘米",
+          "mm": "毫米",
+          "in": "英寸"
+        },
+        "zUp": "源文件 Z 轴向上（多数 CAD / SketchUp 导出）",
+        "done": "已导入：{{tris}} 个三角面，{{size}}，{{dims}} 米（单位：{{unit}}）。",
+        "imported": "已导入场馆模型“{{name}}”",
+        "tooLarge": "文件太大（规整后超过 64 MB，或源文件超过 256 MB）"
+      },
+      "missing": "{{count}} 个型号的 3D 文件不在本机，按外形显示",
+      "import": "为所选灯具的型号导入 3D 模型",
+      "imported": "已为“{{name}}”导入 3D 模型",
+      "camera": {
+        "group": "视角",
+        "front": "观众视角",
+        "top": "俯视",
+        "side": "侧面"
+      },
+      "gizmo": {
+        "group": "手柄",
+        "height": "高度",
+        "rotate": "朝向 / 俯仰",
+        "heightHint": "上下拖动手柄改安装高度（5 厘米一步）",
+        "rotateHint": "拖动绿色环改水平朝向，红色环改俯仰"
+      },
+      "importTitle": "为“{{name}}”导入 3D 模型",
+      "importDescription": "支持 GLB、glTF、OBJ。文件会被转向、缩放、按部件合并并简化，保存为 GLB 放进资源库；贴图不保留，材质颜色烘焙进顶点。名为 pan / yoke 与 tilt / head 的节点作为摇头灯的关节。",
+      "modelFileType": "3D 模型（GLB / glTF / OBJ）",
+      "pickFile": "选择文件…",
+      "noFile": "还没有选择文件",
+      "beamAxis": "源文件里光束朝向",
+      "beamAxisHint": "灯头出光的方向；摇头灯一般是站立时朝上。",
+      "axes": {
+        "up": "朝上（+Y）",
+        "front": "朝前（+Z）",
+        "back": "朝后（−Z）",
+        "down": "朝下（−Y）"
+      },
+      "useDims": "按型号尺寸缩放（{{dims}} mm）",
+      "importRun": "导入",
+      "importDone": "已导入：{{tris}} 个三角面，{{size}}。",
+      "simplified": "（从 {{from}} 个三角面简化）",
+      "jointed": "找到了 Pan / Tilt 关节，灯头会随通道转动。",
+      "notJointed": "没有找到 Pan / Tilt 关节，整灯不动，光束仍按通道转动。",
+      "importErrors": {
+        "no_mesh": "文件里没有可显示的网格",
+        "too_large": "文件太大（规整后超过 16 MB，或源文件超过 256 MB）",
+        "bad_path": "只能导入 GLB、glTF 或 OBJ 文件",
+        "bad_format": "文件内容与格式不符",
+        "draco": "不支持 Draco 压缩的 glTF，请导出为未压缩或 Meshopt 压缩的文件",
+        "other": "导入失败：{{reason}}"
+      }
     },
     "stage": {
       "label": "舞台监视器：{{count}} 台灯具，已选 {{selected}} 台。滚轮缩放，Ctrl+A 全选，Esc 取消选择，右键有更多操作",
@@ -1437,14 +1536,37 @@
           "truss": "桁架",
           "rect": "矩形",
           "circle": "圆形",
-          "label": "文字"
+          "label": "文字",
+          "screen": "LED 屏",
+          "stairs": "台阶",
+          "pillar": "立柱",
+          "polygon": "多边形"
         },
         "kinds": {
           "truss": "桁架",
           "rect": "矩形",
           "circle": "圆形",
-          "label": "文字"
+          "label": "文字",
+          "screen": "LED 屏",
+          "stairs": "台阶",
+          "pillar": "立柱",
+          "polygon": "多边形台面"
         },
+        "steps": "级数",
+        "stepsUnit": "级",
+        "sides": "边数",
+        "sidesUnit": "边",
+        "vertexHint": "在画布上拖动顶点调整形状",
+        "screenContent": "屏幕内容",
+        "screenNone": "黑屏",
+        "screenMedia": "视频：{{name}}",
+        "screenFixture": "像素灯：{{name}}",
+        "hangGroup": "挂到桁架",
+        "hangTruss": "选择桁架",
+        "trussN": "桁架 {{n}}",
+        "hang": "挂到桁架",
+        "hangDistribute": "沿桁架均分",
+        "hung": "已把 {{count}} 台灯具挂到{{truss}}",
         "added": "已添加{{kind}}",
         "labelDefault": "文字",
         "imageFilter": "图片",
@@ -1468,6 +1590,10 @@
         "text": "文字",
         "objectWidth": "宽",
         "objectHeight": "高",
+        "objectZ": "离地",
+        "objectThickness": "厚度",
+        "pitch": "俯仰",
+        "deckHeight": "台高",
         "removeObject": "删除物件",
         "arcSweep": "弧线张角",
         "gridColumns": "网格列数",
@@ -4038,7 +4164,8 @@
       "suggest": {
         "selection": "把选中的片段改成蓝紫色，速度快一倍",
         "chorus": "给副歌加上全部灯的彩色追逐，摇头灯画圆",
-        "explain": "这个节目现在有哪些段落和灯具？"
+        "explain": "这个节目现在有哪些段落和灯具？",
+        "adapt": "帮我适配工程里灯具型号的外形、尺寸和色轮颜色"
       },
       "inputLabel": "给 AI 的消息",
       "inputPlaceholder": "描述你想要的灯光，输入 / 选技能（Enter 发送，Shift+Enter 换行）",
@@ -4076,7 +4203,22 @@
       "prevBranch": "上一个版本",
       "nextBranch": "下一个版本",
       "modelMenu": "使用的模型：{{name}}",
-      "manageModels": "管理模型…",
+      "manageModels": "模型配置…",
+      "modelSwitch": "切换模型",
+      "modelSwitchHint": "“{{name}}”可用的模型",
+      "modelListFailed": "没能从模型服务获取列表，下面是建议的模型",
+      "modelSwitched": "已切换到 {{model}}",
+      "context": {
+        "title": "上下文用量",
+        "label": "上下文已用 {{used}}，上限 {{total}}",
+        "labelUnknown": "上下文已用 {{used}}",
+        "empty": "发出消息后，这里显示最近一次请求占用的上下文",
+        "detail": "已用 {{used}} / {{total}} tokens（{{percent}}%）",
+        "detailUnknown": "已用 {{used}} tokens（不清楚这个模型的上下文上限）",
+        "breakdown": "最近一次请求：输入 {{input}}，输出 {{output}}",
+        "model": "模型：{{model}}",
+        "full": "上下文快满了。较早的对话发送前会被压缩，也可以开始新对话"
+      },
       "proposal": "AI 准备的改动",
       "notPending": "这份改动已经不在待审阅区（工程重新打开过，或之后又生成了新的改动）",
       "outcomes": {
@@ -4428,7 +4570,97 @@
       "pan": "Pan 行程",
       "tilt": "Tilt 行程",
       "beam": "光束角",
+      "dimensions": "尺寸（mm）",
+      "weight": "重量",
+      "power": "功率",
       "legend": "通道功能组图例"
+    },
+    "shape": {
+      "movingHead": "摇头灯",
+      "scanner": "扫描灯",
+      "par": "帕灯",
+      "wash": "泛光 / 面光",
+      "profile": "成像灯",
+      "bar": "灯条",
+      "pixelPanel": "像素面板",
+      "strobe": "频闪灯",
+      "blinder": "观众灯",
+      "fogger": "烟机",
+      "laser": "激光",
+      "generic": "通用"
+    },
+    "focus": {
+      "head": "灯头转动",
+      "mirror": "镜子反射",
+      "barrel": "筒体转动",
+      "fixed": "固定"
+    },
+    "origin": {
+      "rule": "导入时按规则推断",
+      "ai": "AI 建议",
+      "user": "手动设置",
+      "inferred": "按通道推断"
+    },
+    "gobos": {
+      "pattern": "图案",
+      "auto": "自动",
+      "autoShort": "自动",
+      "change": "更换",
+      "import": "导入图案图片…",
+      "fileType": "图案图片（SVG / PNG / WebP）",
+      "names": {
+        "dot": "圆点",
+        "dots": "环形点阵",
+        "ring": "圆环",
+        "rings": "同心圆",
+        "star": "五角星",
+        "stars": "星空",
+        "flower": "花瓣",
+        "rays": "放射",
+        "spiral": "螺旋",
+        "bars": "条纹",
+        "grid": "网格",
+        "cross": "十字",
+        "triangle": "三角形",
+        "square": "方形",
+        "honeycomb": "蜂窝",
+        "breakup": "树叶碎光",
+        "waves": "水波",
+        "flame": "火焰",
+        "moon": "月牙",
+        "shatter": "碎玻璃"
+      }
+    },
+    "assets": {
+      "icon": "2D 图标",
+      "importIcon": "导入图标…",
+      "chooseIcon": "从资源库选",
+      "removeIcon": "移除图标",
+      "iconFileType": "图标（SVG / PNG / WebP）",
+      "iconHint": "SVG 最大 1 MB，PNG / WebP 最大 4 MB。显示在灯具库、灯具列表和舞台上。",
+      "model3d": "3D 模型",
+      "chooseModel": "从资源库选",
+      "removeModel": "移除 3D 模型",
+      "noModel": "未设置（按外形生成）",
+      "modelHint": "在 3D 舞台里导入 GLB / glTF / OBJ 文件。没有文件或文件缺失时按外形生成灯体。",
+      "missing": "资源文件不在本机的资源库里，显示时按外形代替。",
+      "pick": "选择 {{name}}",
+      "importFailed": "导入失败：{{reason}}",
+      "cleanup": "清理未引用资源",
+      "cleanupHint": "把灯具库和打开的节目都没有用到的图标、3D 模型、图案与场馆模型移到回收站",
+      "cleanupTitle": "清理未引用的灯具资源？",
+      "cleanupDescription": "灯具库和当前打开的节目都没有引用的图标、3D 模型、图案与场馆模型会移到回收站（data/trash），30 天内可以找回。其它没打开的节目文件里引用的资源也可能被移走，打开那些节目时会按外形显示。",
+      "cleanupDone": "已把 {{count}} 个未引用的资源（{{size}}）移到回收站，30 天内可找回",
+      "cleanupNone": "没有未引用的资源",
+      "errors": {
+        "bad_path": "只能导入 SVG、PNG 或 WebP 文件",
+        "bad_format": "文件内容与格式不符",
+        "too_large": "文件太大",
+        "unsafe_svg": "SVG 含脚本、事件属性或外部链接，已拒绝",
+        "full": "资源库已满（最多 4096 个文件）",
+        "not_found": "资源不存在",
+        "io": "读写资源库失败"
+      }
     },
     "table": {
       "channel": "通道",
@@ -4502,7 +4734,7 @@
       "saved": "已保存模型“{{name}}”",
       "manufacturer": "制造商",
       "tabLayout": "通道布局",
-      "tabPhysical": "像素与物理参数",
+      "tabPhysical": "像素、物理参数与外观",
       "tabEmitters": "发光体校准",
       "modes": "通道模式",
       "defaultMode": "默认模式",
@@ -4546,6 +4778,23 @@
       "tiltRange": "Tilt 行程（°）",
       "beamMin": "最小光束角（°）",
       "beamMax": "最大光束角（°）",
+      "dim": {
+        "width": "宽（mm）",
+        "height": "高（mm）",
+        "depth": "深（mm）"
+      },
+      "weight": "重量（kg）",
+      "power": "功率（W）",
+      "lensName": "镜头",
+      "focusType": "光束运动方式",
+      "unset": "未设置",
+      "appearance": "外观",
+      "shape": "外形",
+      "shapeAuto": "自动（{{shape}}）",
+      "shapeHint": "3D 舞台按外形画灯体，并按尺寸缩放；导入了 3D 文件时优先用文件。",
+      "typicalLed": "套用“典型 LED”",
+      "typicalLedHint": "按常见舞台 LED 的近似颜色和白光色温填写，不改相对亮度",
+      "clearEmitters": "清除校准",
       "emitters": "发光体校准",
       "emittersHint": "填写灯具 LED 的实际色温或颜色，混色会据此修正，预览也更接近真灯。不填按理想颜色计算。",
       "emitterCalibration": "色温 / 颜色",
@@ -4578,7 +4827,9 @@
       "badCapability": "属性 {{code}} 的能力区间越界、颠倒或互相重叠",
       "badMode": "通道模式“{{id}}”的编号为空或重复",
       "badMatrix": "像素排布的行列数必须至少为 1，像素总数最多 512",
-      "headOutOfRange": "属性 {{code}} 所属的像素头不存在"
+      "headOutOfRange": "属性 {{code}} 所属的像素头不存在",
+      "badPhysical": "物理参数必须是大于 0 的数，镜头名最多 64 个字符",
+      "badAppearance": "外观引用的资源无效：图标须为 SVG / PNG / WebP，3D 模型须为 GLB"
     },
     "errors": {
       "invalidModel": "模型未通过校验（{{reason}}）",
@@ -5430,6 +5681,10 @@
       "ollama": "Ollama（本机）",
       "lmstudio": "LM Studio（本机）"
     },
+    "models": {
+      "title": "模型配置",
+      "hint": "添加、编辑或测试 AI 配置，星标的是默认使用的模型。API Key 存在系统凭据管理器里。"
+    },
     "settings": {
       "add": "添加配置",
       "addHint": "可以添加多个配置，星标的是默认使用的模型",
@@ -5671,7 +5926,11 @@
         },
         "stage-layout": {
           "title": "舞台布置",
-          "desc": "在舞台预览里摆放灯具：位置、高度、朝向、吊挂，以及桁架、平台等布景。"
+          "desc": "在舞台上摆放灯具：位置、高度、朝向、俯仰、吊挂，以及桁架、平台等布景和台高。"
+        },
+        "fixture-adapt": {
+          "title": "灯具适配",
+          "desc": "按 OFL 原文、规格书或你的描述补全灯具型号：外形、尺寸、光束角、图标与 3D 模型、发光体校准、色轮槽位颜色。"
         },
         "custom-content": {
           "title": "自定义内容",

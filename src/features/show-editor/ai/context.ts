@@ -5,11 +5,12 @@ import { effectDefNeeds, effectName } from "../lib/effectLibrary";
 import { fixturesCapabilities, lookBadges } from "../lib/fixtureProfile";
 import { colorValueRgb, paramHead } from "../lib/looks";
 import { trackFixtureIds, trackName } from "../lib/ops";
-import type { ColorValue, Cue, ShowProject } from "../lib/project";
+import type { ColorValue, Cue, ScreenContent, ShowProject } from "../lib/project";
 import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { aliasOf, resolveAlias, type AliasMap } from "./aliases";
 import { musicLines } from "./music";
 import { describeTime, resolveTime } from "./timeRef";
+import { DEFAULT_HAZE, DEFAULT_STAIR_STEPS, objectHeight } from "../lib/stageOps";
 import { placeFixtures } from "../stage/stageGeometry";
 
 /**
@@ -302,7 +303,8 @@ export function outputText(project: ShowProject): string {
 const MAX_STAGE_FIXTURES = 256;
 
 /**
- * 舞台预览的布置：舞台尺寸、每台灯的位置 / 高度 / 朝向 / 吊挂（没手动摆过的标 `auto`）与布景物件（别名 `O1`…）。
+ * 舞台预览的布置：舞台尺寸、每台灯的位置 / 高度 / 朝向 / 吊挂（没手动摆过的标 `auto`）、布景物件（别名 `O1`…，
+ * 台阶级数、多边形顶点数、LED 屏内容）、LED 屏可用的视频（别名 `V1`…）、烟雾浓度与场馆模型。
  *
  * @param project 工程。
  * @param aliases 别名表。
@@ -313,19 +315,60 @@ export function stageText(project: ShowProject, aliases: AliasMap): string {
   const placed = placeFixtures(project.fixtures, stage);
   const r = (v: number) => Math.round(v * 100) / 100;
   const lines = [
-    `Stage ${stage.width} m wide × ${stage.depth} m deep. x = meters from the center (+ = right as the audience sees it, from ${-stage.width / 2} to ${stage.width / 2}); y = meters from the front edge (0) to the back (${stage.depth}).`,
-    "Fixtures (x, y, height z, facing in degrees; 'auto' = not placed by hand yet):",
+    `Stage ${stage.width} m wide × ${stage.depth} m deep${stage.height ? `, deck ${r(stage.height)} m high` : ""}. x = meters from the center (+ = right as the audience sees it, from ${-stage.width / 2} to ${stage.width / 2}); y = meters from the front edge (0) to the back (${stage.depth}); z = meters above the deck.`,
+    "Fixtures (x, y, height z, facing and pitch in degrees; 'auto' = not placed by hand yet):",
   ];
   for (const f of project.fixtures.slice(0, MAX_STAGE_FIXTURES)) {
     const p = f.stage ?? placed.get(f.id);
     if (!p) continue;
-    const extra = [p.z ? `z=${r(p.z)}` : "", p.rotation ? `facing ${p.rotation}°` : "", p.hanging ? "hanging" : "", f.stage ? "" : "auto"].filter(Boolean).join(" ");
+    const extra = [
+      p.z ? `z=${r(p.z)}` : "",
+      p.rotation ? `facing ${p.rotation}°` : "",
+      "pitch" in p && p.pitch ? `pitch ${p.pitch}°` : "",
+      p.hanging ? "hanging" : "",
+      f.stage ? "" : "auto",
+    ]
+      .filter(Boolean)
+      .join(" ");
     lines.push(`${aliasOf(aliases, f.id)} "${f.name}" x=${r(p.x)} y=${r(p.y)}${extra ? ` ${extra}` : ""}`);
   }
   if (project.fixtures.length > MAX_STAGE_FIXTURES) lines.push(`… and ${project.fixtures.length - MAX_STAGE_FIXTURES} more`);
   lines.push(stage.objects.length > 0 ? "Set pieces:" : "No set pieces.");
+  const videos = videoMedia(project);
   stage.objects.forEach((o, i) => {
-    lines.push(`O${i + 1} ${o.kind}${o.label ? ` "${o.label}"` : ""} x=${r(o.x)} y=${r(o.y)} ${r(o.w)}×${r(o.h)} m${o.rotation ? ` rotated ${o.rotation}°` : ""}`);
+    const vertical = o.kind === "label" ? "" : ` z=${r(o.z ?? 0)} height ${r(objectHeight(o))} m`;
+    const extra = [
+      o.kind === "stairs" ? `${o.steps ?? DEFAULT_STAIR_STEPS} steps` : "",
+      o.kind === "polygon" ? `${o.points?.length ?? 0} vertices` : "",
+      o.kind === "screen" ? `shows ${screenContentText(o.content, videos, aliases)}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    lines.push(
+      `O${i + 1} ${o.kind}${o.label ? ` "${o.label}"` : ""} x=${r(o.x)} y=${r(o.y)} ${r(o.w)}×${r(o.h)} m${o.rotation ? ` rotated ${o.rotation}°` : ""}${vertical}${extra ? ` ${extra}` : ""}`,
+    );
   });
+  if (videos.length > 0) lines.push(`Videos for LED screens: ${videos.map((m, i) => `V${i + 1} "${m.name}"`).join(", ")}.`);
+  lines.push(`Haze ${Math.round((stage.haze ?? DEFAULT_HAZE) * 100)}%.${stage.venue ? ` Venue model "${stage.venue.name}".` : ""}`);
   return lines.join("\n");
+}
+
+/**
+ * 工程里的视频素材（LED 屏内容的别名 `V1`… 按这个顺序）。
+ *
+ * @param project 工程。
+ * @returns 视频素材。
+ */
+export function videoMedia(project: Pick<ShowProject, "media">): ShowProject["media"] {
+  return project.media.filter((m) => m.kind === "video");
+}
+
+/** LED 屏内容的文字。 */
+function screenContentText(content: ScreenContent | undefined, videos: ShowProject["media"], aliases: AliasMap): string {
+  if (!content) return "nothing (black)";
+  if (content.kind === "media") {
+    const i = videos.findIndex((m) => m.id === content.mediaId);
+    return i >= 0 ? `video V${i + 1}` : "a missing video";
+  }
+  return `pixels of ${aliasOf(aliases, content.fixtureId)}`;
 }

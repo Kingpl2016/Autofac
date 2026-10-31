@@ -64,9 +64,19 @@ export interface MemoryRef {
   id: string;
 }
 
-/** 对话回复的元数据：这一轮放进提示词的记忆（回复下方的“参考了哪些记忆”）。 */
+/** 一次模型调用的 token 用量（对话框底部的“上下文用量”）。 */
+export interface ContextUsage {
+  /** 发给模型的 tokens（系统提示词 + 对话 + 工具结果） */
+  input: number;
+  /** 模型输出的 tokens */
+  output: number;
+}
+
+/** 对话回复的元数据：这一轮放进提示词的记忆（回复下方的“参考了哪些记忆”）与最后一步的用量。 */
 export interface ReplyMetadata {
   memory?: MemoryRef[];
+  /** 这一轮最后一次模型调用的用量（多步工具调用时取最后一步，即对话此刻占用的上下文） */
+  context?: ContextUsage;
 }
 
 /** 一次请求可用的全部记忆。 */

@@ -10,7 +10,7 @@
 | 灯具库 → 导入文件 | 选择一个或多个 OFL `.json` | 逐个导入。失败的文件会列在导入结果里，不影响其它文件 |
 | 灯具库 → 浏览 OFL 库 | 选择官方仓库的 zip，或解压后的文件夹 | 先建一个轻量目录，再搜索、勾选后导入，见第 5 节 |
 
-导入后的模型带有来源信息 `source = { kind: "ofl", key: "制造商/灯具", recognizer }`。`recognizer` 是导入时的识别规则版本，当前为 `OFL_RECOGNIZER_VERSION = 2`。
+导入后的模型带有来源信息 `source = { kind: "ofl", key: "制造商/灯具", recognizer }`。`recognizer` 是导入时的识别规则版本，当前为 `OFL_RECOGNIZER_VERSION = 3`（3：导入外形尺寸、重量、功率、镜头名与运动方式，推断外形模板，色轮槽位按名字查色，分色片保留第二种颜色）。用旧规则导入的模型在整库目录里标为 `outdated`，可以重新导入。
 
 ## 2. 通道功能识别
 
@@ -78,6 +78,20 @@
 
 快门没有 `defaultValue` 时，默认值取“开光”区间的中点，否则摇头灯默认不出光。
 
+能力区间的颜色（`color`，以及分色片的 `colorAlt`）按下面的顺序取：
+
+1. 能力自己的 `colors`，其次槽位的 `colors`。第一种为 `color`；有第二种不同的颜色时记为 `colorAlt`（分色片）。
+2. 都没有时，颜色槽位按槽位名、`ColorPreset` 能力按注释查颜色名字典（`fixture/color_names.rs`）：基本颜色名（含 light / dark / deep 等修饰）、色温校正（CTO / CTB 及 1/2、1/4）、常见滤色片名（Congo Blue、Primary Red、Moss Green…）、LEE 编号（`LEE 106`、`L201`），以及去掉 `Rosco 80` 这类品牌与编号前缀后的名字。字典里的值是近似显示色，只用于预览和按颜色选槽位。
+3. 查不到的不填，`get_fixture_model` 会把它标为缺颜色，AI 助手可以补上。
+
+### 2.7 外形模板
+
+导入时按 OFL 分类推断外形：Moving Head → 摇头灯，Scanner / Barrel Scanner → 扫描灯，Laser → 激光，Smoke / Hazer → 烟机，Blinder → 观众灯，Pixel Bar → 灯条，Matrix → 像素面板，Strobe → 频闪灯。分类说明不了外形时（Color Changer、Dimmer 等）再依次看运动方式（Head → 摇头灯，Mirror / Barrel → 扫描灯）、有没有 Pan / Tilt、像素排布（一行 4 个以上 → 灯条，多行多列 → 像素面板）、镜头名（Profile / Ellipsoidal → 成像灯）和外形比例（宽是高和深的 3 倍以上 → 灯条，宽高都是深的 2 倍以上 → 泛光），最后 Color Changer / Dimmer 归为帕灯，其余为通用。不是从 OFL 导入的模型没有外观时，界面按通道推断（`fixtures/lib/shape.ts`）。
+
+### 2.8 图案槽位的图案
+
+导入时不写 `capabilities[].pattern`（OFL 只有图案名，没有可用的图案图片）。3D 舞台按槽位名的中英文关键词自动匹配 20 种内置图案之一（`fixtures/lib/gobos.ts`，如 “Star” → 五角星、“Leaves / Breakup” → 树叶碎光），名称像 “Open” 的槽位不投射，匹配不到的按槽位序号轮流取。用户可以在灯具编辑器的图案通道里逐个槽位改成别的内置图案或导入的图案图片，AI 助手可以用 `adaptFixtureModel.slotPatterns` 修改（见 `AI 助手说明.md` 4.7）。Rust 只校验格式：`builtin:` 加 1~32 个小写字母、数字或连字符，或 64 位小写十六进制散列。
+
 ### 2.5 重复功能的降级
 
 本软件要求同一像素里的“唯一功能”（例如 `red`、`dimmer`）只出现一次。OFL 里常见两个通道识别成同一功能，例如两个色轮。现在这种情况下，第二个及之后的通道降级为 `other`，并给出 `duplicateFunctionDemoted` 警告。旧行为是拒收整台灯。
@@ -92,7 +106,8 @@
 | `dmxValueResolution` | 按定义的分辨率换算到通道位宽 |
 | 矩阵与像素组（`pixelGroups`） | 见 3.1 |
 | 重定向文件（`redirectTo`） | 单文件导入时返回 `Redirect` 错误，提示改选目标灯具；整库导入时自动跟随，链长上限 8 |
-| 物理参数（`physical`）与能力物理量 | 导入为模型物理参数和能力区间的起止物理量；`narrow`、`wide` 这类关键字按百分比换算 |
+| 物理参数（`physical`）与能力物理量 | 导入为模型物理参数和能力区间的起止物理量；`narrow`、`wide` 这类关键字按百分比换算。模型物理参数包括 Pan / Tilt 行程（`focus.panMax` / `tiltMax`）、光束角（`lens.degreesMinMax`）、外形尺寸（`dimensions`，宽高深三个都有才导入）、重量、功率、镜头名（`lens.name`，最多 64 字符）与运动方式（`focus.type`：Head / Mirror / Barrel / Fixed） |
+| 外形模板 | 导入时按规则推断，写入 `appearance.shape`，来源记为 `rule`，见 2.7 |
 | 无法使用的模式（含不支持的插入块等） | 跳过整个模式并给出 `modeSkipped` 警告，避免通道错位 |
 | 模式数 | 单个模型最多 32 个模式（`MAX_MODES`，Rust 与 `validate.ts` 一致）。OFL 像素灯常有二三十个模式；超出的模式跳过，并给出 `unsupportedFeature` 警告（官方库里有 6 个灯具超过 32 个模式） |
 
@@ -151,7 +166,7 @@
 |---|---|
 | 反向通道（`invert`） | 被混色器驱动的发光体、调光、开关通道也按反向输出（写入 `1 - 分数`） |
 | CMY | 颜色层按峰值归一化后只表达色相与饱和度，亮度交给调光；C / M / Y 取 `1 - 分量` |
-| 色轮 | 选线性 RGB 距离最近的带颜色槽位，写入该槽位区间的中点；`Open` 槽位视为白色 |
+| 色轮 | 选线性 RGB 距离最近的带颜色槽位，写入该槽位区间的中点；`Open` 槽位视为白色。分色片（有 `colorAlt`）不参与选择，预览时取两种颜色的平均 |
 | 色温通道（CTC） | 只在灯具没有其它调色手段（彩色 / 冷暖白 / 琥珀等发光体、CMY、带颜色槽位的色轮）时由色温意图驱动：按通道上标注了色温（`K`）的能力区间插值，超出范围取最近的端点；通道没有任何能力区间时按整段 2700K→6500K 近似；有区间但都没标色温时不驱动。能混色的灯由混色近似色温，色温通道保持默认，避免叠加两次 |
 | 快门跟随强度 | 快门同时标注了开光与关光区间时，如果本帧没有外观显式写快门，灯暗时快门取关光区间中点，灯亮时取开光区间中点。强度层的频闪（方波曲线）因此也能驱动机械快门 |
 

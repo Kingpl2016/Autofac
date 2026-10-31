@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { AudioWaveform, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useActiveAiProfile } from "@/features/ai";
+import { openAiModelsDialog, useActiveAiProfile } from "@/features/ai";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/shared/components/Segmented";
 import { announce } from "@/shared/stores/announcerStore";
@@ -74,7 +73,6 @@ const paletteRgb = (p: PaletteName) => AI_PALETTES[p].map((c) => colorRgb(NAMED_
 /** 用 AI 生成：描述 + 可选调色板；结果进入暂存区审阅。 */
 function AiDraftForm({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const project = useProjectStore((s) => s.project);
   const [prompt, setPrompt] = useState("");
   const [palette, setPalette] = useState<PaletteName | null>(null);
@@ -92,7 +90,7 @@ function AiDraftForm({ onDone }: { onDone: () => void }) {
     return (
       <div className="grid gap-3 text-sm">
         <p className="text-muted-foreground">{t("ai.errors.no_profile")}</p>
-        <Button variant="outline" onClick={() => navigate("/settings#ai")}>
+        <Button variant="outline" onClick={openAiModelsDialog}>
           {t("editor.ai.openSettings")}
         </Button>
       </div>

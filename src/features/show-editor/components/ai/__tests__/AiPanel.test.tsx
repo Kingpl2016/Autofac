@@ -74,6 +74,10 @@ vi.mock("@/features/ai", async () => {
     loadLanguageModel: async (p: unknown) => ({ model: mock.model, profile: p, settings: { temperature: 0 } }),
     mcpCallTool: mock.mcpCall,
     ensureMcp: async () => undefined,
+    openAiModelsDialog: vi.fn(),
+    contextWindowOf: (await import("@/features/ai/lib/contextWindow")).contextWindowOf,
+    useProfileModels: () => ({ models: [], loading: false, error: null }),
+    useSetProfileModel: () => async () => profile,
   };
 });
 

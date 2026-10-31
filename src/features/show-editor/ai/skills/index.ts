@@ -7,6 +7,7 @@ import phrases from "./phrases/SKILL.md?raw";
 import songStructure from "./song-structure/SKILL.md?raw";
 import stageLayout from "./stage-layout/SKILL.md?raw";
 import customContent from "./custom-content/SKILL.md?raw";
+import fixtureAdapt from "./fixture-adapt/SKILL.md?raw";
 import { parseSkillFile, skillTriggers, type SkillFile } from "./skillFile";
 
 /**
@@ -25,8 +26,11 @@ import { parseSkillFile, skillTriggers, type SkillFile } from "./skillFile";
  * 技能内容或挑选规则改了要递增 {@link SKILLS_VERSION}（并递增提示词版本）。
  */
 
-/** 技能版本（5：加入舞台布置与自定义内容两个内置技能）。 */
-export const SKILLS_VERSION = 5;
+/**
+ * 技能版本（5：加入舞台布置与自定义内容两个内置技能；6：舞台布置加入 3D 安装参数，加入灯具适配技能；
+ * 7：舞台布置加入新的布景类型、LED 屏内容、挂到桁架与烟雾，灯具适配加入图案槽位）。
+ */
+export const SKILLS_VERSION = 7;
 
 /** 内置技能 id。 */
 export type SkillId =
@@ -38,7 +42,8 @@ export type SkillId =
   | "patchOutput"
   | "musicArrange"
   | "stageLayout"
-  | "customContent";
+  | "customContent"
+  | "fixtureAdapt";
 
 /** 解析内置技能（格式不对时构建期就会在测试里发现）。 */
 const builtin = (text: string): SkillFile => parseSkillFile(text) ?? { name: "invalid", description: "", metadata: {}, body: text };
@@ -54,6 +59,7 @@ const SKILLS: Record<SkillId, SkillFile> = {
   musicArrange: builtin(musicArrange),
   stageLayout: builtin(stageLayout),
   customContent: builtin(customContent),
+  fixtureAdapt: builtin(fixtureAdapt),
 };
 
 /** 内置技能（只读，设置页列出用）。 */
@@ -71,6 +77,7 @@ const ORDER: readonly SkillId[] = [
   "editClips",
   "customContent",
   "stageLayout",
+  "fixtureAdapt",
   "patchOutput",
 ];
 
@@ -124,7 +131,10 @@ const EDIT = /改|换|调|删|移|挪|拉长|缩短|加快|放慢|快|慢|亮|�
 const MOVE = /摇头|动作|画圆|扫|摇摆|走位|\b(pan|tilt|movers?|moving heads?|circle|sweep)/i;
 const PATCH = /配接|地址|宇宙|输出|单播|广播|加\s*\d+\s*[台个盏]|添加灯|新增灯|\b(universe|patch|address|output|unicast|broadcast|sacn|art-?net|ip)\b/i;
 const MUSIC = /音乐|节奏|节拍|鼓点|重拍|爆点|炸|渐强|跟着|切镜|画面|视频|\b(music|beats?|rhythm|kick|drop|build-?up|tempo|video|cuts?)\b/i;
-const STAGE = /舞台|摆放|摆位|摆成|排成|排列|一排|弧线|圆形|网格|桁架|吊挂|倒挂|挂在|高度|朝向|位置|面光|背光|侧光|地排|布景|平台|升降台|\b(stage|truss|layout|arrange|hang(ing)?|upstage|downstage|riser|set pieces?)\b/i;
+const STAGE =
+  /舞台|摆放|摆位|摆成|排成|排列|一排|弧线|圆形|网格|桁架|吊挂|倒挂|挂在|高度|朝向|位置|面光|背光|侧光|地排|布景|平台|升降台|台阶|楼梯|立柱|柱子|大屏|屏幕|LED\s*屏|多边形|烟雾|烟机|\b(stage|truss|layout|arrange|hang(ing)?|upstage|downstage|riser|set pieces?|stairs?|steps|pillars?|columns?|screens?|led wall|polygon|haze)\b/i;
+const ADAPT =
+  /适配|校准|外形|尺寸|光束角|3D|三维|模型文件|图标|色片|色轮.*颜色|颜色.*准|偏色|图案|OFL|规格书|说明书|\b(adapt|calibrat\w*|shape|dimensions?|beam angle|3d|icon|gel|gobos?|spec sheet|ofl)\b/i;
 const CUSTOM = /自定义|新建|新做|做一个|做个|创建|定义|存成|存为|保存|存起来|以后.*用|模板|新的?特效|新灯具|没有.*灯|\b(custom|define|create|new effect|save|template|keep it)\b/i;
 
 /**
@@ -150,6 +160,7 @@ export function selectSkills(query: SkillQuery): SkillId[] {
     if (PATCH.test(q.text)) picked.add("patchOutput");
     if (STAGE.test(q.text)) picked.add("stageLayout");
     if (CUSTOM.test(q.text)) picked.add("customContent");
+    if (ADAPT.test(q.text)) picked.add("fixtureAdapt");
     for (const name of q.invoked ?? []) {
       const id = BY_NAME.get(name);
       if (id) picked.add(id);

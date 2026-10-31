@@ -67,6 +67,15 @@ export function oflCatalogImport(keys: readonly string[]): Promise<ImportOutcome
 }
 
 /**
+ * 读一个灯具的 OFL 原文摘要（JSON 文本，不超过 16 KiB），给 AI 助手看。需要先打开过 OFL 整库目录。
+ *
+ * @param key 灯具标识（模型来源里的 `制造商/灯具`）。
+ */
+export function oflFixtureDigest(key: string): Promise<string> {
+  return invoke<string>("ofl_fixture_digest", { key });
+}
+
+/**
  * 新增或更新一个自定义模型，返回实际保存的模型。
  *
  * @param model 要保存的模型。

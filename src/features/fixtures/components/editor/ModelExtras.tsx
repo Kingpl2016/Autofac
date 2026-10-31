@@ -1,10 +1,25 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { emitterFunctions } from "../../lib/draft";
-import type { ChannelFunction, Emitter, FixtureModel, Physical } from "../../lib/types";
+import { applyEmitterPreset, TYPICAL_LED } from "../../lib/emitterPresets";
+import { inferShape } from "../../lib/shape";
+import { AppearanceAssets } from "./AppearanceAssets";
+import {
+  FIXTURE_SHAPES,
+  FOCUS_TYPES,
+  type ChannelFunction,
+  type Emitter,
+  type FixtureModel,
+  type FixtureShape,
+  type FocusType,
+  type Physical,
+} from "../../lib/types";
 
 interface ModelExtrasProps {
   draft: FixtureModel;
@@ -36,14 +51,16 @@ export function PhysicalSection({ draft, onChange }: ModelExtrasProps) {
   const physical = draft.physical ?? {};
   const setPhysical = (changes: Partial<Physical>) => onChange({ physical: compact({ ...physical, ...changes }) });
   const matrix = draft.matrix;
-  const numberField = (id: string, label: string, value: number | undefined, set: (v: number | undefined) => void) => (
-    <div className="grid gap-1.5">
+  // 尺寸只填了一部分时先留在本地（模型里只存完整的宽高深）
+  const [partialDims, setPartialDims] = useState<(number | undefined)[] | null>(null);
+  const numberField = (id: string, label: string, value: number | undefined, set: (v: number | undefined) => void, pending?: number) => (
+    <div key={id} className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
         className="num"
         inputMode="decimal"
-        value={value ?? ""}
+        value={value ?? pending ?? ""}
         onChange={(e) => set(optionalNumber(e.target.value))}
       />
     </div>
@@ -82,10 +99,84 @@ export function PhysicalSection({ draft, onChange }: ModelExtrasProps) {
           {numberField("fx-beam-min", t("fixtures.editor.beamMin"), physical.beamMinDeg, (v) => setPhysical({ beamMinDeg: v }))}
           {numberField("fx-beam-max", t("fixtures.editor.beamMax"), physical.beamMaxDeg, (v) => setPhysical({ beamMaxDeg: v }))}
         </div>
+        <div className="grid gap-3 sm:grid-cols-5">
+          {(["width", "height", "depth"] as const).map((axis, i) =>
+            numberField(`fx-dim-${axis}`, t(`fixtures.editor.dim.${axis}`), physical.dimensionsMm?.[i], (v) => {
+              const dims: (number | undefined)[] = [...(physical.dimensionsMm ?? [undefined, undefined, undefined])];
+              dims[i] = v;
+              // 三个尺寸都填了才保存（后端要求完整的宽高深）
+              const full = dims.every((d) => d !== undefined) ? (dims as [number, number, number]) : undefined;
+              setPhysical({ dimensionsMm: full });
+              setPartialDims(full ? null : dims);
+            }, partialDims?.[i]),
+          )}
+          {numberField("fx-weight", t("fixtures.editor.weight"), physical.weightKg, (v) => setPhysical({ weightKg: v }))}
+          {numberField("fx-power", t("fixtures.editor.power"), physical.powerW, (v) => setPhysical({ powerW: v }))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="fx-lens">{t("fixtures.editor.lensName")}</Label>
+            <Input
+              id="fx-lens"
+              maxLength={64}
+              value={physical.lensName ?? ""}
+              onChange={(e) => setPhysical({ lensName: e.target.value.trim() === "" ? undefined : e.target.value })}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="fx-focus">{t("fixtures.editor.focusType")}</Label>
+            <Select value={physical.focusType ?? NONE} onValueChange={(v) => setPhysical({ focusType: v === NONE ? undefined : (v as FocusType) })}>
+              <SelectTrigger id="fx-focus">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>{t("fixtures.editor.unset")}</SelectItem>
+                {FOCUS_TYPES.map((f) => (
+                  <SelectItem key={f} value={f}>
+                    {t(`fixtures.focus.${f}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </fieldset>
+      <fieldset className="grid gap-3">
+        <legend className="mb-1 text-sm font-medium">{t("fixtures.editor.appearance")}</legend>
+        <div className="grid max-w-md gap-1.5">
+          <Label htmlFor="fx-shape">{t("fixtures.editor.shape")}</Label>
+          <Select
+            value={draft.appearance?.shape ?? NONE}
+            onValueChange={(v) =>
+              onChange({
+                appearance: v === NONE && !draft.appearance?.icon && !draft.appearance?.model3d
+                  ? undefined
+                  : { ...draft.appearance, shape: v === NONE ? inferShape(draft) : (v as FixtureShape), origin: "user" },
+              })
+            }
+          >
+            <SelectTrigger id="fx-shape">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>{t("fixtures.editor.shapeAuto", { shape: t(`fixtures.shape.${inferShape(draft)}`) })}</SelectItem>
+              {FIXTURE_SHAPES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {t(`fixtures.shape.${s}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">{t("fixtures.editor.shapeHint")}</p>
+        </div>
+        <AppearanceAssets draft={draft} onChange={onChange} />
       </fieldset>
     </div>
   );
 }
+
+/** 下拉框里“未设置”的取值。 */
+const NONE = "__none";
 
 const toHex = (c: [number, number, number] | undefined) =>
   c ? `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}` : "#ffffff";
@@ -119,6 +210,20 @@ export function EmitterSection({ draft, onChange }: ModelExtrasProps) {
   return (
     <div className="grid gap-3">
       <p className="text-sm text-muted-foreground">{t("fixtures.editor.emittersHint")}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          title={t("fixtures.editor.typicalLedHint")}
+          onClick={() => onChange({ emitters: applyEmitterPreset(functions, draft.emitters, TYPICAL_LED) })}
+        >
+          {t("fixtures.editor.typicalLed")}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={emitters.length === 0} onClick={() => onChange({ emitters: undefined })}>
+          {t("fixtures.editor.clearEmitters")}
+        </Button>
+      </div>
       <table className="w-full max-w-2xl text-sm">
         <caption className="sr-only">{t("fixtures.editor.emitters")}</caption>
         <thead>

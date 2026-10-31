@@ -435,3 +435,20 @@ export function visibleVideoClip(project: Pick<ShowProject, "mediaTracks" | "med
   }
   return null;
 }
+
+/**
+ * 时刻 `atMs` 正在播放某个素材的片段（3D 舞台的 LED 屏取它的画面）。同一时刻有多个时取最早开始的。
+ *
+ * @param project 工程（只读）。
+ * @param mediaId 素材 id。
+ * @param atMs 时间线时刻。
+ * @returns 片段 id；此刻这个素材没有在播放时为 `null`。
+ */
+export function activeClipOfMedia(project: Pick<ShowProject, "mediaClips">, mediaId: string, atMs: number): string | null {
+  let best: MediaClip | null = null;
+  for (const c of project.mediaClips) {
+    if (c.mediaId !== mediaId || atMs < c.startMs || atMs >= mediaClipEndMs(c)) continue;
+    if (!best || c.startMs < best.startMs) best = c;
+  }
+  return best?.id ?? null;
+}

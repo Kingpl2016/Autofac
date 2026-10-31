@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { CHANNEL_FUNCTIONS } from "@/features/fixtures";
-import { CUE_TAGS } from "../lib/project";
+import { BUILTIN_GOBOS, CHANNEL_FUNCTIONS, FIXTURE_SHAPES, FOCUS_TYPES } from "@/features/fixtures";
+import { CUE_TAGS, STAGE_OBJECT_KINDS } from "../lib/project";
 import { RECIPE_IDS } from "./recipes";
 import { SHIFT_HELP, TIME_REF_HELP } from "./timeRef";
 import { COLOR_NAMES, FADES, PALETTE_NAMES, PERIODS, SIZES, SPEEDS, SPREADS } from "./vocab";
@@ -230,6 +230,11 @@ const stageX = meters(-100, 100).describe("Meters left/right of the stage center
 const stageY = meters(-1, 200).describe("Meters from the front edge of the stage towards the back");
 const height = meters(0, 50).describe("Mounting height in meters");
 const facing = z.number().min(-180).max(180).describe("Horizontal facing in degrees, 0 = towards the audience");
+const pitch = z
+  .number()
+  .min(-90)
+  .max(90)
+  .describe("Mounting tilt in degrees: + tips the light axis (up when standing, down when hanging) towards the facing; e.g. a hanging front light facing 180 with pitch 45 aims down at the stage");
 
 /** 把一组灯排成直线 / 弧线 / 网格 / 圆。 */
 const placeFixtures = z.object({
@@ -244,6 +249,7 @@ const placeFixtures = z.object({
   sweep: opt(z.number().min(10).max(300)).describe("arc only: angle of the arc in degrees (default 90); the ends come towards the audience"),
   z: opt(height),
   rotation: opt(facing),
+  pitch: opt(pitch),
   hanging: opt(z.boolean()).describe("Hung upside down from a truss"),
 });
 
@@ -257,6 +263,7 @@ const setPlacement = z.object({
   moveY: opt(meters(-100, 100)).describe("Move all of them towards the back (+) or the front (−)"),
   z: opt(height),
   rotation: opt(facing),
+  pitch: opt(pitch),
   hanging: opt(z.boolean()),
 });
 
@@ -265,18 +272,57 @@ const setStage = z.object({
   op: z.literal("setStage"),
   width: opt(meters(1, 200)).describe("Stage width in meters"),
   depth: opt(meters(1, 200)).describe("Stage depth in meters"),
+  height: opt(meters(0, 20)).describe("Deck height in meters above the audience floor (0 = flat floor)"),
+  haze: opt(percent).describe("Haze density in % (how visible beams are in the 3D stage; default 35)"),
 });
 
-/** 布景物件（桁架、平台、圆台、文字）。 */
+/** 布景物件的类型与各类型的字段含义。 */
+const objectKind = z
+  .enum(STAGE_OBJECT_KINDS)
+  .describe(
+    "truss: a truss bar; rect: a riser/platform; circle: a round platform; polygon: a deck with n sides (or vertices); stairs: steps rising towards the back; pillar: a column (width = diameter); screen: an LED wall facing the audience (width × height, depth = thickness); label: a text on the plan",
+  );
+/** 多边形 / 台阶 / LED 屏的额外字段。 */
+const objectExtras = {
+  sides: opt(z.number().int().min(3).max(64)).describe("polygon: make a regular polygon with this many sides (fits width × depth)"),
+  points: opt(z.array(z.tuple([meters(-100, 100), meters(-100, 100)])).min(3).max(64)).describe("polygon: vertices [x, y] in meters relative to its center (instead of sides)"),
+  steps: opt(z.number().int().min(1).max(50)).describe("stairs: number of steps"),
+  content: opt(z.string().min(1).max(12)).describe("screen: what it shows: a video 'V#' from get_stage (synced with the timeline), a pixel fixture 'F#' (live pixels), or 'none'"),
+};
+/** 布景物件。 */
 const addStageObject = z.object({
   op: z.literal("addStageObject"),
-  kind: z.enum(["truss", "rect", "circle", "label"]).describe("truss: a truss bar; rect: a riser/platform/screen; circle: a round platform; label: a text on the plan"),
+  kind: objectKind,
   x: stageX,
   y: stageY,
   width: opt(meters(0.1, 200)),
   depth: opt(meters(0.1, 200)),
   rotation: opt(facing),
   label: opt(z.string().max(40)),
+  z: opt(meters(0, 100)).describe("Elevation of the bottom in meters (e.g. 6 for a flown truss)"),
+  height: opt(meters(0, 100)).describe("Own vertical size in meters (truss section, riser / pillar / screen height, total stairs rise)"),
+  ...objectExtras,
+});
+/** 修改已有的布景物件。 */
+const setStageObject = z.object({
+  op: z.literal("setStageObject"),
+  objects: z.array(z.string().min(2).max(8)).min(1).max(64).describe("Set pieces 'O1', 'O2', … from get_stage"),
+  x: opt(stageX),
+  y: opt(stageY),
+  width: opt(meters(0.1, 200)),
+  depth: opt(meters(0.1, 200)),
+  rotation: opt(facing),
+  label: opt(z.string().max(40)),
+  z: opt(meters(0, 100)).describe("Elevation of the bottom in meters"),
+  height: opt(meters(0, 100)).describe("Own vertical size in meters"),
+  ...objectExtras,
+});
+/** 把灯挂到桁架上（落在桁架中线、高度取桁架底面、吊挂）。 */
+const hangOnTruss = z.object({
+  op: z.literal("hangOnTruss"),
+  fixtures: fixtureSet,
+  truss: z.string().min(2).max(8).describe("A truss 'O#' from get_stage"),
+  distribute: opt(z.boolean()).describe("Spread them evenly along the truss in the given order (default true); false keeps each at its nearest point"),
 });
 const removeStageObjects = z.object({
   op: z.literal("removeStageObjects"),
@@ -351,6 +397,62 @@ const defineFixtureModel = z.object({
   tiltRange: opt(z.number().min(0).max(360)).describe("Tilt range in degrees"),
 });
 
+/** 发光体（可以校准的加色 LED）。 */
+const EMITTER_NAMES = ["red", "green", "blue", "white", "coolWhite", "warmWhite", "amber", "uv", "lime", "indigo"] as const;
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/).describe("#rrggbb");
+const mm = z.number().min(10).max(5000);
+
+/** 适配一个灯具型号：外形、尺寸与光学参数、2D / 3D 资源、发光体校准、色轮槽位颜色。 */
+const adaptFixtureModel = z.object({
+  op: z.literal("adaptFixtureModel"),
+  model: z.string().min(2).max(12).describe("The model of a fixture in the show 'F3', or a library model 'L2'"),
+  shape: opt(z.enum(FIXTURE_SHAPES)).describe("Body shape for the 3D stage"),
+  widthMm: opt(mm),
+  heightMm: opt(mm),
+  depthMm: opt(mm).describe("Size as in the spec sheet: width, height, depth of the fixture standing normally (lens facing forward)"),
+  weightKg: opt(z.number().min(0.1).max(500)),
+  powerW: opt(z.number().min(1).max(20000)),
+  beamMinDeg: opt(z.number().min(0.5).max(180)),
+  beamMaxDeg: opt(z.number().min(0.5).max(180)),
+  panRange: opt(z.number().min(10).max(720)),
+  tiltRange: opt(z.number().min(10).max(360)),
+  lensName: opt(z.string().max(64)),
+  focusType: opt(z.enum(FOCUS_TYPES)),
+  icon: opt(z.string().max(8)).describe("An icon 'A#' from list_fixture_assets, or 'none' to remove"),
+  model3d: opt(z.string().max(8)).describe("A 3D model 'A#' from list_fixture_assets, or 'none' to remove"),
+  emitters: opt(
+    z
+      .array(
+        z.object({
+          emitter: z.enum(EMITTER_NAMES),
+          color: opt(hexColor).describe("Measured or typical display color of this LED"),
+          kelvin: opt(z.number().int().min(1000).max(20000)).describe("Color temperature (white LEDs)"),
+          intensity: opt(z.number().min(0.05).max(10)).describe("Brightness relative to the red/green/blue LEDs (1 = same)"),
+        }),
+      )
+      .min(1)
+      .max(10),
+  ).describe("Emitter calibration; only for emitters the model has"),
+  slotColors: opt(
+    z
+      .array(z.object({ slot: z.string().min(2).max(4).describe("Color wheel slot 'W3' from get_fixture_model"), color: hexColor, colorAlt: opt(hexColor).describe("Second color of a split slot") }))
+      .min(1)
+      .max(32),
+  ),
+  slotPatterns: opt(
+    z
+      .array(
+        z.object({
+          slot: z.string().min(2).max(4).describe("Gobo slot 'G2' from get_fixture_model"),
+          gobo: z.string().min(1).max(12).describe(`A built-in pattern (${BUILTIN_GOBOS.join(", ")}), a pattern image 'A#' from list_fixture_assets, or 'auto'`),
+        }),
+      )
+      .min(1)
+      .max(32),
+  ).describe("Which pattern each gobo slot projects in the 3D stage"),
+  updateLibrary: opt(z.boolean()).describe("Also update the model in the fixture library (default true)"),
+});
+
 /** 全部操作（`anyOf`，按 `op` 区分）。 */
 export const aiOpSchema = z.union([
   addEffect,
@@ -375,7 +477,10 @@ export const aiOpSchema = z.union([
   setPlacement,
   setStage,
   addStageObject,
+  setStageObject,
   removeStageObjects,
+  hangOnTruss,
+  adaptFixtureModel,
   defineEffect,
   saveTemplate,
   defineFixtureModel,
@@ -417,4 +522,4 @@ export const draftPlanSchema = z.object({
 export type DraftPlan = z.output<typeof draftPlanSchema>;
 
 /** 会改灯具配接或输出、或往灯具库里加模型的操作（敏感）。写入特效库 / 模板库的改动另由编译结果判断。 */
-export const SENSITIVE_OPS: ReadonlySet<AiOpName> = new Set(["addFixtures", "patchFixtures", "setOutput", "defineFixtureModel"]);
+export const SENSITIVE_OPS: ReadonlySet<AiOpName> = new Set(["addFixtures", "patchFixtures", "setOutput", "defineFixtureModel", "adaptFixtureModel"]);

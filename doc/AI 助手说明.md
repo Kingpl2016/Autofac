@@ -36,7 +36,7 @@ src/features/ai/                      AI 插件（与业务无关）
   lib/memory.ts / lib/memoryFile.ts   记忆条目的纯函数；数据目录里记忆文件的读写
   stores/useAiMemoryStore.ts          个人偏好记忆
 src/features/show-editor/components/ai/
-  AiDockLayout.tsx / AiDock.tsx       编辑器右侧的停靠面板（按需加载）
+  AiDockLayout.tsx / AiDock.tsx       悬浮在编辑器右侧的对话面板（不挤压编辑器，左边缘拖动调宽，按需加载）
   AiChatPanel.tsx                     对话：AI SDK useChat + DirectChatTransport → assistant-ui 运行时（灌入消息树、挂记忆元数据）
   AiMemoryPage.tsx                    记忆页
   thread/                             基于 assistant-ui 原语的对话界面（消息、操作栏、工具步骤、提议卡片、记忆卡片、记忆来源、模型切换、自动写入开关）
@@ -57,6 +57,7 @@ src/features/show-editor/ai/          编辑器专属
   history.ts                          对话记录文件（消息树、卡片结局、本工程记忆）
   memory.ts                           范例、记忆的挑选规则与提示词里的“Memory”一节
   compact.ts                          长对话压缩
+  fixtureAdapt.ts                     灯具适配：型号详情 / 资源库的文字，adaptFixtureModel 的纯逻辑
   eval/                               一致性评测
 src-tauri/crates/ai-gateway/          后端：配置、Key、流式代理、对话记录文件
 ```
@@ -76,7 +77,7 @@ src-tauri/crates/ai-gateway/          后端：配置、Key、流式代理、对
 - 前端的 SDK 用占位 Key；后端只转发白名单里的请求头（`content-type`、`accept`、`anthropic-version`、`anthropic-beta`），再按协议注入 `Authorization: Bearer` / `x-api-key` / `x-goog-api-key`。
 - 请求地址必须与配置的接口地址同协议、同主机、同端口，路径在其之下；只允许 HTTPS，HTTP 仅限本机与局域网（Ollama、LM Studio）。
 - 请求体上限 8 MiB，响应上限 64 MiB；可随时取消。
-- 发给模型的工程摘要不含文件路径；输出目标与 IP 只在模型调用 `get_output` 时给出。
+- 发给模型的工程摘要不含文件路径；输出目标与 IP 只在模型调用 `get_output` 时给出。资源库只给模型别名、文件名与统计，不给路径。
 
 ## 3. 减小不同模型之间的差异
 
@@ -123,6 +124,8 @@ src-tauri/crates/ai-gateway/          后端：配置、Key、流式代理、对
 | `moveCues` / `resizeCues` / `splitCues` / `deleteCues` / `clearRange` | 时间线编辑 | 删除超过 20 个片段时敏感 |
 | `addSection` / `addMarker` / `setTempo` / `createGroup` | 结构 | |
 | `addFixtures` / `patchFixtures` / `setOutput` | 灯具配接与输出 | 是 |
+| `placeFixtures` / `setPlacement` / `setStage` / `addStageObject` / `setStageObject` / `removeStageObjects` / `hangOnTruss` | 舞台布置：位置、高度、朝向、俯仰、吊挂、挂到桁架、台高、烟雾浓度，布景物件（桁架、平台、圆台、多边形、台阶、立柱、LED 屏、文字）的离地高度、厚度、边数 / 顶点、级数与屏幕内容（见 4.8） | |
+| `adaptFixtureModel` | 灯具适配：外形、尺寸、光学参数、图标 / 3D 模型、发光体校准、色轮槽位颜色、图案槽位的图案（见 4.7） | 是 |
 
 放片段的操作默认 `replace: true`：先清掉目标轨道在这段时间里的片段。
 
@@ -165,10 +168,42 @@ src-tauri/crates/ai-gateway/          后端：配置、Key、流式代理、对
 | `editClips` 修改片段 | 先查后改、只改要求的字段、改色保留特效 | 有选中片段，或提到改 / 换 / 删 / 快 / 慢 / 亮 / 暗等 |
 | `patchOutput` 配接与输出 | 敏感操作、地址与 universe、输出模式 | 提到配接、地址、universe、输出、添加灯具时 |
 | `musicArrange` 按音乐编排 | 能量 / 重音 / 渐强 / 爆点 / 切镜 → 配方与 `placeAccents` | 有音乐分析，且是草稿、提到音乐 / 节奏 / 画面或提到段落 |
+| `stageLayout` 舞台布置 | 常见灯位（面光、背光、侧光、地排）、高度、朝向、俯仰、桁架与台高 | 提到舞台、摆位、桁架、吊挂、高度、朝向等 |
+| `fixtureAdapt` 灯具适配 | 先读后写、OFL 字段对应、滤色片名 → 颜色、典型 LED 色坐标、不编造数值 | 提到适配、校准、外形、尺寸、3D、图标、色片、OFL 等 |
 
 - 技能不让模型自己选择读取（那样不同模型读的内容不同，反而增加差异），也不依赖某一家的专有功能。
 - 对话里按用户最后一句话挑选，草稿按描述挑选；评测可以关掉技能做对照（见第 6 节）。
 - 改技能内容或挑选规则要递增 `SKILLS_VERSION` 与 `PROMPT_VERSION`；`__tests__/skills.test.ts` 固定了挑选结果。
+
+### 4.7 灯具适配
+
+AI 可以给灯具型号补全 3D 舞台和颜色准确度需要的信息（提示词版本 9 起，图案槽位从版本 10、技能版本 7 起）。读写都经过工具，写入仍要用户审阅。
+
+| 工具 / 操作 | 作用 |
+|---|---|
+| `get_fixture_model` | 一个型号的详情：来源、外形（及来源）、尺寸、光束角、行程、发光体校准、颜色轮槽位（`W#`，缺颜色的标为 `NO COLOR`）、未识别的通道、还缺哪些信息、哪些灯在用。型号用 `F#`（这台灯的型号）或 `L#`（灯具库）引用 |
+| `get_ofl_source` | OFL 导入的型号的原文摘要（后端命令 `ofl_fixture_digest`，最多 16 KiB）：名称、分类、物理参数、轮子槽位、通道能力、模式、说明书链接。需要先打开过 OFL 整库目录；结果包成 `{ untrusted: true, … }` |
+| `list_fixture_assets` | 资源库里的图标、3D 模型、图案图片与场馆模型（`A#`），带三角面数、尺寸、有无关节 |
+| `adaptFixtureModel` | 改外形、尺寸（宽高深一起给）、重量、功率、光束角、行程、镜头、运动方式、图标 / 3D 模型（`A#` 或 `none`）、发光体校准（`#rrggbb` / 色温 / 相对亮度）、色轮槽位颜色（含分色片的第二种颜色）、图案槽位的图案（`slotPatterns`：槽位 `G#` → 内置图案名、图案图片 `A#` 或 `auto`） |
+
+- `adaptFixtureModel` 同时改工程里的模型快照，并经 `LibraryChanges.models` 写回灯具库里的同一模型（`updateLibrary` 为 `false` 时只改工程；内置模型只读，只改工程并给出警告）。它在 `SENSITIVE_OPS` 里，开了自动写入也要确认。
+- 校验：资源种类要对（图标不能当 3D 模型，图案只能用图案图片）、发光体必须是模型里有的、槽位别名必须存在、最大光束角不小于最小值，改完的模型要通过 `validateModel`。
+- `get_fixture_model` 列出图案槽位 `G#` 与 3D 舞台实际投射的图案（标 `auto` 的是按名称自动匹配的）。
+- 对话栏的建议里有一条“帮我适配工程里灯具型号的外形、尺寸和色轮颜色”；也可以用 `/fixture-adapt` 点名技能。
+- 评测用例 `edit-adapt-fixture`。
+
+### 4.8 舞台增强（提示词版本 10、技能版本 7）
+
+| 工具 / 操作 | 作用 |
+|---|---|
+| `get_stage` | 另外列出台阶级数、多边形顶点数、每块 LED 屏显示什么、LED 屏可用的视频（`V#`，工程里视频素材的顺序）、烟雾浓度与场馆模型名 |
+| `addStageObject` / `setStageObject` | `kind` 新增 `polygon`（`sides` 生成正多边形，或 `points` 给顶点）、`stairs`（`steps`）、`pillar`、`screen`（`content`：`V#` 视频、`F#` 像素灯或 `none`）。字段与类型不符时报错 |
+| `hangOnTruss` | 把一组灯挂到桁架 `O#` 上：落在中线、高度取桁架底面、吊挂；`distribute` 默认为真，按给定顺序等距排开 |
+| `setStage` | 新增 `haze`（%） |
+
+- `content` 指向没有像素矩阵的灯时给出警告（屏幕显示整灯颜色）。
+- 改动摘要里烟雾浓度的变化单独列一行。
+- 技能 `stage-layout` 的挑选关键词加入台阶、立柱、LED 屏、多边形、烟雾等；`fixture-adapt` 加入“图案 / gobo”。
 
 ## 5. 对话记录
 

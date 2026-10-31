@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { FileJson, FileSpreadsheet, Library, Loader2, Plus } from "lucide-react";
+import { Eraser, FileJson, FileSpreadsheet, Library, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,10 @@ import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { pickJsonFile, pickXlsxFile } from "@/shared/tauri/pickers";
 import { blankModel, cloneAsCustom, nextCustomId } from "../lib/draft";
-import { fixtureErrorText } from "../lib/errors";
+import { formatBytesIec } from "@/shared/lib/format";
+import { collectAssetReferences } from "../lib/assetRefs";
+import { assetErrorText, fixtureErrorText } from "../lib/errors";
+import { useFixtureAssetStore } from "../stores/useFixtureAssetStore";
 import { addToShowHref } from "../lib/format";
 import type { FixtureModel, ImportOutcome } from "../lib/types";
 import { useFixtureStore } from "../stores/useFixtureStore";
@@ -50,6 +53,18 @@ export function FixtureLibraryView() {
   const [importing, setImporting] = useState(false);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const cleanupAssets = useFixtureAssetStore((s) => s.cleanup);
+
+  const onCleanup = async () => {
+    try {
+      const out = await cleanupAssets(collectAssetReferences());
+      if (out.removed === 0) toast.info(t("fixtures.assets.cleanupNone"));
+      else toast.success(t("fixtures.assets.cleanupDone", { count: out.removed, size: formatBytesIec(out.bytes) }));
+    } catch (e) {
+      toast.error(assetErrorText(t, e));
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -112,6 +127,10 @@ export function FixtureLibraryView() {
             <Button type="button" variant="outline" onClick={() => setCatalogOpen(true)} disabled={importing}>
               <Library aria-hidden />
               {t("fixtures.catalog.button")}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setConfirmCleanup(true)} disabled={importing} title={t("fixtures.assets.cleanupHint")}>
+              <Eraser aria-hidden />
+              {t("fixtures.assets.cleanup")}
             </Button>
             <Button
               type="button"
@@ -179,6 +198,14 @@ export function FixtureLibraryView() {
         onConfirm={() => void onDelete()}
       />
       <ImportResultDialog outcome={outcome} onClose={() => setOutcome(null)} />
+      <ConfirmDialog
+        open={confirmCleanup}
+        onOpenChange={setConfirmCleanup}
+        title={t("fixtures.assets.cleanupTitle")}
+        description={t("fixtures.assets.cleanupDescription")}
+        confirmLabel={t("fixtures.assets.cleanup")}
+        onConfirm={() => void onCleanup()}
+      />
       {catalogOpen && (
         <Suspense fallback={null}>
           <OflCatalogDialog

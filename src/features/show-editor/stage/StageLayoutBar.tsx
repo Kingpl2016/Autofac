@@ -11,11 +11,15 @@ import {
   ArrowLeftRight,
   ArrowRightLeft,
   ArrowUpDown,
+  ChartNoAxesColumnIncreasing,
   Circle,
+  Cylinder,
   Grid3x3,
   ImageMinus,
   ImagePlus,
   Minus,
+  Monitor,
+  Pentagon,
   RectangleHorizontal,
   RotateCcw,
   Spline,
@@ -37,11 +41,13 @@ import {
   arrangeFixtures,
   distributeFixtures,
   mirrorFixtures,
+  objectHeight,
   removeStageObject,
   resetPlacements,
   reverseFixturePositions,
   setFixturePlacement,
   setStageBackground,
+  setStageHeight,
   setStageSize,
   updateStageObject,
   type AlignMode,
@@ -51,38 +57,18 @@ import {
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { StageField } from "./StageField";
+import { StageObjectExtras, TrussHangTools } from "./StageObjectExtras";
 import type { StageBackgroundState } from "./useStageBackground";
-
-/** 解析数字输入；不是有限数字时返回 `null`（不提交）。 */
-function num(text: string): number | null {
-  const v = Number(text.trim().replace(",", "."));
-  return Number.isFinite(v) ? v : null;
-}
-
-/** 紧凑数字输入：标签 + 提交式输入框 + 单位。 */
-function Field({ label, value, unit, onCommit }: { label: string; value: number; unit: string; onCommit: (v: number) => void }) {
-  return (
-    <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-      <span aria-hidden>{label}</span>
-      <CommitInput
-        label={label}
-        value={Number(value.toFixed(2))}
-        inputMode="numeric"
-        className="num h-6 w-14 px-1 text-[11px]"
-        onCommit={(text) => {
-          const v = num(text);
-          if (v !== null) onCommit(v);
-        }}
-      />
-      <span aria-hidden>{unit}</span>
-    </label>
-  );
-}
 
 const OBJECT_KINDS: { kind: StageObject["kind"]; icon: typeof Minus }[] = [
   { kind: "truss", icon: Minus },
   { kind: "rect", icon: RectangleHorizontal },
   { kind: "circle", icon: Circle },
+  { kind: "polygon", icon: Pentagon },
+  { kind: "stairs", icon: ChartNoAxesColumnIncreasing },
+  { kind: "pillar", icon: Cylinder },
+  { kind: "screen", icon: Monitor },
   { kind: "label", icon: Type },
 ];
 
@@ -177,8 +163,9 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
           </Button>
         ))}
         <span aria-hidden className="mx-1 h-4 w-px bg-border" />
-        <Field label={t("editor.stage.layout.width")} value={stage.width} unit="m" onCommit={(v) => update((d) => setStageSize(d, v, d.stage.depth))} />
-        <Field label={t("editor.stage.layout.depth")} value={stage.depth} unit="m" onCommit={(v) => update((d) => setStageSize(d, d.stage.width, v))} />
+        <StageField label={t("editor.stage.layout.width")} value={stage.width} unit="m" onCommit={(v) => update((d) => setStageSize(d, v, d.stage.depth))} />
+        <StageField label={t("editor.stage.layout.depth")} value={stage.depth} unit="m" onCommit={(v) => update((d) => setStageSize(d, d.stage.width, v))} />
+        <StageField label={t("editor.stage.layout.deckHeight")} value={stage.height ?? 0} unit="m" onCommit={(v) => update((d) => setStageHeight(d, v))} />
         <span aria-hidden className="mx-1 h-4 w-px bg-border" />
         <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => void pickBackground()}>
           <ImagePlus aria-hidden className="size-3" />
@@ -206,17 +193,23 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
       {first && (
         <div role="group" aria-label={t("editor.stage.layout.fixtures", { count: selected.length })} className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-medium">{t("editor.stage.layout.fixtures", { count: selected.length })}</span>
-          <Field
+          <StageField
             label={t("editor.stage.layout.rotation")}
             value={first.stage?.rotation ?? 0}
             unit="°"
             onCommit={(v) => update((d) => setFixturePlacement(d, selectedIds, { rotation: v }))}
           />
-          <Field
+          <StageField
             label={t("editor.stage.layout.height")}
             value={first.stage?.z ?? 0}
             unit="m"
             onCommit={(v) => update((d) => setFixturePlacement(d, selectedIds, { z: v }))}
+          />
+          <StageField
+            label={t("editor.stage.layout.pitch")}
+            value={first.stage?.pitch ?? 0}
+            unit="°"
+            onCommit={(v) => update((d) => setFixturePlacement(d, selectedIds, { pitch: v }))}
           />
           <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <Switch
@@ -226,6 +219,7 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
             />
             <span aria-hidden>{t("editor.stage.layout.hanging")}</span>
           </label>
+          <TrussHangTools fixtureIds={orderedIds()} />
           {selected.length >= 2 && (
             <>
               <span aria-hidden className="mx-1 h-4 w-px bg-border" />
@@ -243,7 +237,7 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
                 <Spline aria-hidden className="size-3" />
                 {t("editor.stage.layout.arrange.arc")}
               </Button>
-              <Field label={t("editor.stage.layout.arcSweep")} value={prefs.arcSweep} unit="°" onCommit={(v) => setPrefs({ arcSweep: v })} />
+              <StageField label={t("editor.stage.layout.arcSweep")} value={prefs.arcSweep} unit="°" onCommit={(v) => setPrefs({ arcSweep: v })} />
               <Button
                 type="button"
                 size="sm"
@@ -254,7 +248,7 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
                 <Grid3x3 aria-hidden className="size-3" />
                 {t("editor.stage.layout.arrange.grid")}
               </Button>
-              <Field label={t("editor.stage.layout.gridColumns")} value={columns} unit={t("editor.stage.layout.columnsUnit")} onCommit={(v) => setPrefs({ gridColumns: v })} />
+              <StageField label={t("editor.stage.layout.gridColumns")} value={columns} unit={t("editor.stage.layout.columnsUnit")} onCommit={(v) => setPrefs({ gridColumns: v })} />
               <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => arrange({ kind: "circle" })}>
                 <Circle aria-hidden className="size-3" />
                 {t("editor.stage.layout.arrange.circle")}
@@ -300,21 +294,38 @@ export function StageLayoutBar({ selectedObjectId, onSelectObject, background }:
               onCommit={(text) => update((d) => updateStageObject(d, object.id, { label: text }))}
             />
           </label>
-          <Field label={t("editor.stage.layout.objectWidth")} value={object.w} unit="m" onCommit={(v) => update((d) => updateStageObject(d, object.id, { w: v }))} />
-          {object.kind !== "circle" && (
-            <Field
+          <StageField label={t("editor.stage.layout.objectWidth")} value={object.w} unit="m" onCommit={(v) => update((d) => updateStageObject(d, object.id, { w: v }))} />
+          {object.kind !== "circle" && object.kind !== "pillar" && (
+            <StageField
               label={t("editor.stage.layout.objectHeight")}
               value={object.h}
               unit="m"
               onCommit={(v) => update((d) => updateStageObject(d, object.id, { h: v }))}
             />
           )}
-          <Field
+          <StageField
             label={t("editor.stage.layout.rotation")}
             value={object.rotation}
             unit="°"
             onCommit={(v) => update((d) => updateStageObject(d, object.id, { rotation: v }))}
           />
+          {object.kind !== "label" && (
+            <>
+              <StageField
+                label={t("editor.stage.layout.objectZ")}
+                value={object.z ?? 0}
+                unit="m"
+                onCommit={(v) => update((d) => updateStageObject(d, object.id, { z: v }))}
+              />
+              <StageField
+                label={t("editor.stage.layout.objectThickness")}
+                value={objectHeight(object)}
+                unit="m"
+                onCommit={(v) => update((d) => updateStageObject(d, object.id, { height: v }))}
+              />
+            </>
+          )}
+          <StageObjectExtras object={object} />
           <Button
             type="button"
             size="sm"

@@ -190,6 +190,7 @@ export function FixtureDetails({ ids, status }: FixtureDetailsProps) {
   const placementOf = (f: FixtureInstance) => f.stage ?? positions.get(f.id) ?? { x: 0, y: 0 };
   const z = common(fixtures.map((f) => f.stage?.z ?? 0));
   const rotation = common(fixtures.map((f) => f.stage?.rotation ?? 0));
+  const pitch = common(fixtures.map((f) => f.stage?.pitch ?? 0));
   const hanging = common(fixtures.map((f) => f.stage?.hanging === true));
 
   const group = () => {
@@ -425,6 +426,15 @@ export function FixtureDetails({ ids, status }: FixtureDetailsProps) {
             unit="°"
             mixedLabel={mixed}
             onCommit={(v) => update((d) => setFixturePlacement(d, fixtureIds, { rotation: v }))}
+          />
+        </div>
+        <div data-testid="placement-row" className="grid grid-cols-2 gap-2">
+          <NumberField
+            label={t("editor.stage.layout.pitch")}
+            value={pitch}
+            unit="°"
+            mixedLabel={mixed}
+            onCommit={(v) => update((d) => setFixturePlacement(d, fixtureIds, { pitch: v }))}
           />
         </div>
         <div data-testid="placement-row" className="grid grid-cols-2 items-center gap-2">

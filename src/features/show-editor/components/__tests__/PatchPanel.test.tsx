@@ -327,11 +327,12 @@ describe("多 Universe 配接与详情", () => {
     const height = within(detail()).getByRole("textbox", { name: "高度" }) as HTMLInputElement;
     expect(height.value).toBe("");
     expect(height.placeholder).toBe("（混合值）");
-    // 多台时没有 X / Y（各自的位置不同）：高度 / 朝向一行、吊挂 / 复位一行
+    // 多台时没有 X / Y（各自的位置不同）：高度 / 朝向一行、俯仰一行、吊挂 / 复位一行
     expect(within(detail()).queryByRole("textbox", { name: "X（左右）" })).toBeNull();
     const rows = within(detail()).getAllByTestId("placement-row");
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(within(rows[0]).getAllByRole("textbox").map((x) => x.getAttribute("aria-label"))).toEqual(["高度", "朝向"]);
+    expect(within(rows[1]).getAllByRole("textbox").map((x) => x.getAttribute("aria-label"))).toEqual(["俯仰"]);
     const steps = useProjectStore.temporal.getState().pastStates.length;
     commit(height, "4.5");
     expect(project().fixtures.map((f) => f.stage?.z)).toEqual([4.5, 4.5, 4.5]);
@@ -345,7 +346,7 @@ describe("多 Universe 配接与详情", () => {
     render(<InspectorPanel />);
     // 单台：X / Y 一行在最前
     const rows = within(detail()).getAllByTestId("placement-row");
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     expect(within(rows[0]).getAllByRole("textbox").map((x) => x.getAttribute("aria-label"))).toEqual(["X（左右）", "Y（前后）"]);
     commit(within(detail()).getByRole("textbox", { name: "X（左右）" }), "1.5");
     commit(within(detail()).getByRole("textbox", { name: "Y（前后）" }), "2");

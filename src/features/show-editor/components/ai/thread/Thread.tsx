@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { aiErrorText } from "@/features/ai";
 import { cn } from "@/lib/utils";
 import { AutoApplyToggle } from "./AutoApplyToggle";
+import { ContextMeter } from "./ContextMeter";
 import { MarkdownText } from "./MarkdownText";
 import { MemorySources } from "./MemorySources";
 import { ModelMenu } from "./ModelMenu";
@@ -179,7 +180,8 @@ const ComposerFooter: FC<{ skills: readonly SlashSkill[]; onPickSkill: (name: st
     <div className="flex items-center gap-1 pt-1">
       <SkillMenuButton skills={skills} onPick={onPickSkill} />
       <ModelMenu />
-      <div className="ms-auto flex items-center gap-1">
+      <div className="ms-auto flex shrink-0 items-center gap-1">
+        <ContextMeter />
         <AutoApplyToggle />
         <AuiIf condition={(s) => !s.composer.canCancel}>
           <ComposerPrimitive.Send asChild>

@@ -1,0 +1,28 @@
+[package]
+name = "fixture-assets"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "灯具资源库：2D 图标与 3D 模型按内容散列（SHA-256）存放，校验文件头 / 大小 / SVG 安全，带索引与未引用资源清理"
+
+[lints]
+workspace = true
+
+[features]
+# 导出 TypeScript 绑定（仅生成类型时开启）。
+ts = ["dep:ts-rs", "show-engine/ts"]
+
+[dependencies]
+ts-rs = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+fsutil = { path = "../fsutil" }
+# 资源格式与散列校验沿用物模型里的定义（不需要 Excel / OFL 整库 / 媒体特性）。
+show-engine = { path = "../show-engine", default-features = false }
+# 内容散列（与锁文件里已有的版本一致）。
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+tempfile = { workspace = true }

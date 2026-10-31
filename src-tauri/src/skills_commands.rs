@@ -69,6 +69,25 @@ impl SkillsState {
         self.store.trash().put_json(kind, label, json, now_ms()).map_err(|e| code(&e))
     }
 
+    /// 把一个目录挪进回收站（给其它模块用，例如清理掉的灯具资源）。
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - 种类。
+    /// * `label` - 显示名。
+    /// * `dir` - 要挪走的目录（之后不再存在）。
+    ///
+    /// # Returns
+    ///
+    /// 新条目。
+    ///
+    /// # Errors
+    ///
+    /// 种类不合规或挪动失败时返回错误码。
+    pub fn trash_put_dir(&self, kind: &str, label: &str, dir: &std::path::Path) -> Result<TrashEntry, String> {
+        self.store.trash().put_dir(kind, label, dir, now_ms()).map_err(|e| code(&e))
+    }
+
     /// 取回一个指定种类的 JSON 条目（并从回收站删除）。
     ///
     /// # Arguments

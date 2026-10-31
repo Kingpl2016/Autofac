@@ -1,6 +1,6 @@
 import { placeFixtures } from "../stage/stageGeometry";
 import { newId } from "./ids";
-import type { ShowProject, StageObject, StagePlacement } from "./project";
+import type { ScreenContent, ShowProject, StageObject, StagePlacement, StageVenue } from "./project";
 
 /**
  * 舞台布置的编辑操作（在 immer 草稿上执行，一次调用 = 一步撤销）：舞台尺寸、灯具摆位（拖动、
@@ -12,13 +12,103 @@ import type { ShowProject, StageObject, StagePlacement } from "./project";
 /** 舞台宽 / 纵深的范围（米）。 */
 export const STAGE_SIZE_RANGE = { min: 1, max: 200 } as const;
 
+/** 台面高度的范围（米，与工程校验一致）。 */
+const DECK_RANGE = { min: 0, max: 20 } as const;
+/** 灯具安装高度与物件离地高度 / 自身高度的范围（米）。 */
+const HEIGHT_RANGE = { min: 0, max: 100 } as const;
+/** 俯仰安装角的范围（度）。 */
+const PITCH_RANGE = { min: -90, max: 90 } as const;
+
+/** 夹取并去掉浮点尾数。 */
+function clampNum(v: number, r: { min: number; max: number }): number {
+  return snap(Math.min(r.max, Math.max(r.min, v)), 0.001);
+}
+
+/** 布景物件省略自身高度时的默认值（米）：桁架按截面、平台按常见台阶高度、文字不占高度。 */
+const OBJECT_HEIGHT: Record<StageObject["kind"], number> = {
+  truss: 0.3,
+  rect: 0.4,
+  circle: 0.4,
+  label: 0,
+  screen: 3,
+  stairs: 0.8,
+  pillar: 4,
+  polygon: 0.4,
+};
+
+/**
+ * 布景物件的自身高度（米）：没填时按类型取默认值。
+ *
+ * @param o 物件。
+ * @returns 竖直方向的厚度。
+ */
+export function objectHeight(o: Pick<StageObject, "kind" | "height">): number {
+  return o.height ?? OBJECT_HEIGHT[o.kind];
+}
+
+/**
+ * 设置舞台台面高度（米，夹到 0~20；0 时省略字段）。
+ *
+ * @param d 工程草稿。
+ * @param height 台面高度。
+ */
+export function setStageHeight(d: ShowProject, height: number): void {
+  if (!Number.isFinite(height)) return;
+  const h = clampNum(height, DECK_RANGE);
+  if (h === 0) delete d.stage.height;
+  else d.stage.height = h;
+}
+
 /** 新建布景物件的默认尺寸（米）。 */
 const OBJECT_DEFAULTS: Record<StageObject["kind"], { w: number; h: number }> = {
   truss: { w: 6, h: 0.3 },
   rect: { w: 2, h: 1 },
   circle: { w: 2, h: 2 },
   label: { w: 2, h: 0.5 },
+  screen: { w: 5, h: 0.2 },
+  stairs: { w: 2, h: 1.2 },
+  pillar: { w: 0.4, h: 0.4 },
+  polygon: { w: 3, h: 2 },
 };
+
+/** 台阶级数的范围。 */
+const STEPS_RANGE = { min: 1, max: 50 } as const;
+/** 台阶省略级数时的默认值。 */
+export const DEFAULT_STAIR_STEPS = 4;
+/** 多边形顶点数的范围。 */
+export const POLYGON_POINTS_RANGE = { min: 3, max: 64 } as const;
+/** 烟雾浓度省略时的默认值。 */
+export const DEFAULT_HAZE = 0.35;
+
+/**
+ * 正多边形的顶点（相对中心的本地坐标，第一个顶点在正后方，逆时针）。
+ *
+ * @param sides 边数（夹到 3~64）。
+ * @param w 包围宽度（米）。
+ * @param h 包围纵深（米）。
+ * @returns 顶点列表。
+ */
+export function regularPolygon(sides: number, w: number, h: number): [number, number][] {
+  const n = Math.round(Math.min(POLYGON_POINTS_RANGE.max, Math.max(POLYGON_POINTS_RANGE.min, sides)));
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pts.push([snap((-Math.sin(a) * w) / 2, 0.001), snap((Math.cos(a) * h) / 2, 0.001)]);
+  }
+  return pts;
+}
+
+/**
+ * 顶点的包围盒尺寸。
+ *
+ * @param pts 顶点。
+ * @returns 宽与纵深（米）。
+ */
+function pointsExtent(pts: readonly [number, number][]): { w: number; h: number } {
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  return { w: snap(Math.max(...xs) - Math.min(...xs), 0.001), h: snap(Math.max(...ys) - Math.min(...ys), 0.001) };
+}
 
 /**
  * 吸附到步长的整数倍。
@@ -121,24 +211,29 @@ export function setFixturePosition(d: ShowProject, id: string, patch: { x?: numb
 }
 
 /**
- * 修改一组灯具的安装参数（高度、朝向、吊挂）。
+ * 修改一组灯具的安装参数（高度、朝向、俯仰、吊挂）。
  *
  * @param d 工程草稿。
  * @param ids 灯具 id。
- * @param patch 要改的字段；朝向会规整到 -180~180。
+ * @param patch 要改的字段；朝向会规整到 -180~180，高度夹到 0~100 米，俯仰夹到 -90~90（0 时省略字段）。
  */
 export function setFixturePlacement(
   d: ShowProject,
   ids: readonly string[],
-  patch: Partial<Pick<StagePlacement, "z" | "rotation" | "hanging">>,
+  patch: Partial<Pick<StagePlacement, "z" | "rotation" | "pitch" | "hanging">>,
 ): void {
   const set = new Set(ids);
   if (!d.fixtures.some((f) => set.has(f.id))) return;
   materializePlacements(d);
   for (const f of d.fixtures) {
     if (!set.has(f.id) || !f.stage) continue;
-    if (patch.z !== undefined) f.stage.z = patch.z;
+    if (patch.z !== undefined && Number.isFinite(patch.z)) f.stage.z = clampNum(patch.z, HEIGHT_RANGE);
     if (patch.rotation !== undefined) f.stage.rotation = normalizeDeg(patch.rotation);
+    if (patch.pitch !== undefined && Number.isFinite(patch.pitch)) {
+      const p = clampNum(patch.pitch, PITCH_RANGE);
+      if (p === 0) delete f.stage.pitch;
+      else f.stage.pitch = p;
+    }
     if (patch.hanging !== undefined) {
       if (patch.hanging) f.stage.hanging = true;
       else delete f.stage.hanging;
@@ -370,7 +465,7 @@ export function reverseFixturePositions(d: ShowProject, ids: readonly string[]):
 export function addStageObject(d: ShowProject, kind: StageObject["kind"], at?: { x: number; y: number }, label = ""): string {
   const id = newId();
   const size = OBJECT_DEFAULTS[kind];
-  d.stage.objects.push({
+  const o: StageObject = {
     id,
     kind,
     x: at?.x ?? 0,
@@ -379,9 +474,44 @@ export function addStageObject(d: ShowProject, kind: StageObject["kind"], at?: {
     h: size.h,
     rotation: 0,
     label,
-  });
+  };
+  if (kind === "polygon") o.points = regularPolygon(6, size.w, size.h);
+  // LED 屏默认底边离地 0.5 米
+  if (kind === "screen") o.z = 0.5;
+  d.stage.objects.push(o);
   return id;
 }
+
+/**
+ * 多边形顶点平移后的顶点列表（纯函数，拖动预览与提交共用）。
+ *
+ * @param o 多边形物件。
+ * @param index 顶点下标。
+ * @param dx 舞台 x 方向位移（米）。
+ * @param dy 舞台 y 方向位移（米）。
+ * @param step 吸附步长（米，作用于物件本地坐标），0 为不吸附。
+ * @returns 新顶点；不是多边形或下标越界时返回原顶点。
+ */
+export function movePolygonVertex(
+  o: Pick<StageObject, "points" | "rotation">,
+  index: number,
+  dx: number,
+  dy: number,
+  step = 0,
+): [number, number][] {
+  const pts = o.points ?? [];
+  if (index < 0 || index >= pts.length) return pts;
+  const a = (o.rotation * Math.PI) / 180;
+  const lx = dx * Math.cos(a) + dy * Math.sin(a);
+  const ly = -dx * Math.sin(a) + dy * Math.cos(a);
+  return pts.map((p, i) => (i === index ? [snap(p[0] + lx, step), snap(p[1] + ly, step)] : p));
+}
+
+/**
+ * 物件补丁：在普通字段之外，`content` 可以为 `null`（清除屏幕内容），`sides` 把多边形重新生成为正多边形
+ * （按物件当前的宽与纵深；同时给了 `points` 时以 `points` 为准）。
+ */
+export type StageObjectPatch = Partial<Omit<StageObject, "id" | "kind" | "content">> & { content?: ScreenContent | null; sides?: number };
 
 /**
  * 修改布景物件（尺寸夹到 ≥ 0，角度规整）。
@@ -390,7 +520,7 @@ export function addStageObject(d: ShowProject, kind: StageObject["kind"], at?: {
  * @param id 物件 id。
  * @param patch 要改的字段。
  */
-export function updateStageObject(d: ShowProject, id: string, patch: Partial<Omit<StageObject, "id" | "kind">>): void {
+export function updateStageObject(d: ShowProject, id: string, patch: StageObjectPatch): void {
   const o = d.stage.objects.find((x) => x.id === id);
   if (!o) return;
   if (patch.x !== undefined || patch.y !== undefined) {
@@ -398,10 +528,45 @@ export function updateStageObject(d: ShowProject, id: string, patch: Partial<Omi
     o.x = snap(p.x, 0.001);
     o.y = snap(p.y, 0.001);
   }
+  const oldW = o.w;
+  const oldH = o.h;
   if (patch.w !== undefined && Number.isFinite(patch.w)) o.w = Math.max(0, patch.w);
   if (patch.h !== undefined && Number.isFinite(patch.h)) o.h = Math.max(0, patch.h);
+  if (o.kind === "polygon") {
+    const valid =
+      patch.points &&
+      patch.points.length >= POLYGON_POINTS_RANGE.min &&
+      patch.points.length <= POLYGON_POINTS_RANGE.max &&
+      patch.points.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    if (valid) {
+      o.points = patch.points!.map((p) => [snap(p[0], 0.001), snap(p[1], 0.001)]);
+      Object.assign(o, pointsExtent(o.points));
+    } else if (patch.sides !== undefined && Number.isFinite(patch.sides)) {
+      o.points = regularPolygon(patch.sides, o.w || OBJECT_DEFAULTS.polygon.w, o.h || OBJECT_DEFAULTS.polygon.h);
+    } else if (o.points && (o.w !== oldW || o.h !== oldH)) {
+      // 改包围盒尺寸 = 按比例缩放顶点
+      const sx = oldW > 0 ? o.w / oldW : 1;
+      const sy = oldH > 0 ? o.h / oldH : 1;
+      o.points = o.points.map((p) => [snap(p[0] * sx, 0.001), snap(p[1] * sy, 0.001)]);
+    }
+  }
+  if (o.kind === "stairs" && patch.steps !== undefined && Number.isFinite(patch.steps)) {
+    const n = Math.round(Math.min(STEPS_RANGE.max, Math.max(STEPS_RANGE.min, patch.steps)));
+    if (n === DEFAULT_STAIR_STEPS) delete o.steps;
+    else o.steps = n;
+  }
+  if (o.kind === "screen" && patch.content !== undefined) {
+    if (patch.content === null) delete o.content;
+    else o.content = patch.content;
+  }
   if (patch.rotation !== undefined) o.rotation = normalizeDeg(patch.rotation);
   if (patch.label !== undefined) o.label = patch.label;
+  if (patch.z !== undefined && Number.isFinite(patch.z)) {
+    const z = clampNum(patch.z, HEIGHT_RANGE);
+    if (z === 0) delete o.z;
+    else o.z = z;
+  }
+  if (patch.height !== undefined && Number.isFinite(patch.height)) o.height = clampNum(patch.height, HEIGHT_RANGE);
 }
 
 /**
@@ -422,4 +587,87 @@ export function removeStageObject(d: ShowProject, id: string): void {
  */
 export function setStageBackground(d: ShowProject, path: string | null): void {
   d.stage.backgroundPath = path;
+}
+
+/**
+ * 设置烟雾浓度（夹到 0~1；等于默认值时省略字段）。
+ *
+ * @param d 工程草稿。
+ * @param haze 浓度。
+ */
+export function setStageHaze(d: ShowProject, haze: number): void {
+  if (!Number.isFinite(haze)) return;
+  const v = clampNum(haze, { min: 0, max: 1 });
+  if (v === DEFAULT_HAZE) delete d.stage.haze;
+  else d.stage.haze = v;
+}
+
+/** 场馆缩放的范围。 */
+const VENUE_SCALE_RANGE = { min: 0.001, max: 1000 } as const;
+/** 场馆偏移的范围（米）。 */
+const VENUE_OFFSET_RANGE = { min: -1000, max: 1000 } as const;
+
+/**
+ * 设置 / 清除场馆模型（换模型时位置与缩放回到默认）。
+ *
+ * @param d 工程草稿。
+ * @param venue 资源散列与名称；`null` 为清除。
+ */
+export function setStageVenue(d: ShowProject, venue: { hash: string; name: string } | null): void {
+  if (!venue) {
+    delete d.stage.venue;
+    return;
+  }
+  if (d.stage.venue?.hash === venue.hash) return;
+  d.stage.venue = { hash: venue.hash, name: venue.name, x: 0, y: 0, z: 0, rotation: 0, scale: 1 };
+}
+
+/**
+ * 调整场馆模型的位置、角度与缩放。
+ *
+ * @param d 工程草稿。
+ * @param patch 要改的字段（非有限数忽略）。
+ */
+export function updateStageVenue(d: ShowProject, patch: Partial<Omit<StageVenue, "hash" | "name">>): void {
+  const v = d.stage.venue;
+  if (!v) return;
+  for (const k of ["x", "y", "z"] as const) {
+    const n = patch[k];
+    if (n !== undefined && Number.isFinite(n)) v[k] = clampNum(n, VENUE_OFFSET_RANGE);
+  }
+  if (patch.rotation !== undefined && Number.isFinite(patch.rotation)) v.rotation = normalizeDeg(patch.rotation);
+  if (patch.scale !== undefined && Number.isFinite(patch.scale)) v.scale = clampNum(patch.scale, VENUE_SCALE_RANGE);
+}
+
+/**
+ * 把一组灯具挂到桁架上：灯具落在桁架中线上、高度为桁架底面、设为吊挂。
+ *
+ * 不均分时每台灯取它在中线上最近的点（夹在桁架两端之间）；均分时按给定顺序沿桁架等距排开
+ * （两端各留半个间距）。
+ *
+ * @param d 工程草稿。
+ * @param ids 灯具 id（顺序即均分顺序）。
+ * @param trussId 桁架物件 id（不是桁架时不做任何事）。
+ * @param distribute 是否沿桁架均分。
+ * @returns 是否挂上了（找不到桁架或灯具时为 `false`）。
+ */
+export function hangOnTruss(d: ShowProject, ids: readonly string[], trussId: string, distribute: boolean): boolean {
+  const truss = d.stage.objects.find((o) => o.id === trussId && o.kind === "truss");
+  if (!truss) return false;
+  const list = placedList(d, ids);
+  if (list.length === 0) return false;
+  const a = (truss.rotation * Math.PI) / 180;
+  const ux = Math.cos(a);
+  const uy = Math.sin(a);
+  const half = truss.w / 2;
+  const z = clampNum(truss.z ?? 0, HEIGHT_RANGE);
+  list.forEach((s, i) => {
+    const t = distribute
+      ? -half + ((i + 0.5) / list.length) * truss.w
+      : Math.min(half, Math.max(-half, (s.x - truss.x) * ux + (s.y - truss.y) * uy));
+    putAt(d, s, truss.x + ux * t, truss.y + uy * t);
+    s.z = z;
+    s.hanging = true;
+  });
+  return true;
 }

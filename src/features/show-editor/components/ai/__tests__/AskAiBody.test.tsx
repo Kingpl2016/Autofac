@@ -65,6 +65,8 @@ vi.mock("@/features/ai", async () => {
     useAiPrefsStore: prefs.useAiPrefsStore,
     useActiveAiProfile: () => ({ profiles: [profile], profile, loading: false }),
     loadLanguageModel: async (p: unknown) => ({ model: mock.model, profile: p, settings: { temperature: 0 } }),
+    openAiModelsDialog: () => undefined,
+    contextWindowOf: () => null,
   };
 });
 

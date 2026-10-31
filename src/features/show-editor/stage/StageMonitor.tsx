@@ -38,7 +38,7 @@ import { baseOf, pixelRefsOf } from "../lib/fixtureRef";
 import { buildSheet, type SheetRow } from "../lib/fixtureSheet";
 import { analyzePatch } from "../lib/patch";
 import { knockout } from "../lib/programmer";
-import { moveFixtures, removeStageObject, resetPlacements, snap, updateStageObject } from "../lib/stageOps";
+import { movePolygonVertex, moveFixtures, removeStageObject, resetPlacements, snap, updateStageObject } from "../lib/stageOps";
 import { formatTimecode } from "../lib/time";
 import { STAGE_LABELS, STAGE_SNAP_STEPS, useEditorPrefsStore, type StageLabel } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
@@ -53,6 +53,7 @@ import {
   fitStage,
   hitFixture,
   hitObject,
+  hitPolygonVertex,
   lassoFixtures,
   placeFixtures,
   toCanvas,
@@ -95,6 +96,7 @@ type Gesture =
   | { kind: "lasso"; x0: number; y0: number; x1: number; y1: number; additive: boolean; active: boolean }
   | { kind: "fixtures"; ids: string[]; sx: number; sy: number; dx: number; dy: number; free: boolean; active: boolean }
   | { kind: "object"; id: string; sx: number; sy: number; dx: number; dy: number; free: boolean; active: boolean }
+  | { kind: "vertex"; id: string; index: number; sx: number; sy: number; dx: number; dy: number; free: boolean; active: boolean }
   | { kind: "pan"; sx: number; sy: number; panX: number; panY: number };
 
 /**
@@ -204,11 +206,13 @@ export function StageMonitor() {
     return { ids: new Set(gesture.ids), dx: snap(lead.x + gesture.dx, s) - lead.x, dy: snap(lead.y + gesture.dy, s) - lead.y };
   }, [gesture, placements, prefs.snapM]);
   const objects = useMemo(() => {
-    if (gesture?.kind !== "object" || !gesture.active) return project.stage.objects;
+    if ((gesture?.kind !== "object" && gesture?.kind !== "vertex") || !gesture.active) return project.stage.objects;
     const s = gesture.free ? 0 : prefs.snapM;
-    return project.stage.objects.map((o) =>
-      o.id === gesture.id ? { ...o, x: snap(o.x + gesture.dx, s), y: snap(o.y + gesture.dy, s) } : o,
-    );
+    return project.stage.objects.map((o) => {
+      if (o.id !== gesture.id) return o;
+      if (gesture.kind === "vertex") return { ...o, points: movePolygonVertex(o, gesture.index, gesture.dx, gesture.dy, s) };
+      return { ...o, x: snap(o.x + gesture.dx, s), y: snap(o.y + gesture.dy, s) };
+    });
   }, [gesture, project.stage.objects, prefs.snapM]);
 
   const colors = colorsAt(playheadMs);
@@ -362,6 +366,14 @@ export function StageMonitor() {
       return;
     }
     if (editing) {
+      // 选中的多边形优先命中顶点手柄
+      const current = project.stage.objects.find((o) => o.id === selectedObject);
+      const vi = current ? hitPolygonVertex(current, view, p.x, p.y) : -1;
+      if (current && vi >= 0) {
+        capture(e);
+        setGesture({ kind: "vertex", id: current.id, index: vi, sx: p.x, sy: p.y, dx: 0, dy: 0, free: e.altKey, active: false });
+        return;
+      }
       const obj = hitObject(project.stage.objects, view, p.x, p.y);
       if (obj) {
         setSelectedObject(obj);
@@ -413,6 +425,9 @@ export function StageMonitor() {
     if (!g.active) return;
     if (g.kind === "fixtures") {
       update((d) => moveFixtures(d, g.ids, g.dx, g.dy, snapStep(g.free)));
+    } else if (g.kind === "vertex") {
+      const o = project.stage.objects.find((x) => x.id === g.id);
+      if (o) update((d) => updateStageObject(d, g.id, { points: movePolygonVertex(o, g.index, g.dx, g.dy, snapStep(g.free)) }));
     } else {
       const o = project.stage.objects.find((x) => x.id === g.id);
       if (o) {
@@ -530,7 +545,7 @@ export function StageMonitor() {
   );
 
   const cursor =
-    gesture?.kind === "pan" || gesture?.kind === "fixtures" || gesture?.kind === "object"
+    gesture && gesture.kind !== "lasso"
       ? "cursor-grabbing"
       : editing && hover
         ? "cursor-grab"

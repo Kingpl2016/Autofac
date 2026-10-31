@@ -1,6 +1,6 @@
 import { current, produce } from "immer";
 
-import { nextCustomId, type FixtureCapability, type FixtureModel } from "@/features/fixtures";
+import { nextCustomId, type AssetView, type FixtureCapability, type FixtureModel } from "@/features/fixtures";
 import { clamp } from "@/shared/lib/math";
 import { applyAddPlan, planAddFixtures } from "../lib/addPlan";
 import { unsafeFlash } from "../lib/attrEffects";
@@ -23,17 +23,21 @@ import type { EffectDef, EffectParams } from "../lib/effectDefSchema";
 import { addEffectDefCue, defaultEffectParams, effectDefNeeds, effectName, setFxParams } from "../lib/effectLibrary";
 import { supportsColor, trackCapabilities } from "../lib/fixtureProfile";
 import { addMarker, createGroup, ensureDuration, ensureRefTracks, setOutput, setTempo, trackFixtureIds } from "../lib/ops";
-import type { ColorParam, ColorValue, Cue, Look, Param, Period, Rgb, ShowProject, Spread } from "../lib/project";
+import type { ColorParam, ColorValue, Cue, Look, Param, Period, Rgb, ScreenContent, ShowProject, Spread, StageObject } from "../lib/project";
 import { projectIntegrityIssues, projectSchema } from "../lib/schema";
 import { addSection, TIER_COLORS, updateSection } from "../lib/sections";
 import {
   addStageObject,
+  hangOnTruss,
   moveFixtures,
   removeStageObject,
   setFixturePlacement,
   setFixturePosition,
+  setStageHaze,
+  setStageHeight,
   setStageSize,
   updateStageObject,
+  type StageObjectPatch,
 } from "../lib/stageOps";
 import { addTemplateCue, templateFromCue } from "../lib/templateOps";
 import { deleteRange } from "../lib/timelineEdit";
@@ -41,7 +45,9 @@ import { newId } from "../lib/ids";
 import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { repatchSequential } from "../lib/universeOps";
 import { resolveAlias, type AliasMap } from "./aliases";
+import { videoMedia } from "./context";
 import { effectFromOp, layoutPositions, modelFromOp } from "./customOps";
+import { adaptModel, resolveModelRef, type ModelTarget } from "./fixtureAdapt";
 import { SENSITIVE_OPS, type AiOp } from "./opsSchema";
 import { expandRecipe } from "./recipes";
 import { resolveShift, resolveTime, type TimeContext } from "./timeRef";
@@ -84,6 +90,8 @@ export interface CompileEnv {
   selection: readonly string[];
   /** 主素材的音乐 / 画面分析（换算到时间线）；`placeAccents` 按它放置片段。 */
   analysis?: TimelineAnalysis | null;
+  /** 灯具资源库（图标、3D 模型；别名 `A1`… 按这个顺序）；`adaptFixtureModel` 用。 */
+  fixtureAssets?: readonly AssetView[];
 }
 
 /** 一条操作的问题。 */
@@ -666,23 +674,63 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
       return;
     }
     case "setStage": {
-      if (op.width === null && op.depth === null) fail("give width and/or depth");
-      setStageSize(d, op.width ?? d.stage.width, op.depth ?? d.stage.depth);
+      if (op.width === null && op.depth === null && op.height === null && op.haze === null) fail("give width, depth, height and/or haze");
+      if (op.width !== null || op.depth !== null) setStageSize(d, op.width ?? d.stage.width, op.depth ?? d.stage.depth);
+      if (op.height !== null) setStageHeight(d, op.height);
+      if (op.haze !== null) setStageHaze(d, op.haze / 100);
       return;
     }
     case "addStageObject": {
       const id = addStageObject(d, op.kind, { x: op.x, y: op.y }, op.label ?? "");
-      updateStageObject(d, id, {
-        x: op.x,
-        y: op.y,
-        ...(op.width !== null ? { w: op.width } : {}),
-        ...(op.depth !== null ? { h: op.depth } : {}),
-        ...(op.rotation !== null ? { rotation: op.rotation } : {}),
-      });
+      updateStageObject(d, id, { x: op.x, y: op.y, ...objectPatch(op), ...objectExtras(d, op, op.kind, st) });
+      return;
+    }
+    case "setStageObject": {
+      const ids = stageObjectRefs(d, op.objects, st);
+      const base = { ...objectPatch(op), ...(op.x !== null ? { x: op.x } : {}), ...(op.y !== null ? { y: op.y } : {}), ...(op.label !== null ? { label: op.label } : {}) };
+      const hasExtras = op.sides !== null || op.points !== null || op.steps !== null || op.content !== null;
+      if (Object.keys(base).length === 0 && !hasExtras) fail("give at least one field to change");
+      for (const id of ids) {
+        const o = d.stage.objects.find((x) => x.id === id) as StageObject;
+        // 尺寸先改，正多边形按新尺寸生成
+        updateStageObject(d, id, base);
+        if (hasExtras) updateStageObject(d, id, objectExtras(d, op, o.kind, st));
+      }
       return;
     }
     case "removeStageObjects": {
       for (const id of stageObjectRefs(d, op.objects, st)) removeStageObject(d, id);
+      return;
+    }
+    case "hangOnTruss": {
+      const ids = fixtureSetOf(d, op.fixtures, st);
+      const [truss] = stageObjectRefs(d, [op.truss], st);
+      if (d.stage.objects.find((o) => o.id === truss)?.kind !== "truss") fail(`'${op.truss}' is not a truss`);
+      hangOnTruss(d, ids, truss, op.distribute ?? true);
+      return;
+    }
+    case "adaptFixtureModel": {
+      const target = resolveModelRef(op.model, d, st.aliases, env.libraryModels);
+      if (typeof target === "string") fail(target);
+      const t = target as ModelTarget;
+      const assets = env.fixtureAssets ?? [];
+      const wheelOf = t.snapshot ?? t.library;
+      if (!wheelOf) fail(`no fixture model '${op.model}'`);
+      const i = d.fixtureModels.findIndex((m) => m.id === t.id);
+      if (i >= 0) {
+        const next = adaptModel(current(d.fixtureModels[i]) as FixtureModel, op, assets, wheelOf);
+        if (typeof next === "string") fail(next);
+        d.fixtureModels[i] = next as FixtureModel;
+      }
+      const wantLibrary = op.updateLibrary ?? true;
+      if (wantLibrary && t.library && !t.library.builtin) {
+        const next = adaptModel(t.library, op, assets, wheelOf);
+        if (typeof next === "string") fail(next);
+        st.library.models.push(next as FixtureModel);
+      } else if (wantLibrary && t.library?.builtin) {
+        st.warn(`'${t.library.name}' is a built-in library model; only the copy in this show is changed`);
+      }
+      if (i < 0 && !(wantLibrary && t.library && !t.library.builtin)) fail(`'${op.model}' is not used in this show; set updateLibrary to change the library model`);
       return;
     }
     case "defineEffect": {
@@ -729,11 +777,69 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
   }
 }
 
-/** 摆位操作里的高度 / 朝向 / 吊挂。 */
-function placementPatch(d: ShowProject, ids: readonly string[], op: { z: number | null; rotation: number | null; hanging: boolean | null }): void {
+/** 布景物件操作里的尺寸 / 朝向 / 高度（省略的字段不改）。 */
+function objectPatch(op: {
+  width: number | null;
+  depth: number | null;
+  rotation: number | null;
+  z: number | null;
+  height: number | null;
+}): Partial<Omit<StageObject, "id" | "kind">> {
+  return {
+    ...(op.width !== null ? { w: op.width } : {}),
+    ...(op.depth !== null ? { h: op.depth } : {}),
+    ...(op.rotation !== null ? { rotation: op.rotation } : {}),
+    ...(op.z !== null ? { z: op.z } : {}),
+    ...(op.height !== null ? { height: op.height } : {}),
+  };
+}
+
+/**
+ * 布景物件按类型的额外字段：多边形的边数 / 顶点、台阶级数、LED 屏内容（`V#` 视频、`F#` 像素灯、`none`）。
+ * 字段与类型不符时报错，免得模型以为改成功了。
+ */
+function objectExtras(
+  d: ShowProject,
+  op: { sides: number | null; points: [number, number][] | null; steps: number | null; content: string | null },
+  kind: StageObject["kind"],
+  st: RunState,
+): StageObjectPatch {
+  const out: StageObjectPatch = {};
+  if ((op.sides !== null || op.points !== null) && kind !== "polygon") fail("sides / points are only for polygon set pieces");
+  if (op.steps !== null && kind !== "stairs") fail("steps are only for stairs");
+  if (op.content !== null && kind !== "screen") fail("content is only for screen set pieces");
+  if (op.points !== null) out.points = op.points;
+  else if (op.sides !== null) out.sides = op.sides;
+  if (op.steps !== null) out.steps = op.steps;
+  if (op.content !== null) out.content = screenContentOf(d, op.content, st);
+  return out;
+}
+
+/** LED 屏内容的引用。 */
+function screenContentOf(d: ShowProject, ref: string, st: RunState): ScreenContent | null {
+  const r = ref.trim();
+  if (r.toLowerCase() === "none") return null;
+  const v = /^V(\d+)$/i.exec(r);
+  if (v) {
+    const media = videoMedia(d)[Number(v[1]) - 1];
+    return media ? { kind: "media", mediaId: media.id } : fail(`no video '${r}' (see get_stage)`);
+  }
+  const [fixtureId] = fixtureRefs(d, [r], st);
+  const f = d.fixtures.find((x) => x.id === fixtureId);
+  if (!d.fixtureModels.find((m) => m.id === f?.modelId)?.matrix) st.warn(`'${r}' has no pixel matrix; the screen shows its single color`);
+  return { kind: "fixture", fixtureId };
+}
+
+/** 摆位操作里的高度 / 朝向 / 俯仰 / 吊挂。 */
+function placementPatch(
+  d: ShowProject,
+  ids: readonly string[],
+  op: { z: number | null; rotation: number | null; pitch: number | null; hanging: boolean | null },
+): void {
   const patch = {
     ...(op.z !== null ? { z: Math.round(op.z * 100) / 100 } : {}),
     ...(op.rotation !== null ? { rotation: Math.round(op.rotation) } : {}),
+    ...(op.pitch !== null ? { pitch: Math.round(op.pitch) } : {}),
     ...(op.hanging !== null ? { hanging: op.hanging } : {}),
   };
   if (Object.keys(patch).length > 0) setFixturePlacement(d, ids, patch);

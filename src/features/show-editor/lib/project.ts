@@ -20,8 +20,14 @@ import type { EffectDef, EffectParams } from "./effectDefSchema";
  *   同一素材可以放多次，片段可裁剪入出点、调音量与淡入淡出。v2 的“素材偏移”迁移成每个素材一条轨道一个片段。
  * - v4：像素引用：分组成员、灯具轨道与场景条目可以引用多头 / 像素灯的单个像素（`灯具id#像素号`，见 `fixtureRef.ts`）。
  *   结构不变，v3 文件原样升级；递增版本是为了让旧版软件打开新文件时提示“文件来自新版本”。
+ * - v5：三维舞台：灯具的俯仰安装角（`stage.pitch`）、舞台台面高度（`stage.height`）、布景物件的离地高度与自身高度
+ *   （`z` / `height`）；灯具模型快照可带外观（外形模板、图标、3D 模型引用）与更多物理参数。
+ *   新字段都可省略，v4 文件原样升级。
+ * - v6：舞台增强：新的布景类型（LED 屏、台阶、立柱、多边形台面，带 `points` / `steps` / `content`）、
+ *   烟雾浓度（`stage.haze`）与场馆模型（`stage.venue`）；图案槽位可指定图案（模型快照里的 `capabilities[].pattern`）。
+ *   新字段都可省略，v5 文件原样升级。
  */
-export const PROJECT_VERSION = 4;
+export const PROJECT_VERSION = 6;
 
 /** 输出帧率（固定）。 */
 export const OUTPUT_FPS = 30;
@@ -76,6 +82,11 @@ export interface StagePlacement {
   z?: number;
   /** 水平朝向（度，0 为朝向观众） */
   rotation?: number;
+  /**
+   * 俯仰安装角（度，-90~90，省略为 0）：灯体绕自身左右轴转动，正值让光轴（站立朝上、吊挂朝下）朝水平朝向倾斜。
+   * 例如吊挂的面光朝向 180°（打向舞台）、俯仰 45°，光束斜着落到台面上。只影响 3D 舞台的显示与光束方向。
+   */
+  pitch?: number;
   /** 倒装（吊挂）：Pan / Tilt 方向反转 */
   hanging?: boolean;
 }
@@ -539,18 +550,61 @@ export interface OutputSettings {
   park: ParkEntry[];
 }
 
-/** 舞台上的一个布景物件（桁架、形状、文字）。 */
+/**
+ * 布景物件的类型：桁架、矩形平台、圆台、文字，以及 LED 屏、台阶、立柱 / 灯架、多边形台面。
+ */
+export const STAGE_OBJECT_KINDS = ["truss", "rect", "circle", "label", "screen", "stairs", "pillar", "polygon"] as const;
+
+/** 布景物件的类型。 */
+export type StageObjectKind = (typeof STAGE_OBJECT_KINDS)[number];
+
+/** LED 屏显示的内容：工程里的视频素材（与时间线同步），或一台像素灯的实时输出。 */
+export type ScreenContent = { kind: "media"; mediaId: string } | { kind: "fixture"; fixtureId: string };
+
+/** 场馆模型（资源库里的 GLB，作为 3D 舞台的背景）。 */
+export interface StageVenue {
+  /** 资源散列 */
+  hash: string;
+  /** 原始文件名（显示用） */
+  name: string;
+  /** 模型原点在舞台坐标里的位置（米） */
+  x: number;
+  y: number;
+  z: number;
+  /** 绕竖直轴的角度（度） */
+  rotation: number;
+  /** 整体缩放（1 为原尺寸） */
+  scale: number;
+}
+
+/**
+ * 舞台上的一个布景物件。
+ *
+ * 各类型的尺寸含义：LED 屏 `w` 为屏宽、`h` 为屏体厚度、`height` 为屏高，旋转 0 时屏面朝观众（-y）；
+ * 台阶 `w` 为宽、`h` 为进深、`height` 为总高，旋转 0 时前低后高；立柱 `w` 为直径；
+ * 多边形台面的 `w` / `h` 为顶点的包围盒（由顶点算出）。
+ */
 export interface StageObject {
   id: string;
-  kind: "truss" | "rect" | "circle" | "label";
+  kind: StageObjectKind;
   x: number;
   y: number;
   /** 宽 / 直径（米） */
   w: number;
-  /** 高（米），圆形忽略 */
+  /** 平面上的纵深（米，俯视图里的“高”），圆形 / 立柱忽略 */
   h: number;
   rotation: number;
   label: string;
+  /** 离地高度（米，物件底面；省略为 0）：例如吊在 6 米的桁架 */
+  z?: number;
+  /** 自身高度（米，竖直方向的厚度；省略时按类型取默认值，见 `objectHeight`） */
+  height?: number;
+  /** 多边形台面的顶点（米，相对物件中心、旋转前的本地坐标，3~64 个） */
+  points?: [number, number][];
+  /** 台阶的级数（省略为 4） */
+  steps?: number;
+  /** LED 屏的内容（省略时黑屏） */
+  content?: ScreenContent;
 }
 
 /** 舞台布置。 */
@@ -559,6 +613,12 @@ export interface StageLayout {
   width: number;
   /** 舞台纵深（米） */
   depth: number;
+  /** 台面高度（米，高出观众区地面；省略为 0）：3D 舞台画出台体，灯具高度从台面算起 */
+  height?: number;
+  /** 烟雾浓度（0~1，省略为 0.35）：3D 舞台里光束的可见程度 */
+  haze?: number;
+  /** 场馆模型（3D 舞台的背景） */
+  venue?: StageVenue;
   objects: StageObject[];
   /** 背景图（本地路径，只引用不复制） */
   backgroundPath: string | null;

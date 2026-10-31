@@ -160,8 +160,10 @@ pub struct WheelSlot {
     pub hi: f64,
     /// 选中这个槽位时写入的值（区间中点）。
     pub mid: f64,
-    /// 槽位颜色（线性 RGB，最大分量为 1）。
+    /// 槽位颜色（线性 RGB，最大分量为 1）；分色片为两色的平均。
     pub rgb: [f64; 3],
+    /// 分色片（半个槽位一种颜色）：只用于预览，按颜色选槽位时跳过。
+    pub split: bool,
 }
 
 /// 色温通道上标注了色温的一段（用户空间分数，已按反向换算）：`lo` 处为 `k_lo`，`hi` 处为 `k_hi`。
@@ -873,18 +875,24 @@ fn wheel_slots_of(layout: &[FixtureProperty], attrs: &[AttrSlot], gamma: f64, in
     let max = f64::from(wheel.max_value());
     let invert = attrs[wi].invert;
     for c in &wheel.capabilities {
-        let rgb = match c.color {
-            Some(rgb) => rgb.map(|v| apply_gamma(f64::from(v) / 255.0, gamma)),
-            None if c.label.to_ascii_lowercase().contains("open") || c.label == "白" => [1.0; 3],
-            None => continue,
+        let linear = |rgb: [u8; 3]| rgb.map(|v| apply_gamma(f64::from(v) / 255.0, gamma));
+        let rgb = match (c.color, c.color_alt) {
+            (Some(a), Some(b)) => {
+                let (a, b) = (linear(a), linear(b));
+                [f64::midpoint(a[0], b[0]), f64::midpoint(a[1], b[1]), f64::midpoint(a[2], b[2])]
+            }
+            (Some(rgb), None) => linear(rgb),
+            (None, _) if c.label.to_ascii_lowercase().contains("open") || c.label == "白" => [1.0; 3],
+            (None, _) => continue,
         };
+        let split = c.color.is_some() && c.color_alt.is_some();
         let peak = rgb.iter().fold(0.0_f64, |m, v| m.max(*v));
         if peak <= 0.0 {
             continue;
         }
         let (lo, hi) = (f64::from(c.range[0]) / max, f64::from(c.range[1]) / max);
         let (lo, hi) = if invert { (1.0 - hi, 1.0 - lo) } else { (lo, hi) };
-        out.slots.push(WheelSlot { lo, hi, mid: f64::midpoint(lo, hi), rgb: rgb.map(|v| v / peak) });
+        out.slots.push(WheelSlot { lo, hi, mid: f64::midpoint(lo, hi), rgb: rgb.map(|v| v / peak), split });
     }
     out.wheel = Some(wi);
 }

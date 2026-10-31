@@ -10,11 +10,12 @@ import { DEFAULT_MODE_KEY, layoutForKey, sortByChannel } from "../lib/draft";
 import { capabilityText, channelRangeText, physicalText } from "../lib/format";
 import { effectivePrecedence, groupOf, headCount } from "../lib/functions";
 import { FIXTURE_CAPABILITIES, modelProfile, modelType, type FixtureCapability } from "../lib/profile";
+import { modelShape } from "../lib/shape";
 import type { FixtureModel } from "../lib/types";
 import { footprint } from "../lib/validate";
 import { ChannelStrip } from "./ChannelStrip";
 import { CapabilityBand } from "./editor/CapabilityEditor";
-import { FixtureTypeIcon } from "./FixtureTypeIcon";
+import { FixtureModelIcon } from "./FixtureModelIcon";
 
 interface FixtureDetailProps {
   model: FixtureModel;
@@ -65,14 +66,18 @@ export function FixtureDetail({ model, onEdit, onClone, onDelete, onAddToShow }:
     ...(phys?.panRangeDeg ? [{ label: t("fixtures.detail.pan"), value: `${phys.panRangeDeg}°`, mono: true }] : []),
     ...(phys?.tiltRangeDeg ? [{ label: t("fixtures.detail.tilt"), value: `${phys.tiltRangeDeg}°`, mono: true }] : []),
     ...(range(phys?.beamMinDeg, phys?.beamMaxDeg) ? [{ label: t("fixtures.detail.beam"), value: range(phys?.beamMinDeg, phys?.beamMaxDeg) ?? "", mono: true }] : []),
+    ...(phys?.dimensionsMm ? [{ label: t("fixtures.detail.dimensions"), value: phys.dimensionsMm.map((v) => Math.round(v)).join("×"), mono: true }] : []),
+    ...(phys?.weightKg ? [{ label: t("fixtures.detail.weight"), value: `${phys.weightKg} kg`, mono: true }] : []),
+    ...(phys?.powerW ? [{ label: t("fixtures.detail.power"), value: `${phys.powerW} W`, mono: true }] : []),
   ];
+  const shape = modelShape(model);
 
   return (
     <SurfacePanel
       title={
         <span className="flex items-center gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
-            <FixtureTypeIcon type={type} className="size-5" />
+            <FixtureModelIcon model={model} className="size-5" />
           </span>
           <span className="flex min-w-0 flex-col gap-1">
             <span className="truncate text-base">{model.name}</span>
@@ -136,6 +141,12 @@ export function FixtureDetail({ model, onEdit, onClone, onDelete, onAddToShow }:
         <Meta label={t("fixtures.detail.system")} value={model.system || "—"} />
         <Meta label={t("fixtures.detail.productType")} value={model.productType || "—"} />
         {model.manufacturer && <Meta label={t("fixtures.editor.manufacturer")} value={model.manufacturer} />}
+        <Meta
+          label={t("fixtures.editor.shape")}
+          value={`${t(`fixtures.shape.${shape}`)}${model.appearance ? ` · ${t(`fixtures.origin.${model.appearance.origin}`)}` : ` · ${t("fixtures.origin.inferred")}`}`}
+        />
+        {phys?.lensName && <Meta label={t("fixtures.editor.lensName")} value={phys.lensName} />}
+        {phys?.focusType && <Meta label={t("fixtures.editor.focusType")} value={t(`fixtures.focus.${phys.focusType}`)} />}
         {(model.emitters?.length ?? 0) > 0 && (
           <Meta
             label={t("fixtures.detail.emitters")}

@@ -8,7 +8,9 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { nextCapability, splitCapabilities } from "../../lib/draft";
 import { capabilityText } from "../../lib/format";
+import { isGoboSlot, resolvePatterns } from "../../lib/gobos";
 import type { Capability, FixtureProperty } from "../../lib/types";
+import { GoboPicker } from "./GoboPicker";
 
 interface CapabilityEditorProps {
   property: FixtureProperty;
@@ -28,7 +30,7 @@ const fromHex = (hex: string): [number, number, number] => [
 
 /**
  * 能力区间编辑器：上方是 0~最大值的分段色条（视觉辅助），下方逐段编辑起止值、名称，
- * 比例区间可填起止物理量与单位，颜色轮槽位可指定代表色。
+ * 比例区间可填起止物理量与单位，颜色轮槽位可指定代表色，图案槽位可指定 3D 舞台投射的图案。
  *
  * 常用操作：“添加区间”从上一段结束处续到最大值；“均分”一次生成 N 段阶梯区间（图案盘、颜色轮）。
  */
@@ -38,6 +40,9 @@ export function CapabilityEditor({ property, onChange, row }: CapabilityEditorPr
   const max = property.width === 2 ? 65535 : 255;
   const [splitCount, setSplitCount] = useState(8);
   const showColor = property.function === "colorWheel";
+  const showGobo = property.function === "gobo";
+  // 自动匹配的图案只看名称与序号，所以按“不带指定图案”的区间算
+  const autoPatterns = showGobo ? resolvePatterns(caps.map((c) => ({ ...c, pattern: undefined }))) : [];
 
   const set = (next: Capability[]) => onChange(next.length > 0 ? next : undefined);
   const patch = (i: number, changes: Partial<Capability>) =>
@@ -117,6 +122,14 @@ export function CapabilityEditor({ property, onChange, row }: CapabilityEditorPr
                   aria-label={label(t("fixtures.editor.capColor"), i + 1)}
                   value={toHex(c.color)}
                   onChange={(e) => patch(i, { color: fromHex(e.target.value) })}
+                />
+              )}
+              {showGobo && isGoboSlot(c) && (
+                <GoboPicker
+                  value={c.pattern}
+                  auto={autoPatterns[i] ?? null}
+                  label={label(t("fixtures.gobos.pattern"), i + 1)}
+                  onChange={(pattern) => patch(i, { pattern })}
                 />
               )}
               <Button

@@ -3,6 +3,7 @@ import { templateName } from "../lib/cueTemplates";
 import { effectName } from "../lib/effectLibrary";
 import type { Cue, FixtureInstance, OutputTarget, ShowProject, StagePlacement } from "../lib/project";
 import { formatTimecode } from "../lib/time";
+import { DEFAULT_HAZE } from "../lib/stageOps";
 import { placeFixtures } from "../stage/stageGeometry";
 import type { LibraryChanges } from "./compile";
 
@@ -132,8 +133,13 @@ export function listChanges(base: ShowProject, next: ShowProject, lang: string, 
   if (base.durationMs !== next.durationMs) {
     out.push({ collection: "duration", op: "changed", label: "duration", detail: `${formatTimecode(base.durationMs)} → ${formatTimecode(next.durationMs)}` });
   }
-  if (base.stage.width !== next.stage.width || base.stage.depth !== next.stage.depth) {
-    out.push({ collection: "stage", op: "changed", label: "stage", detail: `${base.stage.width}×${base.stage.depth} → ${next.stage.width}×${next.stage.depth} m` });
+  if (base.stage.width !== next.stage.width || base.stage.depth !== next.stage.depth || (base.stage.height ?? 0) !== (next.stage.height ?? 0)) {
+    const size = (s: ShowProject["stage"]) => `${s.width}×${s.depth}${s.height ? `×${s.height}` : ""}`;
+    out.push({ collection: "stage", op: "changed", label: "stage", detail: `${size(base.stage)} → ${size(next.stage)} m` });
+  }
+  if ((base.stage.haze ?? DEFAULT_HAZE) !== (next.stage.haze ?? DEFAULT_HAZE)) {
+    const pct = (s: ShowProject["stage"]) => `${Math.round((s.haze ?? DEFAULT_HAZE) * 100)}%`;
+    out.push({ collection: "stage", op: "changed", label: "haze", detail: `${pct(base.stage)} → ${pct(next.stage)}` });
   }
   for (const e of library?.effects ?? []) out.push({ collection: "libEffects", op: "added", id: e.id, label: effectName(e, lang), detail: e.id });
   for (const tpl of library?.templates ?? []) out.push({ collection: "libTemplates", op: "added", id: tpl.id, label: templateName(tpl, lang), detail: tpl.id });
@@ -151,6 +157,7 @@ function samePlacement(a: StagePlacement, b: StagePlacement): boolean {
     Math.abs(a.y - b.y) < 0.01 &&
     (a.z ?? 0) === (b.z ?? 0) &&
     (a.rotation ?? 0) === (b.rotation ?? 0) &&
+    (a.pitch ?? 0) === (b.pitch ?? 0) &&
     !!a.hanging === !!b.hanging
   );
 }

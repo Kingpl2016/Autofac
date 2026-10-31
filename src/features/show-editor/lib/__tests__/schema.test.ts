@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addFixtures, createGroup } from "../ops";
-import { createEmptyProject, type Cue, type ShowProject } from "../project";
+import { createEmptyProject, PROJECT_VERSION, type Cue, type ShowProject } from "../project";
 import { parseProject, projectIntegrityIssues } from "../schema";
 import { produce } from "immer";
 import { RGBW } from "./testkit";
@@ -68,6 +68,38 @@ describe("parseProject", () => {
     expect(parseProject(JSON.stringify(project)).ok).toBe(true);
   });
 
+  it("v4 工程原样升级到 v5；三维舞台字段往返不丢失", () => {
+    const current = produce(sample(), (d) => {
+      d.fixtures[0].stage = { x: 1, y: 2, z: 6, rotation: 90, pitch: 30, hanging: true };
+      d.stage.height = 1.2;
+      d.stage.objects.push({ id: "o1", kind: "truss", x: 0, y: 4, w: 8, h: 0.3, rotation: 0, label: "", z: 6, height: 0.3 });
+    });
+    const v4 = parseProject(JSON.stringify({ ...current, version: 4 }));
+    expect(v4).toMatchObject({ ok: true, migratedFrom: 4 });
+    if (v4.ok) expect(v4.project).toEqual(current);
+    const bad = produce(current, (d) => {
+      d.fixtures[0].stage = { x: 0, y: 0, pitch: 120 };
+    });
+    expect(parseProject(JSON.stringify(bad)).ok).toBe(false);
+  });
+
+  it("灯具模型快照里的物理参数、外观与分色片不会丢失", () => {
+    const hash = "b".repeat(64);
+    const project = produce(sample(), (d) => {
+      const m = d.fixtureModels[0];
+      m.physical = { dimensionsMm: [200, 300, 150], weightKg: 4, lensName: "Fresnel", focusType: "fixed" };
+      m.appearance = { shape: "par", origin: "ai", icon: { hash, format: "png", name: "par.png" }, model3d: { hash, format: "glb", name: "par.glb" } };
+      m.properties[0].capabilities = [{ range: [0, 255], label: "x", color: [255, 0, 0], colorAlt: [0, 0, 255] }];
+    });
+    const result = parseProject(JSON.stringify(project));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.project).toEqual(project);
+    const bad = produce(project, (d) => {
+      d.fixtureModels[0].appearance = { shape: "par", origin: "ai", model3d: { hash, format: "png", name: "" } };
+    });
+    expect(parseProject(JSON.stringify(bad)).ok).toBe(false);
+  });
+
   it("不是 JSON", () => {
     expect(parseProject("{坏的")).toMatchObject({ ok: false, reason: "invalidJson" });
   });
@@ -97,7 +129,7 @@ describe("parseProject", () => {
     expect(parsed).toMatchObject({ ok: true, migratedFrom: 2 });
     if (!parsed.ok) return;
     const p = parsed.project;
-    expect(p.version).toBe(4);
+    expect(p.version).toBe(PROJECT_VERSION);
     expect(p.media[0]).toEqual({ id: "a", kind: "audio", path: "a.mp3", name: "a.mp3", durationMs: 60_000 });
     expect(p.mediaTracks.map((t) => [t.kind, t.name])).toEqual([
       ["audio", "a.mp3"],
@@ -134,7 +166,7 @@ describe("parseProject", () => {
     const parsed = parseProject(JSON.stringify(v1));
     expect(parsed).toMatchObject({ ok: true, migratedFrom: 1 });
     if (!parsed.ok) return;
-    expect(parsed.project.version).toBe(4);
+    expect(parsed.project.version).toBe(PROJECT_VERSION);
     expect(parsed.project.mediaClips).toHaveLength(1);
     expect(parsed.project.cues).toEqual(current.cues);
     expect(parsed.project.presets).toEqual([]);

@@ -1,5 +1,5 @@
 import { headCount, isUniqueFunction } from "./functions";
-import { DMX_CHANNELS, type FixtureModel, type FixtureProperty } from "./types";
+import { DMX_CHANNELS, type Appearance, type AssetRef, type FixtureModel, type FixtureProperty, type Physical } from "./types";
 
 /** 模型编号最大长度（与后端一致）。 */
 export const MAX_ID_LEN = 64;
@@ -28,7 +28,9 @@ export interface FixtureIssue {
     | "badCapability"
     | "badMode"
     | "badMatrix"
-    | "headOutOfRange";
+    | "headOutOfRange"
+    | "badPhysical"
+    | "badAppearance";
   params?: Record<string, string | number>;
 }
 
@@ -80,6 +82,32 @@ function capabilitiesOk(p: FixtureProperty): boolean {
     prevEnd = hi;
   }
   return true;
+}
+
+/** 镜头名的最大长度（与后端一致）。 */
+const MAX_LENS_NAME = 64;
+/** 资源原始文件名的最大长度（与后端一致）。 */
+const MAX_ASSET_NAME = 255;
+
+/** SHA-256 散列：64 位小写十六进制。 */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/** 物理参数：数值有限且为正，镜头名不过长（与后端 `validate_physical` 一致）。 */
+function physicalOk(p: Physical): boolean {
+  const positive = (v: number | undefined) => v === undefined || (Number.isFinite(v) && v > 0);
+  return (
+    [p.panRangeDeg, p.tiltRangeDeg, p.beamMinDeg, p.beamMaxDeg, p.weightKg, p.powerW].every(positive) &&
+    (p.dimensionsMm === undefined || p.dimensionsMm.every((v) => Number.isFinite(v) && v > 0)) &&
+    (p.lensName === undefined || [...p.lensName].length <= MAX_LENS_NAME)
+  );
+}
+
+/** 外观：散列合法，图标是图片格式、3D 模型是 GLB（与后端 `validate_appearance` 一致）。 */
+function appearanceOk(a: Appearance): boolean {
+  const valid = (r: AssetRef) => SHA256_HEX.test(r.hash) && [...r.name].length <= MAX_ASSET_NAME;
+  const iconOk = !a.icon || (valid(a.icon) && a.icon.format !== "glb");
+  const modelOk = !a.model3d || (valid(a.model3d) && a.model3d.format === "glb");
+  return iconOk && modelOk;
 }
 
 /**
@@ -154,6 +182,8 @@ export function validateModel(model: FixtureModel): FixtureIssue | null {
       return { code: "badMode", params: { id: m.id } };
     }
   }
+  if (model.physical && !physicalOk(model.physical)) return { code: "badPhysical" };
+  if (model.appearance && !appearanceOk(model.appearance)) return { code: "badAppearance" };
   const heads = headCount(model);
   const base = validateLayout(model.properties, heads);
   if (base) return base;

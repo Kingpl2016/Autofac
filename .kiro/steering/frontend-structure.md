@@ -69,6 +69,8 @@ src/
 | 分段选择 | `shared/components/Segmented`（单选，`radiogroup`）；只改筛选的按钮组用 `SegmentedControl`（`aria-pressed`） |
 | 调用大模型 | `@/features/ai`：`useActiveAiProfile`（当前配置）、`loadLanguageModel(profile)`（经后端代理，Key 只在后端注入；AI SDK 在这里才按需加载）、`aiErrorText`。不要在前端直接 `fetch` 模型接口或接触 API Key。编辑器的中间语言、编译器、配方、内置技能、记忆挑选与长对话压缩在 `show-editor/ai/`，说明见 `doc/AI 助手说明.md` |
 | AI 技能 / MCP / 回收站 | `@/features/ai`：`useSkillStore`、`ensureSkills`、`enabledSkills`、`importSkillWithToast`、`isSkillPath`（用户技能，后端 `skill-store`）；`useMcpStore`、`ensureMcp`、`mcpToolSpecs`、`mcpCallTool`、`MCP_PREFIX`、`mcpErrorText`（MCP 客户端，后端 `mcp-hub`；每次工具调用都要用户在对话里确认）；`trashPutJson` / `trashTakeJson` / `trashRemove` / `trashList`（数据目录 `trash/`，30 天）。编辑器里的还原点（AI 历史）在 `show-editor/stores/useRestorePointStore.ts`，音视频分析在 `show-editor/lib/mediaAnalysis.ts` / `videoAnalysis.ts` 与 `stores/useMediaAnalysisStore.ts` |
+| 灯具资源（图标、3D 模型、图案图片、场馆模型） | `@/features/fixtures`：`useFixtureAssetStore`（`ensure` 放行目录并读列表、`importIcon`、`importGobo`、`put`（`kind` 给种类）、`putThumb`、`cleanup`）、`assetUrl(path)`、`FixtureModelIcon`（有图标显示图标，否则按外形）、`modelShape`、`registerAssetReferences` / `modelAssetHashes`（清理时保留的引用，含图案槽位的图案）。文件在后端 `data/fixture-assets`，按 SHA-256 命名、按种类分目录；二进制经 `@/shared/tauri/invoke` 的 `invokeBinary` 传 |
+| 图案（gobo） | `@/features/fixtures`：`BUILTIN_GOBOS`、`builtinGoboRef`、`parseGoboRef`、`resolvePatterns`（槽位实际投射的图案，含按名称自动匹配）、`goboMask`（程序生成的灰度遮罩）。3D 舞台的图集在 `show-editor/stage3d/goboAtlas.ts` |
 | AI 记忆 | `@/features/ai`：`addMemory` / `updateMemory` / `removeMemory`（条目的纯函数，去重与上限）、`memoryFile(entry)`（数据目录 `ai-history/<entry>.ai.json` 的排队读写）、`useAiMemoryStore`（个人偏好）、`MemoryNoteList`（可编辑列表）。工程笔记与范例跟着工程的对话记录（`useAiChatStore`），共用范例在 `useAiExemplarStore` |
 
 ## 4. 测试
@@ -95,7 +97,8 @@ src/
 ## 5. 依赖与提交前检查
 
 - 依赖版本写精确版本（不用 `^` / `~`）；构建期工具放 `devDependencies`。
-- 重依赖（React Flow、tsParticles、着色器、driver.js、idb-keyval、dnd-kit、AI SDK（`ai`、`@ai-sdk/*`）、assistant-ui（`@assistant-ui/*`）与 `remark-gfm` 等）只能出现在按需加载的路径（路由页或 `lazy()` / 动态 `import()`）。
+- 重依赖（React Flow、tsParticles、着色器、driver.js、idb-keyval、dnd-kit、AI SDK（`ai`、`@ai-sdk/*`）、assistant-ui（`@assistant-ui/*`）与 `remark-gfm`、three.js 等）只能出现在按需加载的路径（路由页或 `lazy()` / 动态 `import()`）。
+  3D 舞台在 `show-editor/stage3d/`：`PreviewPanel` 经 `lazy()` 加载 `Stage3DView`；只有这个目录可以导入 `three`，加载器 / 导出器 / 简化在里面再经动态 `import()` 加载。说明见 `doc/3D 舞台说明.md`。
   编辑器的 AI 对话界面在 `show-editor/components/ai/`：`AiDockLayout` 经 `lazy()` 加载 `AiDock`，`AiDock` 再 `lazy()` 加载 `AiChatPanel`；时间线上的“问 AI”弹层 `AskAiPopover` 经 `lazy()` 加载 `AskAiBody`，两者共用 `chatSession.ts` 里的同一个 AI SDK `Chat`；多模态标注 `ai/mediaTags.ts` 只经动态 `import()` 加载；对话界面是照 assistant-ui 官方组件、用它的原语手写的（`components/ai/thread/`），不经 shadcn CLI 生成。
 - AI 一致性评测（真实调用模型）：`npm run ai:eval`（`vitest.eval.config.ts`，只收集 `*.eval.ts`，不在 `verify` 里）。
 - 提交前运行 `npm run verify`：`tsc -b && eslint . && vitest run && knip`。

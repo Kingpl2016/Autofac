@@ -110,8 +110,11 @@ describe("预览色块分区", () => {
     ).toEqual({ readout: "hex", filter: "all", sort: "name", hiddenGroups: ["color", "beam"], showModel: false, expandPixels: true });
     // 舞台偏好逐字段兜底
     expect(
-      sanitizeEditorPrefs({ stage: { bloom: false, labels: "x", snapM: 0.3, backgroundOpacity: 5, arcSweep: 2, gridColumns: 3.4 } }, DEFAULT_EDITOR_PREFS).stage,
-    ).toEqual({ bloom: false, labels: "selected", snapM: 0.25, backgroundOpacity: 1, arcSweep: 10, gridColumns: 3 });
+      sanitizeEditorPrefs(
+        { stage: { bloom: false, labels: "x", snapM: 0.3, backgroundOpacity: 5, arcSweep: 2, gridColumns: 3.4, beamQuality: "ultra" } },
+        DEFAULT_EDITOR_PREFS,
+      ).stage,
+    ).toEqual({ bloom: false, labels: "selected", snapM: 0.25, backgroundOpacity: 1, arcSweep: 10, gridColumns: 3, beamQuality: "auto" });
     // 收藏的模板：去重、只保留合法 id
     expect(sanitizeEditorPrefs({ favoriteTemplates: ["a", "a", "bad id", 3, "lee-106"] }, DEFAULT_EDITOR_PREFS).favoriteTemplates).toEqual(["a", "lee-106"]);
     // 记住的特效插入参数：只保留结构合法的条目

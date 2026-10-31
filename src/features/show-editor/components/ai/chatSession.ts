@@ -68,7 +68,14 @@ function createTransport(loaded: LoadedModel, lang: string, t: TFunction): ChatT
   // 消息按通用的 UIMessage 处理（工具部件按名字渲染），不需要按工具推导的精确类型
   return new DirectChatTransport({
     agent,
-    messageMetadata: ({ part }): ReplyMetadata | undefined => (part.type === "start" ? { memory: used } : undefined),
+    messageMetadata: ({ part }): ReplyMetadata | undefined => {
+      if (part.type === "start") return { memory: used };
+      // 每一步结束时记下这一步的用量（后一步覆盖前一步）：最后一步的输入 + 输出就是对话此刻占用的上下文
+      if (part.type === "finish-step" && part.usage.inputTokens !== undefined) {
+        return { context: { input: part.usage.inputTokens, output: part.usage.outputTokens ?? 0 } };
+      }
+      return undefined;
+    },
   }) as unknown as ChatTransport<UIMessage>;
 }
 

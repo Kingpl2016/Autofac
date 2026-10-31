@@ -15,10 +15,14 @@ import { COLOR_NAMES, FADES, PALETTES, PERIODS, SIZES, SPEEDS, SPREADS } from ".
  * 版本 7：用户可以用 `/技能名` 点名技能（技能版本 4）。
  * 版本 8：自定义特效 / 模板 / 灯具模型（`defineEffect`、`saveTemplate`、`defineFixtureModel`）与舞台布置
  * （`placeFixtures`、`setPlacement`、`setStage`、`addStageObject`、`removeStageObjects`，只读工具 `get_stage`）。
+ * 版本 9：3D 舞台（俯仰 `pitch`、台高、物件离地高度与 `setStageObject`）与灯具适配
+ * （只读工具 `get_fixture_model` / `get_ofl_source` / `list_fixture_assets`，操作 `adaptFixtureModel`，技能 `fixture-adapt`）。
+ * 版本 10：舞台增强（新的布景类型 polygon / stairs / pillar / screen 与其字段、LED 屏内容 `V#` / `F#`、
+ * `hangOnTruss`、`setStage.haze`）与图案槽位的图案（`adaptFixtureModel.slotPatterns`，槽位别名 `G#`）。
  */
 
 /** 提示词版本。 */
-export const PROMPT_VERSION = 8;
+export const PROMPT_VERSION = 10;
 
 /** 把技能、记忆各一节接在提示词后面（为空的不加）。 */
 const withSections = (prompt: string, ...sections: string[]) => [prompt, ...sections.filter(Boolean)].join("\n\n");
@@ -53,7 +57,8 @@ const rules = `Rules for operations:
   - When nothing in the effect list fits what the user describes, define one with defineEffect (an intensity wave, a color sequence and/or pan/tilt movement) and place it with addEffect using the new id in the same batch. Set save to true only when the user wants to keep it.
   - To keep the look of a clip for reuse (the user says save / keep it as a template), use saveTemplate ('last' = the clip placed just before in this batch).
   - When the user describes a fixture that is not in the library, define it with defineFixtureModel (channels in DMX order) and add it with addFixtures using its 'as' name. Only when the user asks to add fixtures.
-- The stage preview is a plan of the stage: read it with get_stage, then arrange fixtures with placeFixtures (line, arc, grid, circle), adjust them with setPlacement (position, height, facing, hanging), change the stage size with setStage and add or remove set pieces (trusses, risers, labels) with addStageObject / removeStageObjects. Positions are meters: x from the center (+ = right as the audience sees it), y from the front edge towards the back.`;
+- To adapt a fixture model (shape and size for the 3D stage, beam angle, icon / 3D file, emitter calibration, color wheel slot colors, gobo slot patterns G#), read get_fixture_model (and get_ofl_source for OFL models), then use adaptFixtureModel. Only fill in values from the OFL definition, a spec sheet or the user; never invent sizes or angles.
+- The stage (plan and 3D view): read it with get_stage, then arrange fixtures with placeFixtures (line, arc, grid, circle), adjust them with setPlacement (position, height, facing, pitch, hanging), hang them on a truss with hangOnTruss, change the stage size, deck height or haze with setStage and add, change or remove set pieces (trusses, risers, round platforms, polygon decks, stairs, pillars, LED screens, labels; with elevation z and height) with addStageObject / setStageObject / removeStageObjects. An LED screen shows a video V# (synced with the timeline) or the pixels of a pixel fixture F#. Positions are meters: x from the center (+ = right as the audience sees it), y from the front edge towards the back, z = height above the deck.`;
 
 /**
  * 对话 / 编辑模式（带工具）的系统提示词。
@@ -67,7 +72,7 @@ export function chatSystemPrompt(summary: string, guides = "", memory = ""): str
   return withSections(`You are the lighting assistant in the show editor of Art-Net Studio, a DMX lighting program with a timeline.
 
 How to work:
-- Answer questions directly. Use the read-only tools (list_cues, get_cue, list_effects, list_templates, list_recipes, analyze_media, list_media_events, list_fixture_models, get_output, get_stage) when you need details.
+- Answer questions directly. Use the read-only tools (list_cues, get_cue, list_effects, list_templates, list_recipes, analyze_media, list_media_events, list_fixture_models, get_output, get_stage, get_fixture_model, get_ofl_source, list_fixture_assets) when you need details.
 - To change the show, call propose_ops ONCE with the complete list of operations and a short summary. The user reviews the change before it is applied.
 - If propose_ops returns errors, fix exactly those operations and call propose_ops again with the full corrected list.
 - After a successful propose_ops, tell the user in one or two sentences what you prepared. Do not repeat the operations.

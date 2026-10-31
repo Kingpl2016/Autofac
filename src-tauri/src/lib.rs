@@ -11,6 +11,7 @@ mod data_dir;
 mod devtools_commands;
 mod effect_commands;
 mod app_mode_commands;
+mod fixture_asset_commands;
 mod fixture_commands;
 mod library_commands;
 mod media_commands;
@@ -120,6 +121,8 @@ pub fn run() {
             app.manage(mcp_commands::McpState::new(app.handle(), std::sync::Arc::new(ai_gateway::KeyringStore)));
             // 灯具素材库：内置模型 + 用户模型（app_data_dir/fixtures.json）。
             app.manage(fixture_commands::FixtureState::new(app.handle()));
+            // 灯具资源库：2D 图标与 3D 模型（数据根目录/fixture-assets，按内容散列命名）。
+            app.manage(fixture_asset_commands::FixtureAssetsState::new(app.handle()));
             // OFL 整库目录（数据根目录/ofl-catalog.json，首次使用时读取）。
             app.manage(ofl_catalog_commands::OflCatalogState::new(app.handle()));
             // 节目预览引擎：30 FPS 灯光输出会话按需创建。
@@ -320,11 +323,19 @@ pub fn run() {
             fixture_commands::fixture_import_ofl,
             fixture_commands::fixture_save,
             fixture_commands::fixture_delete,
+            fixture_asset_commands::fixture_asset_list,
+            fixture_asset_commands::fixture_asset_import_file,
+            fixture_asset_commands::fixture_asset_put,
+            fixture_asset_commands::fixture_asset_put_thumb,
+            fixture_asset_commands::fixture_assets_authorize,
+            fixture_asset_commands::fixture_asset_source_authorize,
+            fixture_asset_commands::fixture_asset_cleanup,
             ofl_catalog_commands::ofl_catalog_open,
             ofl_catalog_commands::ofl_catalog_summary,
             ofl_catalog_commands::ofl_catalog_search,
             ofl_catalog_commands::ofl_catalog_keys,
             ofl_catalog_commands::ofl_catalog_import,
+            ofl_catalog_commands::ofl_fixture_digest,
             netdev_commands::netdev_list,
             netdev_commands::netdev_save,
             netdev_commands::netdev_remove,
