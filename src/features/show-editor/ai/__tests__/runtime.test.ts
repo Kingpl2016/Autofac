@@ -11,6 +11,8 @@ import { HEAD16, RGBW } from "../../lib/__tests__/testkit";
 import { buildAliases } from "../aliases";
 import type { EditorSnapshot } from "../env";
 import { createShowAgent, runDraft, type Proposal } from "../runtime";
+import { mapAnalysis } from "../../lib/mediaAnalysis";
+import { testAnalysis } from "../../lib/__tests__/analysisKit";
 
 vi.mock("@/features/ai", () => ({}));
 
@@ -160,6 +162,33 @@ describe("对话智能体（回放模型响应）", () => {
     expect(prompt).toContain('"toolCallId":"x5"');
     // 工具里有 remember
     expect(JSON.stringify(model.doGenerateCalls[0].tools)).toContain("remember");
+  });
+
+  it("有音乐分析时：先查事件，再按事件放重音；工具结果来自分析", async () => {
+    const analysis = mapAnalysis({ media: { id: "m", name: "song.mp3" }, clip: null, audio: testAnalysis() });
+    const withMusic = (): EditorSnapshot => {
+      const s = snapshot();
+      return { ...s, env: { ...s.env, analysis }, summary: { ...s.summary, analysis } };
+    };
+    const proposals: Proposal[] = [];
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        call("e1", "list_media_events", { kind: "drop", from: null, to: null }),
+        call("a1", "analyze_media", { from: "b9", to: "b10" }),
+        call("p1", "propose_ops", { summary: "爆点冲击", ops: [{ op: "placeAccents", events: "drops", target: "all", from: "start", to: "end" }] }),
+        text("好了"),
+      ],
+    });
+    const agent = createShowAgent({ loaded: loaded(model), snapshot: withMusic, onProposal: (p) => proposals.push(p) });
+    await agent.generate({ prompt: "跟着音乐在爆点加冲击" });
+    const second = JSON.stringify(model.doGenerateCalls[1].prompt);
+    expect(second).toContain("drop 0:16.0 (b9)");
+    expect(JSON.stringify(model.doGenerateCalls[2].prompt)).toContain("e9 b7 l8 d6");
+    expect(proposals[0].ops.ops[0]).toMatchObject({ op: "placeAccents", events: "drops" });
+    // 系统提示词里有音乐分析与“按音乐编排”技能
+    const system = JSON.stringify(model.doGenerateCalls[0].prompt[0]);
+    expect(system).toContain("Music analysis of the main media");
+    expect(system).toContain("### Lighting to the music");
   });
 
   it("草稿注入歌曲编排与颜色技能", async () => {

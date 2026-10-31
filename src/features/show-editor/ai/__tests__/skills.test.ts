@@ -25,6 +25,13 @@ describe("内置技能", () => {
     expect(chat("switch the output to unicast")).toEqual(["phrases", "patchOutput"]);
   });
 
+  it("有音乐分析时：提到节奏、重拍或段落才注入“按音乐编排”；草稿总是注入", () => {
+    expect(chat("跟着鼓点闪", { hasMusic: true })).toEqual(["phrases", "musicArrange"]);
+    expect(chat("副歌改成暖色", { hasMusic: true })).toEqual(["phrases", "songStructure", "musicArrange", "colorMood", "editClips"]);
+    expect(chat("跟着鼓点闪")).toEqual(["phrases"]);
+    expect(selectSkills({ mode: "draft", text: "", hasSelection: false, hasMovers: false, hasMusic: true })).toEqual(["songStructure", "musicArrange", "colorMood"]);
+  });
+
   it("相同的输入得到完全相同的提示词", () => {
     const a = chatSystemPrompt("Show", skillsText(chat("副歌改成暖色")));
     const b = chatSystemPrompt("Show", skillsText(chat("副歌改成暖色")));

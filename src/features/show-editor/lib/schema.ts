@@ -390,6 +390,8 @@ export const projectSchema = z.object({
       height: z.enum(["compact", "normal", "tall"]).optional(),
       heightPx: z.number().int().min(TRACK_HEIGHT_PX.min).max(TRACK_HEIGHT_PX.max).optional(),
       onTop: z.boolean().optional(),
+      // 后加的可选字段：旧工程没有它；旧版软件读新工程时 zod 默认丢弃未知字段，不会报错
+      role: z.literal("accent").optional(),
     }),
   ),
   cues: z.array(z.discriminatedUnion("kind", [staticCue, effectCue, lookClip, sceneClip])),

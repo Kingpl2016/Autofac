@@ -9,12 +9,15 @@ import {
   mergeBranch,
   parseHistory,
   serializeHistory,
+  type MediaDoc,
   type MemoryCardOutcome,
+  type ToolApprovalOutcome,
   type TreeItem,
 } from "../ai/history";
 import { addExemplar, MAX_SHOW_EXEMPLARS, type Exemplar } from "../ai/memory";
 import { useAiStagingStore } from "./useAiStagingStore";
 import type { DocumentOrigin } from "./useDocumentStore";
+import { moveRestorePoints, switchRestorePoints } from "./useRestorePointStore";
 
 /**
  * 当前工程的 AI 对话：消息树（各个版本）与当前版本、记录文件、本工程的记忆（笔记、范例）、
@@ -48,6 +51,42 @@ interface AiChatState {
   exemplars: Exemplar[];
   /** 记忆卡片的结局 */
   memoryCards: Record<string, MemoryCardOutcome>;
+  /** 各素材的分析设置、标签与上传同意 */
+  media: Record<string, MediaDoc>;
+  /** 本工程不再询问上传 */
+  uploadAlways: boolean;
+  /** 忽略过的主动建议 */
+  dismissedSuggestions: string[];
+  /** 外部工具调用卡片的结局 */
+  toolApprovals: Record<string, ToolApprovalOutcome>;
+  /**
+   * 修改一个素材的 AI 设置（浅合并）。
+   *
+   * @param mediaId 素材 id。
+   * @param patch 要改的部分。
+   */
+  setMediaDoc: (mediaId: string, patch: Partial<MediaDoc>) => void;
+  /**
+   * 本工程不再询问上传。
+   *
+   * @param on 是否一律同意。
+   */
+  setUploadAlways: (on: boolean) => void;
+  /**
+   * 忽略一条主动建议。
+   *
+   * @param key 建议的键。
+   */
+  dismissSuggestion: (key: string) => void;
+  /** 让忽略过的建议重新出现。 */
+  resetSuggestions: () => void;
+  /**
+   * 记下外部工具调用卡片的结局。
+   *
+   * @param toolCallId 工具调用 id。
+   * @param outcome 结局。
+   */
+  setToolApproval: (toolCallId: string, outcome: ToolApprovalOutcome) => void;
   /**
    * 当前版本变了（对话面板每次变化时调用）：并进消息树，并安排写盘。
    *
@@ -118,6 +157,10 @@ function snapshotText(): string {
     memoryCards: s.memoryCards,
     notes: s.notes,
     exemplars: s.exemplars,
+    media: s.media,
+    uploadAlways: s.uploadAlways,
+    dismissedSuggestions: s.dismissedSuggestions,
+    toolApprovals: s.toolApprovals,
   });
 }
 
@@ -158,6 +201,18 @@ export const useAiChatStore = create<AiChatState>((set, get) => {
     notes: [],
     exemplars: [],
     memoryCards: {},
+    media: {},
+    uploadAlways: false,
+    dismissedSuggestions: [],
+    toolApprovals: {},
+    setMediaDoc: (mediaId, patch) => change({ media: { ...get().media, [mediaId]: { ...get().media[mediaId], ...patch } } }),
+    setUploadAlways: (uploadAlways) => change({ uploadAlways }),
+    dismissSuggestion: (key) => {
+      const list = get().dismissedSuggestions;
+      if (!list.includes(key)) change({ dismissedSuggestions: [...list, key].slice(-500) });
+    },
+    resetSuggestions: () => change({ dismissedSuggestions: [] }),
+    setToolApproval: (toolCallId, outcome) => change({ toolApprovals: { ...get().toolApprovals, [toolCallId]: outcome } }),
     setMessages: (messages, profileId) => {
       const s = get();
       const profile = profileId !== undefined && profileId !== s.profileId ? { profileId } : {};
@@ -198,6 +253,7 @@ export async function switchChatDocument(generation: number, origin: DocumentOri
   // 离开编辑器再回来：还是同一个工程，保留内存里的对话（未保存工程的对话也不丢）
   if (loadedGeneration === generation) return;
   loadedGeneration = generation;
+  void switchRestorePoints(generation, origin);
   await flush();
   const path = await historyPath(origin).catch(() => null);
   const empty = emptyChatDoc();
@@ -208,6 +264,10 @@ export async function switchChatDocument(generation: number, origin: DocumentOri
     notes: [],
     exemplars: [],
     memoryCards: {},
+    media: {},
+    uploadAlways: false,
+    dismissedSuggestions: [],
+    toolApprovals: {},
     path,
     generation,
     profileId: null,
@@ -227,6 +287,10 @@ export async function switchChatDocument(generation: number, origin: DocumentOri
     notes: doc.notes,
     exemplars: doc.exemplars,
     memoryCards: doc.memoryCards,
+    media: doc.media,
+    uploadAlways: doc.uploadAlways,
+    dismissedSuggestions: doc.dismissedSuggestions,
+    toolApprovals: doc.toolApprovals,
     epoch: s.epoch + 1,
   }));
 }
@@ -237,17 +301,41 @@ export async function switchChatDocument(generation: number, origin: DocumentOri
  * @param origin 新来源。
  */
 export async function moveChatDocument(origin: DocumentOrigin): Promise<void> {
+  void moveRestorePoints(origin);
   const path = await historyPath(origin).catch(() => null);
   useAiChatStore.setState({ path });
   const s = useAiChatStore.getState();
-  if (path && (s.tree.length > 0 || s.notes.length > 0 || s.exemplars.length > 0)) await flush();
+  const hasData = s.tree.length > 0 || s.notes.length > 0 || s.exemplars.length > 0 || Object.keys(s.media).length > 0 || s.dismissedSuggestions.length > 0;
+  if (path && hasData) await flush();
 }
 
 /**
  * 清空当前对话（文件里也清空；本工程的记忆保留）。
+ *
+ * @returns 清空前的对话（撤销用）。
  */
-export function clearChat(): void {
+export function clearChat(): ChatBackup {
+  const { tree, headId, messages, memoryCards } = useAiChatStore.getState();
   // 对话面板以 store 里的树初始化：换会话键让它重建
   useAiChatStore.setState((s) => ({ tree: [], headId: null, messages: [], memoryCards: {}, epoch: s.epoch + 1 }));
+  scheduleSave();
+  return { tree, headId, messages, memoryCards };
+}
+
+/** 清空前的对话（撤销“新对话”用）。 */
+export interface ChatBackup {
+  tree: TreeItem[];
+  headId: string | null;
+  messages: UIMessage[];
+  memoryCards: Record<string, MemoryCardOutcome>;
+}
+
+/**
+ * 恢复清空前的对话（对话面板以它重建）。
+ *
+ * @param backup `clearChat` 返回的备份。
+ */
+export function restoreChat(backup: ChatBackup): void {
+  useAiChatStore.setState((s) => ({ ...backup, epoch: s.epoch + 1 }));
   scheduleSave();
 }

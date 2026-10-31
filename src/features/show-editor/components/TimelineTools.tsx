@@ -25,6 +25,8 @@ import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, sliderToZoom, ZOOM_SLIDER_STEPS, zoomPx
 import { SNAP_KINDS, useEditorPrefsStore, type RulerFormat } from "../stores/useEditorPrefsStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { AiHistoryMenu } from "./AiHistoryMenu";
+import { AnalysisMenu } from "./AnalysisMenu";
 import { HelpTip } from "./HelpTip";
 import { TimelineLegend } from "./TimelineLegend";
 
@@ -141,6 +143,8 @@ export function TimelineTools({ commands }: { commands: readonly Command[] }) {
       >
         <Pencil aria-hidden />
       </ToolButton>
+      <AnalysisMenu />
+      <AiHistoryMenu />
       <ToolButton label={t("editor.timelineTools.follow")} pressed={follow} onClick={() => setFollow(!follow)}>
         <Crosshair aria-hidden />
       </ToolButton>

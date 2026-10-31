@@ -393,6 +393,7 @@ mod tests {
             base_url: base_url.trim_end_matches('/').into(),
             model: "m".into(),
             supports_structured_outputs: false,
+            input_modalities: Vec::new(),
             temperature: 0.0,
             seed: None,
         }

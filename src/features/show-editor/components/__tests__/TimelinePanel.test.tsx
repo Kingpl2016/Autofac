@@ -710,7 +710,7 @@ describe("时间线头部工具", () => {
 
   beforeEach(async () => {
     await act(async () => {
-      await useEditorPrefsStore.setState({ rippleEdit: false, followPlayhead: true, rulerFormat: "timecode", snapKinds: { beats: true, markers: true, edges: true, playhead: true } });
+      await useEditorPrefsStore.setState({ rippleEdit: false, followPlayhead: true, rulerFormat: "timecode", snapKinds: { beats: true, markers: true, edges: true, playhead: true, events: true } });
     });
   });
 

@@ -1,7 +1,7 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { AudioWaveform, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,8 +15,10 @@ import { announce } from "@/shared/stores/announcerStore";
 import { colorRgb, NAMED_COLORS, PALETTE_NAMES, PALETTES as AI_PALETTES, type PaletteName } from "../ai/vocab";
 import { useAiDraft } from "../hooks/useAiDraft";
 import { applyDraft, DEFAULT_DRAFT, DRAFT_PALETTES, moverIds, planDraft, type DraftOptions, type DraftPalette } from "../lib/autoDraft";
+import { primaryMedia } from "../lib/media";
 import { formatTimecode } from "../lib/time";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
+import { useMediaAnalysisStore, useTimelineAnalysis } from "../stores/useMediaAnalysisStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { BeatAnalysisPanel } from "./BeatAnalysisPanel";
 import { SliderField } from "./SliderField";
@@ -76,11 +78,14 @@ function AiDraftForm({ onDone }: { onDone: () => void }) {
   const project = useProjectStore((s) => s.project);
   const [prompt, setPrompt] = useState("");
   const [palette, setPalette] = useState<PaletteName | null>(null);
+  const [accents, setAccents] = useState(true);
   const draft = useAiDraft();
   const noFixtures = project.fixtures.length === 0;
+  const music = useMusicStatus();
+  const hasEvents = !!music.analysis && music.analysis.events.some((e) => e.kind !== "cut");
 
   const generate = async () => {
-    if (await draft.generate(prompt, palette)) onDone();
+    if (await draft.generate(prompt, palette, accents && hasEvents)) onDone();
   };
 
   if (!draft.hasProfiles) {
@@ -138,9 +143,23 @@ function AiDraftForm({ onDone }: { onDone: () => void }) {
             ))}
           </div>
         </div>
+        <MusicStatusLine status={music} />
+        {hasEvents && (
+          <label data-tour="draft-accents" className="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-2">
+            <span className="min-w-0">
+              <span className="block text-sm">{t("editor.draft.accents")}</span>
+              <span className="block text-xs text-muted-foreground">{t("editor.draft.accentsHint")}</span>
+            </span>
+            <Switch aria-label={t("editor.draft.accents")} checked={accents} onCheckedChange={setAccents} />
+          </label>
+        )}
         <p className="text-xs text-muted-foreground">
           {draft.profile ? t("editor.draft.usingModel", { name: draft.profile.name }) : null}{" "}
-          {project.sections.length > 0 ? t("editor.draft.bySections", { count: project.sections.length }) : t("editor.draft.byBars")}
+          {project.sections.length > 0
+            ? t("editor.draft.bySections", { count: project.sections.length })
+            : music.analysis && music.analysis.sections.length > 0
+              ? t("editor.draft.byAnalysis", { count: music.analysis.sections.length })
+              : t("editor.draft.byBars")}
         </p>
         {draft.pending && (
           <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -163,6 +182,55 @@ function AiDraftForm({ onDone }: { onDone: () => void }) {
         </Button>
       </div>
     </>
+  );
+}
+
+/** 主素材的分析状态（打开对话框时只读缓存；没分析过的在点“生成”时再分析）。 */
+function useMusicStatus() {
+  const media = useProjectStore((s) => primaryMedia(s.project));
+  const entry = useMediaAnalysisStore((s) => (media ? s.entries[media.id] : undefined));
+  const analysis = useTimelineAnalysis();
+  useEffect(() => {
+    if (media) void useMediaAnalysisStore.getState().peek(media);
+  }, [media]);
+  return { media, entry, analysis };
+}
+
+/** 一行分析状态：分析中 / 结果概要 / 失败原因 / 没有音乐。 */
+function MusicStatusLine({ status }: { status: ReturnType<typeof useMusicStatus> }) {
+  const { t } = useTranslation();
+  const { media, entry, analysis } = status;
+  let text: string;
+  let tone = "text-muted-foreground";
+  if (!media) text = t("editor.draft.music.none");
+  else if (!entry || entry.status === "none") text = t("editor.draft.music.notYet", { name: media.name });
+  else if (entry.status === "loading" && !entry.audio) text = t("editor.draft.music.running", { name: media.name });
+  else if (analysis && analysis.bpm > 0) {
+    text = t("editor.draft.music.ready", {
+      name: media.name,
+      bpm: analysis.bpm,
+      sections: analysis.sections.length,
+      hits: analysis.events.filter((e) => e.kind === "hit").length,
+      drops: analysis.events.filter((e) => e.kind === "drop").length,
+    });
+  } else {
+    text = t("editor.draft.music.failed", { name: media.name, reason: t(`editor.draft.music.errors.${entry.error ?? "decode"}`, { defaultValue: entry.error ?? "" }) });
+    tone = "text-warning";
+  }
+  return (
+    <p role="status" aria-live="polite" className={cn("flex items-center gap-1.5 text-xs", tone)}>
+      {entry?.status === "loading" || entry?.refreshing ? (
+        <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+      ) : (
+        <AudioWaveform className="size-3.5" aria-hidden />
+      )}
+      <span className="min-w-0 flex-1">{text}</span>
+      {media && (!entry || entry.status === "none") && (
+        <Button type="button" variant="link" size="sm" className="h-auto shrink-0 p-0 text-xs" onClick={() => void useMediaAnalysisStore.getState().ensure(media)}>
+          {t("editor.draft.music.analyzeNow")}
+        </Button>
+      )}
+    </p>
   );
 }
 

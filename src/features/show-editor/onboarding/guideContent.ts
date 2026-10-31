@@ -61,6 +61,12 @@ export const HINTS: readonly HintDef[] = [
   { id: "aiComposer", target: "ai-composer", side: "top" },
   { id: "aiReview", target: "ai-review", side: "left" },
   { id: "aiMemory", target: "ai-memory", side: "bottom" },
+  // 时间线上的 AI：音乐参考线 → 问 AI → 改动虚影 → 主动建议 → AI 历史
+  { id: "aiGuides", target: "ai-guides", side: "bottom" },
+  { id: "askAi", target: "ask-ai-button", side: "top" },
+  { id: "aiGhosts", target: "ai-ghost", side: "top" },
+  { id: "aiSuggestions", target: "ai-suggestion", side: "bottom" },
+  { id: "aiHistory", target: "ai-history", side: "bottom" },
 ];
 
 /**

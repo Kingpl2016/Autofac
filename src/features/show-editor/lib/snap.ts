@@ -31,10 +31,12 @@ export interface SnapKindsFilter {
   markers: boolean;
   edges: boolean;
   playhead: boolean;
+  /** 音乐事件（重拍、渐强起止、爆点、断层、切镜）；省略视为开启 */
+  events?: boolean;
 }
 
 /** 全部开启。 */
-const ALL_KINDS: SnapKindsFilter = { beats: true, markers: true, edges: true, playhead: true };
+const ALL_KINDS: SnapKindsFilter = { beats: true, markers: true, edges: true, playhead: true, events: true };
 
 /**
  * 收集吸附目标：工程起止、播放头、标记点、其他 Cue 与媒体片段的边缘和节拍点。
@@ -43,6 +45,7 @@ const ALL_KINDS: SnapKindsFilter = { beats: true, markers: true, edges: true, pl
  * @param playheadMs 播放头位置。
  * @param excludeCueIds 不参与的 Cue / 媒体片段（正在被拖动的那些）。
  * @param kinds 参与吸附的种类（时间线工具条的吸附选项）；省略时全部参与。
+ * @param events 音乐事件的时刻（见 nalysisSnapTimes），kinds.events 关闭时不参与。
  * @returns 去重后的时间点。
  */
 export function collectSnapTargets(
@@ -50,8 +53,10 @@ export function collectSnapTargets(
   playheadMs: number,
   excludeCueIds: ReadonlySet<string> = new Set(),
   kinds: SnapKindsFilter = ALL_KINDS,
+  events: readonly number[] = [],
 ): number[] {
   const targets = new Set<number>([0, project.durationMs]);
+  if (kinds.events !== false) for (const t of events) targets.add(t);
   if (kinds.playhead) targets.add(playheadMs);
   if (kinds.markers) for (const m of project.markers) targets.add(m.timeMs);
   for (const c of kinds.edges ? project.cues : []) {

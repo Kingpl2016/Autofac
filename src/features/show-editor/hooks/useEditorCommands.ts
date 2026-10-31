@@ -47,6 +47,9 @@ import { useOnboardingStore } from "../stores/useOnboardingStore";
 import { commitStaged, discardStaged, focusAiInput } from "../ai/actions";
 import { useAiStagingStore } from "../stores/useAiStagingStore";
 import { collapsePanel, togglePanel } from "./panelControl";
+import { openAskAi, timelineFocused } from "./askAiActions";
+import { activeSuggestion } from "../stores/useAiSuggestionStore";
+import { acceptWithAnnounce } from "./suggestionActions";
 
 /** 一帧的毫秒数（逐帧移动播放头 / 微调片段用）。 */
 const FRAME = Math.round(1000 / OUTPUT_FPS);
@@ -785,6 +788,20 @@ export function useEditorCommands(onSave?: () => void, file?: FileCommandHandler
         // 收起时打开并聚焦输入框；开着时收起
         run: () => (ui().aiCollapsed ? focusAiInput() : collapsePanel("ai")),
       },
+      // 采纳当前的主动建议（悬停 / 播放头所在）；焦点在其它控件上时 Tab 照常切换焦点
+      {
+        id: "ai.acceptSuggestion",
+        titleKey: "editor.commands.aiAcceptSuggestion",
+        category: "edit",
+        keys: ["tab"],
+        enabled: () => timelineFocused() && activeSuggestion() !== null,
+        run: () => {
+          const s = activeSuggestion();
+          if (s) acceptWithAnnounce(s, t);
+        },
+      },
+      // 在时间线上问 AI：范围取当前选择（片段 / 时间范围 / 播放头处）
+      { id: "ai.ask", titleKey: "editor.commands.aiAsk", category: "edit", keys: ["mod+shift+j"], run: () => openAskAi() },
       { id: "ai.apply", titleKey: "editor.commands.aiApply", category: "edit", enabled: () => useAiStagingStore.getState().staged !== null, run: () => void commitStaged(t) },
       { id: "ai.discard", titleKey: "editor.commands.aiDiscard", category: "edit", enabled: () => useAiStagingStore.getState().staged !== null, run: discardStaged },
       {

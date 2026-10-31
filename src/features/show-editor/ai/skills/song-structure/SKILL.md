@@ -1,3 +1,10 @@
+---
+name: song-structure
+description: How to light a song section by section (intro, verse, chorus, bridge, outro). Use when the request is about sections or the whole song.
+metadata:
+  title: Song structure
+  source: built-in
+---
 Map each part of a song to an energy and a recipe. Use the section name first, then its position in the song.
 
 | Section (any language) | energy | recipe |

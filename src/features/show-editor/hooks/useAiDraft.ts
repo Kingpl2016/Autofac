@@ -6,6 +6,7 @@ import { offerChange } from "../ai/actions";
 import { editorSnapshot, ensureLibraries, memorySnapshot } from "../ai/env";
 import type { PaletteName } from "../ai/vocab";
 import { makeStaged } from "../stores/useAiStagingStore";
+import { ensurePrimaryAnalysis } from "../stores/useMediaAnalysisStore";
 
 /** AI 草稿的状态。 */
 export interface AiDraftState {
@@ -30,7 +31,7 @@ export function useAiDraft() {
   const abort = useRef<AbortController | null>(null);
 
   const generate = useCallback(
-    async (prompt: string, palette: PaletteName | null): Promise<boolean> => {
+    async (prompt: string, palette: PaletteName | null, accents = false): Promise<boolean> => {
       if (!profile) {
         setState({ pending: false, attempt: 0, error: t("ai.errors.no_profile") });
         return false;
@@ -39,6 +40,8 @@ export function useAiDraft() {
       abort.current = ac;
       setState({ pending: true, attempt: 1, error: null });
       try {
+        // 生成草稿时才分析音乐（导入素材时不分析）；分析失败不影响生成
+        await ensurePrimaryAnalysis().catch(() => null);
         await ensureLibraries();
         const [{ runDraft }, loaded] = await Promise.all([import("../ai/runtime"), loadLanguageModel(profile)]);
         const snapshot = editorSnapshot(i18n.language);
@@ -47,6 +50,7 @@ export function useAiDraft() {
           snapshot,
           prompt,
           palette,
+          accents,
           memory: memorySnapshot(),
           signal: ac.signal,
           onAttempt: (attempt) => setState((s) => ({ ...s, attempt })),

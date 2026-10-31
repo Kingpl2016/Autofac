@@ -23,6 +23,8 @@ mod show_commands;
 mod show_file_commands;
 mod show_runtime;
 mod signal_checker_commands;
+mod mcp_commands;
+mod skills_commands;
 
 use tauri::Manager;
 
@@ -112,6 +114,10 @@ pub fn run() {
             ));
             // 节目编辑器 AI 助手：厂商配置（data/ai-profiles.json）、Key（系统凭据管理器）、流式代理。
             app.manage(ai_commands::AiState::new(app.handle(), std::sync::Arc::new(ai_gateway::KeyringStore)));
+            // AI 助手的用户技能（data/skills）与回收站（data/trash，30 天）。
+            app.manage(skills_commands::SkillsState::new(app.handle()));
+            // AI 助手的 MCP 客户端：服务器配置（data/mcp-servers.json）、密钥（系统凭据管理器）、按需连接。
+            app.manage(mcp_commands::McpState::new(app.handle(), std::sync::Arc::new(ai_gateway::KeyringStore)));
             // 灯具素材库：内置模型 + 用户模型（app_data_dir/fixtures.json）。
             app.manage(fixture_commands::FixtureState::new(app.handle()));
             // OFL 整库目录（数据根目录/ofl-catalog.json，首次使用时读取）。
@@ -254,6 +260,31 @@ pub fn run() {
             media_commands::media_authorize,
             media_commands::stage_image_authorize,
             media_commands::media_analyze_beats,
+            media_commands::media_analyze,
+            media_commands::media_cancel,
+            media_commands::media_excerpt,
+            media_commands::media_cache_get,
+            media_commands::media_cache_put,
+            skills_commands::skills_list,
+            skills_commands::skills_read,
+            skills_commands::skills_import,
+            skills_commands::skills_export,
+            skills_commands::skills_delete,
+            skills_commands::skills_restore,
+            skills_commands::skills_reveal,
+            skills_commands::trash_list,
+            skills_commands::trash_put_json,
+            skills_commands::trash_take_json,
+            skills_commands::trash_remove,
+            mcp_commands::mcp_servers_list,
+            mcp_commands::mcp_server_save,
+            mcp_commands::mcp_server_approve,
+            mcp_commands::mcp_server_delete,
+            mcp_commands::mcp_server_restore,
+            mcp_commands::mcp_connect,
+            mcp_commands::mcp_disconnect,
+            mcp_commands::mcp_status,
+            mcp_commands::mcp_call_tool,
             media_commands::media_peaks,
             show_runtime::show_load,
             show_runtime::show_play,

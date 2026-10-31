@@ -1925,7 +1925,9 @@
       "extendNone": "No gap to extend into",
       "gapsClosed": "Closed {{count}} gap(s)",
       "lengthBeats": "Set {{count}} clip(s) to {{n}} beat(s)",
-      "lengthSeconds": "Set {{count}} clip(s) to {{n}} s"
+      "lengthSeconds": "Set {{count}} clip(s) to {{n}} s",
+      "accent": "Accent",
+      "accentHint": "Accent layer: hits or color changes the AI placed on musical events, on top of the main track of the same target (highest intensity wins, the latest color wins)"
     },
     "ruler": {
       "label": "Time ruler",
@@ -2116,7 +2118,9 @@
       "length9": "Set clip length to 9 beats (9 s without tempo)",
       "aiOpen": "Toggle AI assistant",
       "aiApply": "Apply AI change",
-      "aiDiscard": "Discard AI change"
+      "aiDiscard": "Discard AI change",
+      "aiAsk": "Ask AI on the timeline",
+      "aiAcceptSuggestion": "Accept AI suggestion"
     },
     "unsaved": "Unsaved changes",
     "toolbarUndo": "Undo",
@@ -2825,7 +2829,28 @@
       "usingModel": "Using {{name}}.",
       "thinking": "The AI is planning…",
       "fixing": "The AI is correcting its plan (attempt {{attempt}})…",
-      "generateAi": "Generate and preview"
+      "generateAi": "Generate and preview",
+      "accents": "Rhythm accents",
+      "accentsHint": "Add hits on drops, build-ups and the accented downbeats of loud sections, on a separate accent track",
+      "byAnalysis_one": "The show has no sections yet: the draft follows the {{count}} part found in the music and creates it.",
+      "byAnalysis_other": "The show has no sections yet: the draft follows the {{count}} parts found in the music and creates them.",
+      "music": {
+        "none": "No music on the timeline: the draft follows the section names and your description.",
+        "running": "Analysing the rhythm and structure of \"{{name}}\"…",
+        "ready": "Following \"{{name}}\": {{bpm}} BPM, {{sections}} parts, {{hits}} accented beats, {{drops}} drops.",
+        "failed": "Could not analyse \"{{name}}\" ({{reason}}); the draft follows the section names and your description.",
+        "errors": {
+          "no_beat": "no steady beat",
+          "unsupported": "unsupported format",
+          "decode": "decoding failed",
+          "io": "cannot read the file",
+          "not_found": "file not found",
+          "cancelled": "cancelled",
+          "unsupported_extension": "unsupported format"
+        },
+        "notYet": "\"{{name}}\" is not analyzed yet: it is analyzed when you click Generate",
+        "analyzeNow": "Analyze now"
+      }
     },
     "pixelMap": {
       "title": "Pixel map to fixtures",
@@ -2954,7 +2979,8 @@
       "arrange": "Arrange",
       "moveTrack": "Move track",
       "insertTemplate": "Insert template",
-      "insertEffect": "Insert effect"
+      "insertEffect": "Insert effect",
+      "askAi": "Ask AI…"
     },
     "tags": {
       "red": "Red",
@@ -3128,7 +3154,7 @@
         },
         "timeline": {
           "title": "Timeline",
-          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim. The icon at a clip's top-left and its top stripe show the type (color, effect, preset, scene); the ? at the right of the toolbar is the legend.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks.\nMarkers, sections and the loop range: select and press Delete, or right-click / hover × — you can undo."
+          "body": "Double-click empty space to add a clip, drag to move, drag an edge to trim. The icon at a clip's top-left and its top stripe show the type (color, effect, preset, scene); the ? at the right of the toolbar is the legend.\nRight-click for the context menu; Q / W trim left / right of the playhead, Ctrl+B splits; Ctrl / Shift on track headers selects several tracks.\nMarkers, sections and the loop range: select and press Delete, or right-click / hover × — you can undo.\nWith a song, the waveform button in the toolbar shows music guides and AI suggestions; right-click → Ask AI… or press Ctrl+Shift+J to ask the AI right on the timeline."
         },
         "mode": {
           "title": "Live mode / Playback mode",
@@ -3199,6 +3225,26 @@
         "aiMemory": {
           "title": "Let the AI learn your habits",
           "body": "Say \"remember: no strobes from now on\" in the chat; the AI shows a card and saves it only when you click Save. Changes you apply are also kept as examples, and the AI follows them when you ask something similar.\nManage this show's notes and examples here; personal preferences are in Settings → AI assistant. \"Used N memories\" under a reply lets you turn one off at any time."
+        },
+        "aiGuides": {
+          "title": "Light to the music",
+          "body": "With a song on the timeline, the app analyzes beats, sections and accents on this computer and draws guides: thin lines are accented downbeats, thick lines drops / breaks, dashed lines video cuts, gradient bands build-ups. Click a section label at the top to rename it.\nHere you can change the sensitivity, analyze again, turn AI suggestions on or off, and let a model that takes audio tag the genre and sections (it asks you first)."
+        },
+        "askAi": {
+          "title": "Ask AI right here",
+          "body": "Click the sparkle button (or right-click → Ask AI…, or Ctrl+Shift+J) to ask about the selected clips, time range or section. Common requests have quick buttons.\nThe chat panel can stay closed: the change shows as ghosts on the timeline, and you apply or discard it in the popover."
+        },
+        "aiGhosts": {
+          "title": "Change ghosts",
+          "body": "Dashed boxes are clips the AI wants to add, hatched ones will change, crossed ones will be removed. Hover to see which operation it is, and click × to reject just that one (operations that depend on it go too); you can restore it in the review card.\nApply or discard the whole change in the review bar at the top."
+        },
+        "aiSuggestions": {
+          "title": "AI suggestions",
+          "body": "Dotted boxes are rule-based suggestions (empty sections, accents, video cuts, repeated clips); no model is called. With the focus on the timeline, press Tab to accept (undoable) or Esc to dismiss when nothing is selected. The sparkle button lets the AI refine it.\nTurn them off in the music analysis menu, where you can also bring dismissed ones back."
+        },
+        "aiHistory": {
+          "title": "AI history",
+          "body": "Every AI change you apply becomes a restore point (up to 20 per show). Revert just one (later manual edits stay), restore to before one, or apply a reverted one again; Ctrl+Z undoes each of these.\nDeleted skills, MCP servers and memories go to the trash, and you can restore them within 30 days in Settings → AI assistant."
         }
       },
       "help": "Help",
@@ -3543,7 +3589,8 @@
         "beats": "Beats",
         "markers": "Markers",
         "edges": "Clip edges",
-        "playhead": "Playhead"
+        "playhead": "Playhead",
+        "events": "Musical events (guides)"
       },
       "snapHint": "Show start and end always snap; hold Alt while dragging to bypass snapping.",
       "ripple": "Ripple edit: deleting or dragging a cue moves the cues after it (hold Alt while dragging to affect all tracks)",
@@ -3886,7 +3933,25 @@
       "ops": {
         "added": "Added",
         "removed": "Removed",
-        "changed": "Changed"
+        "changed": "Changed",
+        "addEffect": "Add effect",
+        "addLook": "Custom look",
+        "applyTemplate": "Add template",
+        "applyRecipe": "Add recipe",
+        "placeAccents": "Rhythm accents",
+        "editCues": "Edit clips",
+        "moveCues": "Move clips",
+        "resizeCues": "Resize clips",
+        "deleteCues": "Delete clips",
+        "clearRange": "Clear range",
+        "splitCues": "Split clips",
+        "addSection": "Add section",
+        "addMarker": "Add marker",
+        "setTempo": "Set tempo",
+        "createGroup": "Create group",
+        "addFixtures": "Add fixtures",
+        "patchFixtures": "Change patch",
+        "setOutput": "Change output"
       },
       "kinds": {
         "cues": "Clip",
@@ -3956,7 +4021,10 @@
         "other": "Tool",
         "retrying": "fixing problems",
         "failed": "failed",
-        "listRecipes": "Looking at recipes"
+        "listRecipes": "Looking at recipes",
+        "analyzeMedia": "Looking at the music analysis",
+        "listMediaEvents": "Looking at musical events",
+        "readSkill": "Read a skill"
       },
       "dockTitle": "AI assistant",
       "newChat": "New chat",
@@ -4021,7 +4089,236 @@
         "prefsHint_one": "{{count}} preference for all shows, managed in Settings → AI assistant",
         "prefsHint_other": "{{count}} preferences for all shows, managed in Settings → AI assistant",
         "openPrefs": "Manage preferences"
+      },
+      "ghost": {
+        "kinds": {
+          "add": "Added by AI: {{op}}",
+          "change": "Changed by AI: {{op}}",
+          "remove": "Removed by AI: {{op}}"
+        },
+        "keep": "Keep: {{op}}",
+        "keepHint": "Keep this change (it is written when you apply)",
+        "reject": "Reject: {{op}}",
+        "rejected_one": "Change rejected",
+        "rejected_other": "{{count}} changes rejected",
+        "rejectedWithDeps_one": "Change rejected",
+        "rejectedWithDeps_other": "Rejected this change and the ones that depend on it ({{count}})",
+        "cannotReject": "This change cannot be rejected on its own (the rest would be incomplete); you can discard the whole change",
+        "band": "AI changes {{count}} clips",
+        "pendingTrack": "Pending",
+        "pendingTrackHint": "Track created by the AI change; it is added to the show when you apply",
+        "rejectedTitle_one": "{{count}} rejected",
+        "rejectedTitle_other": "{{count}} rejected",
+        "restoreAll": "Restore all",
+        "restoreOne": "Restore",
+        "restore": "Restore: {{op}}",
+        "reasons": {
+          "user": "rejected by you",
+          "dependency": "depends on a rejected change",
+          "failed": "cannot run without the other changes"
+        },
+        "reviewHint": "Dashed boxes on the timeline are this change; hover one to reject it, the rest is applied as usual."
+      },
+      "external": {
+        "title": "External tool {{server}} · {{tool}}",
+        "ask": "The AI wants to call this external tool (arguments above). It runs only if you allow it; the result is used as reference data only.",
+        "allow": "Allow",
+        "always": "Always allow",
+        "alwaysHint": "Don't ask again for this tool (restore defaults in Settings → AI assistant)",
+        "deny": "Deny",
+        "result": "Show result",
+        "resultError": "The tool reported an error",
+        "truncated": "truncated",
+        "untrusted": "Data from an external server. The AI does not follow instructions inside it.",
+        "outcomes": {
+          "allowed": "Allowed",
+          "always": "Always allowed",
+          "denied": "Denied"
+        }
+      },
+      "revertChange": "Revert this change",
+      "reset": {
+        "done": "Started a new chat"
+      },
+      "rewind": {
+        "button": "Rewind to here",
+        "title": "Rewind to before this message?",
+        "hint": "This message and everything after it are removed from the current version. The text goes back to the input box so you can edit and send it again.",
+        "alsoRevert_one": "Also revert the {{count}} AI change applied after it (later manual edits stay)",
+        "alsoRevert_other": "Also revert the {{count}} AI changes applied after it (later manual edits stay)",
+        "confirm": "Rewind",
+        "done": "Rewound (undoable)",
+        "doneReverted_one": "Rewound and reverted {{count}} AI change (undoable)",
+        "doneReverted_other": "Rewound and reverted {{count}} AI changes (undoable)",
+        "doneRevertedPartial_one": "Rewound and reverted {{count}} AI change; {{skipped}} part(s) edited later were left as they are",
+        "doneRevertedPartial_other": "Rewound and reverted {{count}} AI changes; {{skipped}} part(s) edited later were left as they are"
       }
+    },
+    "guides": {
+      "menu": "Music analysis",
+      "noMedia": "No music on the timeline",
+      "running": "Analysing the music…",
+      "status": "{{bpm}} BPM · {{sections}} parts · {{hits}} accents · {{drops}} drops · {{cuts}} cuts",
+      "failed": "Could not analyse ({{reason}})",
+      "show": "Show guides",
+      "suggestions": "Show AI suggestions",
+      "sensitivity": "Sensitivity",
+      "steps": {
+        "low": "Low (fewer events)",
+        "normal": "Normal",
+        "high": "High (more events)"
+      },
+      "reanalyze": "Analyse again",
+      "reanalyzed": "Analysed again",
+      "reanalyzeFailed": "Analysing again failed ({{reason}}); the previous result is still used",
+      "resetSuggestions": "Show dismissed suggestions again ({{count}})",
+      "suggestionsReset": "Dismissed suggestions will show again",
+      "label": "Section label: {{label}}",
+      "unsure": "The analysis is unsure which part this resembles; click to change",
+      "editLabel": "Click to change the section label",
+      "labelField": "Section label",
+      "labelHint": "Parts with the same label sound alike, and the AI lights them the same way. Your label wins and survives a new analysis.",
+      "resetLabel": "Use the analysed label",
+      "summary": "Music analysis: {{sections}} parts, {{events}} events",
+      "roles": {
+        "intro": "Intro",
+        "verse": "Verse",
+        "prechorus": "Pre-chorus",
+        "chorus": "Chorus",
+        "bridge": "Bridge",
+        "breakdown": "Breakdown",
+        "build": "Build-up",
+        "drop": "Drop",
+        "solo": "Solo",
+        "outro": "Outro"
+      },
+      "video": {
+        "loading": "Analyzing the video picture (cuts and main colors)…",
+        "ready": "Video analyzed: cuts show as dashed lines",
+        "error": "Video analysis failed. It retries the next time guides are shown",
+        "unsupported": "The picture of this video can't be read, so there are no cut guides"
+      },
+      "notAnalyzed": "Not analyzed yet: media isn't analyzed on import so editing stays smooth",
+      "analyzeAudio": "Analyze music ({{name}})",
+      "analyzeVideo": "Analyze video picture ({{name}})",
+      "cancelAnalysis": "Cancel analysis"
+    },
+    "askAi": {
+      "open": "Ask AI",
+      "note": "(Scope: {{scope}})",
+      "thinking": "AI is thinking…",
+      "openChat": "View in chat",
+      "quickLabel": "Quick suggestions",
+      "inputLabel": "Question for AI",
+      "placeholder": "What should change? Enter to send, Shift+Enter for a new line",
+      "send": "Send",
+      "scope": {
+        "clips_one": "{{count}} selected clip",
+        "clips_other": "{{count}} selected clips",
+        "range": "time range {{span}}",
+        "section": "section \"{{name}}\" {{span}}",
+        "track": "track \"{{name}}\"",
+        "pointTrack": "{{time}} on track \"{{name}}\"",
+        "point": "at {{time}}"
+      },
+      "quick": {
+        "cooler": "Use cooler colors",
+        "faster": "Make it faster",
+        "followBeat": "Follow the beat",
+        "softer": "Make it softer",
+        "byMusic": "Arrange this section to the music",
+        "fillSection": "Light this section",
+        "addHits": "Add flashes on the hits",
+        "followCuts": "Change color on video cuts",
+        "sameAsLabel": "Match sections with the same label",
+        "fillRange": "Light this range",
+        "followBuild": "Brighten along the build-up",
+        "varyTrack": "Add more variation to this track",
+        "explainTrack": "Explain what this track does",
+        "fadeInHere": "Fade in from here",
+        "explainMusic": "What is the music doing here?",
+        "markerHere": "Add a marker here"
+      }
+    },
+    "suggest": {
+      "label": "Suggestion: {{text}}",
+      "fillSection": "This section has no lighting yet. Try \"{{recipe}}\"",
+      "accentHits_one": "{{count}} accent here. Add a hit on it",
+      "accentHits_other": "{{count}} accents here. Add hits on them",
+      "colorCuts_one": "The video cuts {{count}} time. Change color with it",
+      "colorCuts_other": "The video cuts {{count}} times. Change color with the cuts",
+      "varyLooks_one": "{{count}} identical clip in a row. Alternate the brightness for depth",
+      "varyLooks_other": "{{count}} identical clips in a row. Alternate the brightness for depth",
+      "recipes": {
+        "introBuild": "Build up one by one",
+        "balladBed": "Slow breathing",
+        "breakdownCalm": "Slow flow",
+        "verseGroove": "Groove wave",
+        "chorusBurst": "Fast color chase",
+        "dropHit": "Downbeat hits",
+        "finaleFade": "Fade out one by one"
+      },
+      "accept": "Accept suggestion",
+      "acceptHint": "Accept (Tab, undoable)",
+      "dismiss": "Dismiss suggestion",
+      "dismissHint": "Dismiss (Esc)",
+      "accepted": "Suggestion applied (undoable)",
+      "dismissed": "Suggestion dismissed. Bring dismissed ones back from the Analysis menu",
+      "failed": "This suggestion can't be applied right now",
+      "refine": {
+        "label": "Refine with AI",
+        "prompt": "{{ask}} (suggestion: {{text}})",
+        "fillSection": "Arrange the lighting of this section in more detail, following the music",
+        "accentHits": "Add hits on the accents of this section, as strong as the music",
+        "colorCuts": "Change color with the video cuts, taking colors from the picture",
+        "varyLooks": "Give these identical clips more variation"
+      }
+    },
+    "mediaTags": {
+      "menu": "Tag genre and sections with AI…",
+      "title": "Let AI listen to the song",
+      "description": "AI tags the genre, the mood, whether there are vocals, and the role of each section (verse, chorus, breakdown…). Beat, section and accent times still come from the local analysis.",
+      "sendAudio_one": "Send {{count}} audio excerpt of about {{seconds}} s (from the middle of each section, 16 kHz mono)",
+      "sendAudio_other": "Send {{count}} audio excerpts of about {{seconds}} s each (from the middle of each section, 16 kHz mono)",
+      "sendFrames_one": "Send {{count}} video keyframe (320 px wide)",
+      "sendFrames_other": "Send {{count}} video keyframes (320 px wide)",
+      "sendTo": "To \"{{name}}\" ({{host}}), about {{size}} MB",
+      "notSent": "The full song or video is not sent, and neither are file names or paths",
+      "remember": "Don't ask again for this media",
+      "agree": "Agree and tag",
+      "stop": "Stop",
+      "unsupported": "The current AI profile has neither \"Audio\" nor \"Images\" input turned on. Edit the profile in Settings → AI assistant and try again.",
+      "noSections": "No sections yet. Wait for the music analysis to finish.",
+      "nothing": "There is nothing to send (no audio track or picture)",
+      "done_one": "Tagged: {{genre}} · {{mood}}, {{count}} section role",
+      "done_other": "Tagged: {{genre}} · {{mood}}, {{count}} section roles",
+      "always": "Don't ask again for any media in this show (you can turn this off here)"
+    },
+    "aiHistory": {
+      "title": "AI history",
+      "hint": "Every AI change you applied can be reverted on its own. Reverting only one change keeps what you edited by hand afterwards.",
+      "empty": "No AI changes applied yet.",
+      "applied": "Applied",
+      "reverted": "Reverted",
+      "sources": {
+        "chat": "Chat",
+        "draft": "Auto draft",
+        "suggestion": "AI suggestion"
+      },
+      "cues_one": "{{count}} clip",
+      "cues_other": "{{count}} clips",
+      "revert": "Revert this only",
+      "revertHint": "Change back only what the AI changed this time; parts edited later are skipped",
+      "restore": "Restore to before this",
+      "restoreHint": "Revert this and every later AI change (overwrites later edits to that content)",
+      "restoreConfirm": "Click again to confirm",
+      "reapply": "Apply again",
+      "revertDone": "AI change reverted (undoable)",
+      "revertPartial": "Reverted; {{skipped}} part(s) edited later were left as they are",
+      "restoreDone": "Restored to before this AI change (undoable)",
+      "restorePartial": "Restored; {{skipped}} part(s) skipped",
+      "reapplyDone": "Applied again (undoable)",
+      "reapplyPartial": "Applied again; {{skipped}} part(s) edited later were left as they are"
     }
   },
   "fixtures": {
@@ -5110,7 +5407,13 @@
       "modelEmpty": "No matching model; type an id to use it",
       "userMemory": "Personal preferences",
       "userMemoryHint": "Apply to every show; the AI sees them in every chat and draft. You can also say \"remember …\" in the chat and confirm it",
-      "userMemoryPlaceholder": "e.g. no strobes; prefer warm colors; keep replies short"
+      "userMemoryPlaceholder": "e.g. no strobes; prefer warm colors; keep replies short",
+      "modalities": "The model can also see / hear",
+      "modality": {
+        "image": "Images (video keyframes)",
+        "audio": "Audio (music excerpts)"
+      },
+      "modalitiesHint": "When on, media analysis can send a few short excerpts to the model (after you agree) to tag genre, mood and section roles. Leave off if unsure"
     },
     "errors": {
       "invalid_profile": "Invalid profile; check the endpoint, model and temperature",
@@ -5143,6 +5446,98 @@
       "remove": "Delete: {{text}}",
       "duplicate": "This is already saved",
       "full": "Up to {{max}} items; adding more replaces the oldest"
+    },
+    "mcp": {
+      "title": "MCP servers",
+      "hint": "Let the AI assistant use external tools (Model Context Protocol): a command on this computer or a remote address. New or changed commands must be approved first, and the AI asks in the chat before every tool call. Results are treated as reference data only.",
+      "add": "Add server",
+      "empty": "No MCP servers yet.",
+      "addTitle": "Add MCP server",
+      "editTitle": "Edit MCP server",
+      "editorHint": "Secrets (environment variable values, tokens) are kept in the system credential manager, not in the config file.",
+      "name": "Name",
+      "kind": "Connection",
+      "kinds": {
+        "stdio": "Local command",
+        "http": "Remote address"
+      },
+      "command": "Command",
+      "args": "Arguments (one per line)",
+      "cwd": "Working directory",
+      "cwdDefault": "Default: the app data folder",
+      "env": "Environment variables (one NAME=value per line)",
+      "envHint": "Write only the name and leave the value empty to keep the saved value.",
+      "url": "Address",
+      "token": "Bearer token",
+      "tokenEmpty": "Leave empty if not needed",
+      "enabled": "Enabled",
+      "enable": "Enable {{name}}",
+      "saved": "MCP server saved",
+      "needsApproval": "Needs approval",
+      "connected_one": "Connected · {{count}} tool",
+      "connected_other": "Connected · {{count}} tools",
+      "review": "Review command",
+      "connect": "Connect",
+      "disconnect": "Disconnect",
+      "deleted": "\"{{name}}\" deleted",
+      "deletedHint": "After undo, approve the command and enter the secrets again",
+      "approveTitle": "Approve \"{{name}}\"",
+      "approveStdio": "Connecting runs this command on your computer. Only approve programs you trust.",
+      "approveHttp": "Connecting accesses this address. Only approve services you trust.",
+      "approveNote": "Changing the command, arguments, working directory, environment variable names or address needs a new approval.",
+      "approveRun": "I trust it, run",
+      "approveConnect": "I trust it, connect",
+      "errors": {
+        "invalid": "Invalid config (check the name, command or address; remote addresses need https)",
+        "unknown_server": "Server not found",
+        "needs_approval": "The command of this server has not been approved",
+        "disabled": "The server is disabled",
+        "not_connected": "The server is not connected",
+        "unknown_tool": "The server has no such tool",
+        "timeout": "Timed out (30 s to connect, 60 s per call)",
+        "connect": "Could not connect",
+        "call": "The call failed",
+        "secret": "The system credential manager is not available",
+        "io": "Could not read or write the config",
+        "unknown": "The operation failed ({{code}})"
+      }
+    },
+    "reset": {
+      "prefsTitle": "Restore AI preferences",
+      "prefsHint": "Turns off auto-apply, enables all skills again and makes external tools ask before every call. AI profiles and keys are not affected.",
+      "prefsConfirm": "Restore the AI preferences to their defaults? The current settings are backed up to the trash first, and you can undo.",
+      "prefsLabel": "AI preferences backup",
+      "prefsDone": "AI preferences restored to defaults",
+      "restoreDefaults": "Restore defaults",
+      "memoryTitle": "Clear personal preferences",
+      "memoryHint": "Deletes all personal preferences (the ones used in every show). Notes and examples of this show are not affected.",
+      "memoryConfirm_one": "Clear {{count}} personal preference? It goes to the trash first and can be restored within 30 days.",
+      "memoryConfirm_other": "Clear {{count}} personal preferences? They go to the trash first and can be restored within 30 days.",
+      "memoryLabel_one": "Personal preferences ({{count}})",
+      "memoryLabel_other": "Personal preferences ({{count}})",
+      "memoryDone_one": "Cleared {{count}} personal preference",
+      "memoryDone_other": "Cleared {{count}} personal preferences",
+      "memoryItemDone": "Preference deleted",
+      "clearMemory_one": "Clear ({{count}})",
+      "clearMemory_other": "Clear ({{count}})",
+      "confirm": "Confirm",
+      "inTrash": "The old content is in the trash for 30 days",
+      "noTrash": "The trash is not available; you can only undo here",
+      "trashTitle": "Trash",
+      "trashHint": "Deleted skills, MCP servers, memories and the backups taken before restoring defaults are kept for 30 days.",
+      "trashEmpty": "The trash is empty.",
+      "restore": "Restore",
+      "restored": "\"{{name}}\" restored",
+      "restoreFailed": "Could not restore ({{reason}})",
+      "purge": "Delete {{name}} permanently",
+      "daysLeft_one": "{{count}} day left",
+      "daysLeft_other": "{{count}} days left",
+      "kinds": {
+        "skill": "Skill",
+        "mcp": "MCP",
+        "memory": "Memory",
+        "ai-prefs": "Preferences backup"
+      }
     }
   }
 }

@@ -1,3 +1,5 @@
+import type { AudioAnalysis } from "@/bindings/AudioAnalysis";
+import type { BeatAnalysis } from "@/bindings/BeatAnalysis";
 import { invoke } from "@/shared/tauri/invoke";
 
 /** 后端 `media_probe` 的结果。 */
@@ -25,6 +27,7 @@ export const MEDIA_ERR = {
   io: "io",
   decode: "decode",
   noBeat: "no_beat",
+  cancelled: "cancelled",
 } as const;
 
 /** 默认的波形精度：每秒桶数。 */
@@ -60,25 +63,74 @@ export function stageImageAuthorize(path: string): Promise<void> {
   return invoke<void>("stage_image_authorize", { path });
 }
 
-/** 后端节拍分析猜出的一个段落（素材内时刻）。 */
-export interface SectionGuess {
-  startMs: number;
-  endMs: number;
-  /** 相对能量 0~1 */
-  energy: number;
+export type { AudioAnalysis } from "@/bindings/AudioAnalysis";
+export type { BarFeature } from "@/bindings/BarFeature";
+export type { BeatAnalysis } from "@/bindings/BeatAnalysis";
+export type { EventKind as MusicEventKind } from "@/bindings/EventKind";
+
+/** 音乐结构分析的版本（与后端 `ANALYSIS_VERSION` 一致；不一致的结果当作过期）。 */
+export const ANALYSIS_VERSION = 1;
+
+/** 灵敏度的范围与默认值（与后端一致）。 */
+export const SENSITIVITY = { min: 0.5, max: 2, default: 1 } as const;
+
+/** 段落标签置信度低于这个值时不据此推断段落角色（与后端 `MIN_LABEL_CONFIDENCE` 一致）。 */
+export const MIN_LABEL_CONFIDENCE = 0.5;
+
+/**
+ * 音乐结构分析：节拍、每小节特征、段落结构标签与事件（后端有磁盘缓存）。
+ *
+ * @param path 素材文件路径。
+ * @param sensitivity 灵敏度 0.5~2。
+ * @param requestId 请求 id（`mediaCancel` 用它取消）。
+ * @returns 分析结果（素材内时刻）。
+ * @throws 后端错误码：`not_found` / `unsupported` / `decode` / `no_beat` / `cancelled`。
+ */
+export function mediaAnalyze(path: string, sensitivity: number, requestId?: string, cachedOnly = false): Promise<AudioAnalysis> {
+  return invoke<AudioAnalysis>("media_analyze", { path, sensitivity, requestId: requestId ?? null, cachedOnly });
 }
 
-/** 后端节拍分析结果（时刻均为素材内时刻，与后端 `BeatAnalysis` 一致）。 */
-export interface BeatAnalysis {
-  bpm: number;
-  /** 第一拍（强拍）偏移，`0..一小节` */
-  offsetMs: number;
-  beatsPerBar: number;
-  beatsMs: number[];
-  /** 置信度 0~1 */
-  confidence: number;
-  durationMs: number;
-  sections: SectionGuess[];
+/**
+ * 取消进行中的分析或截取。
+ *
+ * @param requestId 请求 id。
+ */
+export function mediaCancel(requestId: string): Promise<void> {
+  return invoke<void>("media_cancel", { requestId });
+}
+
+/**
+ * 截取若干段音频（16 kHz 单声道 WAV，Base64），发给支持音频输入的模型前调用；调用方要先征得用户同意。
+ *
+ * @param path 素材文件路径。
+ * @param ranges 片段（素材内毫秒，最多 16 段，每段最长 20 秒）。
+ * @param requestId 请求 id。
+ * @returns 与 `ranges` 对应的 Base64；落在音轨外的为空串。
+ */
+export function mediaExcerpt(path: string, ranges: readonly { startMs: number; lengthMs: number }[], requestId?: string): Promise<string[]> {
+  return invoke<string[]>("media_excerpt", { path, ranges, requestId: requestId ?? null });
+}
+
+/**
+ * 读取前端算出的素材分析缓存（素材修改后自然失效）。
+ *
+ * @param path 素材路径。
+ * @param kind 缓存种类。
+ * @returns JSON 文本；没有缓存时为 `null`。
+ */
+export function mediaCacheGet(path: string, kind: "video"): Promise<string | null> {
+  return invoke<string | null>("media_cache_get", { path, kind });
+}
+
+/**
+ * 写入前端算出的素材分析缓存（JSON，最多 2 MiB）。
+ *
+ * @param path 素材路径。
+ * @param kind 缓存种类。
+ * @param data JSON 文本。
+ */
+export function mediaCachePut(path: string, kind: "video", data: string): Promise<void> {
+  return invoke<void>("media_cache_put", { path, kind, data });
 }
 
 /**

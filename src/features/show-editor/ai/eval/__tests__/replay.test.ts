@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { planOps } from "../../compile";
-import { draftPlanToOps, draftSpans } from "../../draft";
+import { draftAccentOps, draftPlanToOps, draftSpans, withAnalysedEnergy } from "../../draft";
 import { aiOpsSchema, draftPlanSchema } from "../../opsSchema";
 import { agreement, expectationScore, extractFeatures, meanAgreement, type SpanFeatures } from "../features";
 import { caseSnapshot, caseSpans, checkScore, EDIT_CASES, EVAL_CASES } from "./cases";
@@ -26,6 +26,7 @@ interface Recording {
   features: SpanFeatures[];
 }
 
+// 新增录音后若没被收集，改动本文件让转换缓存失效（glob 在转换时展开）
 const recordings = Object.entries(import.meta.glob<Recording>("../recordings/*.json", { eager: true, import: "default" }));
 
 describe("评测特征与评分", () => {
@@ -80,10 +81,13 @@ describe.skipIf(recordings.length === 0)("回放录下的模型响应", () => {
     expect(c, `未知用例 ${rec.case}`).toBeDefined();
     if (!c) return;
     const snapshot = caseSnapshot(c);
-    const plan = draftPlanSchema.parse(rec.plan);
-    const spans = draftSpans(c.project, snapshot.aliases, "zh");
-    const ops = draftPlanToOps(plan, spans, c.project, snapshot.env);
-    const result = planOps(c.project, ops.ops, snapshot.env, snapshot.aliases);
+    const analysis = snapshot.env.analysis;
+    // 与 runDraft 相同的展开：能量以分析为准，需要时加节奏重音
+    const plan = withAnalysedEnergy(draftPlanSchema.parse(rec.plan), draftSpans(c.project, snapshot.aliases, "zh", analysis), analysis);
+    const spans = draftSpans(c.project, snapshot.aliases, "zh", analysis);
+    const base = draftPlanToOps(plan, spans, c.project, snapshot.env);
+    const ops = c.accents ? [...base.ops, ...draftAccentOps(spans, analysis, c.project)] : base.ops;
+    const result = planOps(c.project, ops, snapshot.env, snapshot.aliases);
     expect(result.issues.filter((i) => i.level === "error")).toEqual([]);
     expect(extractFeatures(result.next, caseSpans(c))).toEqual(rec.features);
   });

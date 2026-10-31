@@ -28,11 +28,14 @@ import { formatTimecode, snapToFrame } from "../lib/time";
 import { extendCue, keyMoveRange, moveLookKey, shiftTimelineObjects } from "../lib/timelineEdit";
 import { zoomPxPerSec } from "../lib/zoom";
 import { useEditorPrefsStore } from "../stores/useEditorPrefsStore";
+import { analysisSnapTimes } from "../stores/useMediaAnalysisStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { ClipQuickBar } from "./ClipQuickBar";
 import { ClipView } from "./ClipView";
+import { GhostLayer } from "./GhostLayer";
+import { SuggestionLayer } from "./SuggestionLayer";
 import { computeDrag, marqueeHits, type DragKind, type DragResult } from "./dragModel";
 import { anchoredScrollLeft } from "./geometry";
 import { contentWidth, START_LEFT } from "./timelineData";
@@ -300,6 +303,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     };
   };
   const timeAt = (x: number) => Math.max(0, ((x - START_LEFT) / useEditorUiStore.getState().pxPerSec) * 1000);
+  /** 吸附用的音乐事件：只在显示参考线时参与（看不见的线不该把片段吸过去）。 */
+  const eventSnapTimes = (p: ShowProject) => (useEditorPrefsStore.getState().aiGuides ? analysisSnapTimes(p) : []);
   /** 吸附到吸附点（吸附开着且没按 Alt 时），再对齐到帧。 */
   const snapTime = (ms: number, targets: readonly number[], alt: boolean) => {
     const ui = useEditorUiStore.getState();
@@ -419,7 +424,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
           startX: p.x,
           active: false,
           locked,
-          targets: collectSnapTargets(current, ui.playheadMs, new Set([id]), useEditorPrefsStore.getState().snapKinds),
+          targets: collectSnapTargets(current, ui.playheadMs, new Set([id]), useEditorPrefsStore.getState().snapKinds, eventSnapTimes(current)),
         };
         return;
       }
@@ -443,7 +448,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
         startX: p.x,
         startRow: rowAt(layout, p.y),
         project: current,
-        targets: collectSnapTargets(current, ui.playheadMs, new Set(ids), useEditorPrefsStore.getState().snapKinds),
+        targets: collectSnapTargets(current, ui.playheadMs, new Set(ids), useEditorPrefsStore.getState().snapKinds, eventSnapTimes(current)),
         active: false,
         result: null,
       };
@@ -454,7 +459,7 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
     // 绘制模式：在可编辑的轨道空白处按下开始画片段（场景轨道只放场景片段，不画）
     const drawTrack = ui.drawMode && row >= 0 ? tracks[row] : undefined;
     if (drawTrack && !drawTrack.lock && drawTrack.target.kind !== "scene") {
-      const targets = collectSnapTargets(current, ui.playheadMs, new Set(), useEditorPrefsStore.getState().snapKinds);
+      const targets = collectSnapTargets(current, ui.playheadMs, new Set(), useEditorPrefsStore.getState().snapKinds, eventSnapTimes(current));
       const anchor = snapTime(timeAt(p.x), targets, e.altKey);
       const gap = gapAround(current, drawTrack.id, anchor);
       if (gap) {
@@ -769,6 +774,8 @@ export const TimelineBody = forwardRef<TimelineBodyHandle, TimelineBodyProps>(fu
             />
           );
         })}
+        <GhostLayer trackIndex={trackIndex} layout={layout} rowFrom={rowFrom} rowTo={rowTo} timeFrom={timeFrom} timeTo={timeTo} xOf={xOf} />
+        <SuggestionLayer trackIndex={trackIndex} layout={layout} rowFrom={rowFrom} rowTo={rowTo} timeFrom={timeFrom} timeTo={timeTo} xOf={xOf} />
         {/* 绘制模式：正在画的片段（虚线框 + 长度） */}
         {draw?.active &&
           (() => {

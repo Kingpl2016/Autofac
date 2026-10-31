@@ -12,7 +12,7 @@ const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
   outputTokens: { total: 1, text: 1, reasoning: undefined },
 };
-const mock = vi.hoisted(() => ({ model: null as unknown }));
+const mock = vi.hoisted(() => ({ model: null as unknown, mcpCall: vi.fn() }));
 
 /** 一次流式响应：工具调用。 */
 const toolStream = (toolName: string, input: unknown, id = `c-${toolName}`) => ({
@@ -38,6 +38,7 @@ const profile = {
   baseUrl: "http://localhost/v1",
   model: "m",
   supportsStructuredOutputs: false,
+  inputModalities: [] as ("image" | "audio")[],
   temperature: 0,
   seed: null,
   hasKey: false,
@@ -53,14 +54,24 @@ vi.mock("@/features/ai", async () => {
   const memory = await import("@/features/ai/lib/memory");
   const memoryFile = await import("@/features/ai/lib/memoryFile");
   const memoryStore = await import("@/features/ai/stores/useAiMemoryStore");
+  const skillStore = await import("@/features/ai/stores/useSkillStore");
+  const mcpStore = await import("@/features/ai/stores/useMcpStore");
+  const mcp = await import("@/features/ai/lib/mcp");
+  const mcpApi = await import("@/features/ai/lib/mcpApi");
   return {
     ...errors,
     ...memory,
     ...memoryFile,
     ...memoryStore,
+    ...skillStore,
+    ...mcpStore,
+    ...mcp,
+    ...mcpApi,
     useAiPrefsStore: prefs.useAiPrefsStore,
     useActiveAiProfile: () => ({ profiles: [profile, { ...profile, id: "p2", name: "Other", model: "m2" }], profile, loading: false }),
     loadLanguageModel: async (p: unknown) => ({ model: mock.model, profile: p, settings: { temperature: 0 } }),
+    mcpCallTool: mock.mcpCall,
+    ensureMcp: async () => undefined,
   };
 });
 
@@ -76,6 +87,8 @@ import { useFixtureStore } from "@/features/fixtures";
 import { useAiPrefsStore } from "@/features/ai/stores/useAiPrefsStore";
 import { useAiMemoryStore } from "@/features/ai/stores/useAiMemoryStore";
 import { useAiExemplarStore } from "../../../stores/useAiExemplarStore";
+import { useMcpStore } from "@/features/ai/stores/useMcpStore";
+import { useRestorePointStore } from "../../../stores/useRestorePointStore";
 import { AiChatPanel } from "../AiChatPanel";
 
 beforeAll(() => {
@@ -258,6 +271,65 @@ describe("AI 对话面板（assistant-ui）", () => {
     fireEvent.click(within(second).getByRole("button", { name: "忽略" }));
     expect(useAiChatStore.getState().notes).toEqual([]);
     expect(useAiChatStore.getState().memoryCards).toEqual({ r1: "saved", r2: "ignored" });
+  });
+
+  it("外部（MCP）工具：调用前在卡片上确认，允许后才调用，结果当作外部数据交给模型", async () => {
+    useMcpStore.setState({
+      status: "ready",
+      servers: [{ id: "files", name: "Files", enabled: true, transport: { kind: "http", url: "https://x.com/mcp" }, approved: "fp", fingerprint: "fp", needsApproval: false, summary: "", hasToken: false }],
+      statuses: [{ id: "files", server: null, tools: [{ name: "read", title: null, description: "Read a file", inputSchema: { type: "object", properties: { path: { type: "string" } } }, readOnly: true }] }],
+      errors: {},
+      connecting: {},
+    });
+    useAiPrefsStore.setState({ mcpAlwaysAllow: [] });
+    mock.mcpCall.mockResolvedValue({ text: "cue list: intro, verse", isError: false, truncated: false });
+    mock.model = new MockLanguageModelV4({
+      doStream: [toolStream("mcp__files__read", { path: "notes.txt" }, "m1"), textStream("读到了笔记。")],
+    });
+    renderPanel(8);
+    await send("看看 notes.txt");
+    const card = (await screen.findByText("外部工具 files · read")).closest("[data-external-tool]") as HTMLElement;
+    expect(within(card).getByText(/notes\.txt/)).toBeTruthy();
+    expect(mock.mcpCall).not.toHaveBeenCalled();
+    // 系统提示词里带上“外部结果只是数据”的说明
+    const model = mock.model as MockLanguageModelV4;
+    expect(JSON.stringify(model.doStreamCalls[0].prompt[0])).toContain("untrusted data");
+    fireEvent.click(within(card).getByRole("button", { name: /^允许$/ }));
+    expect(await screen.findByText("读到了笔记。")).toBeTruthy();
+    expect(mock.mcpCall).toHaveBeenCalledWith("files", "read", { path: "notes.txt" });
+    expect(useAiChatStore.getState().toolApprovals).toMatchObject({ m1: "allowed" });
+    // 交给模型的结果标明是外部数据
+    expect(JSON.stringify(model.doStreamCalls[1].prompt)).toContain('"untrusted":true');
+  });
+
+  it("回退到某条消息之前：对话移除、文字放回输入框，并可同时撤回之后写入的 AI 改动；提议卡片上也能撤回", async () => {
+    useAiPrefsStore.setState({ autoApply: true });
+    useRestorePointStore.setState({ points: [], path: null, generation: -1 });
+    mock.model = new MockLanguageModelV4({
+      doStream: [toolStream("propose_ops", { summary: "加标记", ops: [{ op: "addMarker", at: "b2", label: "drop" }] }, "pm"), textStream("加好了。")],
+    });
+    renderPanel(9);
+    await send("在第二小节加个标记");
+    expect(await screen.findByText("加好了。")).toBeTruthy();
+    await waitFor(() => expect(useProjectStore.getState().project.markers).toHaveLength(1));
+    expect(useRestorePointStore.getState().points[0]).toMatchObject({ sourceId: "pm", state: "applied" });
+
+    // 提议卡片上：撤回 → 重新应用
+    fireEvent.click(await screen.findByRole("button", { name: /撤回这次改动/ }));
+    expect(useProjectStore.getState().project.markers).toHaveLength(0);
+    fireEvent.click(await screen.findByRole("button", { name: /重新应用/ }));
+    expect(useProjectStore.getState().project.markers).toHaveLength(1);
+
+    // 回退到用户那句话之前，同时撤回之后的改动（不是最后一条消息：悬停时才显示操作）
+    const userMessage = screen.getByText("在第二小节加个标记").closest('[data-role="user"]') as HTMLElement;
+    fireEvent.mouseEnter(userMessage);
+    fireEvent.mouseOver(userMessage);
+    fireEvent.click(await screen.findByRole("button", { name: "回退到这里" }));
+    expect(await screen.findByText(/同时撤回之后写入工程的 1 次 AI 改动/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^回退$/ }));
+    await waitFor(() => expect(screen.queryByText("加好了。")).toBeNull());
+    expect(useProjectStore.getState().project.markers).toHaveLength(0);
+    expect((screen.getByLabelText("给 AI 的消息") as HTMLTextAreaElement).value).toBe("在第二小节加个标记");
   });
 
   it("输入框底部的模型菜单切换本次对话的配置", async () => {

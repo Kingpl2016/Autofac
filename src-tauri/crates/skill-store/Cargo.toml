@@ -1,0 +1,26 @@
+[package]
+name = "skill-store"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "AI 助手的用户技能（Agent Skills 格式的 SKILL.md 目录）：安全导入 zip / 文件夹、导出、删除进回收站与恢复"
+
+[lints]
+workspace = true
+
+[features]
+# 导出 TypeScript 绑定（仅生成类型时开启）。
+ts = ["dep:ts-rs"]
+
+[dependencies]
+ts-rs = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+fsutil = { path = "../fsutil" }
+# 与 show-engine 用同一个版本与压缩特性，避免重复编译。
+zip = { version = "=9.1.2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

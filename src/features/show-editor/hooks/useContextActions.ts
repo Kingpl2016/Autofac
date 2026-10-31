@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { announce } from "@/shared/stores/announcerStore";
+import { scopeOf } from "../ai/askScope";
 import type { ContextActionId } from "../lib/contextMenus";
 import { convertToLook } from "../lib/cueOps";
 import { CUSTOM_GROUP, uniqueTemplateId } from "../lib/cueTemplates";
@@ -23,6 +24,7 @@ import { addSection, updateSection } from "../lib/sections";
 import { templateFromCue } from "../lib/templateOps";
 import { removeTracks } from "../lib/trackOps";
 import { allTemplates, useCueTemplateStore } from "../stores/useCueTemplateStore";
+import { useAskAiStore } from "../stores/useAskAiStore";
 import { useEditorUiStore, type ContextTarget } from "../stores/useEditorUiStore";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -362,6 +364,12 @@ export function useContextActions(): ContextActions {
         case "clearTempo":
           clearTempo();
           return;
+        case "askAi": {
+          // 在右键的位置打开“问 AI”弹层（等菜单关闭后再打开，避免焦点被菜单收回）
+          const scope = scopeOf(target, ui);
+          requestAnimationFrame(() => useAskAiStore.getState().openAt(scope));
+          return;
+        }
       }
     },
     [actions, t],

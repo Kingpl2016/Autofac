@@ -5,7 +5,8 @@ import type { ModelMessage } from "ai";
  *
  * - 最近 `keepTurns` 轮（从用户的一句话到下一句之前）原样保留；
  * - 更早的轮次：用户消息与助手的文字保留；`propose_ops` 换成一行“提议了什么、结局如何”，
- *   `remember` 换成一行“提议记住什么、结局如何”，其它工具调用、工具结果与推理过程删掉；
+ *   `remember` 换成一行“提议记住什么、结局如何”，外部（MCP）工具换成一行“调用了哪个工具、结局如何”（结果不再带上），
+ *   其它工具调用、工具结果与推理过程删掉；
  * - 仍然超过 `maxMessages` 条时，从最早的压缩部分按整轮删起（保留的轮次不动，避免拆开工具调用与结果）。
  *
  * 少了大段的工具结果，长对话的 token 更少，模型也更不容易被很早以前的细节带偏。
@@ -35,6 +36,8 @@ function toolLine(part: Extract<AssistantPart, { type: "tool-call" }>, outcomeOf
   const outcome = outcomeOf?.(part.toolCallId) ?? "pending";
   if (part.toolName === "propose_ops") return `[proposed a change: ${typeof input.summary === "string" ? input.summary : "?"} (${outcome})]`;
   if (part.toolName === "remember") return `[asked to remember: "${typeof input.text === "string" ? input.text : "?"}" (${outcome})]`;
+  // 外部工具：只留调用了什么与结局，结果（外部数据）不再带上
+  if (part.toolName.startsWith("mcp__")) return `[called external tool ${part.toolName} (${outcome})]`;
   return null;
 }
 

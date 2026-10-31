@@ -55,10 +55,11 @@ export function recordExemplar(staged: StagedChange): void {
  * @param t 翻译函数。
  * @returns 是否已经写入。
  */
-export function offerChange(staged: StagedChange, autoApply: boolean, t: TFunction): boolean {
+export function offerChange(staged: StagedChange, autoApply: boolean, t: TFunction, options: { reveal?: boolean } = {}): boolean {
   useAiStagingStore.getState().stage(staged);
   if (autoApply && !staged.sensitive) return commitStaged(t);
-  expandPanel("ai");
+  // 从时间线上提问时不打开对话栏：改动以虚影显示在时间线上，弹层里可以应用
+  if (options.reveal !== false) expandPanel("ai");
   announce(t(staged.sensitive && autoApply ? "editor.ai.needsReview" : "editor.ai.staged"));
   return false;
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { aiHistoryLibraryPath, memoryListSchema, type MemoryItem } from "@/features/ai";
 import type { DocumentOrigin } from "../stores/useDocumentStore";
 import type { StagedOutcome } from "../stores/useAiStagingStore";
+import type { MediaAnalysisPrefs, MediaTagsResult } from "../lib/mediaAnalysis";
 import { exemplarListSchema, type Exemplar } from "./memory";
 import { PROMPT_VERSION } from "./prompt";
 
@@ -38,6 +39,16 @@ export interface TreeItem {
 /** 记忆卡片（`remember` 工具）的结局。 */
 export type MemoryCardOutcome = "saved" | "ignored";
 
+/** 一个素材的 AI 相关设置（跟着工程保存）。 */
+export interface MediaDoc {
+  /** 分析灵敏度与改过的段落标签 */
+  prefs?: MediaAnalysisPrefs;
+  /** 多模态标签 */
+  tags?: MediaTagsResult;
+  /** 是否同意把这个素材的音频片段 / 画面发给模型 */
+  consent?: "granted" | "denied";
+}
+
 /** 一个工程的对话：消息树、当前版本、卡片结局与本工程的记忆。 */
 export interface ChatDoc {
   tree: TreeItem[];
@@ -53,7 +64,18 @@ export interface ChatDoc {
   notes: MemoryItem[];
   /** 本工程范例 */
   exemplars: Exemplar[];
+  /** 各素材的分析设置、标签与上传同意：素材 id → 设置 */
+  media: Record<string, MediaDoc>;
+  /** 本工程不再询问上传，一律同意 */
+  uploadAlways: boolean;
+  /** 忽略过的主动建议（建议的键） */
+  dismissedSuggestions: string[];
+  /** 外部（MCP）工具调用卡片的结局：工具调用 id → 结局 */
+  toolApprovals: Record<string, ToolApprovalOutcome>;
 }
+
+/** 外部工具调用卡片的结局。 */
+export type ToolApprovalOutcome = "allowed" | "always" | "denied";
 
 /**
  * 空的对话。
@@ -61,8 +83,40 @@ export interface ChatDoc {
  * @returns 新对象。
  */
 export function emptyChatDoc(): ChatDoc {
-  return { tree: [], headId: null, profileId: null, proposals: {}, memoryCards: {}, notes: [], exemplars: [] };
+  return {
+    tree: [],
+    headId: null,
+    profileId: null,
+    proposals: {},
+    memoryCards: {},
+    notes: [],
+    exemplars: [],
+    media: {},
+    uploadAlways: false,
+    dismissedSuggestions: [],
+    toolApprovals: {},
+  };
 }
+
+const mediaDocSchema = z.object({
+  prefs: z
+    .object({
+      sensitivity: z.number().min(0.5).max(2).catch(1),
+      labels: z.record(z.string(), z.string().min(1).max(24)).catch({}),
+    })
+    .optional()
+    .catch(undefined),
+  tags: z
+    .object({
+      genre: z.string().max(40).optional().catch(undefined),
+      mood: z.string().max(40).optional().catch(undefined),
+      vocals: z.boolean().optional().catch(undefined),
+      roles: z.record(z.string(), z.string().max(24)).catch({}),
+    })
+    .optional()
+    .catch(undefined),
+  consent: z.enum(["granted", "denied"]).optional().catch(undefined),
+});
 
 const messageSchema = z.looseObject({
   id: z.string(),
@@ -85,6 +139,11 @@ const v2Schema = z.object({
   memoryCards: z.record(z.string(), z.enum(["saved", "ignored"])).catch({}),
   notes: memoryListSchema,
   exemplars: exemplarListSchema,
+  // 以下字段是后加的：旧文件没有时取默认值（不需要升格式版本）
+  media: z.record(z.string(), mediaDocSchema).catch({}),
+  uploadAlways: z.boolean().catch(false),
+  dismissedSuggestions: z.array(z.string().max(200)).max(500).catch([]),
+  toolApprovals: z.record(z.string(), z.enum(["allowed", "always", "denied"])).catch({}),
 });
 
 /** 路径的稳定散列（FNV-1a 64 位的两段 32 位，十六进制）。 */
@@ -284,5 +343,9 @@ export function serializeHistory(doc: ChatDoc): string {
     memoryCards: pick(doc.memoryCards, ids),
     notes: doc.notes,
     exemplars: doc.exemplars,
+    media: doc.media,
+    uploadAlways: doc.uploadAlways,
+    dismissedSuggestions: doc.dismissedSuggestions,
+    toolApprovals: pick(doc.toolApprovals, ids),
   });
 }

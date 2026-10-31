@@ -19,6 +19,7 @@ import { effectiveKeys, type Command } from "../lib/commands";
 import { buildContextMenu, type MenuEntry } from "../lib/contextMenus";
 import { InsertEffectsSub, InsertTemplatesSub } from "./ContextInsertMenus";
 import { CUE_TAG_COLORS, CUE_TAGS } from "../lib/project";
+import { useAskAiStore } from "../stores/useAskAiStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useKeymapStore } from "../stores/useKeymapStore";
 import { useProjectStore } from "../stores/useProjectStore";
@@ -47,6 +48,8 @@ export function TimelineContextMenu({ commands, children }: { commands: readonly
 
   const onContextMenu = (e: MouseEvent<HTMLDivElement>) => {
     const ui = useEditorUiStore.getState();
+    // “问 AI…”在右键的位置打开
+    useAskAiStore.getState().setPointer(e.clientX, e.clientY);
     const next = resolveContextTarget(
       e.target as Element,
       e.clientX,

@@ -487,6 +487,16 @@ mod tests {
     }
 
     #[test]
+    fn 轨道上前端后加的字段_例如重音层_role_被忽略() {
+        let t: Track = serde_json::from_str(
+            r#"{"id":"t2","target":{"kind":"group","id":"g"},"mute":false,"solo":false,"lock":false,"role":"accent","heightPx":40}"#,
+        )
+        .expect("应能解析");
+        assert_eq!(t.id, "t2");
+        assert!(!t.on_top);
+    }
+
+    #[test]
     fn 缺省字段使用默认值() {
         let p: ShowProject = serde_json::from_str(r#"{"durationMs": 1000}"#).expect("应能解析");
         assert!(p.fixtures.is_empty());

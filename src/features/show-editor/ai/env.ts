@@ -1,8 +1,10 @@
-import { useAiMemoryStore } from "@/features/ai";
+import { ensureMcp, ensureSkills, useAiMemoryStore } from "@/features/ai";
 import { useFixtureStore } from "@/features/fixtures";
 import type { ShowProject } from "../lib/project";
 import { useAiChatStore } from "../stores/useAiChatStore";
 import { useAiExemplarStore } from "../stores/useAiExemplarStore";
+import { peekProjectVideo } from "../hooks/videoAnalysisActions";
+import { currentAnalysis, peekPrimaryAnalysis } from "../stores/useMediaAnalysisStore";
 import { allTemplates, useCueTemplateStore } from "../stores/useCueTemplateStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { allEffects, useEffectLibraryStore } from "../stores/useEffectLibraryStore";
@@ -40,9 +42,21 @@ export function memorySnapshot(): MemorySnapshot {
   };
 }
 
-/** 确保特效库、模板库、灯具素材库与记忆已读入（AI 的词汇表来自它们）。 */
+/** 发请求前最多等 MCP 服务器连接多久（毫秒）。 */
+const MCP_WAIT_MS = 8000;
+
+/** 确保特效库、模板库、灯具素材库、记忆与主素材的音乐分析已读入（AI 的词汇表与上下文来自它们；分析失败不影响调用）。 */
 export async function ensureLibraries(): Promise<void> {
-  const jobs: Promise<void>[] = [useAiMemoryStore.getState().load(), useAiExemplarStore.getState().load()];
+  const jobs: Promise<unknown>[] = [
+    useAiMemoryStore.getState().load(),
+    useAiExemplarStore.getState().load(),
+    // 音乐 / 画面分析只读缓存：没分析过的不在这里分析（模型需要时调用 analyze_media，会先分析）
+    peekPrimaryAnalysis().catch(() => null),
+    peekProjectVideo().catch(() => undefined),
+    ensureSkills().catch(() => undefined),
+    // 连接启用且已确认的 MCP 服务器（失败的只记下错误，不影响对话）；最多等 8 秒，慢的在后台连上后下一轮可用
+    Promise.race([ensureMcp().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, MCP_WAIT_MS))]),
+  ];
   const effects = useEffectLibraryStore.getState();
   if (effects.status === "idle") jobs.push(effects.load());
   const templates = useCueTemplateStore.getState();
@@ -63,6 +77,7 @@ export function editorSnapshot(lang: string): EditorSnapshot {
   const ui = useEditorUiStore.getState();
   const alive = new Set(project.cues.map((c) => c.id));
   const selection = ui.selectedCueIds.filter((id) => alive.has(id));
+  const analysis = currentAnalysis(project);
   return {
     project,
     aliases: buildAliases(project),
@@ -73,7 +88,8 @@ export function editorSnapshot(lang: string): EditorSnapshot {
       lang,
       playheadMs: ui.playheadMs,
       selection,
+      analysis,
     },
-    summary: { playheadMs: ui.playheadMs, selection, selectedTracks: ui.selectedTrackIds, timeRange: ui.timeRange },
+    summary: { playheadMs: ui.playheadMs, selection, selectedTracks: ui.selectedTrackIds, timeRange: ui.timeRange, analysis },
   };
 }

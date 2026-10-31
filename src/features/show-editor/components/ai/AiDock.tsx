@@ -2,12 +2,14 @@ import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Bot, Brain, Loader2, SquarePen, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { useActiveAiProfile } from "@/features/ai";
 import { cn } from "@/lib/utils";
 import { collapsePanel } from "../../hooks/panelControl";
-import { clearChat, useAiChatStore } from "../../stores/useAiChatStore";
+import { useSkillDrop } from "../../hooks/useSkillDrop";
+import { clearChat, restoreChat, useAiChatStore } from "../../stores/useAiChatStore";
 import { useAiStagingStore } from "../../stores/useAiStagingStore";
 import { AiMemoryPage } from "./AiMemoryPage";
 import { AiReviewCard } from "./AiReviewCard";
@@ -28,6 +30,8 @@ export function AiDock() {
   const hasMessages = useAiChatStore((s) => s.messages.length > 0);
   // 记忆页与对话切换显示；对话保持挂载（正在生成的回复不中断）
   const [memoryOpen, setMemoryOpen] = useState(false);
+  // 拖进来的技能包安装为用户技能
+  const dropping = useSkillDrop();
 
   return (
     <section aria-label={t("editor.ai.dockTitle")} className="flex h-full min-h-0 flex-col border-l border-border bg-surface-2">
@@ -53,7 +57,11 @@ export function AiDock() {
           aria-label={t("editor.ai.newChat")}
           title={t("editor.ai.newChat")}
           disabled={!hasMessages}
-          onClick={clearChat}
+          onClick={() => {
+            // 新对话可以撤销：提示里点“撤销”恢复刚才的对话（包括各个版本）
+            const backup = clearChat();
+            toast.success(t("editor.ai.reset.done"), { action: { label: t("editor.ai.undo"), onClick: () => restoreChat(backup) } });
+          }}
         >
           <SquarePen aria-hidden />
         </Button>
@@ -68,6 +76,11 @@ export function AiDock() {
           <X aria-hidden />
         </Button>
       </header>
+      {dropping && (
+        <p role="status" className="shrink-0 border-b border-dashed border-primary/60 bg-primary/10 px-3 py-2 text-xs text-primary">
+          {t("ai.skills.dropHint")}
+        </p>
+      )}
       {staged && (
         <div className="shrink-0 border-b border-border p-3">
           <AiReviewCard staged={staged} />

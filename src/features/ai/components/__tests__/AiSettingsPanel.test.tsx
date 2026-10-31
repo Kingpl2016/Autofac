@@ -32,6 +32,7 @@ const profile = (over: Partial<AiProfileView> = {}): AiProfileView => ({
   baseUrl: "https://api.deepseek.com/v1",
   model: "deepseek-chat",
   supportsStructuredOutputs: false,
+  inputModalities: [],
   temperature: 0,
   seed: null,
   hasKey: true,

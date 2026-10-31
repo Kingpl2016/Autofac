@@ -62,6 +62,8 @@ interface TrackHeadersProps {
   selectedTrackIds?: readonly string[];
   /** 每条轨道上最多的灯具类型（与 `tracks` 一一对应；省略时不区分） */
   fixtureTypes?: readonly (FixtureType | null)[];
+  /** 待审阅的 AI 改动新建的轨道（只显示虚影，不能编辑） */
+  pendingTrackIds?: ReadonlySet<string>;
   /**
    * 点选轨道。
    *
@@ -109,6 +111,7 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
     selectedTrackId,
     selectedTrackIds,
     fixtureTypes,
+    pendingTrackIds,
     onSelect,
     onDelete,
     onToggle,
@@ -295,6 +298,16 @@ export const TrackHeaders = forwardRef<HTMLDivElement, TrackHeadersProps>(functi
               >
                 {name}
               </button>
+              {pendingTrackIds?.has(track.id) && (
+                <span title={t("editor.ai.ghost.pendingTrackHint")} className="shrink-0 rounded border border-dashed border-primary px-1 text-[10px] leading-4 text-primary">
+                  {t("editor.ai.ghost.pendingTrack")}
+                </span>
+              )}
+              {track.role === "accent" && (
+                <span title={t("editor.timeline.accentHint")} className="shrink-0 rounded bg-primary/15 px-1 text-[10px] leading-4 text-primary">
+                  {t("editor.timeline.accent")}
+                </span>
+              )}
               {!collapsed && onCycleHeight && (
                 <button
                   type="button"

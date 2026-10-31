@@ -88,7 +88,11 @@ describe("右键菜单内容", () => {
     expect(action(buildContextMenu({ kind: "empty", trackId: p.tracks[1].id, timeMs: 0 }, p, ctx), "addCueHere").disabled).toBe(false);
     // 空白处还能直接插入模板 / 特效（锁定或没有轨道时不可用）
     const empty = buildContextMenu({ kind: "empty", trackId: p.tracks[1].id, timeMs: 0 }, p, ctx);
-    expect(ids(empty).slice(0, 3)).toEqual(["addCueHere", "insertTemplates", "insertEffects"]);
+    expect(ids(empty).slice(0, 5)).toEqual(["askAi", "-", "addCueHere", "insertTemplates", "insertEffects"]);
+    // “问 AI…”在片段、时间范围、轨道、段落的菜单开头；标记点、标尺没有
+    expect(ids(buildContextMenu({ kind: "range", timeMs: 0 }, p, ctx))[0]).toBe("askAi");
+    expect(ids(buildContextMenu({ kind: "track", id: p.tracks[1].id }, p, ctx))[0]).toBe("askAi");
+    expect(ids(buildContextMenu({ kind: "ruler", timeMs: 0 }, p, ctx))).not.toContain("askAi");
     expect(empty.find((e) => e.kind === "insertTemplates")).toEqual({ kind: "insertTemplates", disabled: false });
     expect(buildContextMenu({ kind: "empty", trackId: p.tracks[0].id, timeMs: 0 }, p, ctx).find((e) => e.kind === "insertEffects")).toEqual({
       kind: "insertEffects",

@@ -11,10 +11,11 @@ import { COLOR_NAMES, FADES, PALETTES, PERIODS, SIZES, SPEEDS, SPREADS } from ".
  *
  * 版本 2：加入配方（`applyRecipe`）与按场景注入的技能（`skills/`）。
  * 版本 3：加入记忆（个人偏好、工程笔记、范例）与 `remember` 工具，较早的轮次发送前压缩。
+ * 版本 4：工程摘要加入音乐分析（每段特征表与事件），新增 `placeAccents`。
  */
 
 /** 提示词版本。 */
-export const PROMPT_VERSION = 3;
+export const PROMPT_VERSION = 6;
 
 /** 把技能、记忆各一节接在提示词后面（为空的不加）。 */
 const withSections = (prompt: string, ...sections: string[]) => [prompt, ...sections.filter(Boolean)].join("\n\n");
@@ -38,6 +39,7 @@ const rules = `Rules for operations:
 - With a tempo, prefer sections ('S2', 'S2:end') and bars ('b17') over seconds.
 - To light a whole section or range by mood ("calm verse", "big chorus", "drop"), use a recipe (applyRecipe). It picks the effect, speed and movement for you.
 - Otherwise prefer, in this order: an effect from the effect list (addEffect), a cue template (applyTemplate), and only then a custom look (addLook). Use addEffect when the user names a specific effect.
+- To put clips exactly on musical moments (accented downbeats, drops, build-ups, video cuts) use placeAccents; it reads the music analysis, so never write those times yourself. Accents go on a separate accent layer above the target: hits/drops/builds add intensity on top of the clips below (they cannot make it darker and keep their color unless you give colors); cuts change the color at every cut.
 - Leave optional fields null unless the user asked for that detail. Do not invent numbers.
 - A track shows one clip at a time. Placing a clip replaces what was on that track in the range (replace defaults to true).
 - To change existing clips use editCues/moveCues/resizeCues/deleteCues instead of placing new ones.
@@ -57,7 +59,7 @@ export function chatSystemPrompt(summary: string, guides = "", memory = ""): str
   return withSections(`You are the lighting assistant in the show editor of Art-Net Studio, a DMX lighting program with a timeline.
 
 How to work:
-- Answer questions directly. Use the read-only tools (list_cues, get_cue, list_effects, list_templates, list_recipes, list_fixture_models, get_output) when you need details.
+- Answer questions directly. Use the read-only tools (list_cues, get_cue, list_effects, list_templates, list_recipes, analyze_media, list_media_events, list_fixture_models, get_output) when you need details.
 - To change the show, call propose_ops ONCE with the complete list of operations and a short summary. The user reviews the change before it is applied.
 - If propose_ops returns errors, fix exactly those operations and call propose_ops again with the full corrected list.
 - After a successful propose_ops, tell the user in one or two sentences what you prepared. Do not repeat the operations.
@@ -78,6 +80,9 @@ propose_ops({"summary":"主歌 2 全部灯慢呼吸，摇头灯画圆","ops":[{"
 
 Example: "副歌要炸一点，用暖色" with the choruses S3 and S5 →
 propose_ops({"summary":"两段副歌改成暖色的爆发效果","ops":[{"op":"applyRecipe","recipe":"chorusBurst","target":"all","from":"S3","to":"S3:end","palette":"warm"},{"op":"applyRecipe","recipe":"chorusBurst","target":"all","from":"S5","to":"S5:end","palette":"warm"}]})
+
+Example: "副歌的重拍加冲击" with the chorus S3 and a music analysis →
+propose_ops({"summary":"副歌每个重拍加一次冲击","ops":[{"op":"placeAccents","events":"hits","target":"all","from":"S3","to":"S3:end"}]})
 
 Recipes:
 ${recipesVocab()}
@@ -100,7 +105,7 @@ export function draftSystemPrompt(summary: string, effects: string, templates: s
   return withSections(`You design a first lighting draft for a whole song in the show editor of Art-Net Studio.
 
 Output a plan: for every section S# listed below, one item with
-- energy: low / mid / high, judged from the section name, its position in the song and the user's description;
+- energy: low / mid / high; when a section lists an 'analysed energy', use exactly that; otherwise judge it from the section name, its position in the song and the user's description (sections with the same label usually get the same look);
 - light: a recipe id (preferred), an effect id or a template id for ALL fixtures (calm looks for low energy, waves or chases for mid, faster chases or color effects for high);
 - colors: 1-3 colors, or null to take the next colors of the chosen palette;
 - period: a cycle length in beats, or null for the default (low: 4-8, mid: 2, high: 1);

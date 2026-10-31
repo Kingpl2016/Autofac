@@ -200,7 +200,8 @@ export function setFixtureAddress(
  * @returns 新建的轨道 id。
  */
 export function ensureRefTracks(draft: ShowProject, refs: readonly string[]): string[] {
-  const has = new Set(draft.tracks.flatMap((tr) => (tr.target.kind === "fixture" ? [tr.target.id] : [])));
+  // 重音层不算灯具自己的轨道（只有重音层时仍补一条普通轨道）
+  const has = new Set(draft.tracks.flatMap((tr) => (tr.target.kind === "fixture" && tr.role !== "accent" ? [tr.target.id] : [])));
   const created: string[] = [];
   for (const ref of refs) {
     if (has.has(ref) || !refExists(draft, ref)) continue;

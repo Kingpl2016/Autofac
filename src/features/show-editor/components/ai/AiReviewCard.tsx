@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { commitStaged, discardStaged } from "../../ai/actions";
 import { countChanges, type ChangeEntry } from "../../ai/changes";
 import { useAiStagingStore, type StagedChange } from "../../stores/useAiStagingStore";
+import { RejectedOps } from "../../timeline/GhostLayer";
 import { useEditorUiStore } from "../../stores/useEditorUiStore";
 
 /** 清单里最多直接列出多少项（其余折叠为“还有 N 项”）。 */
@@ -30,12 +31,13 @@ export function StagedActions({ staged, compact }: { staged: StagedChange; compa
   const { t } = useTranslation();
   const previewing = useAiStagingStore((s) => s.previewing);
   const setPreviewing = useAiStagingStore((s) => s.setPreviewing);
-  const size = compact ? "sm" : "default";
+  // 对话栏很窄：按钮一律用小号，放不下时“放弃 / 应用”整体换到下一行并靠右，不会被挤出卡片或错位
   return (
-    <div className="flex items-center gap-1.5">
+    <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "" : "w-full")}>
       <Button
         variant="ghost"
-        size={size}
+        size="sm"
+        className="h-8 shrink-0 px-2"
         aria-pressed={previewing}
         title={t(previewing ? "editor.ai.previewOnHint" : "editor.ai.previewOffHint")}
         onClick={() => setPreviewing(!previewing)}
@@ -43,14 +45,21 @@ export function StagedActions({ staged, compact }: { staged: StagedChange; compa
         {previewing ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
         {t("editor.ai.preview")}
       </Button>
-      <Button variant="outline" size={size} onClick={discardStaged}>
-        <X aria-hidden />
-        {t("editor.ai.discard")}
-      </Button>
-      <Button size={size} variant={staged.sensitive ? "destructive" : "default"} onClick={() => commitStaged(t)}>
-        <Check aria-hidden />
-        {t(staged.sensitive ? "editor.ai.applySensitive" : "editor.ai.apply")}
-      </Button>
+      <div className="ms-auto flex shrink-0 items-center gap-1.5">
+        <Button variant="outline" size="sm" className="h-8 whitespace-nowrap px-3" onClick={discardStaged}>
+          <X aria-hidden />
+          {t("editor.ai.discard")}
+        </Button>
+        <Button
+          size="sm"
+          className="h-8 whitespace-nowrap px-3"
+          variant={staged.sensitive ? "destructive" : "default"}
+          onClick={() => commitStaged(t)}
+        >
+          <Check aria-hidden />
+          {t(staged.sensitive ? "editor.ai.applySensitive" : "editor.ai.apply")}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -138,6 +147,8 @@ export function AiReviewCard({ staged }: { staged: StagedChange }) {
           </ul>
         </details>
       )}
+      <RejectedOps />
+      {staged.allOps.length > 1 && <p className="text-[11px] text-muted-foreground">{t("editor.ai.ghost.reviewHint")}</p>}
       <StagedActions staged={staged} />
     </section>
   );

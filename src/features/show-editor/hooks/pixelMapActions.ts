@@ -34,10 +34,11 @@ export class VideoFrameSource implements FrameSource {
    * 打开视频（等元数据加载完）。
    *
    * @param url 可播放的地址（asset 协议）。
+   * @param width 取样画面的宽度（像素，高度按画面比例）。
    * @returns 帧源。
    * @throws 视频无法加载或画布不可用时抛出错误。
    */
-  static async open(url: string): Promise<VideoFrameSource> {
+  static async open(url: string, width = GRAB_WIDTH): Promise<VideoFrameSource> {
     const video = document.createElement("video");
     video.muted = true;
     video.preload = "auto";
@@ -49,8 +50,8 @@ export class VideoFrameSource implements FrameSource {
     });
     const canvas = document.createElement("canvas");
     const aspect = video.videoWidth > 0 ? video.videoHeight / video.videoWidth : 9 / 16;
-    canvas.width = GRAB_WIDTH;
-    canvas.height = Math.max(1, Math.round(GRAB_WIDTH * aspect));
+    canvas.width = width;
+    canvas.height = Math.max(1, Math.round(width * aspect));
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) throw new Error("canvas_unavailable");
     return new VideoFrameSource(video, canvas, ctx);

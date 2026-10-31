@@ -87,6 +87,8 @@ describe("默认快捷键", () => {
     const ids = result.current.map((c) => c.id);
     expect(ids).toContain("view.toggleLibrary");
     expect(ids).toContain("view.toggleInspector");
+    // 时间线上问 AI（Ctrl+Shift+J）与打开对话栏（Ctrl+J）各占一个键
+    expect(result.current.find((c) => c.id === "ai.ask")?.keys).toEqual(["mod+shift+j"]);
     expect(findConflicts(result.current, {})).toEqual([]);
     act(() => result.current.find((c) => c.id === "view.toggleInspector")?.run());
     expect(ui().inspectorCollapsed).toBe(true);

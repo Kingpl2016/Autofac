@@ -1,3 +1,10 @@
+---
+name: phrases
+description: How to read everyday lighting wording (faster, softer, punchier, a bit more) as concrete changes. Use for every chat request.
+metadata:
+  title: Everyday wording
+  source: built-in
+---
 Translate everyday wording into fixed operation values. Always use these values; do not invent other numbers.
 
 | User says | Use |

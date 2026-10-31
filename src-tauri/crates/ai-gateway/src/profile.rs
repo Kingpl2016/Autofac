@@ -54,6 +54,30 @@ impl ProviderKind {
     }
 }
 
+/// 模型除文字外还接受的输入。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub enum Modality {
+    /// 图片（视频关键帧）。
+    Image,
+    /// 音频（音乐片段）。
+    Audio,
+}
+
+/// 规整输入模态：去重并按固定顺序排列。
+///
+/// # Arguments
+///
+/// * `list` - 用户勾选的模态。
+///
+/// # Returns
+///
+/// 去重排序后的模态。
+fn normalize_modalities(list: &[Modality]) -> Vec<Modality> {
+    [Modality::Image, Modality::Audio].into_iter().filter(|m| list.contains(m)).collect()
+}
+
 /// 一个已保存的 AI 配置（不含 Key）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -72,6 +96,9 @@ pub struct Profile {
     /// OpenAI 兼容接口是否支持 `response_format: json_schema`（结构化输出）；其它协议忽略。
     #[serde(default)]
     pub supports_structured_outputs: bool,
+    /// 模型除文字外还接受的输入（音乐片段标注、视频关键帧用）；旧配置没有这一项时为空。
+    #[serde(default)]
+    pub input_modalities: Vec<Modality>,
     /// 采样温度 0~2；为保证不同模型结果接近，默认 0。
     #[serde(default)]
     pub temperature: f64,
@@ -114,6 +141,9 @@ pub struct ProfileInput {
     /// 是否支持结构化输出（仅 OpenAI 兼容接口）。
     #[serde(default)]
     pub supports_structured_outputs: bool,
+    /// 模型除文字外还接受的输入。
+    #[serde(default)]
+    pub input_modalities: Vec<Modality>,
     /// 采样温度 0~2。
     #[serde(default)]
     pub temperature: f64,
@@ -340,6 +370,7 @@ impl ProfileStore {
             base_url,
             model: model.to_owned(),
             supports_structured_outputs: input.supports_structured_outputs,
+            input_modalities: normalize_modalities(&input.input_modalities),
             temperature: input.temperature,
             seed: input.seed,
         };
@@ -407,6 +438,7 @@ mod tests {
             base_url: base_url.into(),
             model: "deepseek-chat".into(),
             supports_structured_outputs: false,
+            input_modalities: vec![Modality::Audio, Modality::Image, Modality::Audio],
             temperature: 0.0,
             seed: Some(7),
         }
@@ -438,6 +470,7 @@ mod tests {
         let saved = s.save(&input("https://api.deepseek.com/v1/")).unwrap();
         assert_eq!(saved.profile.name, "deepseek-chat");
         assert_eq!(saved.profile.base_url, "https://api.deepseek.com/v1");
+        assert_eq!(saved.profile.input_modalities, vec![Modality::Image, Modality::Audio], "去重并按固定顺序");
         assert!(!saved.has_key);
 
         s.set_key(&saved.profile.id, " sk-secret-123 ").unwrap();

@@ -128,7 +128,7 @@ describe.skipIf(!config)("各模型的一致性评测", () => {
               const started = performance.now();
               const snapshot = caseSnapshot(c);
               try {
-                const r = await runDraft({ loaded, snapshot, prompt: c.prompt, palette: null, skills });
+                const r = await runDraft({ loaded, snapshot, prompt: c.prompt, palette: null, skills, accents: c.accents ?? false });
                 const plan = planOps(c.project, r.ops.ops, snapshot.env, snapshot.aliases);
                 const features = extractFeatures(plan.next, caseSpans(c));
                 list.push({ ok: true, attempts: r.attempts, ms: performance.now() - started, features, expectation: expectationScore(features, c.expect), checks: 1 });

@@ -11,12 +11,16 @@ import { useCommand } from "@/shared/hooks/useCommand";
 import { AI_PROFILES_KEY, useActiveAiProfile } from "../hooks/useAiProfiles";
 import { aiProfileDelete } from "../lib/api";
 import { aiErrorText } from "../lib/errors";
+import { removeMemoryItem } from "../lib/resetActions";
 import { testConnection } from "../lib/loadModel";
 import type { AiProfileView } from "../lib/types";
 import { useAiMemoryStore } from "../stores/useAiMemoryStore";
 import { useAiPrefsStore } from "../stores/useAiPrefsStore";
 import { MemoryNoteList } from "./MemoryNoteList";
 import { ProfileEditorDialog } from "./ProfileEditorDialog";
+import { McpSection } from "./McpSection";
+import { ResetSection } from "./ResetSection";
+import { SkillsSection } from "./SkillsSection";
 
 /** 与设置页的设置行一致的行样式（设置页按 `data-slot="setting-row"` 判断分区是否为空）。 */
 const ROW = "flex flex-col gap-2 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-6";
@@ -120,7 +124,7 @@ function UserMemoryRow() {
         items={prefs}
         onAdd={store.add}
         onUpdate={store.update}
-        onRemove={store.remove}
+        onRemove={(id) => void removeMemoryItem(id, t)}
         placeholder={t("ai.settings.userMemoryPlaceholder")}
         label={t("ai.settings.userMemory")}
       />
@@ -168,6 +172,9 @@ export function AiSettingsPanel() {
         <Switch checked={autoApply} aria-label={t("ai.settings.autoApply")} onCheckedChange={setAutoApply} />
       </div>
       <UserMemoryRow />
+      <SkillsSection />
+      <McpSection />
+      <ResetSection />
       {editing && (
         <ProfileEditorDialog
           key={editing.key}

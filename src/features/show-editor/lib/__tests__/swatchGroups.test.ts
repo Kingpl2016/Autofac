@@ -94,6 +94,8 @@ describe("预览色块分区", () => {
       stage: DEFAULT_EDITOR_PREFS.stage,
       sheet: DEFAULT_EDITOR_PREFS.sheet,
       fixtureLibrary: DEFAULT_EDITOR_PREFS.fixtureLibrary,
+      aiGuides: true,
+      aiSuggestions: true,
     });
     // 灯具素材库偏好：模型 id 去重限量，分区只保留认识的，密度只接受两种
     expect(

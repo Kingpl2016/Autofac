@@ -21,7 +21,7 @@ import { aiKeySet, aiProfileSave } from "../lib/api";
 import { aiErrorText } from "../lib/errors";
 import { inputFromPreset, presetForUrl, PROVIDER_PRESETS } from "../lib/presets";
 import { ModelCombobox } from "./ModelCombobox";
-import type { AiProfileInput, AiProfileView, AiProviderKind } from "../lib/types";
+import type { AiModality, AiProfileInput, AiProfileView, AiProviderKind } from "../lib/types";
 
 /** 表单的前端校验（与后端规则一致，后端仍会再校验一次）。 */
 const formSchema = z.object({
@@ -33,6 +33,7 @@ const formSchema = z.object({
 });
 
 const KINDS: readonly AiProviderKind[] = ["openaiCompatible", "anthropic", "google"];
+const MODALITIES: readonly AiModality[] = ["image", "audio"];
 
 interface ProfileEditorDialogProps {
   /** 要编辑的配置；`null` 为新建。 */
@@ -46,8 +47,8 @@ interface ProfileEditorDialogProps {
 /** 由已有配置得到表单初值。 */
 function initialInput(profile: AiProfileView | null): AiProfileInput {
   if (!profile) return inputFromPreset(PROVIDER_PRESETS[0]);
-  const { id, name, kind, baseUrl, model, supportsStructuredOutputs, temperature, seed } = profile;
-  return { id, name, kind, baseUrl, model, supportsStructuredOutputs, temperature, seed: seed ?? null };
+  const { id, name, kind, baseUrl, model, supportsStructuredOutputs, inputModalities, temperature, seed } = profile;
+  return { id, name, kind, baseUrl, model, supportsStructuredOutputs, inputModalities: [...(inputModalities ?? [])], temperature, seed: seed ?? null };
 }
 
 /**
@@ -238,6 +239,22 @@ export function ProfileEditorDialog({ profile, open, onOpenChange, onSaved }: Pr
               />
             </label>
           )}
+
+          <fieldset className="grid gap-1.5">
+            <legend className="text-sm font-medium">{t("ai.settings.modalities")}</legend>
+            <div className="flex flex-wrap gap-4 text-sm">
+              {MODALITIES.map((m) => (
+                <label key={m} className="flex items-center gap-2">
+                  <Switch
+                    checked={input.inputModalities.includes(m)}
+                    onCheckedChange={(on) => set({ inputModalities: on ? [...input.inputModalities.filter((x) => x !== m), m] : input.inputModalities.filter((x) => x !== m) })}
+                  />
+                  {t(`ai.settings.modality.${m}`)}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">{t("ai.settings.modalitiesHint")}</p>
+          </fieldset>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

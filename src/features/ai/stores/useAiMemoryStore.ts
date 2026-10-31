@@ -42,6 +42,12 @@ interface AiMemoryState {
    * @param id 条目 id。
    */
   remove: (id: string) => void;
+  /**
+   * 整体替换（恢复默认 / 从回收站恢复用）。
+   *
+   * @param prefs 新列表。
+   */
+  replaceAll: (prefs: MemoryItem[]) => void;
 }
 
 /** 改了就写盘。 */
@@ -79,5 +85,10 @@ export const useAiMemoryStore = create<AiMemoryState>((set, get) => ({
     const prefs = removeMemory(get().prefs, id);
     set({ prefs });
     save(prefs);
+  },
+  replaceAll: (prefs) => {
+    const list = memoryListSchema.parse(prefs);
+    set({ prefs: list });
+    save(list);
   },
 }));

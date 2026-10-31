@@ -7,6 +7,7 @@
 //!
 //! - [`media`]：音视频素材的探测（时长、音轨）、波形峰值与节拍分析的解码入口（symphonia，纯 Rust 解码）。
 //! - [`beats`]：节拍分析（谱通量起音检测、自相关测速、动态规划跟拍、强拍相位、能量分段），纯计算。
+//! - [`analysis`]：音乐结构分析（每小节特征、段落结构标签、渐强 / 爆点 / 断层 / 冲击事件），纯计算。
 //! - [`project`]：节目工程（`ShowProject`）的后端镜像，与前端 `project.ts` 逐字段对应。
 //! - [`mod@compile`] / [`eval`]：把工程编译成 [`CompiledShow`]，并在任意时刻渲染各 Universe 的 DMX 帧
 //!   （静态 Cue、淡入淡出缓动、Gamma、HTP 合并）。
@@ -22,6 +23,7 @@
 // 测试里的浮点比较都是对精确可表示的值（0.5、1.0…）做断言
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
+pub mod analysis;
 pub mod beats;
 pub mod compile;
 pub mod effects;

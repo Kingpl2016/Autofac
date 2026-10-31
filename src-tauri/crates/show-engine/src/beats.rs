@@ -50,6 +50,7 @@ const MIN_PERIODS: usize = 8;
 /// 节拍分析结果。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct BeatAnalysis {
     /// 速度（BPM，保留 1 位小数；接近整数时取整）。
     pub bpm: f64,
@@ -70,6 +71,7 @@ pub struct BeatAnalysis {
 /// 一个猜测的段落。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SectionGuess {
     /// 起点（毫秒）。
     pub start_ms: u64,
@@ -207,22 +209,26 @@ impl Fft {
     }
 }
 
-/// 逐帧特征。
-struct Features {
+/// 逐帧特征（[`crate::analysis`] 在此基础上统计每小节的特征）。
+pub(crate) struct Features {
     /// 全频带谱通量
-    onset: Vec<f32>,
+    pub(crate) onset: Vec<f32>,
     /// 低频谱通量
-    low: Vec<f32>,
+    pub(crate) low: Vec<f32>,
     /// 每帧（一个步长）的 RMS
-    rms: Vec<f32>,
+    pub(crate) rms: Vec<f32>,
+    /// 频谱重心（Hz）
+    pub(crate) centroid: Vec<f32>,
+    /// 低频（< 200 Hz）能量占全频带能量的比例 0~1
+    pub(crate) bass: Vec<f32>,
     /// 帧率（帧 / 秒）
-    fps: f64,
-    rate: f64,
+    pub(crate) fps: f64,
+    pub(crate) rate: f64,
 }
 
 impl Features {
     /// 帧 `n`（可带小数）对应的时刻（秒）。帧以 `n·HOP` 为窗中心；谱通量的峰平均落在起音前约半个步长，补回来。
-    fn time_of(&self, n: f64) -> f64 {
+    pub(crate) fn time_of(&self, n: f64) -> f64 {
         (n * HOP as f64 + HOP as f64 / 2.0) / self.rate
     }
 }
@@ -242,6 +248,9 @@ fn features(samples: &[f32], rate: f64) -> Features {
     let mut onset = Vec::with_capacity(frames);
     let mut low = Vec::with_capacity(frames);
     let mut rms = Vec::with_capacity(frames);
+    let mut spectral_centroid = Vec::with_capacity(frames);
+    let mut bass_ratio = Vec::with_capacity(frames);
+    let hz_per_bin = rate / WINDOW as f64;
     for n in 0..frames {
         // 窗以 n·HOP 为中心：窗内第 i 点对应采样 n·HOP + i − WINDOW/2（越界补零）
         let base = n * HOP;
@@ -254,7 +263,14 @@ fn features(samples: &[f32], rate: f64) -> Features {
         }
         fft.magnitudes(&buf, &mut mag);
         let (mut flux, mut low_flux) = (0.0f32, 0.0f32);
+        let (mut power, mut low_power, mut weighted) = (0.0f64, 0.0f64, 0.0f64);
         for k in 1..bins {
+            let p = f64::from(mag[k]) * f64::from(mag[k]);
+            power += p;
+            weighted += p * k as f64 * hz_per_bin;
+            if k < low_bins {
+                low_power += p;
+            }
             let lm = (GAMMA * mag[k] / norm).ln_1p();
             let d = (lm - prev[k]).max(0.0);
             if n > 0 {
@@ -267,15 +283,23 @@ fn features(samples: &[f32], rate: f64) -> Features {
         }
         onset.push(flux);
         low.push(low_flux);
+        // 近乎静音的帧没有可靠的频谱形状：重心记 0、低频占比记 0（统计时按 RMS 加权，影响很小）
+        if power > 1e-12 {
+            spectral_centroid.push((weighted / power) as f32);
+            bass_ratio.push((low_power / power) as f32);
+        } else {
+            spectral_centroid.push(0.0);
+            bass_ratio.push(0.0);
+        }
         let hop = &samples[(n * HOP).min(samples.len())..((n + 1) * HOP).min(samples.len())];
         let energy = if hop.is_empty() { 0.0 } else { hop.iter().map(|s| s * s).sum::<f32>() / hop.len() as f32 };
         rms.push(energy.sqrt());
     }
-    Features { onset, low, rms, fps: rate / HOP as f64, rate }
+    Features { onset, low, rms, centroid: spectral_centroid, bass: bass_ratio, fps: rate / HOP as f64, rate }
 }
 
 /// 减去局部均值、半波整流、按标准差归一化。
-fn normalize(raw: &[f32]) -> Vec<f32> {
+pub(crate) fn normalize(raw: &[f32]) -> Vec<f32> {
     const HALF: usize = 8;
     let n = raw.len();
     let mut prefix = vec![0.0f64; n + 1];
@@ -417,6 +441,20 @@ fn median(mut v: Vec<f64>) -> f64 {
 /// 分析结果；音频太短（不足约 8 个周期）、近乎静音或没有可跟踪的节拍时为 `None`。
 #[must_use]
 pub fn analyze_samples(samples: &[f32], rate: f64) -> Option<BeatAnalysis> {
+    analyze_detailed(samples, rate).map(|(a, _)| a)
+}
+
+/// 分析一段单声道采样，同时返回逐帧特征（供 [`crate::analysis`] 统计每小节的特征）。
+///
+/// # Arguments
+///
+/// * `samples` - 单声道采样（-1.0 ~ 1.0）。
+/// * `rate` - 采样率（Hz）。
+///
+/// # Returns
+///
+/// 节拍分析结果与逐帧特征；条件同 [`analyze_samples`]。
+pub(crate) fn analyze_detailed(samples: &[f32], rate: f64) -> Option<(BeatAnalysis, Features)> {
     if rate <= 0.0 || samples.len() < WINDOW * 4 {
         return None;
     }
@@ -487,7 +525,7 @@ pub fn analyze_samples(samples: &[f32], rate: f64) -> Option<BeatAnalysis> {
     let confidence = ((strength * 2.0).min(1.0) * regularity).clamp(0.0, 1.0);
     let duration_s = samples.len() as f64 / rate;
 
-    Some(BeatAnalysis {
+    let analysis = BeatAnalysis {
         bpm,
         offset_ms: (offset_s * 1000.0).round() as i64,
         beats_per_bar: BEATS_PER_BAR,
@@ -495,7 +533,33 @@ pub fn analyze_samples(samples: &[f32], rate: f64) -> Option<BeatAnalysis> {
         confidence,
         duration_ms: (duration_s * 1000.0).round() as u64,
         sections: sections(&feats, offset_s, bar, duration_s),
-    })
+    };
+    Some((analysis, feats))
+}
+
+/// 小节边界（秒）：从 0 开始，第一个强拍之后按小节推进，最后是时长。
+/// 不足半小节的首尾零头并入相邻小节（避免一个极短的“小节”被当成能量突变）。
+///
+/// # Arguments
+///
+/// * `offset_s` - 第一拍（强拍）偏移（秒）。
+/// * `bar_s` - 一小节（秒），大于 0。
+/// * `duration_s` - 时长（秒）。
+///
+/// # Returns
+///
+/// 升序的边界，至少两个（`0` 与时长）。
+pub(crate) fn bar_edges(offset_s: f64, bar_s: f64, duration_s: f64) -> Vec<f64> {
+    let mut edges = vec![0.0];
+    let mut t = offset_s;
+    while bar_s > 0.0 && t < duration_s {
+        if t > bar_s / 2.0 && duration_s - t > bar_s / 2.0 {
+            edges.push(t);
+        }
+        t += bar_s;
+    }
+    edges.push(duration_s);
+    edges
 }
 
 /// 按小节能量分段。
@@ -504,17 +568,7 @@ fn sections(feats: &Features, offset_s: f64, bar_s: f64, duration_s: f64) -> Vec
     if bar_s <= 0.0 {
         return whole(1.0);
     }
-    // 小节边界（秒）：从 0 开始，第一个强拍之后按小节推进
-    // 不足半小节的首尾零头并入相邻小节（避免一个极短的“小节”被当成能量突变）
-    let mut edges = vec![0.0];
-    let mut t = offset_s;
-    while t < duration_s {
-        if t > bar_s / 2.0 && duration_s - t > bar_s / 2.0 {
-            edges.push(t);
-        }
-        t += bar_s;
-    }
-    edges.push(duration_s);
+    let edges = bar_edges(offset_s, bar_s, duration_s);
     let bar_count = edges.len() - 1;
     let db: Vec<f64> = (0..bar_count)
         .map(|j| {

@@ -6,7 +6,9 @@ import { fixturesCapabilities, lookBadges } from "../lib/fixtureProfile";
 import { colorValueRgb, paramHead } from "../lib/looks";
 import { trackFixtureIds, trackName } from "../lib/ops";
 import type { ColorValue, Cue, ShowProject } from "../lib/project";
+import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { aliasOf, resolveAlias, type AliasMap } from "./aliases";
+import { musicLines } from "./music";
 import { describeTime, resolveTime } from "./timeRef";
 
 /**
@@ -27,6 +29,8 @@ export interface SummaryOptions {
   selectedTracks?: readonly string[];
   /** 时间范围（标尺上选出的一段）。 */
   timeRange?: { startMs: number; endMs: number } | null;
+  /** 主素材的音乐分析（换算到时间线）。 */
+  analysis?: TimelineAnalysis | null;
 }
 
 /** 摘要里最多直接列出的片段数（其余经工具查询）。 */
@@ -151,6 +155,7 @@ export function summarizeProject(project: ShowProject, aliases: AliasMap, option
   if (project.markers.length > 0) {
     out.push(`Markers: ${project.markers.map((m) => `${aliasOf(aliases, m.id)} "${m.label}" ${describeTime(m.timeMs, project)}`).join("; ")}`);
   }
+  out.push(...musicLines(project, aliases, options.analysis ?? null));
 
   out.push(`Clips: ${project.cues.length} in total (use list_cues for details).`);
   out.push(`Playhead: ${describeTime(options.playheadMs, project)}.`);

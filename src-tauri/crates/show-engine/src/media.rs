@@ -309,6 +309,120 @@ pub fn analyze_beats(path: &Path, cancel: &AtomicBool) -> Result<crate::beats::B
     crate::beats::analyze_samples(&samples, rate).ok_or(MediaError::NoBeat)
 }
 
+/// 解码音轨并做音乐结构分析（见 [`crate::analysis`]）：降采样同 [`analyze_beats`]。
+///
+/// # Arguments
+///
+/// * `path` - 素材文件路径。
+/// * `sensitivity` - 灵敏度（见 [`crate::analysis::clamp_sensitivity`]）。
+/// * `cancel` - 取消标志，每个数据包检查一次。
+///
+/// # Returns
+///
+/// 节拍、每小节特征、段落标签与事件。
+///
+/// # Errors
+///
+/// 同 [`analyze_beats`]。
+pub fn analyze_audio(path: &Path, sensitivity: f64, cancel: &AtomicBool) -> Result<crate::analysis::AudioAnalysis, MediaError> {
+    let mut decoder = MonoDecoder::open(path)?;
+    let mut down = crate::beats::Downsampler::new(f64::from(decoder.sample_rate));
+    decoder.run(cancel, |s| down.push(s))?;
+    let rate = down.rate;
+    let samples = down.finish();
+    crate::analysis::analyze_samples(&samples, rate, sensitivity).ok_or(MediaError::NoBeat)
+}
+
+/// 一次解码截取若干段音轨，各自降采样成单声道 16 位 PCM 的 WAV（发给支持音频输入的模型做标注用）。
+///
+/// # Arguments
+///
+/// * `path` - 素材文件路径。
+/// * `ranges` - 片段 `(起点毫秒, 长度毫秒)`（素材内），长度夹到 [`MAX_EXCERPT_MS`]，最多 [`MAX_EXCERPTS`] 段。
+/// * `rate` - 输出采样率（Hz），夹到 8000~16000。
+/// * `cancel` - 取消标志。
+///
+/// # Returns
+///
+/// 与 `ranges` 一一对应的 WAV 文件字节；落在音轨之外的片段为空数组。
+///
+/// # Errors
+///
+/// 同 [`compute_peaks`]；`ranges` 为空或超过上限时返回 [`MediaError::Unsupported`]。
+pub fn excerpt_wavs(path: &Path, ranges: &[(u64, u64)], rate: u32, cancel: &AtomicBool) -> Result<Vec<Vec<u8>>, MediaError> {
+    if ranges.is_empty() || ranges.len() > MAX_EXCERPTS {
+        return Err(MediaError::Unsupported);
+    }
+    let rate = rate.clamp(8000, 16_000);
+    let mut decoder = MonoDecoder::open(path)?;
+    let source = u64::from(decoder.sample_rate);
+    let step = source as f64 / f64::from(rate);
+    let mut cuts: Vec<Cut> = ranges
+        .iter()
+        .map(|(start, len)| {
+            let from = start * source / 1000;
+            Cut { from, to: (start + (*len).min(MAX_EXCERPT_MS)) * source / 1000, next: from as f64 + step, acc: 0.0, count: 0, out: Vec::new() }
+        })
+        .collect();
+    let mut index = 0u64;
+    decoder.run(cancel, |s| {
+        for c in &mut cuts {
+            if index < c.from || index >= c.to {
+                continue;
+            }
+            c.acc += s;
+            c.count += 1;
+            if index as f64 + 1.0 >= c.next {
+                let v = c.acc / c.count.max(1) as f32;
+                c.out.push((v.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16);
+                c.acc = 0.0;
+                c.count = 0;
+                c.next += step;
+            }
+        }
+        index += 1;
+    })?;
+    Ok(cuts.into_iter().map(|c| if c.out.is_empty() { Vec::new() } else { wav_bytes(&c.out, rate) }).collect())
+}
+
+/// 一次最多截取多少段。
+pub const MAX_EXCERPTS: usize = 16;
+
+/// [`excerpt_wavs`] 里一段正在截取的片段：采样区间、降采样状态与输出。
+struct Cut {
+    from: u64,
+    to: u64,
+    next: f64,
+    acc: f32,
+    count: u32,
+    out: Vec<i16>,
+}
+
+/// 单声道 16 位 PCM 的 WAV 文件字节。
+fn wav_bytes(out: &[i16], rate: u32) -> Vec<u8> {
+    let data_len = u32::try_from(out.len() * 2).unwrap_or(u32::MAX);
+    let mut wav = Vec::with_capacity(44 + out.len() * 2);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&rate.to_le_bytes());
+    wav.extend_from_slice(&(rate * 2).to_le_bytes());
+    wav.extend_from_slice(&2u16.to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    for v in out {
+        wav.extend_from_slice(&v.to_le_bytes());
+    }
+    wav
+}
+
+/// 一个片段最长多少毫秒（发给模型的音频片段）。
+pub const MAX_EXCERPT_MS: u64 = 20_000;
+
 /// 解码音轨并统计波形峰值。
 ///
 /// 多声道先混成单声道（取平均）。每个桶记录其中最小 / 最大的采样值，量化到 `-127..=127`。
@@ -419,6 +533,23 @@ mod tests {
         let p = dir.0.join(name);
         std::fs::write(&p, bytes).unwrap();
         p
+    }
+
+    #[test]
+    fn 截取片段_降采样成单声道_wav_一次解码多段() {
+        let dir = TempDir::new("excerpt");
+        let path = write(&dir, "a.wav", &wav(44_100, 2, 4, 0.5, 0.5));
+        let cut = excerpt_wavs(&path, &[(500, 1000), (3500, 2000), (9000, 1000)], 16_000, &AtomicBool::new(false)).unwrap();
+        assert_eq!(cut.len(), 3);
+        // 1 秒 16 kHz 单声道 16 位：44 字节头 + 32000 字节
+        assert_eq!(&cut[0][..4], b"RIFF");
+        assert!(cut[0].len().abs_diff(44 + 32_000) <= 4, "{}", cut[0].len());
+        assert_eq!(u32::from_le_bytes([cut[0][24], cut[0][25], cut[0][26], cut[0][27]]), 16_000);
+        assert_eq!(u16::from_le_bytes([cut[0][22], cut[0][23]]), 1);
+        // 第二段只剩 0.5 秒在音轨内；第三段完全在音轨外
+        assert!(cut[1].len().abs_diff(44 + 16_000) <= 4, "{}", cut[1].len());
+        assert!(cut[2].is_empty());
+        assert!(matches!(excerpt_wavs(&path, &[], 16_000, &AtomicBool::new(false)), Err(MediaError::Unsupported)));
     }
 
     #[test]

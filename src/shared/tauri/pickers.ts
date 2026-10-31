@@ -230,3 +230,19 @@ export async function pickImageFile(name: string, extensions: readonly string[])
   });
   return typeof picked === "string" ? picked : null;
 }
+
+/**
+ * 让用户选择一个技能包：`.zip` 或 `SKILL.md`。
+ *
+ * # Arguments
+ *
+ * * `name` - 过滤器名称（本地化）。
+ *
+ * # Returns
+ *
+ * 所选文件的本地路径；用户取消时返回 `null`。
+ */
+export async function pickSkillFile(name: string): Promise<string | null> {
+  const picked = await open({ multiple: false, directory: false, filters: [{ name, extensions: ["zip", "md"] }] });
+  return typeof picked === "string" ? picked : null;
+}

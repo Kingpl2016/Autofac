@@ -1,0 +1,21 @@
+{
+  "case": "music-accents",
+  "model": "handwritten",
+  "promptVersion": 4,
+  "skills": true,
+  "run": 1,
+  "plan": {
+    "summary": "霓虹色，按音乐编排",
+    "palette": "neon",
+    "items": [
+      { "section": "S1", "energy": "low", "light": "balladBed", "colors": null, "period": null, "move": null },
+      { "section": "S2", "energy": "high", "light": "chorusBurst", "colors": null, "period": null, "move": null },
+      { "section": "S3", "energy": "low", "light": "finaleFade", "colors": null, "period": null, "move": null }
+    ]
+  },
+  "features": [
+    { "kind": "intensity", "hue": "h7", "level": "mid", "moves": false },
+    { "kind": "color", "hue": "h2", "level": "high", "moves": false },
+    { "kind": "intensity", "hue": "h6", "level": "mid", "moves": false }
+  ]
+}

@@ -41,6 +41,7 @@ import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
 import { AiDockLayout } from "./ai/AiDockLayout";
 import { AiStagedBar } from "./ai/AiStagedBar";
+import { AskAiPopover } from "./ai/AskAiPopover";
 import { AutoDraftDialog } from "./AutoDraftDialog";
 import { CommandPalette } from "./CommandPalette";
 import { DurationConfirmDialog } from "./DurationConfirmDialog";
@@ -303,6 +304,7 @@ export function ShowEditorView() {
       <CommandPalette commands={commands} />
       <RadialMenu commands={commands} />
       <AutoDraftDialog />
+      <AskAiPopover />
       <DurationConfirmDialog />
       <RepeatDialog />
       <EffectEditorDialog />

@@ -9,9 +9,12 @@ import { useCueActions } from "../hooks/useCueActions";
 import { nextMediaTrackName } from "../hooks/mediaActions";
 import { selectTracksWithFixtures } from "../hooks/selectionActions";
 import { addMediaTrack } from "../lib/mediaClips";
-import { setTrackFlag, setTrackView, TRACK_HEIGHT_ORDER, trackName } from "../lib/ops";
+import { setTrackFlag, setTrackView, TRACK_HEIGHT_ORDER } from "../lib/ops";
+import { displayTracks } from "../ai/ghosts";
+import { useAiStagingStore } from "../stores/useAiStagingStore";
 import { useEditorUiStore } from "../stores/useEditorUiStore";
 import { useProjectStore } from "../stores/useProjectStore";
+import { AnalysisGuides } from "../timeline/AnalysisGuides";
 import { BeatGrid } from "../timeline/BeatGrid";
 import { MARKER_STRIP_HEIGHT, MarkerStrip } from "../timeline/MarkerStrip";
 import { MediaLanes } from "../timeline/MediaLanes";
@@ -61,13 +64,13 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
   // 灯具模型（新建灯具）与预览色块（为已有灯建轨道）都可以放到时间线上
   const dragKind = (dragActive?.data.current as { kind?: string } | undefined)?.kind;
   const fixtureOver = isOver && (dragKind === "fixtureModel" || dragKind === "fixtureInstance");
-  const { tracks } = project;
+  // 待审阅的 AI 改动新建的轨道一起显示（锁定，只用来放虚影）
+  const staged = useAiStagingStore((s) => (s.previewing ? s.staged : null));
+  const display = useMemo(() => displayTracks(project, staged), [project, staged]);
+  const { tracks } = display;
 
   const trackById = useMemo(() => new Map(tracks.map((tr) => [tr.id, tr])), [tracks]);
-  const names = useMemo(
-    () => tracks.map((tr) => trackName({ fixtures: project.fixtures, groups: project.groups }, tr)),
-    [tracks, project.fixtures, project.groups],
-  );
+  const names = display.names;
   // 灯具轨道按灯具类型显示图标（分组 / 场景轨道用各自的图标）
   const fixtureTypes = useMemo(
     () =>
@@ -217,6 +220,7 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
             selectedTrackId={selectedTrackId}
             selectedTrackIds={selectedTrackIds}
             fixtureTypes={fixtureTypes}
+            pendingTrackIds={display.pendingIds}
             onSelect={onSelectTrack}
             onDelete={onDeleteTrack}
             onToggle={toggleFlag}
@@ -242,6 +246,7 @@ export function TimelinePanel({ commands = [] }: { commands?: readonly Command[]
             <MediaLanes />
             <div className="relative min-h-0 flex-1">
               <BeatGrid />
+              <AnalysisGuides />
               {!hasTracks && (
                 <p className="pointer-events-none absolute inset-x-0 top-4 z-10 px-4 text-center text-xs text-muted-foreground">
                   {t("editor.timeline.empty")}

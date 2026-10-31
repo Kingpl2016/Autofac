@@ -98,8 +98,10 @@ describe("引导内容", () => {
       dismissed = [...dismissed, h.id];
     }
     expect(order).toEqual(["aiToggle", "aiComposer", "aiReview", "aiMemory"]);
+    // 时间线上的 AI 提示排在最后
+    expect(HINTS.slice(-5).map((h) => h.id)).toEqual(["aiGuides", "askAi", "aiGhosts", "aiSuggestions", "aiHistory"]);
     for (const lang of ["zh", "en"]) {
-      for (const id of order) {
+      for (const id of [...order, "aiGuides", "askAi", "aiGhosts", "aiSuggestions", "aiHistory"]) {
         expect(i18n.exists(`editor.guide.hints.${id}.title`, { lng: lang }), `${lang} ${id}`).toBe(true);
         expect(i18n.exists(`editor.guide.hints.${id}.body`, { lng: lang }), `${lang} ${id}`).toBe(true);
       }

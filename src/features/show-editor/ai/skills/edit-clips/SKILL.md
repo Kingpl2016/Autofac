@@ -1,3 +1,10 @@
+---
+name: edit-clips
+description: How to change clips the user selected or refers to without rebuilding them. Use when the request edits existing clips.
+metadata:
+  title: Editing existing clips
+  source: built-in
+---
 When the user wants to change what is already in the show:
 
 1. Find the clips first: use the selection when the user points at it, otherwise call list_cues with a target and/or time range. Call get_cue before changing details of a single clip.

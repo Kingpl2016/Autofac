@@ -1,3 +1,10 @@
+---
+name: color-mood
+description: Which colors and palettes fit a mood or style. Use when the request mentions colors, warmth, mood or atmosphere.
+metadata:
+  title: Colors and mood
+  source: built-in
+---
 Pick colors from the mood the user describes. Use the palette names and named colors only.
 
 | Mood words | palette | typical named colors |

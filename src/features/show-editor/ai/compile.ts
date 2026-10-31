@@ -1,4 +1,4 @@
-import { produce } from "immer";
+import { current, produce } from "immer";
 
 import type { FixtureCapability, FixtureModel } from "@/features/fixtures";
 import { clamp } from "@/shared/lib/math";
@@ -29,6 +29,7 @@ import { addSection, TIER_COLORS, updateSection } from "../lib/sections";
 import { addTemplateCue } from "../lib/templateOps";
 import { deleteRange } from "../lib/timelineEdit";
 import { newId } from "../lib/ids";
+import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { repatchSequential } from "../lib/universeOps";
 import { resolveAlias, type AliasMap } from "./aliases";
 import { SENSITIVE_OPS, type AiOp } from "./opsSchema";
@@ -40,6 +41,7 @@ import {
   periodOf,
   quantizeFraction,
   quantizePercent,
+  quantizeRgb,
   resolveColor,
   sizeOf,
   speedOf,
@@ -70,6 +72,8 @@ export interface CompileEnv {
   playheadMs: number;
   /** 用户选中的片段（`selection`）。 */
   selection: readonly string[];
+  /** 主素材的音乐 / 画面分析（换算到时间线）；`placeAccents` 按它放置片段。 */
+  analysis?: TimelineAnalysis | null;
 }
 
 /** 一条操作的问题。 */
@@ -129,7 +133,7 @@ function colorsOf(refs: readonly string[]): ColorValue[] {
 
 /** 分组的轨道；没有时补一条。 */
 function groupTrack(d: ShowProject, groupId: string): string {
-  const found = d.tracks.find((t) => t.target.kind === "group" && t.target.id === groupId);
+  const found = d.tracks.find((t) => t.target.kind === "group" && t.target.id === groupId && t.role !== "accent");
   if (found) return found.id;
   const id = newId();
   d.tracks.push({ id, target: { kind: "group", id: groupId }, mute: false, solo: false, lock: false });
@@ -139,7 +143,7 @@ function groupTrack(d: ShowProject, groupId: string): string {
 /** 灯具的轨道；没有时补一条。 */
 function fixtureTrack(d: ShowProject, ref: string): string {
   ensureRefTracks(d, [ref]);
-  return d.tracks.find((t) => t.target.kind === "fixture" && t.target.id === ref)?.id ?? fail(`fixture '${ref}' not found`);
+  return d.tracks.find((t) => t.target.kind === "fixture" && t.target.id === ref && t.role !== "accent")?.id ?? fail(`fixture '${ref}' not found`);
 }
 
 /** 一组灯具对应的轨道：一台用灯具轨道，多台找成员相同的分组，没有就新建分组。 */
@@ -428,6 +432,9 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
       }
       return;
     }
+    case "placeAccents":
+      placeAccents(d, op, st);
+      return;
     case "editCues": {
       const ids = cueRefs(d, op.cues, st);
       if (op.brightness !== null) updateCues(d, ids, { brightness: quantizePercent(op.brightness) });
@@ -563,6 +570,118 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
   }
 }
 
+/** 一次 `placeAccents` 最多放多少个片段。 */
+export const MAX_ACCENTS = 128;
+
+/** 重音之间至少相隔多少毫秒（没有节拍时；有节拍时为一拍）。 */
+const MIN_ACCENT_GAP_MS = 250;
+
+/** 各类重音的默认特效。 */
+const ACCENT_EFFECTS = { hits: "hit", drops: "hit", builds: "fadeIn" } as const;
+
+/** 重音的亮度档位。 */
+const ACCENT_BRIGHTNESS = { subtle: 50, normal: 80, strong: 100 } as const;
+
+/**
+ * 主轨道的重音层：同一目标、`role: "accent"` 的轨道，紧挨在主轨道下面；没有时新建。
+ *
+ * @param d 工程草稿。
+ * @param mainId 主轨道 id。
+ * @returns 重音层轨道 id。
+ */
+function accentTrack(d: ShowProject, mainId: string): string {
+  const main = d.tracks.find((t) => t.id === mainId) ?? fail("the target track is missing");
+  if (main.target.kind === "scene") fail("accents need a fixture or group target, not a scene track");
+  const target = main.target;
+  const found = d.tracks.find((t) => t.role === "accent" && t.target.kind === target.kind && t.target.kind !== "scene" && t.target.id === (target as { id: string }).id);
+  if (found) {
+    if (found.lock) fail("the accent track is locked");
+    return found.id;
+  }
+  const id = newId();
+  d.tracks.splice(d.tracks.indexOf(main) + 1, 0, { id, target: { ...target }, mute: false, solo: false, lock: false, role: "accent" });
+  return id;
+}
+
+/** 按分析事件放重音片段（见 `opsSchema.ts` 的 `placeAccents`）。 */
+function placeAccents(d: ShowProject, op: Extract<AiOp, { op: "placeAccents" }>, st: RunState): void {
+  const analysis = st.env.analysis ?? fail("there is no music analysis for this show (add a song to the timeline first); use addEffect instead");
+  const start = timeOf(op.from, st);
+  const end = timeOf(op.to, st);
+  if (end - start < MIN_CUE_MS) fail(`'to' (${op.to}) must be after 'from' (${op.from})`);
+  const mainId = targetTrack(d, op.target, st);
+  const trackId = accentTrack(d, mainId);
+  const beatMs = d.tempo && d.tempo.bpm > 0 ? 60_000 / d.tempo.bpm : null;
+  const barMs = beatMs && d.tempo ? beatMs * d.tempo.beatsPerBar : 2000;
+  const gap = beatMs ?? MIN_ACCENT_GAP_MS;
+  const brightness = ACCENT_BRIGHTNESS[op.strength ?? "strong"];
+
+  // 事件 → 片段的 [起点, 终点)
+  let spans: { start: number; end: number; shot?: number }[];
+  if (op.events === "cuts") {
+    const cuts = analysis.events.filter((e) => e.kind === "cut" && e.atMs >= start && e.atMs < end).map((e) => e.atMs);
+    if (cuts.length === 0) fail("there are no video cuts in that range (the analysis found none, or the show has no analysed video)");
+    // 每个切镜到下一个切镜（或范围终点）换一次色
+    spans = cuts.map((at, i) => ({ start: at, end: cuts[i + 1] ?? end }));
+  } else {
+    const kind = { hits: "hit", drops: "drop", builds: "build" }[op.events];
+    let list = analysis.events.filter((e) => e.kind === kind && e.atMs >= start && e.atMs < end);
+    if (op.events === "hits" && op.every) list = list.filter((_, i) => i % Number(op.every) === 0);
+    if (list.length === 0) fail(`there are no ${op.events} in that range (see the Events in the music analysis)`);
+    spans = list.map((e, i) => {
+      const next = list[i + 1]?.atMs ?? end;
+      const length = op.events === "builds" ? (e.endMs ?? e.atMs + barMs) - e.atMs : barMs;
+      return { start: e.atMs, end: Math.min(end, next, e.atMs + length) };
+    });
+  }
+  // 密度：相隔太近的丢掉；数量上限
+  const kept: typeof spans = [];
+  for (const s of spans) {
+    const prev = kept.at(-1);
+    if (prev && s.start - prev.start < gap) continue;
+    kept.push(s);
+  }
+  if (kept.length > MAX_ACCENTS) {
+    st.warn(`only the first ${MAX_ACCENTS} of ${kept.length} accents were placed`);
+    kept.length = MAX_ACCENTS;
+  }
+
+  // 重音层上这段范围原有的片段先清掉（同一批重复放置时结果不叠加）
+  deleteRange(d, { startMs: start, endMs: end }, { trackIds: [trackId], objects: false }, false);
+  ensureDuration(d, end);
+
+  if (op.events === "cuts") {
+    const given = op.colors ? colorsOf(op.colors) : null;
+    if (!given && !op.fromVideo) fail("give colors, or set fromVideo to take the colors from the video");
+    if (op.fromVideo && analysis.shots.length === 0) fail("the video has no analysed shots; give colors instead");
+    kept.forEach((s, i) => {
+      const color: ColorValue = op.fromVideo ? shotColor(analysis, s.start) : given![i % given!.length];
+      const id = addLookCue(d, trackId, s.start, { color: { kind: "value", value: color } }, Math.max(MIN_CUE_MS, s.end - s.start));
+      finishCue(d, id, Math.max(s.start + MIN_CUE_MS, s.end), { brightness: null, fadeIn: null, fadeOut: null, label: null });
+    });
+    return;
+  }
+  const effectId = op.effect ?? ACCENT_EFFECTS[op.events];
+  const def = st.env.effects.find((e) => e.id === effectId) ?? fail(`unknown effect '${effectId}' (see the effect list)`);
+  requireCapability(d, trackId, effectDefNeeds(def), `the effect '${def.id}'`);
+  for (const s of kept) {
+    if (s.end - s.start < MIN_CUE_MS) continue;
+    let params = defaultEffectParams(def);
+    // 冲击：一个周期等于片段长度（每个片段只冲一次）
+    if (op.events !== "builds" && beatMs) params = { ...params, period: { kind: "ms", ms: Math.round(s.end - s.start) } };
+    const colored = colorize(def, params, op.colors ? colorsOf(op.colors).map(colorRgb) : [], st);
+    const id = addEffectDefCue(d, trackId, s.start, colored.def, colored.params, effectName(def, st.env.lang), s.end - s.start);
+    const cue = finishCue(d, id, s.end, { brightness, fadeIn: null, fadeOut: null, label: null });
+    checkFlash(d, cue);
+  }
+}
+
+/** 时刻所在镜头的主色（量化后）。 */
+function shotColor(analysis: TimelineAnalysis, atMs: number): ColorValue {
+  const shot = analysis.shots.find((s) => atMs >= s.startMs && atMs < s.endMs) ?? analysis.shots.find((s) => s.startMs >= atMs) ?? analysis.shots.at(-1);
+  return { kind: "rgb", rgb: quantizeRgb(shot ? shot.rgb : [255, 255, 255]) };
+}
+
 /** 给已有片段换颜色：特效片段改特效颜色（保留特效），其它片段改颜色层。 */
 function recolor(d: ShowProject, cue: Cue, colors: ColorValue[], st: RunState): void {
   const rgbs = colors.map(colorRgb);
@@ -620,7 +739,13 @@ function speedUp(d: ShowProject, cue: Cue, mult: number): void {
  * @param aliases 基于操作所针对的那份工程生成的别名表。
  * @returns 问题列表。
  */
-export function applyOps(d: ShowProject, ops: readonly AiOp[], env: CompileEnv, aliases: AliasMap): OpIssue[] {
+export function applyOps(
+  d: ShowProject,
+  ops: readonly AiOp[],
+  env: CompileEnv,
+  aliases: AliasMap,
+  after?: (index: number, draft: ShowProject) => void,
+): OpIssue[] {
   const issues: OpIssue[] = [];
   let index = 0;
   const st: RunState = {
@@ -639,9 +764,76 @@ export function applyOps(d: ShowProject, ops: readonly AiOp[], env: CompileEnv, 
       if (!(e instanceof OpError)) throw e;
       issues.push({ index, level: "error", message: e.message });
     }
+    after?.(index, d);
     index += 1;
   }
   return issues;
+}
+
+/** 一条操作对片段的影响（改动虚影与逐条拒绝用）。 */
+export interface OpEffect {
+  /** 新增的片段 */
+  added: string[];
+  /** 修改的片段（时间、外观、亮度…任一字段变了） */
+  changed: string[];
+  /** 删除的片段 */
+  removed: string[];
+  /** 依赖的更早的操作（下标）：用了它新建的分组 / 灯具，或改了它新增 / 改过的片段 */
+  deps: number[];
+}
+
+/** 操作里引用的 `new_*` 名字。 */
+function newRefs(op: AiOp): string[] {
+  return [...JSON.stringify(op).matchAll(/"(new_[a-z0-9_]{1,24})"/g)].map((m) => m[1]);
+}
+
+/** 操作新建的 `new_*` 名字（`createGroup` / `addFixtures` 的 `as`）。 */
+function newDefs(op: AiOp): string | null {
+  return (op.op === "createGroup" || op.op === "addFixtures") && op.as ? op.as : null;
+}
+
+/**
+ * 逐条记录每条操作对片段的影响与操作之间的依赖（在 `applyOps` 的每条操作之后调用）。
+ *
+ * @param project 运行前的工程。
+ * @param ops 操作。
+ * @returns 回调与结果（与 `ops` 一一对应）。
+ */
+function effectTracker(project: ShowProject, ops: readonly AiOp[]): { after: (i: number, draft: ShowProject) => void; effects: OpEffect[] } {
+  const effects: OpEffect[] = [];
+  // 每个片段最后是被哪条操作新增 / 修改的
+  const touchedBy = new Map<string, number>();
+  const definedBy = new Map<string, number>();
+  let prev = new Map(project.cues.map((c) => [c.id, JSON.stringify(c)]));
+  return {
+    effects,
+    after: (i, draft) => {
+      const now = new Map(current(draft).cues.map((c) => [c.id, JSON.stringify(c)]));
+      const added: string[] = [];
+      const changed: string[] = [];
+      const removed: string[] = [];
+      for (const [id, text] of now) {
+        const before = prev.get(id);
+        if (before === undefined) added.push(id);
+        else if (before !== text) changed.push(id);
+      }
+      for (const id of prev.keys()) if (!now.has(id)) removed.push(id);
+      const deps = new Set<number>();
+      for (const id of [...changed, ...removed]) {
+        const by = touchedBy.get(id);
+        if (by !== undefined) deps.add(by);
+      }
+      for (const name of newRefs(ops[i])) {
+        const by = definedBy.get(name);
+        if (by !== undefined && by !== i) deps.add(by);
+      }
+      for (const id of [...added, ...changed]) touchedBy.set(id, i);
+      const def = newDefs(ops[i]);
+      if (def) definedBy.set(def, i);
+      effects.push({ added, changed, removed, deps: [...deps].sort((a, b) => a - b) });
+      prev = now;
+    },
+  };
 }
 
 /**
@@ -651,12 +843,20 @@ export function applyOps(d: ShowProject, ops: readonly AiOp[], env: CompileEnv, 
  * @param ops 操作。
  * @param env 外部数据。
  * @param aliases 别名表；省略时按 `project` 生成（与发给模型的上下文一致）。
- * @returns 结果工程、问题列表、是否失败、是否敏感。
+ * @param options `effects` 为真时同时记录每条操作对片段的影响（与结果工程是同一次运行，新片段 id 一致）。
+ * @returns 结果工程、问题列表、是否失败、是否敏感（与每条操作的影响）。
  */
-export function planOps(project: ShowProject, ops: readonly AiOp[], env: CompileEnv, aliases: AliasMap): OpsPlan {
+export function planOps(
+  project: ShowProject,
+  ops: readonly AiOp[],
+  env: CompileEnv,
+  aliases: AliasMap,
+  options: { effects?: boolean } = {},
+): OpsPlan & { effects?: OpEffect[] } {
   let issues: OpIssue[] = [];
+  const tracker = options.effects ? effectTracker(project, ops) : null;
   const next = produce(project, (d) => {
-    issues = applyOps(d, ops, env, aliases);
+    issues = applyOps(d, ops, env, aliases, tracker?.after);
   });
   if (!issues.some((i) => i.level === "error")) {
     const shape = projectSchema.safeParse(next);
@@ -669,7 +869,7 @@ export function planOps(project: ShowProject, ops: readonly AiOp[], env: Compile
   const before = new Set(project.cues.map((c) => c.id));
   const kept = next.cues.filter((c) => before.has(c.id)).length;
   const sensitive = ops.some((o) => SENSITIVE_OPS.has(o.op)) || before.size - kept > MAX_SILENT_DELETES;
-  return { next, issues, failed: issues.some((i) => i.level === "error"), sensitive };
+  return { next, issues, failed: issues.some((i) => i.level === "error"), sensitive, ...(tracker ? { effects: tracker.effects } : {}) };
 }
 
 /**

@@ -1,3 +1,10 @@
+---
+name: movers
+description: How to use pan/tilt movement, sizes and spreads for moving heads. Use when the show has moving heads and the request involves movement.
+metadata:
+  title: Moving heads
+  source: built-in
+---
 Moving heads (target 'movers') get a position effect on their own; their color and intensity come from the light clips on 'all' or on their group.
 
 | energy | position effect | period | size |

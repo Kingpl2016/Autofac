@@ -40,8 +40,8 @@ export function clampHeaderWidth(px: number): number {
   return Math.round(Math.min(TRACK_HEADER_WIDTH.max, Math.max(TRACK_HEADER_WIDTH.min, px)));
 }
 
-/** 吸附目标的种类：节拍、标记点、片段边缘（灯光与媒体）、播放头。工程起止始终可吸附。 */
-export const SNAP_KINDS = ["beats", "markers", "edges", "playhead"] as const;
+/** 吸附目标的种类：节拍、标记点、片段边缘（灯光与媒体）、播放头、音乐事件（重拍 / 爆点 / 切镜，需要音乐分析）。工程起止始终可吸附。 */
+export const SNAP_KINDS = ["beats", "markers", "edges", "playhead", "events"] as const;
 
 /** 吸附目标的种类。 */
 export type SnapKind = (typeof SNAP_KINDS)[number];
@@ -245,6 +245,10 @@ export interface EditorPrefsData {
   snapKinds: SnapKinds;
   /** 波纹编辑：删除片段时，同轨道后面的片段前移补齐 */
   rippleEdit: boolean;
+  /** 时间线上显示音乐分析的参考线（重拍、渐强、爆点、切镜） */
+  aiGuides: boolean;
+  /** 时间线上显示 AI 主动建议 */
+  aiSuggestions: boolean;
   /** 标尺刻度 */
   rulerFormat: RulerFormat;
   /** “灯具与 Patch”详情区各分区的展开状态（没记过的分区按各自的默认值） */
@@ -414,6 +418,18 @@ interface EditorPrefsState extends EditorPrefsData {
    */
   setRippleEdit: (on: boolean) => void;
   /**
+   * 开关音乐分析参考线。
+   *
+   * @param on 是否显示。
+   */
+  setAiGuides: (on: boolean) => void;
+  /**
+   * 开关 AI 主动建议。
+   *
+   * @param on 是否显示。
+   */
+  setAiSuggestions: (on: boolean) => void;
+  /**
    * 切换标尺刻度。
    *
    * @param format 刻度。
@@ -460,8 +476,10 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefsData = {
   fixtureAdd: DEFAULT_FIXTURE_ADD,
   outputAdvancedOpen: false,
   followPlayhead: true,
-  snapKinds: { beats: true, markers: true, edges: true, playhead: true },
+  snapKinds: { beats: true, markers: true, edges: true, playhead: true, events: true },
   rippleEdit: false,
+  aiGuides: true,
+  aiSuggestions: true,
   rulerFormat: "timecode",
   patchSections: {},
   programSections: {},
@@ -548,6 +566,8 @@ export function sanitizeEditorPrefs(raw: unknown, current: EditorPrefsData): Edi
       }),
     ) as SnapKinds,
     rippleEdit: typeof r.rippleEdit === "boolean" ? r.rippleEdit : current.rippleEdit,
+    aiGuides: typeof r.aiGuides === "boolean" ? r.aiGuides : current.aiGuides,
+    aiSuggestions: typeof r.aiSuggestions === "boolean" ? r.aiSuggestions : current.aiSuggestions,
     rulerFormat: pick(RULER_FORMATS, r.rulerFormat, current.rulerFormat),
     patchSections: sanitizeSections("patch", r.patchSections, current.patchSections),
     programSections: sanitizeSections("program", r.programSections, current.programSections),
@@ -582,6 +602,8 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
       setFollowPlayhead: (followPlayhead) => set({ followPlayhead }),
       setSnapKind: (kind, on) => set((st) => ({ snapKinds: { ...st.snapKinds, [kind]: on } })),
       setRippleEdit: (rippleEdit) => set({ rippleEdit }),
+      setAiGuides: (aiGuides) => set({ aiGuides }),
+      setAiSuggestions: (aiSuggestions) => set({ aiSuggestions }),
       setRulerFormat: (rulerFormat) => set({ rulerFormat }),
       setProgrammerRecord: (patch) =>
         set((s) => ({ programmerRecord: sanitizeRecordPrefs({ ...s.programmerRecord, ...patch }, s.programmerRecord) })),
@@ -635,6 +657,8 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         followPlayhead,
         snapKinds,
         rippleEdit,
+        aiGuides,
+        aiSuggestions,
         rulerFormat,
         patchSections,
         programSections,
@@ -658,6 +682,8 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
         followPlayhead,
         snapKinds,
         rippleEdit,
+        aiGuides,
+        aiSuggestions,
         rulerFormat,
         patchSections,
         programSections,

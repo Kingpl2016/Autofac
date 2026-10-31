@@ -22,7 +22,7 @@ import {
   type TreeItem,
 } from "../../ai/history";
 import { makeExemplar } from "../../ai/memory";
-import { clearChat, moveChatDocument, switchChatDocument, useAiChatStore } from "../useAiChatStore";
+import { clearChat, moveChatDocument, restoreChat, switchChatDocument, useAiChatStore } from "../useAiChatStore";
 import { useAiStagingStore } from "../useAiStagingStore";
 
 const msg = (id: string, text: string, role: UIMessage["role"] = "user"): UIMessage => ({ id, role, parts: [{ type: "text", text }] });
@@ -178,8 +178,12 @@ describe("当前工程的 AI 对话", () => {
     useAiChatStore.getState().setMessages([msg("a", "1")]);
     useAiChatStore.getState().addNote("保留我");
     const epoch = useAiChatStore.getState().epoch;
-    clearChat();
+    const before = { tree: useAiChatStore.getState().tree, headId: useAiChatStore.getState().headId };
+    const backup = clearChat();
     expect(useAiChatStore.getState()).toMatchObject({ messages: [], tree: [], headId: null, epoch: epoch + 1 });
     expect(useAiChatStore.getState().notes).toHaveLength(1);
+    // 撤销“新对话”：对话（含各个版本）回来，面板按新的会话序号重建
+    restoreChat(backup);
+    expect(useAiChatStore.getState()).toMatchObject({ ...before, epoch: epoch + 2 });
   });
 });

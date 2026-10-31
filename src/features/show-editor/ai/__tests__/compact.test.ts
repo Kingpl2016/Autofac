@@ -56,6 +56,17 @@ describe("长对话压缩", () => {
     ]);
   });
 
+  it("外部工具换成“调用了什么、结局如何”的一行，外部结果不再带上", () => {
+    const messages: ModelMessage[] = [user("查资料"), call("m", "mcp__web__search", { q: "x" }), result("m", "mcp__web__search"), say("查到了"), ...turn(2)];
+    const out = compactHistory(messages, { keepTurns: 1, outcomeOf: (id) => (id === "m" ? "allowed" : undefined) });
+    expect(out.slice(0, 3)).toEqual([
+      user("查资料"),
+      { role: "assistant", content: [{ type: "text", text: "[called external tool mcp__web__search (allowed)]" }] },
+      say("查到了"),
+    ]);
+    expect(JSON.stringify(out.slice(0, 3))).not.toContain("很长的结果");
+  });
+
   it("仍然太长时从最早的整轮删起，保留的轮次不动；结果确定", () => {
     const messages = Array.from({ length: 10 }, (_, i) => turn(i + 1)).flat();
     const out = compactHistory(messages, { keepTurns: 2, maxMessages: 20 });

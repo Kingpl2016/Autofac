@@ -23,6 +23,9 @@ import { COLOR_NAMES, FADES, PALETTE_NAMES, PERIODS, SIZES, SPEEDS, SPREADS } fr
 /** 一批最多多少条操作。 */
 export const MAX_OPS = 64;
 
+/** `placeAccents` 能用的事件。 */
+export const ACCENT_EVENTS = ["hits", "drops", "builds", "cuts"] as const;
+
 const opt = <T extends z.ZodType>(t: T) => t.nullable().default(null);
 
 /** 片段的目标轨道。 */
@@ -125,6 +128,22 @@ const applyRecipe = z.object({
   movers: opt(z.boolean()).describe("Add the recipe's movement for the moving heads (default: only when target is 'all')"),
 });
 
+/** 按音乐 / 画面分析的事件放重音片段（时刻由分析决定，模型不写毫秒）。 */
+const placeAccents = z.object({
+  op: z.literal("placeAccents"),
+  events: z
+    .enum(ACCENT_EVENTS)
+    .describe("hits: a short intensity hit on each accented downbeat; drops: one big hit where it gets loud; builds: intensity rising through each build-up; cuts: a color change at each video cut"),
+  target,
+  from: time,
+  to: time,
+  effect: opt(z.string().min(1).max(64)).describe("Effect id for each accent; null = the default for this kind (hit / hit / fadeIn)"),
+  colors: opt(colors).describe("Colors: for cuts, used in turn on each shot; for the other kinds, a color for the accent (null keeps the color of the clips below)"),
+  fromVideo: opt(z.boolean()).describe("cuts only: take each shot's main color from the video"),
+  every: opt(z.enum(["1", "2", "4"])).describe("hits only: use every Nth hit"),
+  strength: opt(z.enum(["subtle", "normal", "strong"])).describe("Brightness of the accents (default strong)"),
+});
+
 /** 修改已有片段。 */
 const editCues = z.object({
   op: z.literal("editCues"),
@@ -198,6 +217,7 @@ export const aiOpSchema = z.union([
   addLook,
   applyTemplate,
   applyRecipe,
+  placeAccents,
   editCues,
   moveCues,
   resizeCues,

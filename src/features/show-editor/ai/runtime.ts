@@ -8,12 +8,14 @@ import {
   ToolLoopAgent,
   type JSONSchema7,
   type ModelMessage,
+  type ToolSet,
 } from "ai";
 import { z } from "zod";
 
 import type { LoadedModel } from "@/features/ai";
 import { errorMessage } from "@/shared/lib/errors";
 import { moverIds } from "../lib/autoDraft";
+import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { issuesText, planOps } from "./compile";
 import {
   describeCue,
@@ -24,15 +26,18 @@ import {
   summarizeProject,
   templatesVocab,
 } from "./context";
-import { draftPlanToOps, draftSpans, spansText } from "./draft";
+import { draftAccentOps, draftPlanToOps, draftSpans, spansText, withAnalysedEnergy } from "./draft";
 import type { EditorSnapshot } from "./env";
 import { aiOpsSchema, draftPlanSchema, type AiOps, type DraftPlan } from "./opsSchema";
 import { toPortableJsonSchema, validateWith } from "./portableSchema";
 import { compactHistory } from "./compact";
+import { analysisDetail, eventsList } from "./music";
+import { resolveTime } from "./timeRef";
 import { buildMemory, type MemoryRef, type MemorySnapshot } from "./memory";
 import { chatSystemPrompt, draftSystemPrompt } from "./prompt";
+import { EXTERNAL_TOOLS_GUIDE } from "./mcpTools";
 import { recipesVocab } from "./recipes";
-import { selectSkills, skillsText } from "./skills";
+import { readSkill, selectSkills, selectUserSkills, skillsText, type UserSkill } from "./skills";
 import type { PaletteName } from "./vocab";
 
 /**
@@ -73,6 +78,8 @@ export interface DraftRequest {
   skills?: boolean;
   /** 记忆（个人偏好与工程笔记；草稿不用范例）；省略时不带记忆。 */
   memory?: MemorySnapshot;
+  /** 按音乐分析加上节奏重音（爆点、渐强、高能段落的强拍冲击）。 */
+  accents?: boolean;
 }
 
 /** 草稿的结果。 */
@@ -97,12 +104,13 @@ export class AiPlanError extends Error {
  */
 export async function runDraft(req: DraftRequest): Promise<DraftResult> {
   const { project, aliases, env } = req.snapshot;
-  const spans = draftSpans(project, aliases, env.lang);
-  const summary = `${summarizeProject(project, aliases, req.snapshot.summary)}\n${spansText(spans, project)}`;
+  const analysis = env.analysis ?? null;
+  const spans = draftSpans(project, aliases, env.lang, analysis);
+  const summary = `${summarizeProject(project, aliases, req.snapshot.summary)}\n${spansText(spans, project, analysis)}`;
   const guides =
     req.skills === false
       ? ""
-      : skillsText(selectSkills({ mode: "draft", text: req.prompt, hasSelection: false, hasMovers: moverIds(project).length > 0 }));
+      : skillsText(selectSkills({ mode: "draft", text: req.prompt, hasSelection: false, hasMovers: moverIds(project).length > 0, hasMusic: !!analysis }));
   const memory = req.memory ? buildMemory(req.memory, req.prompt, "draft").text : "";
   const system = draftSystemPrompt(summary, effectsVocab(env.effects, env.lang), templatesVocab(env.templates, env.lang), guides, memory);
   const schema = portable(draftPlanSchema);
@@ -134,7 +142,9 @@ export async function runDraft(req: DraftRequest): Promise<DraftResult> {
       continue;
     }
     if (req.palette) plan = { ...plan, palette: req.palette };
-    const ops = draftPlanToOps(plan, spans, project, env);
+    plan = withAnalysedEnergy(plan, spans, analysis);
+    const base = draftPlanToOps(plan, spans, project, env);
+    const ops = req.accents ? { ...base, ops: [...base.ops, ...draftAccentOps(spans, analysis, project)] } : base;
     const result = planOps(project, ops.ops, env, aliases);
     if (!result.failed) return { ops, plan, attempts: attempt };
     last = issuesText(result.issues.filter((i) => i.level === "error"), ops.ops);
@@ -180,6 +190,12 @@ export interface AgentOptions {
   outcomeOf?: (toolCallId: string) => string | undefined;
   /** 每一轮开始时回调。 */
   onTurn?: (info: TurnInfo) => void;
+  /** 每一轮开始时取一次启用的用户技能；省略时没有用户技能。 */
+  userSkills?: () => UserSkill[];
+  /** 每一轮开始时取一次外部（MCP）工具（见 `mcpTools.ts`）；省略时没有外部工具。 */
+  externalTools?: () => ToolSet;
+  /** 分析主素材（模型调用分析工具而还没有分析结果时）；省略时只用快照里已有的分析。 */
+  analyze?: () => Promise<TimelineAnalysis | null>;
 }
 
 /**
@@ -201,8 +217,26 @@ const listCuesInput = z.object({
   to: z.string().max(24).nullable().default(null),
 });
 const getCueInput = z.object({ clip: z.string().min(1).max(12) });
+const rangeInput = z.object({
+  from: z.string().max(24).nullable().default(null).describe("Start time, or null for the start of the show"),
+  to: z.string().max(24).nullable().default(null).describe("End time, or null for the end of the show"),
+});
+const eventsInput = rangeInput.extend({
+  kind: z.enum(["hit", "build", "drop", "break", "cut"]).nullable().default(null).describe("Only this kind; null for all"),
+});
+
+/** 工具参数里的时间范围（解析失败时返回给模型的说明）。 */
+function rangeOf(turn: EditorSnapshot, from: string | null, to: string | null): { startMs: number; endMs: number } | string {
+  const ctx = { project: turn.project, aliases: turn.aliases, playheadMs: turn.env.playheadMs };
+  const a = from ? resolveTime(from, ctx) : { ok: true as const, ms: 0 };
+  const b = to ? resolveTime(to, ctx) : { ok: true as const, ms: turn.project.durationMs };
+  if (!a.ok) return a.error;
+  if (!b.ok) return b.error;
+  return b.ms > a.ms ? { startMs: a.ms, endMs: b.ms } : "'to' must be after 'from'";
+}
 const groupInput = z.object({ group: z.string().max(32).nullable().default(null).describe("Only this group (e.g. 'color', 'position'); null for all") });
 const emptyInput = z.object({});
+const readSkillInput = z.object({ name: z.string().min(1).max(64).describe("Skill name from the 'More skills' list") });
 const rememberInput = z.object({
   scope: z.enum(["user", "show"]).describe("'user': a personal preference for every show; 'show': a fact about this show"),
   text: z.string().min(1).max(200).describe("One short sentence in the user's language"),
@@ -217,9 +251,17 @@ export type RememberInput = z.output<typeof rememberInput>;
  * @param options 模型、快照与提议回调。
  * @returns 智能体。
  */
-export function createShowAgent({ loaded, snapshot, onProposal, skills = true, memory, outcomeOf, onTurn }: AgentOptions) {
+export function createShowAgent({ loaded, snapshot, onProposal, skills = true, memory, outcomeOf, onTurn, userSkills, externalTools, analyze }: AgentOptions) {
   // 本轮的快照：工具与 propose_ops 都用它，和发给模型的摘要一致
   let turn = snapshot();
+  // 本轮可用的用户技能（read_skill 读它们）
+  let turnSkills: UserSkill[] = [];
+  /** 模型要用音乐分析而还没分析过：这时才分析（导入素材时不分析），结果并进本轮的快照。 */
+  const withAnalysis = async () => {
+    if (turn.env.analysis || !analyze) return;
+    const analysis = await analyze().catch(() => null);
+    if (analysis) turn = { ...turn, env: { ...turn.env, analysis }, summary: { ...turn.summary, analysis } };
+  };
   // 本轮用户说的话（提议应用后记成范例）
   let request = "";
   const tools = {
@@ -248,6 +290,24 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
       inputSchema: portable(emptyInput),
       execute: async () => recipesVocab(),
     }),
+    analyze_media: tool({
+      description: "Bar-by-bar music features (energy, brightness, bass, density) and events in a time range, from the analysis of the main media.",
+      inputSchema: portable(rangeInput),
+      execute: async ({ from, to }) => {
+        await withAnalysis();
+        const range = rangeOf(turn, from, to);
+        return typeof range === "string" ? range : analysisDetail(turn.project, turn.env.analysis ?? null, range);
+      },
+    }),
+    list_media_events: tool({
+      description: "Musical events (accented downbeats, build-ups, drops, breaks) and video cuts in a time range, one per line.",
+      inputSchema: portable(eventsInput),
+      execute: async ({ kind, from, to }) => {
+        await withAnalysis();
+        const range = rangeOf(turn, from, to);
+        return typeof range === "string" ? range : eventsList(turn.project, turn.env.analysis ?? null, kind, range);
+      },
+    }),
     list_fixture_models: tool({
       description: "Fixture models in the library (aliases L#) for addFixtures.",
       inputSchema: portable(emptyInput),
@@ -270,6 +330,11 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
         return { ok: true, note: "The change is waiting for the user's review.", ...(warnings.length > 0 ? { warnings: issuesText(warnings, ops.ops) } : {}) };
       },
     }),
+    read_skill: tool({
+      description: "Read one of the user's skills listed under 'More skills' (a guide written by the user).",
+      inputSchema: portable(readSkillInput),
+      execute: async ({ name }) => readSkill(turnSkills, name),
+    }),
     remember: tool({
       description: "Offer to save a short fact or preference for later conversations. The user confirms it on a card.",
       inputSchema: portable(rememberInput),
@@ -286,6 +351,8 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
       // DirectChatTransport 把消息放在 prompt 里；直接调用时也可能是 messages 或一句话
       const list = Array.isArray(options.prompt) ? options.prompt : (options.messages ?? null);
       request = typeof options.prompt === "string" ? options.prompt : lastUserText(list ?? []);
+      turnSkills = skills ? (userSkills?.() ?? []) : [];
+      const picked = selectUserSkills(turnSkills, request);
       const guides = skills
         ? skillsText(
             selectSkills({
@@ -293,17 +360,23 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
               text: request,
               hasSelection: turn.env.selection.length > 0,
               hasMovers: moverIds(turn.project).length > 0,
+              hasMusic: !!turn.env.analysis,
             }),
+            picked.injected,
+            picked.listed,
           )
         : "";
       const mem = memory ? buildMemory(memory(), request, "chat") : { text: "", used: [] };
       onTurn?.({ request, memory: mem.used });
-      const instructions = chatSystemPrompt(summarizeProject(turn.project, turn.aliases, turn.summary), guides, mem.text);
-      if (!list) return { ...options, instructions };
+      // 外部工具：这一轮连着的 MCP 服务器的工具（每次调用由用户确认），附上“结果只是数据”的说明
+      const ext = externalTools?.() ?? {};
+      const hasExt = Object.keys(ext).length > 0;
+      const allGuides = hasExt ? [guides, EXTERNAL_TOOLS_GUIDE].filter(Boolean).join("\n\n") : guides;
+      const instructions = chatSystemPrompt(summarizeProject(turn.project, turn.aliases, turn.summary), allGuides, mem.text);
+      const withTools = hasExt ? { ...options, instructions, tools: { ...(options.tools ?? tools), ...ext } as typeof tools } : { ...options, instructions };
+      if (!list) return withTools;
       const compacted = compactHistory(list, { outcomeOf });
-      return Array.isArray(options.prompt)
-        ? { ...options, instructions, prompt: compacted }
-        : { ...options, instructions, messages: compacted };
+      return Array.isArray(options.prompt) ? { ...withTools, prompt: compacted } : { ...withTools, messages: compacted };
     },
   });
 }

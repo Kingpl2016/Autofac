@@ -11,6 +11,9 @@ import { planOps } from "../../compile";
 import { draftSpans } from "../../draft";
 import type { EditorSnapshot } from "../../env";
 import { aiOpsSchema } from "../../opsSchema";
+import { mapAnalysis } from "../../../lib/mediaAnalysis";
+import type { AudioAnalysis } from "../../../lib/mediaApi";
+import { testAnalysis } from "../../../lib/__tests__/analysisKit";
 import type { Expectation } from "../features";
 
 /**
@@ -27,6 +30,10 @@ export interface EvalCase {
   project: ShowProject;
   /** 对每段特征的期望（只写有把握的） */
   expect: Expectation[];
+  /** 主素材的音乐分析（素材从时间线 0 点开始）；有时草稿按分析编排 */
+  analysis?: AudioAnalysis;
+  /** 草稿加上节奏重音 */
+  accents?: boolean;
 }
 
 /** 按“名称 + 能量 + 小节数”生成段落。 */
@@ -118,6 +125,55 @@ export const EVAL_CASES: readonly EvalCase[] = [
     }),
     expect: [0, 1, 2].map((span) => ({ span, field: "hue" as const, oneOf: ["white", "h1"] })),
   },
+  // ---- 带音乐分析：段落与能量来自分析（版本 4 起新增） ----
+  {
+    id: "music-unsectioned",
+    prompt: "按音乐来，暖色",
+    project: show("music", (d) => {
+      addFixtures(d, RGBW, 8);
+      addFixtures(d, HEAD16, 4);
+      d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 };
+      d.durationMs = 64_000;
+    }),
+    analysis: testAnalysis(),
+    expect: [
+      { span: 0, field: "level", oneOf: ["low", "mid"] },
+      { span: 1, field: "level", oneOf: ["high"] },
+      { span: 1, field: "hue", oneOf: [...WARM, "white"] },
+      { span: 1, field: "moves", oneOf: [true] },
+    ],
+  },
+  {
+    id: "music-accents",
+    prompt: "电子舞曲，霓虹色，跟着节奏",
+    project: show("music-accents", (d) => {
+      addFixtures(d, RGBW, 8);
+      d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 };
+      d.durationMs = 64_000;
+    }),
+    analysis: testAnalysis(),
+    accents: true,
+    expect: [
+      { span: 1, field: "level", oneOf: ["high"] },
+      { span: 1, field: "kind", oneOf: ["intensity", "color"] },
+    ],
+  },
+  {
+    id: "music-sectioned-labels",
+    prompt: "抒情，冷色，相同的段落用相同的灯光",
+    project: show("music-labels", (d) => {
+      addFixtures(d, RGBW, 6);
+      d.tempo = { bpm: 120, offsetMs: 0, beatsPerBar: 4 };
+      d.sections = sections(120, [["开头", "mid", 8], ["中段", "mid", 16], ["结尾", "mid", 8]]);
+      d.durationMs = 64_000;
+    }),
+    analysis: testAnalysis(),
+    expect: [
+      { span: 0, field: "hue", oneOf: COOL },
+      { span: 2, field: "hue", oneOf: COOL },
+      { span: 1, field: "level", oneOf: ["high", "mid"] },
+    ],
+  },
 ];
 
 /**
@@ -126,13 +182,14 @@ export const EVAL_CASES: readonly EvalCase[] = [
  * @param c 用例（编辑用例带选中的片段）。
  * @returns 快照。
  */
-export function caseSnapshot(c: { project: ShowProject; selection?: readonly string[] }): EditorSnapshot {
+export function caseSnapshot(c: { project: ShowProject; selection?: readonly string[]; analysis?: AudioAnalysis }): EditorSnapshot {
   const selection = [...(c.selection ?? [])];
+  const analysis = c.analysis ? mapAnalysis({ media: { id: "eval-media", name: "song.wav" }, clip: null, audio: c.analysis }) : null;
   return {
     project: c.project,
     aliases: buildAliases(c.project),
-    env: { effects: BUILTIN_EFFECTS, templates: BUILTIN_TEMPLATES, libraryModels: [], lang: "zh", playheadMs: 0, selection },
-    summary: { playheadMs: 0, selection },
+    env: { effects: BUILTIN_EFFECTS, templates: BUILTIN_TEMPLATES, libraryModels: [], lang: "zh", playheadMs: 0, selection, analysis },
+    summary: { playheadMs: 0, selection, analysis },
   };
 }
 
@@ -255,6 +312,6 @@ export function checkScore(c: EditCase, next: ShowProject): number {
  * @param c 用例。
  * @returns 段落的起止。
  */
-export function caseSpans(c: EvalCase): { startMs: number; endMs: number }[] {
-  return draftSpans(c.project, buildAliases(c.project), "zh").map(({ startMs, endMs }) => ({ startMs, endMs }));
+export function caseSpans(c: { project: ShowProject; analysis?: AudioAnalysis }): { startMs: number; endMs: number }[] {
+  return draftSpans(c.project, buildAliases(c.project), "zh", caseSnapshot(c).env.analysis).map(({ startMs, endMs }) => ({ startMs, endMs }));
 }

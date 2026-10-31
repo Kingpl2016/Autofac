@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, EyeOff, Tag, Trash2, TrendingUpDown } from "lucide-react";
+import { Copy, EyeOff, Sparkles, Tag, Trash2, TrendingUpDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { announce } from "@/shared/stores/announcerStore";
+import { openAskAi } from "../hooks/askAiActions";
 import type { Command } from "../lib/commands";
 import { setCueTag, setSymmetricFades } from "../lib/editOps";
 import { CUE_TAG_COLORS, CUE_TAGS, type CueTag } from "../lib/project";
@@ -59,6 +60,19 @@ export function ClipQuickBar({ commands, ids, locked, left, top }: ClipQuickBarP
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={`${iconButton} text-primary`}
+        aria-label={t("editor.askAi.open")}
+        title={`${t("editor.askAi.open")} (Ctrl+Shift+J)`}
+        data-tour="ask-ai-button"
+        onClick={(e) => openAskAi(e.currentTarget)}
+      >
+        <Sparkles aria-hidden />
+      </Button>
+      <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="icon" className={iconButton} disabled={locked} aria-label={t("editor.quickBar.fades")} title={t("editor.quickBar.fades")}>

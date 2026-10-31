@@ -285,7 +285,7 @@ export function recordLooks(
   const result: RecordResult = { cueIds: [], trackIds: [], skipped: [] };
   const start = clamp(snapToFrame(startMs), 0, draft.durationMs);
   for (const { fixtureId, look } of entriesOf(draft, values)) {
-    const track = draft.tracks.find((t) => t.target.kind === "fixture" && t.target.id === fixtureId && !t.lock);
+    const track = draft.tracks.find((t) => t.target.kind === "fixture" && t.target.id === fixtureId && !t.lock && t.role !== "accent");
     const gap = track ? gapAround(draft, track.id, start) : null;
     const end = gap ? Math.min(snapToFrame(start + lengthMs), gap[1]) : start;
     if (!track || !gap || end - start < MIN_CUE_MS) {

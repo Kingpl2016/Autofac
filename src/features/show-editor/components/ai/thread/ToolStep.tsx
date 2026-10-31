@@ -1,17 +1,22 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react";
-import { AlertTriangle, Brain, Check, ChevronDown, CircleSlash, Loader2, Sparkles, Wrench } from "lucide-react";
+import { AlertTriangle, Brain, Check, ChevronDown, CircleSlash, Loader2, Redo2, Sparkles, Undo2, Wrench } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useAiMemoryStore } from "@/features/ai";
+import { MCP_PREFIX, useAiMemoryStore } from "@/features/ai";
 import { cn } from "@/lib/utils";
 import type { RememberInput } from "../../../ai/runtime";
 import { useAiChatStore } from "../../../stores/useAiChatStore";
 import { useAiStagingStore } from "../../../stores/useAiStagingStore";
+import { useProjectStore } from "../../../stores/useProjectStore";
+import { reapplyRestorePoint, revertRestorePoint, useRestorePointStore } from "../../../stores/useRestorePointStore";
+import { announce } from "@/shared/stores/announcerStore";
 import { ChangeCounts, StagedActions } from "../AiReviewCard";
+import { ExternalToolCard, type ExternalResult } from "./ExternalToolCard";
 
 /** 工具名 → 文案键。 */
 const TOOL_KEYS: Record<string, string> = {
@@ -20,8 +25,11 @@ const TOOL_KEYS: Record<string, string> = {
   list_effects: "listEffects",
   list_templates: "listTemplates",
   list_recipes: "listRecipes",
+  analyze_media: "analyzeMedia",
+  list_media_events: "listMediaEvents",
   list_fixture_models: "listModels",
   get_output: "getOutput",
+  read_skill: "readSkill",
 };
 
 /** 结果的文字形式（截断）。 */
@@ -73,6 +81,8 @@ function ProposalCard({ toolCallId, args, result, status }: ToolCallMessagePartP
   const { t } = useTranslation();
   const staged = useAiStagingStore((s) => (s.staged?.sourceId === toolCallId ? s.staged : null));
   const outcome = useAiStagingStore((s) => s.outcomes[toolCallId]);
+  // 应用后的还原点（可以在卡片上直接撤回 / 重新应用）
+  const point = useRestorePointStore((s) => s.points.find((p) => p.sourceId === toolCallId));
   if (status.type === "running" || result === undefined) {
     return (
       <p role="status" className="my-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -116,6 +126,29 @@ function ProposalCard({ toolCallId, args, result, status }: ToolCallMessagePartP
       ) : (
         !outcome && <p className="text-xs text-muted-foreground">{t("editor.ai.notPending")}</p>
       )}
+      {point && outcome === "applied" && <PointActions id={point.id} state={point.state} />}
+    </div>
+  );
+}
+
+/** 应用过的提议：撤回这次改动（之后手动改过的部分保留）/ 重新应用。 */
+function PointActions({ id, state }: { id: string; state: "applied" | "reverted" }) {
+  const { t } = useTranslation();
+  const run = () => {
+    const r = state === "applied" ? revertRestorePoint(id) : reapplyRestorePoint(id);
+    if (!r) return;
+    const key = state === "applied" ? "revert" : "reapply";
+    const text = r.skipped > 0 ? t(`editor.aiHistory.${key}Partial`, { skipped: r.skipped }) : t(`editor.aiHistory.${key}Done`);
+    announce(text);
+    toast.success(text, { action: { label: t("editor.ai.undo"), onClick: () => useProjectStore.temporal.getState().undo() } });
+  };
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {state === "reverted" && <span className="me-auto text-xs text-muted-foreground">{t("editor.aiHistory.reverted")}</span>}
+      <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={run}>
+        {state === "applied" ? <Undo2 aria-hidden /> : <Redo2 aria-hidden />}
+        {t(state === "applied" ? "editor.ai.revertChange" : "editor.aiHistory.reapply")}
+      </Button>
     </div>
   );
 }
@@ -178,5 +211,6 @@ function MemoryCard({ toolCallId, args, status }: ToolCallMessagePartProps<Parti
 export function ToolCallPart(props: ToolCallMessagePartProps) {
   if (props.toolName === "propose_ops") return <ProposalCard {...(props as ToolCallMessagePartProps<ProposalArgs, ProposalResult>)} />;
   if (props.toolName === "remember") return <MemoryCard {...(props as ToolCallMessagePartProps<Partial<RememberInput>, unknown>)} />;
+  if (props.toolName.startsWith(MCP_PREFIX)) return <ExternalToolCard {...(props as ToolCallMessagePartProps<unknown, ExternalResult>)} />;
   return <ToolStep {...props} />;
 }

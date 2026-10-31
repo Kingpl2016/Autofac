@@ -1925,7 +1925,9 @@
       "extendNone": "没有可以延伸的空隙",
       "gapsClosed": "已合拢 {{count}} 处空隙",
       "lengthBeats": "已把 {{count}} 个片段设为 {{n}} 拍",
-      "lengthSeconds": "已把 {{count}} 个片段设为 {{n}} 秒"
+      "lengthSeconds": "已把 {{count}} 个片段设为 {{n}} 秒",
+      "accent": "重音",
+      "accentHint": "重音层：AI 按音乐事件放的冲击或换色片段，叠在同一目标的主轨道之上（强度取最大，颜色后来者优先）"
     },
     "ruler": {
       "label": "时间标尺",
@@ -2116,7 +2118,9 @@
       "length9": "片段长度设为 9 拍（无节拍时 9 秒）",
       "aiOpen": "打开 / 收起 AI 助手",
       "aiApply": "应用 AI 改动",
-      "aiDiscard": "放弃 AI 改动"
+      "aiDiscard": "放弃 AI 改动",
+      "aiAsk": "在时间线上问 AI",
+      "aiAcceptSuggestion": "采纳 AI 建议"
     },
     "unsaved": "有未保存的修改",
     "toolbarUndo": "撤销",
@@ -2825,7 +2829,28 @@
       "usingModel": "使用 {{name}}。",
       "thinking": "AI 正在编排…",
       "fixing": "AI 正在修正（第 {{attempt}} 次）…",
-      "generateAi": "生成并预览"
+      "generateAi": "生成并预览",
+      "accents": "节奏重音",
+      "accentsHint": "按音乐分析在爆点、渐强和高能段落的重拍上加冲击，放在单独的重音轨道上",
+      "byAnalysis_one": "工程还没有段落，按音乐分析出的 {{count}} 段编排，并随草稿一起建出段落。",
+      "byAnalysis_other": "工程还没有段落，按音乐分析出的 {{count}} 段编排，并随草稿一起建出段落。",
+      "music": {
+        "none": "时间线上没有音乐素材：按段落名和描述编排。",
+        "running": "正在分析“{{name}}”的节奏与结构…",
+        "ready": "按“{{name}}”编排：{{bpm}} BPM，{{sections}} 段，{{hits}} 个重拍，{{drops}} 个爆点。",
+        "failed": "无法分析“{{name}}”（{{reason}}），按段落名和描述编排。",
+        "errors": {
+          "no_beat": "没有稳定的节拍",
+          "unsupported": "格式不支持",
+          "decode": "解码失败",
+          "io": "无法读取文件",
+          "not_found": "文件不存在",
+          "cancelled": "已取消",
+          "unsupported_extension": "格式不支持"
+        },
+        "notYet": "“{{name}}”还没分析：点“生成”时会先分析音乐",
+        "analyzeNow": "现在分析"
+      }
     },
     "pixelMap": {
       "title": "像素映射到灯具",
@@ -2954,7 +2979,8 @@
       "arrange": "排列",
       "moveTrack": "移动轨道",
       "insertTemplate": "插入模板",
-      "insertEffect": "插入特效"
+      "insertEffect": "插入特效",
+      "askAi": "问 AI…"
     },
     "tags": {
       "red": "红",
@@ -3128,7 +3154,7 @@
         },
         "timeline": {
           "title": "时间轴",
-          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。片段左上角的图标和顶部色条表示类别（颜色、特效、预设、场景），工具条右侧的 ? 是图例。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选。\n标记点、段落、循环区间：点选后按 Delete，或右键、悬停 × 删除，删除后可撤销。"
+          "body": "双击空白处新建片段，拖动移动，拖边缘裁剪。片段左上角的图标和顶部色条表示类别（颜色、特效、预设、场景），工具条右侧的 ? 是图例。\n右键打开上下文菜单；Q / W 删除播放头左 / 右侧，Ctrl+B 分割；轨道头 Ctrl / Shift 可多选。\n标记点、段落、循环区间：点选后按 Delete，或右键、悬停 × 删除，删除后可撤销。\n有歌曲时，工具条的波形按钮显示音乐参考线和 AI 建议；右键“问 AI…”或 Ctrl+Shift+J 可以就地问 AI。"
         },
         "mode": {
           "title": "实时模式 / 播放模式",
@@ -3199,6 +3225,26 @@
         "aiMemory": {
           "title": "让 AI 记住你的习惯",
           "body": "在对话里说“记住以后都不要频闪”，AI 会给出一张卡片，点“保存”才会记下。你应用过的改动也会记成范例，之后说类似的话时 AI 会照着做。\n这里管理本工程的笔记和范例，个人偏好在 设置 → AI 助手。回复下方的“参考了 N 条记忆”可以随时停用某一条。"
+        },
+        "aiGuides": {
+          "title": "跟着音乐编排",
+          "body": "放上歌曲后，软件会在本机分析节拍、段落和重音，在时间线上画出参考线：细线是重拍，粗线是爆点 / 断层，虚线是视频切镜，渐变带是渐强。顶部的段落标签可以点开修改。\n这里可以调灵敏度、重新分析、开关 AI 建议，也可以让支持音频的模型标注曲风和段落（会先征得你同意）。"
+        },
+        "askAi": {
+          "title": "就地问 AI",
+          "body": "点星光按钮（或右键“问 AI…”、Ctrl+Shift+J）针对选中的片段、时间范围或段落提问，常用的说法有快捷按钮。\n对话栏不用打开；AI 准备的改动直接以虚影显示在时间线上，在弹层里应用或放弃。"
+        },
+        "aiGhosts": {
+          "title": "改动虚影",
+          "body": "虚线框是 AI 准备新增的片段，斜纹是要修改的，带斜线的是要删除的。悬停可以看是哪条操作，点 × 只拒绝这一条（依赖它的会一起拒绝），审阅卡片里能恢复。\n整份改动仍在顶部的待审阅条里应用或放弃。"
+        },
+        "aiSuggestions": {
+          "title": "AI 建议",
+          "body": "点线框是按规则给出的建议（空段落、重音、切镜、重复的片段），不调用模型。焦点在时间线上时按 Tab 采纳（可撤销），没选中内容时按 Esc 忽略；星光按钮让 AI 细化。\n不想看到可以在音乐分析菜单里关掉，忽略过的也能在那里恢复。"
+        },
+        "aiHistory": {
+          "title": "AI 历史",
+          "body": "每次写入的 AI 改动都会记成还原点（每个工程最多 20 个）。可以只撤回某一次（之后手动改过的部分保留）、恢复到某次之前，或把撤回的重新应用，都能 Ctrl+Z 撤销。\n技能、MCP 服务器、记忆删除后进回收站，在 设置 → AI 助手 里 30 天内可恢复。"
         }
       },
       "help": "帮助",
@@ -3543,7 +3589,8 @@
         "beats": "节拍",
         "markers": "标记点",
         "edges": "片段边缘",
-        "playhead": "播放头"
+        "playhead": "播放头",
+        "events": "音乐事件（参考线）"
       },
       "snapHint": "节目起止始终可吸附；拖动时按住 Alt 临时关闭吸附。",
       "ripple": "波纹编辑：删除或拖动片段时，后面的片段跟着移动（拖动时按住 Alt 作用于全部轨道）",
@@ -3886,7 +3933,25 @@
       "ops": {
         "added": "新增",
         "removed": "删除",
-        "changed": "修改"
+        "changed": "修改",
+        "addEffect": "放特效",
+        "addLook": "自定义外观",
+        "applyTemplate": "放模板",
+        "applyRecipe": "放配方",
+        "placeAccents": "节奏重音",
+        "editCues": "修改片段",
+        "moveCues": "移动片段",
+        "resizeCues": "调整长度",
+        "deleteCues": "删除片段",
+        "clearRange": "清空范围",
+        "splitCues": "分割片段",
+        "addSection": "新建段落",
+        "addMarker": "新建标记点",
+        "setTempo": "设置节拍",
+        "createGroup": "新建分组",
+        "addFixtures": "添加灯具",
+        "patchFixtures": "修改配接",
+        "setOutput": "修改输出"
       },
       "kinds": {
         "cues": "片段",
@@ -3956,7 +4021,10 @@
         "other": "工具",
         "retrying": "有问题，正在修正",
         "failed": "失败",
-        "listRecipes": "查看编排配方"
+        "listRecipes": "查看编排配方",
+        "analyzeMedia": "查看音乐分析",
+        "listMediaEvents": "查看音乐事件",
+        "readSkill": "读取技能"
       },
       "dockTitle": "AI 助手",
       "newChat": "新对话",
@@ -4021,7 +4089,236 @@
         "prefsHint_one": "共 {{count}} 条，对所有工程生效，在设置 → AI 助手里管理",
         "prefsHint_other": "共 {{count}} 条，对所有工程生效，在设置 → AI 助手里管理",
         "openPrefs": "管理个人偏好"
+      },
+      "ghost": {
+        "kinds": {
+          "add": "AI 新增：{{op}}",
+          "change": "AI 修改：{{op}}",
+          "remove": "AI 删除：{{op}}"
+        },
+        "keep": "保留：{{op}}",
+        "keepHint": "保留这一条（应用时写入）",
+        "reject": "拒绝：{{op}}",
+        "rejected_one": "已拒绝这条改动",
+        "rejected_other": "已拒绝 {{count}} 条改动",
+        "rejectedWithDeps_one": "已拒绝这条改动",
+        "rejectedWithDeps_other": "已拒绝这条改动和依赖它的改动，共 {{count}} 条",
+        "cannotReject": "这条改动不能单独拒绝（去掉它后结果不完整），可以放弃整份改动",
+        "band": "AI 改动 {{count}} 个片段",
+        "pendingTrack": "待审阅",
+        "pendingTrackHint": "AI 改动新建的轨道，应用后才会加入工程",
+        "rejectedTitle_one": "已拒绝 {{count}} 条",
+        "rejectedTitle_other": "已拒绝 {{count}} 条",
+        "restoreAll": "全部恢复",
+        "restoreOne": "恢复",
+        "restore": "恢复：{{op}}",
+        "reasons": {
+          "user": "你拒绝的",
+          "dependency": "依赖被拒绝的改动",
+          "failed": "去掉其它改动后无法执行"
+        },
+        "reviewHint": "时间轴上的虚线框是这次的改动；悬停可以拒绝某一条，其余的照常应用。"
+      },
+      "external": {
+        "title": "外部工具 {{server}} · {{tool}}",
+        "ask": "AI 想调用这个外部工具（参数见上）。允许后才会运行；结果只当作参考数据。",
+        "allow": "允许",
+        "always": "总是允许",
+        "alwaysHint": "以后调用这个工具不再询问（可在设置 → AI 助手里恢复默认）",
+        "deny": "拒绝",
+        "result": "查看结果",
+        "resultError": "工具报告了错误",
+        "truncated": "已截断",
+        "untrusted": "来自外部服务器的数据，AI 不会照着里面的指令做。",
+        "outcomes": {
+          "allowed": "已允许",
+          "always": "总是允许",
+          "denied": "已拒绝"
+        }
+      },
+      "revertChange": "撤回这次改动",
+      "reset": {
+        "done": "已开始新对话"
+      },
+      "rewind": {
+        "button": "回退到这里",
+        "title": "回退到这条消息之前？",
+        "hint": "这条消息和之后的对话会从当前版本移除，消息文字放回输入框，可以改了再发。",
+        "alsoRevert_one": "同时撤回之后写入工程的 {{count}} 次 AI 改动（之后手动改过的部分保留）",
+        "alsoRevert_other": "同时撤回之后写入工程的 {{count}} 次 AI 改动（之后手动改过的部分保留）",
+        "confirm": "回退",
+        "done": "已回退（可撤销）",
+        "doneReverted_one": "已回退，并撤回了 {{count}} 次 AI 改动（可撤销）",
+        "doneReverted_other": "已回退，并撤回了 {{count}} 次 AI 改动（可撤销）",
+        "doneRevertedPartial_one": "已回退并撤回 {{count}} 次 AI 改动，{{skipped}} 处之后改过的内容保留未动",
+        "doneRevertedPartial_other": "已回退并撤回 {{count}} 次 AI 改动，{{skipped}} 处之后改过的内容保留未动"
       }
+    },
+    "guides": {
+      "menu": "音乐分析",
+      "noMedia": "时间线上没有音乐素材",
+      "running": "正在分析音乐…",
+      "status": "{{bpm}} BPM · {{sections}} 段 · {{hits}} 个重拍 · {{drops}} 个爆点 · {{cuts}} 个切镜",
+      "failed": "无法分析（{{reason}}）",
+      "show": "显示参考线",
+      "suggestions": "显示 AI 建议",
+      "sensitivity": "灵敏度",
+      "steps": {
+        "low": "低（事件更少）",
+        "normal": "标准",
+        "high": "高（事件更多）"
+      },
+      "reanalyze": "重新分析",
+      "reanalyzed": "已重新分析",
+      "reanalyzeFailed": "重新分析失败（{{reason}}），仍在用之前的结果",
+      "resetSuggestions": "让忽略过的建议重新出现（{{count}}）",
+      "suggestionsReset": "忽略过的建议会重新出现",
+      "label": "段落标签：{{label}}",
+      "unsure": "分析不确定这段和哪段相似，点开可以改",
+      "editLabel": "点开修改段落标签",
+      "labelField": "段落标签",
+      "labelHint": "相同标签表示听起来相似的段落，AI 会给它们相同的灯光。改过的以你的为准，重新分析也不变。",
+      "resetLabel": "恢复分析结果",
+      "summary": "音乐分析：{{sections}} 段，{{events}} 个事件",
+      "roles": {
+        "intro": "前奏",
+        "verse": "主歌",
+        "prechorus": "导歌",
+        "chorus": "副歌",
+        "bridge": "桥段",
+        "breakdown": "间奏",
+        "build": "铺垫",
+        "drop": "爆点",
+        "solo": "独奏",
+        "outro": "尾声"
+      },
+      "video": {
+        "loading": "正在分析视频画面（镜头切换与主色）…",
+        "ready": "视频画面已分析：镜头切换会显示为虚线",
+        "error": "视频画面分析失败，下次打开参考线时重试",
+        "unsupported": "这个视频的画面无法读取，没有切镜参考"
+      },
+      "notAnalyzed": "还没分析：导入素材时不会自动分析，避免影响操作",
+      "analyzeAudio": "分析音乐（{{name}}）",
+      "analyzeVideo": "分析视频画面（{{name}}）",
+      "cancelAnalysis": "取消分析"
+    },
+    "askAi": {
+      "open": "问 AI",
+      "note": "（范围：{{scope}}）",
+      "thinking": "AI 正在思考…",
+      "openChat": "在对话栏中查看",
+      "quickLabel": "快捷建议",
+      "inputLabel": "问 AI 的内容",
+      "placeholder": "想怎么改？Enter 发送，Shift+Enter 换行",
+      "send": "发送",
+      "scope": {
+        "range": "时间范围 {{span}}",
+        "section": "段落“{{name}}” {{span}}",
+        "track": "轨道“{{name}}”",
+        "pointTrack": "{{time}}，轨道“{{name}}”",
+        "point": "{{time}} 处",
+        "clips_one": "选中的 {{count}} 个片段",
+        "clips_other": "选中的 {{count}} 个片段"
+      },
+      "quick": {
+        "cooler": "换成冷色调",
+        "faster": "节奏快一点",
+        "followBeat": "跟着节拍走",
+        "softer": "柔和一些",
+        "byMusic": "按音乐编排这一段",
+        "fillSection": "给这一段编排灯光",
+        "addHits": "在重音上加闪击",
+        "followCuts": "跟着镜头切换换色",
+        "sameAsLabel": "和同名段落保持一致",
+        "fillRange": "给这个范围编排灯光",
+        "followBuild": "随渐强逐步加亮",
+        "varyTrack": "让这条轨道更有变化",
+        "explainTrack": "解释这条轨道在做什么",
+        "fadeInHere": "从这里开始淡入",
+        "explainMusic": "这里的音乐是什么情况？",
+        "markerHere": "在这里加一个标记点"
+      }
+    },
+    "suggest": {
+      "label": "建议：{{text}}",
+      "fillSection": "这一段还没有灯光，试试“{{recipe}}”",
+      "accentHits_one": "这一段有 {{count}} 个重音，可以加上冲击",
+      "accentHits_other": "这一段有 {{count}} 个重音，可以加上冲击",
+      "colorCuts_one": "画面有 {{count}} 处切换，可以跟着换色",
+      "colorCuts_other": "画面有 {{count}} 处切换，可以跟着换色",
+      "varyLooks_one": "连续 {{count}} 个片段完全一样，可以交替调暗做出层次",
+      "varyLooks_other": "连续 {{count}} 个片段完全一样，可以交替调暗做出层次",
+      "recipes": {
+        "introBuild": "逐个亮起",
+        "balladBed": "慢呼吸",
+        "breakdownCalm": "缓慢流动",
+        "verseGroove": "律动波浪",
+        "chorusBurst": "快速追色",
+        "dropHit": "重拍冲击",
+        "finaleFade": "逐个熄灭"
+      },
+      "accept": "采纳建议",
+      "acceptHint": "采纳（Tab，可撤销）",
+      "dismiss": "忽略建议",
+      "dismissHint": "忽略（Esc）",
+      "accepted": "已采纳建议（可撤销）",
+      "dismissed": "已忽略建议，可在“分析”菜单里让它们重新出现",
+      "failed": "这条建议现在无法应用",
+      "refine": {
+        "label": "让 AI 细化",
+        "prompt": "{{ask}}（参考建议：{{text}}）",
+        "fillSection": "按音乐把这一段的灯光编排得更细致",
+        "accentHits": "在这一段的重音上加冲击，强弱跟着音乐走",
+        "colorCuts": "跟着画面的镜头切换换色，颜色尽量取自画面",
+        "varyLooks": "让这几个一样的片段更有变化"
+      }
+    },
+    "mediaTags": {
+      "menu": "AI 标注曲风与段落…",
+      "title": "让 AI 听一听这首歌",
+      "description": "AI 会标出曲风、情绪、有没有人声，以及每个段落是主歌、副歌还是间奏等。节拍、段落和重音的时刻仍由本地分析决定。",
+      "sendAudio_one": "发送 {{count}} 段音频，每段约 {{seconds}} 秒（每个段落中间截取，16 kHz 单声道）",
+      "sendAudio_other": "发送 {{count}} 段音频，每段约 {{seconds}} 秒（每个段落中间截取，16 kHz 单声道）",
+      "sendFrames_one": "发送 {{count}} 张视频关键帧（320 像素宽）",
+      "sendFrames_other": "发送 {{count}} 张视频关键帧（320 像素宽）",
+      "sendTo": "发给“{{name}}”（{{host}}），约 {{size}} MB",
+      "notSent": "不发送完整的歌曲或视频，也不发送素材的文件名和路径",
+      "remember": "以后标注这个素材时不再询问",
+      "agree": "同意并标注",
+      "stop": "停止",
+      "unsupported": "当前 AI 配置没有勾选“音频”或“图片”输入。可以在设置 → AI 助手里编辑配置后再试。",
+      "noSections": "还没有分析出段落，先等音乐分析完成。",
+      "nothing": "没有能发送的片段（音轨或画面为空）",
+      "done_one": "已标注：{{genre}} · {{mood}}，{{count}} 个段落角色",
+      "done_other": "已标注：{{genre}} · {{mood}}，{{count}} 个段落角色",
+      "always": "本工程的所有素材都不再询问（随时可以在这里取消）"
+    },
+    "aiHistory": {
+      "title": "AI 历史",
+      "hint": "每次写入的 AI 改动都可以单独撤回。只撤回这一次时，之后手动改过的部分会保留。",
+      "empty": "还没有写入过 AI 的改动。",
+      "applied": "已应用",
+      "reverted": "已撤回",
+      "sources": {
+        "chat": "对话",
+        "draft": "一键草稿",
+        "suggestion": "AI 建议"
+      },
+      "cues_one": "{{count}} 个片段",
+      "cues_other": "{{count}} 个片段",
+      "revert": "只撤回这次",
+      "revertHint": "只把这次 AI 改的内容改回去；之后又改过的部分跳过",
+      "restore": "恢复到这次之前",
+      "restoreHint": "把这一次以及之后的 AI 改动全部改回（覆盖之后对这些内容的修改）",
+      "restoreConfirm": "再点一次确认",
+      "reapply": "重新应用",
+      "revertDone": "已撤回这次 AI 改动（可撤销）",
+      "revertPartial": "已撤回，{{skipped}} 处之后改过的内容保留未动",
+      "restoreDone": "已恢复到这次 AI 改动之前（可撤销）",
+      "restorePartial": "已恢复，{{skipped}} 处跳过",
+      "reapplyDone": "已重新应用（可撤销）",
+      "reapplyPartial": "已重新应用，{{skipped}} 处之后改过的内容保留未动"
     }
   },
   "fixtures": {
@@ -5110,7 +5407,13 @@
       "modelEmpty": "没有匹配的模型，输入 id 后可以直接使用",
       "userMemory": "个人偏好记忆",
       "userMemoryHint": "对所有工程生效，每次对话和生成草稿时都会告诉 AI。也可以在对话里说“记住……”，确认后会加到这里",
-      "userMemoryPlaceholder": "例如：不要频闪；偏暖色；回复简短"
+      "userMemoryPlaceholder": "例如：不要频闪；偏暖色；回复简短",
+      "modalities": "模型还能看 / 听",
+      "modality": {
+        "image": "图片（视频关键帧）",
+        "audio": "音频（音乐片段）"
+      },
+      "modalitiesHint": "勾选后，分析音视频时可以在征得你同意后把少量片段发给模型做曲风、情绪与段落标注；不确定就不要勾"
     },
     "errors": {
       "invalid_profile": "配置不合法，请检查接口地址、模型与温度",
@@ -5143,6 +5446,98 @@
       "remove": "删除：{{text}}",
       "duplicate": "记忆里已经有这一条",
       "full": "最多 {{max}} 条，再添加会替换最早的一条"
+    },
+    "mcp": {
+      "title": "MCP 服务器",
+      "hint": "让 AI 助手连接外部工具（Model Context Protocol）：本机命令或远程地址。新的或改过的命令要先确认；AI 每次调用工具前还会在对话里请你允许，结果只当作参考数据。",
+      "add": "添加服务器",
+      "empty": "还没有 MCP 服务器。",
+      "addTitle": "添加 MCP 服务器",
+      "editTitle": "编辑 MCP 服务器",
+      "editorHint": "密钥（环境变量的值、Token）存在系统凭据管理器里，不会写进配置文件。",
+      "name": "名称",
+      "kind": "连接方式",
+      "kinds": {
+        "stdio": "本机命令",
+        "http": "远程地址"
+      },
+      "command": "命令",
+      "args": "参数（一行一个）",
+      "cwd": "工作目录",
+      "cwdDefault": "默认：应用数据目录",
+      "env": "环境变量（一行一个 名=值）",
+      "envHint": "只写名称、值留空表示保持已保存的值。",
+      "url": "地址",
+      "token": "Bearer Token",
+      "tokenEmpty": "不需要时留空",
+      "enabled": "启用",
+      "enable": "启用 {{name}}",
+      "saved": "已保存 MCP 服务器",
+      "needsApproval": "待确认",
+      "connected_one": "已连接 · {{count}} 个工具",
+      "connected_other": "已连接 · {{count}} 个工具",
+      "review": "确认命令",
+      "connect": "连接",
+      "disconnect": "断开",
+      "deleted": "已删除“{{name}}”",
+      "deletedHint": "撤销后要重新确认命令、重新填写密钥",
+      "approveTitle": "确认运行“{{name}}”",
+      "approveStdio": "连接时会在你的电脑上运行下面这条命令。只确认你信任的程序。",
+      "approveHttp": "连接时会访问下面这个地址。只确认你信任的服务。",
+      "approveNote": "以后改了命令、参数、工作目录、环境变量名或地址，都要重新确认。",
+      "approveRun": "我信任它，运行",
+      "approveConnect": "我信任它，连接",
+      "errors": {
+        "invalid": "配置不合规（检查名称、命令或地址；远程地址需要 https）",
+        "unknown_server": "找不到这个服务器",
+        "needs_approval": "还没有确认这个服务器的命令",
+        "disabled": "服务器已停用",
+        "not_connected": "服务器没有连接",
+        "unknown_tool": "服务器上没有这个工具",
+        "timeout": "超时（连接 30 秒，调用 60 秒）",
+        "connect": "连接失败",
+        "call": "调用失败",
+        "secret": "系统凭据管理器不可用",
+        "io": "读写配置失败",
+        "unknown": "操作失败（{{code}}）"
+      }
+    },
+    "reset": {
+      "prefsTitle": "AI 偏好恢复默认",
+      "prefsHint": "关闭自动写入、重新启用全部技能、外部工具恢复为每次都要确认。AI 配置与 Key 不受影响。",
+      "prefsConfirm": "要把 AI 偏好恢复成默认值吗？现在的设置会先备份到回收站，可以撤销。",
+      "prefsLabel": "AI 偏好备份",
+      "prefsDone": "AI 偏好已恢复默认",
+      "restoreDefaults": "恢复默认",
+      "memoryTitle": "清空个人偏好记忆",
+      "memoryHint": "删除全部个人偏好（对所有工程生效的那些）。本工程的笔记与范例不受影响。",
+      "memoryConfirm_one": "要清空 {{count}} 条个人偏好吗？它们会先放进回收站，30 天内可以恢复。",
+      "memoryConfirm_other": "要清空 {{count}} 条个人偏好吗？它们会先放进回收站，30 天内可以恢复。",
+      "memoryLabel_one": "个人偏好（{{count}} 条）",
+      "memoryLabel_other": "个人偏好（{{count}} 条）",
+      "memoryDone_one": "已清空 {{count}} 条个人偏好",
+      "memoryDone_other": "已清空 {{count}} 条个人偏好",
+      "memoryItemDone": "已删除这条偏好",
+      "clearMemory_one": "清空（{{count}} 条）",
+      "clearMemory_other": "清空（{{count}} 条）",
+      "confirm": "确定",
+      "inTrash": "原来的内容在回收站里，30 天内可以恢复",
+      "noTrash": "回收站不可用，只能在这里撤销",
+      "trashTitle": "回收站",
+      "trashHint": "删除的技能、MCP 服务器、记忆以及恢复默认前的备份，保留 30 天。",
+      "trashEmpty": "回收站是空的。",
+      "restore": "恢复",
+      "restored": "已恢复“{{name}}”",
+      "restoreFailed": "恢复失败（{{reason}}）",
+      "purge": "彻底删除 {{name}}",
+      "daysLeft_one": "还剩 {{count}} 天",
+      "daysLeft_other": "还剩 {{count}} 天",
+      "kinds": {
+        "skill": "技能",
+        "mcp": "MCP",
+        "memory": "记忆",
+        "ai-prefs": "偏好备份"
+      }
     }
   }
 }

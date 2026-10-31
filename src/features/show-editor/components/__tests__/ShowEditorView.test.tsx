@@ -109,7 +109,8 @@ describe("ShowEditorView 外壳", () => {
     const button = screen.getByRole("button", { name: "AI 助手" });
     expect(button.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(button);
-    const dock = await screen.findByRole("region", { name: "AI 助手" });
+    // 对话栏是按需加载的：并行跑全部测试时第一次加载可能超过默认的 1 秒
+    const dock = await screen.findByRole("region", { name: "AI 助手" }, { timeout: 5000 });
     expect(button.getAttribute("aria-pressed")).toBe("true");
     // 标题栏的“记忆”切到记忆页，再点回到对话
     const memory = within(dock).getByRole("button", { name: "记忆" });

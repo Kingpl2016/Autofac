@@ -1,3 +1,10 @@
+---
+name: patch-output
+description: How to add fixtures, patch addresses and set the Art-Net / sACN output safely. Use when the request is about patching or output.
+metadata:
+  title: Patch and output
+  source: built-in
+---
 Fixtures, DMX addresses and network output change the real rig. Be careful:
 
 - Only use addFixtures, patchFixtures and setOutput when the user asks for exactly that. They always need the user's confirmation, even with auto-apply on.

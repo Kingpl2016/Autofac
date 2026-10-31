@@ -21,6 +21,7 @@ import { AutoApplyToggle } from "./AutoApplyToggle";
 import { MarkdownText } from "./MarkdownText";
 import { MemorySources } from "./MemorySources";
 import { ModelMenu } from "./ModelMenu";
+import { RewindButton } from "./RewindButton";
 import { ToolCallPart } from "./ToolStep";
 import { TooltipIconButton } from "./TooltipIconButton";
 
@@ -183,6 +184,7 @@ const UserMessage: FC = () => {
               <Pencil aria-hidden />
             </TooltipIconButton>
           </ActionBarPrimitive.Edit>
+          <RewindButton />
         </ActionBarPrimitive.Root>
       </div>
     </MessagePrimitive.Root>

@@ -54,7 +54,8 @@ export type ContextActionId =
   | "deleteKey"
   | "clearKeys"
   | "playheadToKey"
-  | "clearTempo";
+  | "clearTempo"
+  | "askAi";
 
 /** 菜单里的一项。 */
 export type MenuEntry =
@@ -96,6 +97,8 @@ const act = (id: ContextActionId, labelKey: string, extra: Partial<Extract<MenuE
   labelKey: `editor.context.${labelKey}`,
   ...extra,
 });
+/** “问 AI…”与后面的分隔线（片段、时间范围、轨道、空白处、段落的菜单开头）。 */
+const askAi = (): MenuEntry[] => [act("askAi", "askAi"), sep];
 
 /**
  * 右键菜单的内容。
@@ -111,6 +114,7 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
       const cue = project.cues.find((c) => c.id === target.id);
       if (!cue) return [];
       return [
+        ...askAi(),
         cmd("edit.cut"),
         cmd("edit.copy"),
         cmd("edit.paste"),
@@ -150,6 +154,7 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
     }
     case "range":
       return [
+        ...askAi(),
         cmd("edit.cut"),
         cmd("edit.copy"),
         cmd("edit.paste"),
@@ -209,6 +214,7 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
             ]
           : [];
       return [
+        ...askAi(),
         act("addCueHere", many ? "addCueTracks" : "addCueTrack", { labelArgs: { count }, disabled: track.lock && !many }),
         act("pasteHere", "pasteAtPlayhead", { disabled: !ctx.hasClipboard }),
         act("selectTrackCues", "selectTrackCues"),
@@ -247,6 +253,7 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
       // 模板与特效都是外观片段：场景轨道上不能插
       const noInsert = !track || track.lock || track.target.kind === "scene";
       return [
+        ...askAi(),
         act("addCueHere", "addCueHere", { disabled: !track || track.lock }),
         { kind: "insertTemplates", disabled: noInsert },
         { kind: "insertEffects", disabled: noInsert },
@@ -283,6 +290,7 @@ export function buildContextMenu(target: ContextTarget, project: ShowProject, ct
     case "section": {
       if (!project.sections.some((s) => s.id === target.id)) return [];
       return [
+        ...askAi(),
         act("renameObject", "rename"),
         { kind: "sectionColors" },
         act("loopSection", "loopSection"),
