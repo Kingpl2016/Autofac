@@ -30,6 +30,7 @@ const TOOL_KEYS: Record<string, string> = {
   list_fixture_models: "listModels",
   get_output: "getOutput",
   read_skill: "readSkill",
+  get_stage: "getStage",
 };
 
 /** 结果的文字形式（截断）。 */

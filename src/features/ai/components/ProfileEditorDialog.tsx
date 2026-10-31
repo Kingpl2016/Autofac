@@ -254,6 +254,11 @@ export function ProfileEditorDialog({ profile, open, onOpenChange, onSaved }: Pr
               ))}
             </div>
             <p className="text-xs text-muted-foreground">{t("ai.settings.modalitiesHint")}</p>
+            {input.kind === "openaiCompatible" && input.inputModalities.includes("audio") && (
+              <p role="note" className="text-xs text-warning">
+                {t("ai.settings.audioCompatWarn")}
+              </p>
+            )}
           </fieldset>
 
           <DialogFooter>

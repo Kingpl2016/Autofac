@@ -4,7 +4,18 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { aiErrorText, isAiAbort, loadLanguageModel, useActiveAiProfile, type AiProfileView } from "@/features/ai";
+import { toast } from "sonner";
+
+import {
+  aiErrorText,
+  isAiAbort,
+  loadLanguageModel,
+  unsupportedInput,
+  useActiveAiProfile,
+  useDisableModality,
+  type AiModality,
+  type AiProfileView,
+} from "@/features/ai";
 import { announce } from "@/shared/stores/announcerStore";
 import { excerptPlan, uploadBytes, type TagExcerpt } from "../ai/mediaTagsPlan";
 import { keyframesJpeg } from "../hooks/videoAnalysisActions";
@@ -65,6 +76,19 @@ export function MediaTagsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [always, setAlways] = useState(false);
   const [busy, setBusy] = useState<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 模型拒绝了的输入（两种都发不出去时，错误下方给出“在配置里关闭”） */
+  const [rejected, setRejected] = useState<AiModality | null>(null);
+  const disableModality = useDisableModality();
+  const disableInput = async (target: AiProfileView, m: AiModality) => {
+    try {
+      await disableModality(target, m);
+      setRejected(null);
+      setError(null);
+      toast.success(t(`editor.mediaTags.disabled_${m}`, { name: target.name }));
+    } catch (e) {
+      toast.error(aiErrorText(t, e));
+    }
+  };
 
   const caps = tagCapabilities(profile, project);
   const analysis = open ? currentAnalysis(project) : null;
@@ -81,10 +105,11 @@ export function MediaTagsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     const controller = new AbortController();
     setBusy(controller);
     setError(null);
+    setRejected(null);
     const main = caps.media;
     try {
       const [{ tagMedia }, loaded] = await Promise.all([import("../ai/mediaTags"), loadLanguageModel(profile)]);
-      const tags = await tagMedia({
+      const outcome = await tagMedia({
         loaded,
         analysis,
         signal: controller.signal,
@@ -101,9 +126,17 @@ export function MediaTagsDialog({ open, onOpenChange }: { open: boolean; onOpenC
               }
             : undefined,
       });
-      if (!tags) {
+      if (!outcome) {
         setError(t("editor.mediaTags.nothing"));
         return;
+      }
+      const { tags, dropped } = outcome;
+      // 模型不接受某种输入：只用另一种标注完成；提示并可在配置里关掉它
+      for (const m of dropped) {
+        toast.warning(t(`editor.mediaTags.dropped_${m}`, { name: profile.name }), {
+          duration: 10_000,
+          action: { label: t("editor.mediaTags.disableInput"), onClick: () => void disableInput(profile, m) },
+        });
       }
       const chat = useAiChatStore.getState();
       chat.setMediaDoc(main.id, { tags, ...(remember ? { consent: "granted" as const } : {}) });
@@ -111,7 +144,10 @@ export function MediaTagsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       announce(t("editor.mediaTags.done", { genre: tags.genre ?? "?", mood: tags.mood ?? "?", count: Object.keys(tags.roles).length }));
       onOpenChange(false);
     } catch (e) {
-      if (!isAiAbort(e) && !(e instanceof DOMException && e.name === "AbortError")) setError(aiErrorText(t, e));
+      if (!isAiAbort(e) && !(e instanceof DOMException && e.name === "AbortError")) {
+        setError(aiErrorText(t, e));
+        setRejected(unsupportedInput(e));
+      }
     } finally {
       setBusy(null);
     }
@@ -165,9 +201,14 @@ export function MediaTagsDialog({ open, onOpenChange }: { open: boolean; onOpenC
               {t("editor.mediaTags.always")}
             </label>
             {error && (
-              <p role="alert" className="text-destructive">
-                {error}
-              </p>
+              <div role="alert" className="grid justify-items-start gap-2 text-destructive">
+                <p>{error}</p>
+                {rejected && (
+                  <Button variant="outline" size="sm" onClick={() => void disableInput(profile, rejected)}>
+                    {t("editor.mediaTags.disableInput")}
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         )}

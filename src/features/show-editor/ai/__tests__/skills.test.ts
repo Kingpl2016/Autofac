@@ -29,6 +29,8 @@ describe("内置技能", () => {
     expect(chat("跟着鼓点闪", { hasMusic: true })).toEqual(["phrases", "musicArrange"]);
     expect(chat("副歌改成暖色", { hasMusic: true })).toEqual(["phrases", "songStructure", "musicArrange", "colorMood", "editClips"]);
     expect(chat("跟着鼓点闪")).toEqual(["phrases"]);
+    expect(chat("把灯在舞台后面排成弧线")).toEqual(["phrases", "stageLayout"]);
+    expect(chat("做一个新的海浪特效存起来")).toEqual(["phrases", "customContent"]);
     expect(selectSkills({ mode: "draft", text: "", hasSelection: false, hasMovers: false, hasMusic: true })).toEqual(["songStructure", "musicArrange", "colorMood"]);
   });
 

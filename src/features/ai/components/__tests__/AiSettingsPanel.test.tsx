@@ -91,6 +91,17 @@ describe("AiSettingsPanel", () => {
     await waitFor(() => expect(api.aiProfileDelete).toHaveBeenCalledWith("p1"));
   });
 
+  it("列出内置技能（可用 / 点名）；总是允许的外部工具可以逐个撤销", async () => {
+    api.aiProfilesList.mockResolvedValue([]);
+    useAiPrefsStore.setState({ mcpAlwaysAllow: ["mcp__files__read_file", "mcp__web__fetch"] });
+    renderWithProviders(<AiSettingsPanel />);
+    expect(await screen.findByText("内置技能")).toBeTruthy();
+    expect(screen.getByText("/song-structure")).toBeTruthy();
+    expect(screen.getByText("总是允许的外部工具")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "撤销“read_file”的总是允许" }));
+    expect(useAiPrefsStore.getState().mcpAlwaysAllow).toEqual(["mcp__web__fetch"]);
+  });
+
   it("自动写入开关写入偏好", async () => {
     api.aiProfilesList.mockResolvedValue([]);
     renderWithProviders(<AiSettingsPanel />);

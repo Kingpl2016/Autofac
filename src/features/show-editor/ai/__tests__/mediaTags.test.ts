@@ -63,7 +63,7 @@ describe("多模态标注", () => {
       analysis,
       excerpts: async (plan) => plan.map((_, i) => (i === 1 ? "UklGRg==" : "")),
     });
-    expect(tags).toEqual({ genre: "edm", mood: "energetic", vocals: false, roles: { "16000": "drop" } });
+    expect(tags).toEqual({ tags: { genre: "edm", mood: "energetic", vocals: false, roles: { "16000": "drop" } }, dropped: [] });
     const prompt = model.doGenerateCalls[0].prompt;
     const parts = prompt.flatMap((m): { type: string }[] => (Array.isArray(m.content) ? (m.content as { type: string }[]) : []));
     expect(parts.filter((p) => p.type === "file")).toHaveLength(1);
@@ -71,5 +71,25 @@ describe("多模态标注", () => {
     // 什么都没有可发时不调用模型
     expect(await tagMedia({ loaded: { model, profile: {} as never, settings: { temperature: 0 } }, analysis, excerpts: async (p) => p.map(() => "") })).toBeNull();
     expect(model.doGenerateCalls).toHaveLength(1);
+  });
+
+  it("模型拒绝音频（422 unknown variant input_audio）：去掉音频只发画面再试一次；只有音频时报错", async () => {
+    const rejectAudio = Object.assign(new Error("unknown variant `input_audio`, expected one of `text`, `image_url`, `file`"), {
+      name: "AI_APICallError",
+      statusCode: 422,
+    });
+    const answer = { genre: "pop", mood: "calm", vocals: true, sections: [] };
+    const model = new MockLanguageModelV4({
+      doGenerate: async (options) => {
+        const parts = options.prompt.flatMap((m): { type: string; mediaType?: string }[] => (Array.isArray(m.content) ? (m.content as { type: string }[]) : []));
+        if (parts.some((p) => p.type === "file" && p.mediaType?.startsWith("audio/"))) throw rejectAudio;
+        return { content: [{ type: "text", text: JSON.stringify(answer) }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] };
+      },
+    });
+    const loaded = { model, profile: {} as never, settings: { temperature: 0 } };
+    const out = await tagMedia({ loaded, analysis, excerpts: async (p) => p.map(() => "UklGRg=="), frames: async (p) => p.map(() => "/9j/") });
+    expect(out?.dropped).toEqual(["audio"]);
+    expect(out?.tags.genre).toBe("pop");
+    await expect(tagMedia({ loaded, analysis, excerpts: async (p) => p.map(() => "UklGRg==") })).rejects.toThrow(/input_audio/);
   });
 });

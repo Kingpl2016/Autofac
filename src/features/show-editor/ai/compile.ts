@@ -1,6 +1,6 @@
 import { current, produce } from "immer";
 
-import type { FixtureCapability, FixtureModel } from "@/features/fixtures";
+import { nextCustomId, type FixtureCapability, type FixtureModel } from "@/features/fixtures";
 import { clamp } from "@/shared/lib/math";
 import { applyAddPlan, planAddFixtures } from "../lib/addPlan";
 import { unsafeFlash } from "../lib/attrEffects";
@@ -18,7 +18,7 @@ import {
   updateLooks,
 } from "../lib/cueOps";
 import { templateNeeds, trackSupports } from "../lib/cueDefaults";
-import { templateName, type CueTemplate } from "../lib/cueTemplates";
+import { CUSTOM_GROUP, templateName, templateSchema, uniqueTemplateId, type CueTemplate } from "../lib/cueTemplates";
 import type { EffectDef, EffectParams } from "../lib/effectDefSchema";
 import { addEffectDefCue, defaultEffectParams, effectDefNeeds, effectName, setFxParams } from "../lib/effectLibrary";
 import { supportsColor, trackCapabilities } from "../lib/fixtureProfile";
@@ -26,12 +26,22 @@ import { addMarker, createGroup, ensureDuration, ensureRefTracks, setOutput, set
 import type { ColorParam, ColorValue, Cue, Look, Param, Period, Rgb, ShowProject, Spread } from "../lib/project";
 import { projectIntegrityIssues, projectSchema } from "../lib/schema";
 import { addSection, TIER_COLORS, updateSection } from "../lib/sections";
-import { addTemplateCue } from "../lib/templateOps";
+import {
+  addStageObject,
+  moveFixtures,
+  removeStageObject,
+  setFixturePlacement,
+  setFixturePosition,
+  setStageSize,
+  updateStageObject,
+} from "../lib/stageOps";
+import { addTemplateCue, templateFromCue } from "../lib/templateOps";
 import { deleteRange } from "../lib/timelineEdit";
 import { newId } from "../lib/ids";
 import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { repatchSequential } from "../lib/universeOps";
 import { resolveAlias, type AliasMap } from "./aliases";
+import { effectFromOp, layoutPositions, modelFromOp } from "./customOps";
 import { SENSITIVE_OPS, type AiOp } from "./opsSchema";
 import { expandRecipe } from "./recipes";
 import { resolveShift, resolveTime, type TimeContext } from "./timeRef";
@@ -85,14 +95,27 @@ export interface OpIssue {
   message: string;
 }
 
+/** 应用时要写进用户库的新内容（特效库、模板库、灯具库；不在工程里，也不进撤销历史）。 */
+export interface LibraryChanges {
+  effects: EffectDef[];
+  templates: CueTemplate[];
+  models: FixtureModel[];
+}
+
+/** 是否有要写进库的内容。 */
+export const hasLibraryChanges = (l: LibraryChanges | undefined): l is LibraryChanges =>
+  !!l && l.effects.length + l.templates.length + l.models.length > 0;
+
 /** 试运行的结果。 */
 export interface OpsPlan {
+  /** 应用时写进用户库的内容 */
+  library: LibraryChanges;
   /** 应用后的工程（有错误时也给出，仅供诊断）。 */
   next: ShowProject;
   issues: OpIssue[];
   /** 是否有错误（有则不能应用）。 */
   failed: boolean;
-  /** 是否含敏感改动（配接、输出、大批量删除），自动写入时也要确认。 */
+  /** 是否含敏感改动（配接、输出、大批量删除、写入用户库），自动写入时也要确认。 */
   sensitive: boolean;
 }
 
@@ -113,7 +136,62 @@ interface RunState {
   newFixtures: Map<string, string[]>;
   /** `all` / `movers` 对应的轨道（同一批里复用）。 */
   special: Map<string, string>;
+  /** 本批定义的特效（`defineEffect`）：id → 定义。 */
+  localEffects: Map<string, EffectDef>;
+  /** 本批存的模板（`saveTemplate`）：id → 模板。 */
+  localTemplates: Map<string, CueTemplate>;
+  /** 本批定义的灯具模型（`defineFixtureModel`）：`new_*` → 模型。 */
+  localModels: Map<string, FixtureModel>;
+  /** 本批最后放下的片段（`saveTemplate` 的 `last`）。 */
+  lastCue: string | null;
+  /** 批开始时的布景物件（`O1`… 按这个顺序）。 */
+  stageObjects: string[];
+  /** 应用时要写进用户库的内容。 */
+  library: LibraryChanges;
   warn: (message: string) => void;
+}
+
+/** 特效：本批定义的优先，其次特效库。 */
+function findEffect(st: RunState, id: string): EffectDef | undefined {
+  return st.localEffects.get(id) ?? st.env.effects.find((e) => e.id === id);
+}
+
+/** 模板：本批存的优先，其次模板库。 */
+function findTemplate(st: RunState, id: string): CueTemplate | undefined {
+  return st.localTemplates.get(id) ?? st.env.templates.find((t) => t.id === id);
+}
+
+/** 解析一组灯具：`F#`、分组 `G#`（成员）、`all`、`movers`、本批新建的 `new_*`（灯具或分组）。保持顺序、去重。 */
+function fixtureSetOf(d: ShowProject, refs: readonly string[], st: RunState): string[] {
+  const out: string[] = [];
+  for (const raw of refs) {
+    const r = raw.trim();
+    if (r === "all") out.push(...d.fixtures.map((f) => f.id));
+    else if (r === "movers") out.push(...moverIds(d));
+    else if (r.startsWith("new_")) {
+      const fresh = st.newFixtures.get(r);
+      const gid = st.newGroups.get(r);
+      const members = fresh ?? (gid ? d.groups.find((g) => g.id === gid)?.fixtureIds : undefined);
+      out.push(...(members ?? fail(`'${r}' was not created earlier in this batch`)));
+    } else if (r[0]?.toUpperCase() === "G") {
+      const gid = resolveAlias(st.aliases, r, "G");
+      const group = gid ? d.groups.find((g) => g.id === gid) : undefined;
+      out.push(...(group?.fixtureIds ?? fail(`no group '${r}'`)));
+    } else out.push(...fixtureRefs(d, [r], st));
+  }
+  const ids = [...new Set(out)];
+  if (ids.length === 0) fail("there are no matching fixtures");
+  return ids;
+}
+
+/** 布景物件 `O#`。 */
+function stageObjectRefs(d: ShowProject, refs: readonly string[], st: RunState): string[] {
+  return refs.map((r) => {
+    const n = /^O(\d+)$/i.exec(r.trim());
+    const id = n ? st.stageObjects[Number(n[1]) - 1] : undefined;
+    if (!id || !d.stage.objects.some((o) => o.id === id)) fail(`no set piece '${r}' (see get_stage)`);
+    return id as string;
+  });
 }
 
 const fail = (message: string): never => {
@@ -373,7 +451,7 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
   const { env } = st;
   switch (op.op) {
     case "addEffect": {
-      const def = env.effects.find((e) => e.id === op.effect) ?? fail(`unknown effect '${op.effect}' (see the effect list)`);
+      const def = findEffect(st, op.effect) ?? fail(`unknown effect '${op.effect}' (see the effect list, or define one with defineEffect)`);
       const trackId = targetTrack(d, op.target, st);
       requireCapability(d, trackId, effectDefNeeds(def), `the effect '${def.id}'`);
       const { start, end } = prepareRange(d, op, trackId, st);
@@ -387,6 +465,7 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
       const id = addEffectDefCue(d, trackId, start, colored.def, colored.params, op.label ?? effectName(def, env.lang), end - start);
       const cue = finishCue(d, id, end, { ...op, label: null });
       checkFlash(d, cue);
+      st.lastCue = cue.id;
       return;
     }
     case "addLook": {
@@ -402,16 +481,18 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
       const id = addLookCue(d, trackId, start, look, end - start, spread);
       const cue = finishCue(d, id, end, op);
       checkFlash(d, cue);
+      st.lastCue = cue.id;
       return;
     }
     case "applyTemplate": {
-      const template = env.templates.find((t) => t.id === op.template) ?? fail(`unknown template '${op.template}' (see the template list)`);
+      const template = findTemplate(st, op.template) ?? fail(`unknown template '${op.template}' (see the template list)`);
       const trackId = targetTrack(d, op.target, st);
       requireCapability(d, trackId, templateNeeds(template), `the template '${template.id}'`);
       const { start, end } = prepareRange(d, op, trackId, st);
       const id = addTemplateCue(d, trackId, start, template, op.label ?? templateName(template, env.lang));
       const cue = finishCue(d, id, end, { ...op, label: null });
       checkFlash(d, cue);
+      st.lastCue = cue.id;
       return;
     }
     case "applyRecipe": {
@@ -524,8 +605,11 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
       return;
     }
     case "addFixtures": {
-      const n = /^L(\d+)$/i.exec(op.model.trim());
-      const model = (n ? env.libraryModels[Number(n[1]) - 1] : undefined) ?? fail(`no fixture model '${op.model}' (see list_fixture_models)`);
+      const ref = op.model.trim();
+      const n = /^L(\d+)$/i.exec(ref);
+      const model =
+        (ref.startsWith("new_") ? st.localModels.get(ref) : n ? env.libraryModels[Number(n[1]) - 1] : undefined) ??
+        fail(`no fixture model '${op.model}' (see list_fixture_models, or define one earlier in this batch with defineFixtureModel)`);
       if (op.as && (st.newGroups.has(op.as) || st.newFixtures.has(op.as))) fail(`'${op.as}' is already used in this batch`);
       const plan = planAddFixtures(d, model, {
         count: op.count,
@@ -567,7 +651,92 @@ function runOp(d: ShowProject, op: AiOp, st: RunState): void {
       }
       return;
     }
+    case "placeFixtures": {
+      const ids = fixtureSetOf(d, op.fixtures, st);
+      layoutPositions(op, ids.length).forEach((p, i) => setFixturePosition(d, ids[i], p));
+      placementPatch(d, ids, op);
+      return;
+    }
+    case "setPlacement": {
+      const ids = fixtureSetOf(d, op.fixtures, st);
+      if ((op.x !== null || op.y !== null) && ids.length > 1) fail("x/y place one fixture; use placeFixtures (or moveX/moveY) for several");
+      if (op.x !== null || op.y !== null) setFixturePosition(d, ids[0], { ...(op.x !== null ? { x: op.x } : {}), ...(op.y !== null ? { y: op.y } : {}) });
+      if (op.moveX !== null || op.moveY !== null) moveFixtures(d, ids, op.moveX ?? 0, op.moveY ?? 0);
+      placementPatch(d, ids, op);
+      return;
+    }
+    case "setStage": {
+      if (op.width === null && op.depth === null) fail("give width and/or depth");
+      setStageSize(d, op.width ?? d.stage.width, op.depth ?? d.stage.depth);
+      return;
+    }
+    case "addStageObject": {
+      const id = addStageObject(d, op.kind, { x: op.x, y: op.y }, op.label ?? "");
+      updateStageObject(d, id, {
+        x: op.x,
+        y: op.y,
+        ...(op.width !== null ? { w: op.width } : {}),
+        ...(op.depth !== null ? { h: op.depth } : {}),
+        ...(op.rotation !== null ? { rotation: op.rotation } : {}),
+      });
+      return;
+    }
+    case "removeStageObjects": {
+      for (const id of stageObjectRefs(d, op.objects, st)) removeStageObject(d, id);
+      return;
+    }
+    case "defineEffect": {
+      if (st.localEffects.has(op.id)) fail(`the effect '${op.id}' is already defined in this batch`);
+      const existing = env.effects.find((e) => e.id === op.id);
+      if (existing?.builtin) fail(`'${op.id}' is a built-in effect; choose another id`);
+      if (existing && !op.save) fail(`the effect library already has '${op.id}'; use it in addEffect, choose another id, or set save to true to replace it`);
+      const def = effectFromOp(op, op.colors ? colorsOf(op.colors).map(colorRgb) : []);
+      if (typeof def === "string") fail(def);
+      st.localEffects.set(op.id, def as EffectDef);
+      if (op.save) {
+        if (existing) st.warn(`this replaces the saved effect '${op.id}' in the library`);
+        st.library.effects.push(def as EffectDef);
+      }
+      return;
+    }
+    case "saveTemplate": {
+      const ref = op.clip.trim();
+      const cueId = ref.toLowerCase() === "last" ? (st.lastCue ?? fail("no clip was placed earlier in this batch")) : cueRefs(d, [ref], st)[0];
+      // 草稿里的对象要先取出普通对象（模板里的内容会被深拷贝）
+      const plain = current(d);
+      const cue = plain.cues.find((c) => c.id === cueId) ?? fail(`clip '${ref}' not found`);
+      const body = templateFromCue(cue, plain.presets) ?? fail("this clip cannot be saved as a template (scene clips cannot)");
+      const taken = [...env.templates, ...st.localTemplates.values()];
+      const existing = op.id ? env.templates.find((t) => t.id === op.id) : undefined;
+      if (existing?.builtin) fail(`'${op.id}' is a built-in template; choose another id`);
+      if (op.id && st.localTemplates.has(op.id)) fail(`the template '${op.id}' is already saved in this batch`);
+      if (existing) st.warn(`this replaces the saved template '${op.id}'`);
+      const template = templateSchema.safeParse({ ...body, id: op.id ?? uniqueTemplateId(taken, "ai"), name: op.name.trim(), group: CUSTOM_GROUP });
+      if (!template.success) fail(`the template is not valid: ${template.error.issues[0]?.path.join(".")} ${template.error.issues[0]?.message}`);
+      const saved = template.data as CueTemplate;
+      st.localTemplates.set(saved.id, saved);
+      st.library.templates.push(saved);
+      return;
+    }
+    case "defineFixtureModel": {
+      if (st.localModels.has(op.as) || st.newGroups.has(op.as) || st.newFixtures.has(op.as)) fail(`'${op.as}' is already used in this batch`);
+      const model = modelFromOp(op, nextCustomId([...env.libraryModels, ...st.localModels.values()]));
+      if (typeof model === "string") fail(model);
+      st.localModels.set(op.as, model as FixtureModel);
+      st.library.models.push(model as FixtureModel);
+      return;
+    }
   }
+}
+
+/** 摆位操作里的高度 / 朝向 / 吊挂。 */
+function placementPatch(d: ShowProject, ids: readonly string[], op: { z: number | null; rotation: number | null; hanging: boolean | null }): void {
+  const patch = {
+    ...(op.z !== null ? { z: Math.round(op.z * 100) / 100 } : {}),
+    ...(op.rotation !== null ? { rotation: Math.round(op.rotation) } : {}),
+    ...(op.hanging !== null ? { hanging: op.hanging } : {}),
+  };
+  if (Object.keys(patch).length > 0) setFixturePlacement(d, ids, patch);
 }
 
 /** 一次 `placeAccents` 最多放多少个片段。 */
@@ -662,7 +831,7 @@ function placeAccents(d: ShowProject, op: Extract<AiOp, { op: "placeAccents" }>,
     return;
   }
   const effectId = op.effect ?? ACCENT_EFFECTS[op.events];
-  const def = st.env.effects.find((e) => e.id === effectId) ?? fail(`unknown effect '${effectId}' (see the effect list)`);
+  const def = findEffect(st, effectId) ?? fail(`unknown effect '${effectId}' (see the effect list)`);
   requireCapability(d, trackId, effectDefNeeds(def), `the effect '${def.id}'`);
   for (const s of kept) {
     if (s.end - s.start < MIN_CUE_MS) continue;
@@ -745,6 +914,7 @@ export function applyOps(
   env: CompileEnv,
   aliases: AliasMap,
   after?: (index: number, draft: ShowProject) => void,
+  library: LibraryChanges = { effects: [], templates: [], models: [] },
 ): OpIssue[] {
   const issues: OpIssue[] = [];
   let index = 0;
@@ -755,6 +925,12 @@ export function applyOps(
     newGroups: new Map(),
     newFixtures: new Map(),
     special: new Map(),
+    localEffects: new Map(),
+    localTemplates: new Map(),
+    localModels: new Map(),
+    lastCue: null,
+    stageObjects: d.stage.objects.map((o) => o.id),
+    library,
     warn: (message) => issues.push({ index, level: "warning", message }),
   };
   for (const op of ops) {
@@ -782,14 +958,20 @@ export interface OpEffect {
   deps: number[];
 }
 
-/** 操作里引用的 `new_*` 名字。 */
+/** 操作里引用的本批对象：`new_*` 名字，以及用到的特效 / 模板 id（`fx:` / `tpl:` 前缀，对应本批定义的）。 */
 function newRefs(op: AiOp): string[] {
-  return [...JSON.stringify(op).matchAll(/"(new_[a-z0-9_]{1,24})"/g)].map((m) => m[1]);
+  const names = [...JSON.stringify(op).matchAll(/"(new_[a-z0-9_]{1,24})"/g)].map((m) => m[1]).filter((n) => !newDefs(op).includes(n));
+  if ((op.op === "addEffect" || op.op === "placeAccents") && op.effect) names.push(`fx:${op.effect}`);
+  if (op.op === "applyTemplate") names.push(`tpl:${op.template}`);
+  return names;
 }
 
-/** 操作新建的 `new_*` 名字（`createGroup` / `addFixtures` 的 `as`）。 */
-function newDefs(op: AiOp): string | null {
-  return (op.op === "createGroup" || op.op === "addFixtures") && op.as ? op.as : null;
+/** 操作新建的本批对象（`createGroup` / `addFixtures` / `defineFixtureModel` 的 `as`，`defineEffect` / `saveTemplate` 的 id）。 */
+function newDefs(op: AiOp): string[] {
+  if ((op.op === "createGroup" || op.op === "addFixtures" || op.op === "defineFixtureModel") && op.as) return [op.as];
+  if (op.op === "defineEffect") return [`fx:${op.id}`];
+  if (op.op === "saveTemplate" && op.id) return [`tpl:${op.id}`];
+  return [];
 }
 
 /**
@@ -804,6 +986,7 @@ function effectTracker(project: ShowProject, ops: readonly AiOp[]): { after: (i:
   // 每个片段最后是被哪条操作新增 / 修改的
   const touchedBy = new Map<string, number>();
   const definedBy = new Map<string, number>();
+  let lastAdder: number | null = null;
   let prev = new Map(project.cues.map((c) => [c.id, JSON.stringify(c)]));
   return {
     effects,
@@ -827,9 +1010,12 @@ function effectTracker(project: ShowProject, ops: readonly AiOp[]): { after: (i:
         const by = definedBy.get(name);
         if (by !== undefined && by !== i) deps.add(by);
       }
+      // 把“上一个片段”存成模板：依赖放下它的那条操作
+      const op = ops[i];
+      if (op.op === "saveTemplate" && op.clip.trim().toLowerCase() === "last" && lastAdder !== null) deps.add(lastAdder);
+      if (added.length > 0) lastAdder = i;
       for (const id of [...added, ...changed]) touchedBy.set(id, i);
-      const def = newDefs(ops[i]);
-      if (def) definedBy.set(def, i);
+      for (const def of newDefs(op)) definedBy.set(def, i);
       effects.push({ added, changed, removed, deps: [...deps].sort((a, b) => a - b) });
       prev = now;
     },
@@ -855,8 +1041,9 @@ export function planOps(
 ): OpsPlan & { effects?: OpEffect[] } {
   let issues: OpIssue[] = [];
   const tracker = options.effects ? effectTracker(project, ops) : null;
+  const library: LibraryChanges = { effects: [], templates: [], models: [] };
   const next = produce(project, (d) => {
-    issues = applyOps(d, ops, env, aliases, tracker?.after);
+    issues = applyOps(d, ops, env, aliases, tracker?.after, library);
   });
   if (!issues.some((i) => i.level === "error")) {
     const shape = projectSchema.safeParse(next);
@@ -868,8 +1055,16 @@ export function planOps(
   }
   const before = new Set(project.cues.map((c) => c.id));
   const kept = next.cues.filter((c) => before.has(c.id)).length;
-  const sensitive = ops.some((o) => SENSITIVE_OPS.has(o.op)) || before.size - kept > MAX_SILENT_DELETES;
-  return { next, issues, failed: issues.some((i) => i.level === "error"), sensitive, ...(tracker ? { effects: tracker.effects } : {}) };
+  // 写进用户库的改动不在工程的撤销历史里，自动写入时也要确认
+  const sensitive = ops.some((o) => SENSITIVE_OPS.has(o.op)) || before.size - kept > MAX_SILENT_DELETES || hasLibraryChanges(library);
+  return {
+    next,
+    issues,
+    failed: issues.some((i) => i.level === "error"),
+    sensitive,
+    library,
+    ...(tracker ? { effects: tracker.effects } : {}),
+  };
 }
 
 /**

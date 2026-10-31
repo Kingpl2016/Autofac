@@ -1,6 +1,7 @@
 export { useFixtureStore } from "./stores/useFixtureStore";
 export { ATTRIBUTE_GROUPS, CHANNEL_FUNCTIONS } from "./lib/types";
-export { channelCount, footprint } from "./lib/validate";
+export { channelCount, footprint, validateModel } from "./lib/validate";
+export { defaultValueFor, nextCustomId } from "./lib/draft";
 export { groupOf, isEmitter, layoutOf } from "./lib/functions";
 export { FIXTURE_TYPES, modelProfile, modelType } from "./lib/profile";
 export type { FixtureCapability, FixtureProfile, FixtureType } from "./lib/profile";

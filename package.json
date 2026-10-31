@@ -10,13 +10,14 @@
     "build:wasm": "node scripts/build-wasm.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
-    "lint": "eslint .",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/ --concurrency auto",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "knip": "knip",
     "gen:types": "node scripts/gen-bindings.mjs",
     "check:types": "node scripts/gen-bindings.mjs --check",
-    "verify": "tsc -b && eslint . && vitest run --passWithNoTests && knip",
+    "verify": "node scripts/verify.mjs",
+    "verify:changed": "node scripts/verify.mjs --changed",
     "ai:eval": "vitest run --config vitest.eval.config.ts"
   },
   "dependencies": {

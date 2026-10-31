@@ -2,7 +2,8 @@ import { create } from "zustand";
 
 import type { AliasMap } from "../ai/aliases";
 import { listChanges, type ChangeEntry } from "../ai/changes";
-import { planOps, type CompileEnv, type OpEffect, type OpIssue } from "../ai/compile";
+import { hasLibraryChanges, planOps, type CompileEnv, type LibraryChanges, type OpEffect, type OpIssue } from "../ai/compile";
+import { saveLibraryChanges, type LibrarySaveResult } from "../ai/librarySave";
 import type { AiOp } from "../ai/opsSchema";
 import type { ShowProject } from "../lib/project";
 import { useEditorUiStore } from "./useEditorUiStore";
@@ -44,6 +45,8 @@ export interface StagedChange {
   rejected: { index: number; reason: "user" | "dependency" | "failed"; message?: string }[];
   /** 生效的每条操作的影响（与 `allOps` 一一对应；被拒绝的为 `null`） */
   effects: (OpEffect | null)[];
+  /** 应用时写进用户库的特效、模板与灯具模型 */
+  library: LibraryChanges;
 }
 
 /** 拒绝的结果。 */
@@ -53,7 +56,16 @@ export type RejectResult = { ok: true; rejected: number[] } | { ok: false; reaso
 export type StagedOutcome = "applied" | "discarded" | "replaced";
 
 /** 应用的结果。 */
-export type ApplyResult = { ok: true; cueIds: string[] } | { ok: false; reason: "none" | "stale" };
+export type ApplyResult =
+  | {
+      ok: true;
+      cueIds: string[];
+      /** 写进用户库的内容（有时） */
+      library?: LibraryChanges;
+      /** 写库的结果（有要写的内容时） */
+      saved?: Promise<LibrarySaveResult>;
+    }
+  | { ok: false; reason: "none" | "stale" };
 
 interface AiStagingState {
   staged: StagedChange | null;
@@ -116,10 +128,11 @@ export function makeStaged(input: {
     next: plan.next,
     issues: plan.issues,
     sensitive: plan.sensitive,
-    changes: listChanges(input.base, plan.next, input.env.lang),
+    changes: listChanges(input.base, plan.next, input.env.lang, plan.library),
     allOps: input.ops,
     rejected: [],
     effects: plan.effects ?? [],
+    library: plan.library,
   };
 }
 
@@ -177,9 +190,10 @@ export function restage(staged: StagedChange, rejected: StagedChange["rejected"]
         next: plan.next,
         issues: plan.issues.map((i) => (i.index >= 0 ? { ...i, index: keep[i.index] } : i)),
         sensitive: plan.sensitive,
-        changes: listChanges(staged.base, plan.next, staged.env.lang),
+        changes: listChanges(staged.base, plan.next, staged.env.lang, plan.library),
         rejected: list.sort((a, b) => a.index - b.index),
         effects: byIndex,
+        library: plan.library,
       };
     }
     const failing = plan.issues.filter((i) => i.level === "error" && i.index >= 0);
@@ -249,11 +263,13 @@ export function applyStaged(): ApplyResult {
   const store = useProjectStore.getState();
   let base = staged.base;
   let next = staged.next;
+  let library = staged.library;
   if (store.project !== staged.base) {
     const plan = planOps(store.project, staged.ops, staged.env, staged.aliases);
     if (plan.failed) return { ok: false, reason: "stale" };
     base = store.project;
     next = plan.next;
+    library = plan.library;
   }
   store.update((d) => {
     // 只替换变了的顶层字段：没变的保持同一引用，撤销历史的描述与预览缓存都按引用判断
@@ -267,5 +283,7 @@ export function applyStaged(): ApplyResult {
   const cueIds = next.cues.filter((c) => !before.has(c.id)).map((c) => c.id);
   if (cueIds.length > 0) useEditorUiStore.getState().selectCues(cueIds);
   useAiStagingStore.setState((s) => ({ staged: null, outcomes: withOutcome(s.outcomes, s.staged, "applied") }));
+  // 要保留的特效 / 模板 / 灯具模型写进用户库（不在撤销历史里；在各自的库里可以删除）
+  if (hasLibraryChanges(library)) return { ok: true, cueIds, library, saved: saveLibraryChanges(library) };
   return { ok: true, cueIds };
 }

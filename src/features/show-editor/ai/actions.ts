@@ -24,9 +24,18 @@ export function commitStaged(t: TFunction): boolean {
   const r = applyStaged();
   if (r.ok) {
     if (staged) recordExemplar(staged);
-    const text = t("editor.ai.applied", { count: r.cueIds.length });
+    const text = r.cueIds.length > 0 ? t("editor.ai.applied", { count: r.cueIds.length }) : t("editor.ai.appliedNoCues");
     announce(text);
     toast.success(text, { action: { label: t("editor.ai.undo"), onClick: () => useProjectStore.temporal.getState().undo() } });
+    // 写进用户库的结果另外提示（库里的内容不随撤销恢复）
+    void r.saved?.then((s) => {
+      if (s.failed.length > 0) toast.error(t("editor.ai.library.failed", { kinds: s.failed.map((k) => t(`editor.ai.library.kinds.${k}`)).join("、") }));
+      else if (s.saved > 0) {
+        const done = t("editor.ai.library.saved", { count: s.saved });
+        announce(done);
+        toast.success(done, { description: t("editor.ai.library.savedHint") });
+      }
+    });
     return true;
   }
   if (r.reason === "stale") toast.error(t("editor.ai.stale"));

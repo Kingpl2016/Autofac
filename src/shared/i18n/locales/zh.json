@@ -3922,7 +3922,7 @@
       "needsReview": "这份 AI 改动涉及配接、输出或大批量删除，需要你确认后才写入",
       "noChanges": "没有改动",
       "sensitive": "需要确认",
-      "sensitiveHint": "会修改灯具配接、输出设置，或删除较多片段。请核对清单后再应用",
+      "sensitiveHint": "会修改灯具配接、输出设置、删除较多片段，或往特效库 / 模板库 / 灯具库里写入内容。请核对清单后再应用",
       "changeList": "改动清单",
       "showAll": "还有 {{count}} 项，全部显示",
       "warnings": "{{count}} 条提示",
@@ -3951,7 +3951,15 @@
         "createGroup": "新建分组",
         "addFixtures": "添加灯具",
         "patchFixtures": "修改配接",
-        "setOutput": "修改输出"
+        "setOutput": "修改输出",
+        "placeFixtures": "排列灯具",
+        "setPlacement": "调整摆位",
+        "setStage": "舞台尺寸",
+        "addStageObject": "新增布景",
+        "removeStageObjects": "删除布景",
+        "defineEffect": "新建特效",
+        "saveTemplate": "存为模板",
+        "defineFixtureModel": "新建灯具模型"
       },
       "kinds": {
         "cues": "片段",
@@ -3961,7 +3969,13 @@
         "markers": "标记",
         "tempo": "节拍",
         "output": "输出",
-        "duration": "时长"
+        "duration": "时长",
+        "placements": "摆位",
+        "stageObjects": "布景",
+        "stage": "舞台",
+        "libEffects": "特效库",
+        "libTemplates": "模板库",
+        "libModels": "灯具库"
       },
       "changes": {
         "cues": {
@@ -3997,6 +4011,26 @@
         },
         "duration": {
           "changed": "延长节目时长"
+        },
+        "placements": {
+          "changed": "移动 {{count}} 台灯具"
+        },
+        "stageObjects": {
+          "added": "新增 {{count}} 个布景",
+          "removed": "删除 {{count}} 个布景",
+          "changed": "修改 {{count}} 个布景"
+        },
+        "stage": {
+          "changed": "修改舞台尺寸"
+        },
+        "libEffects": {
+          "added": "保存 {{count}} 个特效到特效库"
+        },
+        "libTemplates": {
+          "added": "保存 {{count}} 个模板到模板库"
+        },
+        "libModels": {
+          "added": "添加 {{count}} 个灯具模型到灯具库"
         }
       },
       "openSettings": "去添加 AI 配置",
@@ -4007,7 +4041,7 @@
         "explain": "这个节目现在有哪些段落和灯具？"
       },
       "inputLabel": "给 AI 的消息",
-      "inputPlaceholder": "描述你想要的灯光（Enter 发送，Shift+Enter 换行）",
+      "inputPlaceholder": "描述你想要的灯光，输入 / 选技能（Enter 发送，Shift+Enter 换行）",
       "send": "发送",
       "stop": "停止",
       "tools": {
@@ -4024,7 +4058,8 @@
         "listRecipes": "查看编排配方",
         "analyzeMedia": "查看音乐分析",
         "listMediaEvents": "查看音乐事件",
-        "readSkill": "读取技能"
+        "readSkill": "读取技能",
+        "getStage": "查看舞台布置"
       },
       "dockTitle": "AI 助手",
       "newChat": "新对话",
@@ -4152,6 +4187,32 @@
         "doneReverted_other": "已回退，并撤回了 {{count}} 次 AI 改动（可撤销）",
         "doneRevertedPartial_one": "已回退并撤回 {{count}} 次 AI 改动，{{skipped}} 处之后改过的内容保留未动",
         "doneRevertedPartial_other": "已回退并撤回 {{count}} 次 AI 改动，{{skipped}} 处之后改过的内容保留未动"
+      },
+      "skills": {
+        "button": "技能",
+        "popover": "技能",
+        "popoverHint": "点名一个技能，这一轮一定按它来（↑↓ 选择，Enter 插入，Esc 关闭）",
+        "noMatch": "没有匹配的技能",
+        "builtin": "内置技能",
+        "mine": "我的技能",
+        "mineEmpty": "还没有自己的技能。可以在设置里导入，或把技能包拖进对话栏。",
+        "manage": "管理技能…",
+        "source": {
+          "builtin": "内置",
+          "user": "我的"
+        }
+      },
+      "appliedNoCues": "已应用 AI 改动",
+      "library": {
+        "saved_one": "已保存 {{count}} 项到库里",
+        "saved_other": "已保存 {{count}} 项到库里",
+        "savedHint": "保存在特效库 / 模板库 / 灯具库里，撤销改动不会删除它们，可以在各自的库里删除",
+        "failed": "保存到{{kinds}}失败",
+        "kinds": {
+          "effects": "特效库",
+          "templates": "模板库",
+          "models": "灯具库"
+        }
       }
     },
     "guides": {
@@ -4292,7 +4353,12 @@
       "nothing": "没有能发送的片段（音轨或画面为空）",
       "done_one": "已标注：{{genre}} · {{mood}}，{{count}} 个段落角色",
       "done_other": "已标注：{{genre}} · {{mood}}，{{count}} 个段落角色",
-      "always": "本工程的所有素材都不再询问（随时可以在这里取消）"
+      "always": "本工程的所有素材都不再询问（随时可以在这里取消）",
+      "dropped_audio": "“{{name}}”不接受音频，这次只用视频画面完成了标注",
+      "dropped_image": "“{{name}}”不接受图片，这次只用音频完成了标注",
+      "disableInput": "在配置里关闭",
+      "disabled_audio": "已在“{{name}}”里取消勾选音频",
+      "disabled_image": "已在“{{name}}”里取消勾选图片"
     },
     "aiHistory": {
       "title": "AI 历史",
@@ -5413,7 +5479,8 @@
         "image": "图片（视频关键帧）",
         "audio": "音频（音乐片段）"
       },
-      "modalitiesHint": "勾选后，分析音视频时可以在征得你同意后把少量片段发给模型做曲风、情绪与段落标注；不确定就不要勾"
+      "modalitiesHint": "勾选后，分析音视频时可以在征得你同意后把少量片段发给模型做曲风、情绪与段落标注；不确定就不要勾",
+      "audioCompatWarn": "大多数 OpenAI 兼容服务（DeepSeek、Kimi、智谱等）不接受音频，只有少数模型（如 gpt-4o-audio、qwen-omni）可以。不确定就不要勾选，否则标注会失败"
     },
     "errors": {
       "invalid_profile": "配置不合法，请检查接口地址、模型与温度",
@@ -5436,7 +5503,9 @@
       "http": "模型服务返回错误 {{status}}：{{message}}",
       "unauthorized": "模型服务拒绝了 API Key，请检查 Key 是否正确",
       "http_status": "模型服务返回错误，请检查接口地址",
-      "bad_response": "模型服务的响应无法解析，请检查接口地址和协议"
+      "bad_response": "模型服务的响应无法解析，请检查接口地址和协议",
+      "unsupported_audio": "这个模型不接受音频输入（服务返回 {{status}}）。请在“设置 → AI 助手”编辑这个配置，取消勾选“音频”；需要听音乐时换一个支持音频的模型（例如 Gemini）",
+      "unsupported_image": "这个模型不接受图片输入（服务返回 {{status}}）。请在“设置 → AI 助手”编辑这个配置，取消勾选“图片”"
     },
     "memory": {
       "add": "添加",
@@ -5500,7 +5569,12 @@
         "secret": "系统凭据管理器不可用",
         "io": "读写配置失败",
         "unknown": "操作失败（{{code}}）"
-      }
+      },
+      "allowedTitle": "总是允许的外部工具",
+      "allowedHint": "这些工具调用时不再逐次确认。撤销后，下次调用会重新询问。",
+      "allowedRemove": "撤销“{{name}}”的总是允许",
+      "allowedClear": "全部撤销",
+      "allowedCleared": "外部工具恢复为每次都要确认"
     },
     "reset": {
       "prefsTitle": "AI 偏好恢复默认",
@@ -5537,6 +5611,83 @@
         "mcp": "MCP",
         "memory": "记忆",
         "ai-prefs": "偏好备份"
+      }
+    },
+    "skills": {
+      "title": "技能",
+      "hint": "技能是写给 AI 的编排指南（Agent Skills 格式的 SKILL.md）。你说的话里出现触发词时自动使用，也可以在对话框输入 / 点名使用。技能里的脚本不会执行。",
+      "importFile": "导入 zip / SKILL.md",
+      "importFolder": "导入文件夹",
+      "openFolder": "打开技能目录",
+      "fileFilter": "技能包",
+      "empty": "还没有自己的技能。可以导入 zip、文件夹或 SKILL.md，也可以把技能包直接拖进编辑器的 AI 对话栏。",
+      "scripts": "含脚本",
+      "scriptsHint": "这个技能带有 scripts/ 目录。AI 助手只读取说明，不会执行任何脚本。",
+      "noTriggers": "没有触发词：AI 需要时自己读取，或用 / 点名",
+      "enable": "启用 {{name}}",
+      "reveal": "在文件管理器中显示",
+      "export": "导出为 zip",
+      "exported": "已导出技能",
+      "deleteHint": "删除（放进回收站，30 天内可以恢复）",
+      "deleted": "已删除“{{name}}”",
+      "undo": "撤销",
+      "imported": "已安装技能“{{name}}”",
+      "exists": "已经有同名的技能",
+      "replace": "替换",
+      "replaced": "已替换技能“{{name}}”，旧版本在回收站里",
+      "dropHint": "松开即可安装技能包（zip、文件夹或 SKILL.md）",
+      "invokeHint": "在对话框输入这个名字点名使用",
+      "builtinTitle": "内置技能",
+      "builtinBadge": "自动",
+      "builtinHint": "根据你说的话自动选用，不用设置。想强制使用某一个时，在对话框输入 / 再选它。",
+      "builtin": {
+        "phrases": {
+          "title": "日常说法",
+          "desc": "把“快一点”“柔和些”“再亮点”这类说法换成固定的改动幅度，每次对话都会用。"
+        },
+        "song-structure": {
+          "title": "歌曲段落",
+          "desc": "按前奏、主歌、副歌、桥段、尾声分段编排，每段给出能量与配方。"
+        },
+        "music-arrange": {
+          "title": "跟着音乐",
+          "desc": "按音乐分析的每小节能量、重拍、渐强、爆点与视频切镜编排灯光。"
+        },
+        "color-mood": {
+          "title": "颜色与情绪",
+          "desc": "按你描述的情绪或风格挑选颜色与色板。"
+        },
+        "movers": {
+          "title": "摇头灯",
+          "desc": "摇头灯的水平 / 俯仰动作、幅度与错位。"
+        },
+        "edit-clips": {
+          "title": "修改片段",
+          "desc": "修改选中或提到的片段，而不是重新生成。"
+        },
+        "patch-output": {
+          "title": "配接与输出",
+          "desc": "安全地添加灯具、配接地址，设置 Art-Net / sACN 输出。"
+        },
+        "stage-layout": {
+          "title": "舞台布置",
+          "desc": "在舞台预览里摆放灯具：位置、高度、朝向、吊挂，以及桁架、平台等布景。"
+        },
+        "custom-content": {
+          "title": "自定义内容",
+          "desc": "没有合适的内置内容时，新建特效、把外观存成模板、定义新的灯具模型。"
+        }
+      },
+      "errors": {
+        "invalid": "不是有效的技能包：需要带 name 与 description 的 SKILL.md",
+        "too_large": "技能包太大",
+        "symlink": "技能包里不能有符号链接",
+        "unsafe_path": "技能包里有不安全的路径",
+        "exists": "已经有同名的技能",
+        "not_found": "找不到这个技能",
+        "io": "读写技能文件失败",
+        "zip": "无法解压这个 zip 文件",
+        "unknown": "操作失败（{{code}}）"
       }
     }
   }

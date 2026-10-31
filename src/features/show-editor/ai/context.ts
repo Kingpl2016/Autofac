@@ -10,6 +10,7 @@ import type { TimelineAnalysis } from "../lib/mediaAnalysis";
 import { aliasOf, resolveAlias, type AliasMap } from "./aliases";
 import { musicLines } from "./music";
 import { describeTime, resolveTime } from "./timeRef";
+import { placeFixtures } from "../stage/stageGeometry";
 
 /**
  * 发给模型的上下文：工程摘要与按需查询的明细（纯文本，紧凑、确定）。
@@ -295,4 +296,36 @@ export function outputText(project: ShowProject): string {
   const used = [...new Set(project.fixtures.map((f) => f.universe))].sort((a, b) => a - b);
   const routes = project.output.universes.map((u) => `U${u.universe}: ${u.ports.filter((p) => p.enabled).map((p) => `${p.protocol} ${p.ip}`).join(", ") || "no port"}`);
   return [`Output target: ${target}.`, `Universes used by fixtures (0-based): ${used.join(", ") || "none"}.`, ...(routes.length > 0 ? ["Routing table:", ...routes] : [])].join("\n");
+}
+
+/** `get_stage` 最多列出多少台灯。 */
+const MAX_STAGE_FIXTURES = 256;
+
+/**
+ * 舞台预览的布置：舞台尺寸、每台灯的位置 / 高度 / 朝向 / 吊挂（没手动摆过的标 `auto`）与布景物件（别名 `O1`…）。
+ *
+ * @param project 工程。
+ * @param aliases 别名表。
+ * @returns 多行文字。
+ */
+export function stageText(project: ShowProject, aliases: AliasMap): string {
+  const { stage } = project;
+  const placed = placeFixtures(project.fixtures, stage);
+  const r = (v: number) => Math.round(v * 100) / 100;
+  const lines = [
+    `Stage ${stage.width} m wide × ${stage.depth} m deep. x = meters from the center (+ = right as the audience sees it, from ${-stage.width / 2} to ${stage.width / 2}); y = meters from the front edge (0) to the back (${stage.depth}).`,
+    "Fixtures (x, y, height z, facing in degrees; 'auto' = not placed by hand yet):",
+  ];
+  for (const f of project.fixtures.slice(0, MAX_STAGE_FIXTURES)) {
+    const p = f.stage ?? placed.get(f.id);
+    if (!p) continue;
+    const extra = [p.z ? `z=${r(p.z)}` : "", p.rotation ? `facing ${p.rotation}°` : "", p.hanging ? "hanging" : "", f.stage ? "" : "auto"].filter(Boolean).join(" ");
+    lines.push(`${aliasOf(aliases, f.id)} "${f.name}" x=${r(p.x)} y=${r(p.y)}${extra ? ` ${extra}` : ""}`);
+  }
+  if (project.fixtures.length > MAX_STAGE_FIXTURES) lines.push(`… and ${project.fixtures.length - MAX_STAGE_FIXTURES} more`);
+  lines.push(stage.objects.length > 0 ? "Set pieces:" : "No set pieces.");
+  stage.objects.forEach((o, i) => {
+    lines.push(`O${i + 1} ${o.kind}${o.label ? ` "${o.label}"` : ""} x=${r(o.x)} y=${r(o.y)} ${r(o.w)}×${r(o.h)} m${o.rotation ? ` rotated ${o.rotation}°` : ""}`);
+  });
+  return lines.join("\n");
 }

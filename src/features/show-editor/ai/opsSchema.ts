@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { CHANNEL_FUNCTIONS } from "@/features/fixtures";
 import { CUE_TAGS } from "../lib/project";
 import { RECIPE_IDS } from "./recipes";
 import { SHIFT_HELP, TIME_REF_HELP } from "./timeRef";
@@ -14,11 +15,16 @@ import { COLOR_NAMES, FADES, PALETTE_NAMES, PERIODS, SIZES, SPEEDS, SPREADS } fr
  * - 引用一律用短别名（`F1` / `G1` / `T1` / `C1` / `S1` / `M1`），时间用小节 / 段落 / 秒（见 `timeRef.ts`）；
  * - 可省略的字段写成 `nullable` 并带默认 `null`：发给模型的 JSON Schema 里每个字段都必填（OpenAI 严格模式要求），
  *   解析时模型漏写的字段按 `null` 处理，多写的字段忽略；
- * - 少量自由参数（`addLook` 的关键帧 / 曲线）同样经过校验与量化。
+ * - 少量自由参数（`addLook` 的关键帧 / 曲线）同样经过校验与量化；
+ * - 不局限于内置内容：`defineEffect` / `saveTemplate` / `defineFixtureModel` 定义新的特效、模板与灯具模型
+ *   （用档位描述，编译成与手动编辑相同的结构），舞台布置用 `placeFixtures` 等操作（坐标单位米）。
  *
  * 结构只管“形状”；别名是否存在、灯具能否表现、时间能否放下等语义检查在 `compile.ts` 里做，
  * 出错时把说明回传给模型重试。
  */
+
+/** 灯具通道功能（`defineFixtureModel`）。 */
+const CHANNEL_FUNCTION_NAMES = CHANNEL_FUNCTIONS;
 
 /** 一批最多多少条操作。 */
 export const MAX_OPS = 64;
@@ -190,7 +196,7 @@ const createGroup = z.object({
 
 const addFixtures = z.object({
   op: z.literal("addFixtures"),
-  model: z.string().min(1).max(12).describe("Fixture model alias from list_fixture_models, like 'L3'"),
+  model: z.string().min(1).max(32).describe("Fixture model alias from list_fixture_models, like 'L3', or a model defined earlier in this batch 'new_<name>'"),
   count: z.number().int().min(1).max(128),
   name: opt(z.string().max(32)).describe("Name template; '{n}' is the number"),
   universe: opt(z.number().int().min(0).max(2047)).describe("0-based universe; null = next free"),
@@ -209,6 +215,140 @@ const setOutput = z.object({
   mode: z.enum(["broadcast", "unicast", "routed", "forwarding"]),
   protocol: opt(z.enum(["artNet", "sacn"])),
   ip: opt(z.string().max(45)).describe("Target IPv4 for unicast"),
+});
+
+// ---- 舞台预览：灯具摆位与布景（坐标单位米，原点在舞台前沿中央，x 向右、y 向舞台深处） ----
+
+/** 一组灯具。 */
+const fixtureSet = z
+  .array(z.string().min(1).max(32))
+  .min(1)
+  .max(256)
+  .describe("Fixtures in order: 'F1', 'F2', …, a group 'G1' (its members), 'all', 'movers', or fixtures added earlier in this batch 'new_<name>'");
+const meters = (min: number, max: number) => z.number().min(min).max(max);
+const stageX = meters(-100, 100).describe("Meters left/right of the stage center (+ = stage right as the audience sees it)");
+const stageY = meters(-1, 200).describe("Meters from the front edge of the stage towards the back");
+const height = meters(0, 50).describe("Mounting height in meters");
+const facing = z.number().min(-180).max(180).describe("Horizontal facing in degrees, 0 = towards the audience");
+
+/** 把一组灯排成直线 / 弧线 / 网格 / 圆。 */
+const placeFixtures = z.object({
+  op: z.literal("placeFixtures"),
+  fixtures: fixtureSet,
+  layout: z.enum(["line", "arc", "grid", "circle"]),
+  x: stageX.describe("Center of the arrangement: meters from the stage center (+ = right)"),
+  y: stageY.describe("Center of the arrangement: meters from the front edge"),
+  width: meters(0.2, 200).describe("Total width in meters (circle: diameter)"),
+  depth: opt(meters(0, 200)).describe("grid only: total depth in meters (null = same spacing as across)"),
+  columns: opt(z.number().int().min(1).max(64)).describe("grid only: fixtures per row"),
+  sweep: opt(z.number().min(10).max(300)).describe("arc only: angle of the arc in degrees (default 90); the ends come towards the audience"),
+  z: opt(height),
+  rotation: opt(facing),
+  hanging: opt(z.boolean()).describe("Hung upside down from a truss"),
+});
+
+/** 改一组灯的位置 / 高度 / 朝向 / 吊挂。 */
+const setPlacement = z.object({
+  op: z.literal("setPlacement"),
+  fixtures: fixtureSet,
+  x: opt(stageX).describe("Exact x for ONE fixture (use placeFixtures for several)"),
+  y: opt(stageY).describe("Exact y for ONE fixture"),
+  moveX: opt(meters(-100, 100)).describe("Move all of them sideways by this many meters"),
+  moveY: opt(meters(-100, 100)).describe("Move all of them towards the back (+) or the front (−)"),
+  z: opt(height),
+  rotation: opt(facing),
+  hanging: opt(z.boolean()),
+});
+
+/** 舞台尺寸。 */
+const setStage = z.object({
+  op: z.literal("setStage"),
+  width: opt(meters(1, 200)).describe("Stage width in meters"),
+  depth: opt(meters(1, 200)).describe("Stage depth in meters"),
+});
+
+/** 布景物件（桁架、平台、圆台、文字）。 */
+const addStageObject = z.object({
+  op: z.literal("addStageObject"),
+  kind: z.enum(["truss", "rect", "circle", "label"]).describe("truss: a truss bar; rect: a riser/platform/screen; circle: a round platform; label: a text on the plan"),
+  x: stageX,
+  y: stageY,
+  width: opt(meters(0.1, 200)),
+  depth: opt(meters(0.1, 200)),
+  rotation: opt(facing),
+  label: opt(z.string().max(40)),
+});
+const removeStageObjects = z.object({
+  op: z.literal("removeStageObjects"),
+  objects: z.array(z.string().min(2).max(8)).min(1).max(64).describe("Set pieces 'O1', 'O2', … from get_stage"),
+});
+
+// ---- 自定义：特效、Cue 模板、灯具模型（不局限于内置的） ----
+
+const waveShape = z.enum(["sine", "triangle", "saw", "square", "ramp", "random", "noise"]);
+/** 新对象的 id（特效 / 模板）。 */
+const newId = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{1,40}$/)
+  .describe("New id: lowercase letters, digits and dashes, like 'slow-ocean'");
+const motion = z.object({
+  shape: waveShape.exclude(["random", "noise"]),
+  center: fraction.describe("Middle position 0..1 (0.5 = straight)"),
+  phase: opt(z.enum(["0", "0.25", "0.5", "0.75"])).describe("Offset within the cycle; pan sine + tilt sine at 0.25 draws a circle"),
+});
+
+/** 定义一个新特效（波形 + 颜色序列 + 动作），可在同一批里用 addEffect 放置。 */
+const defineEffect = z.object({
+  op: z.literal("defineEffect"),
+  id: newId,
+  name: z.string().min(1).max(40).describe("Display name in the user's language"),
+  period: period.describe("Length of one cycle in beats"),
+  intensity: opt(
+    z.object({
+      shape: waveShape,
+      low: percent,
+      high: percent,
+      duty: opt(percent).describe("square only: % of the cycle that is on"),
+      cycles: opt(z.enum(["0.5", "1", "2", "4"])).describe("Waves per cycle (default 1)"),
+    }),
+  ).describe("Intensity wave; null = always full"),
+  colors: opt(colors).describe("Colors stepping/fading through each cycle (one color = static); null = no colors of its own, like the built-in intensity effects (addEffect can still give a color)"),
+  blend: opt(z.enum(["smooth", "step", "hue"])).describe("How the colors change (default smooth)"),
+  pan: opt(motion),
+  tilt: opt(motion),
+  size: opt(z.enum(SIZES)).describe("Movement amplitude when pan/tilt are used (default medium)"),
+  spread: opt(z.enum(SPREADS)).describe("Default offset across the fixtures (chase/wave look)"),
+  spreadBy: opt(z.enum(["phase", "hue", "delay"])).describe("phase: offset in time; hue: offset colors; delay: one after another"),
+  save: opt(z.boolean()).describe("Also keep it in the user's effect library (only when the user asks to keep or save it)"),
+});
+
+/** 把一个片段的外观存成 Cue 模板（存进用户的模板库，可在同一批里用 applyTemplate 放置）。 */
+const saveTemplate = z.object({
+  op: z.literal("saveTemplate"),
+  clip: z.string().min(1).max(12).describe("A clip 'C3', or 'last' for the last clip placed earlier in this batch"),
+  name: z.string().min(1).max(40).describe("Template name in the user's language"),
+  id: opt(newId),
+});
+
+/** 定义一个灯具模型（按通道顺序列出功能），存进灯具库；同一批里 addFixtures 用 `as` 引用它。 */
+const defineFixtureModel = z.object({
+  op: z.literal("defineFixtureModel"),
+  as: newAlias.describe("Name for addFixtures in this batch, like 'new_par'"),
+  name: z.string().min(1).max(40),
+  manufacturer: opt(z.string().max(40)),
+  channels: z
+    .array(
+      z.object({
+        function: z.enum(CHANNEL_FUNCTION_NAMES),
+        fine: opt(z.boolean()).describe("16-bit: this channel plus the next one (fine)"),
+        name: opt(z.string().max(24)),
+      }),
+    )
+    .min(1)
+    .max(64)
+    .describe("Channels in DMX order, starting at channel 1"),
+  panRange: opt(z.number().min(0).max(720)).describe("Pan range in degrees"),
+  tiltRange: opt(z.number().min(0).max(360)).describe("Tilt range in degrees"),
 });
 
 /** 全部操作（`anyOf`，按 `op` 区分）。 */
@@ -231,6 +371,14 @@ export const aiOpSchema = z.union([
   addFixtures,
   patchFixtures,
   setOutput,
+  placeFixtures,
+  setPlacement,
+  setStage,
+  addStageObject,
+  removeStageObjects,
+  defineEffect,
+  saveTemplate,
+  defineFixtureModel,
 ]);
 
 /** 一条操作。 */
@@ -268,5 +416,5 @@ export const draftPlanSchema = z.object({
 /** 草稿计划。 */
 export type DraftPlan = z.output<typeof draftPlanSchema>;
 
-/** 会改灯具配接或输出的操作（敏感）。 */
-export const SENSITIVE_OPS: ReadonlySet<AiOpName> = new Set(["addFixtures", "patchFixtures", "setOutput"]);
+/** 会改灯具配接或输出、或往灯具库里加模型的操作（敏感）。写入特效库 / 模板库的改动另由编译结果判断。 */
+export const SENSITIVE_OPS: ReadonlySet<AiOpName> = new Set(["addFixtures", "patchFixtures", "setOutput", "defineFixtureModel"]);

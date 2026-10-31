@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { pickDirectory, pickSavePath, pickSkillFile } from "@/shared/tauri/pickers";
+import { BUILTIN_SKILL_NAMES } from "../lib/builtinSkills";
 import { importSkillWithToast, skillErrorText } from "../lib/skillActions";
 import { skillsExport, skillsReveal, type SkillInfo } from "../lib/skillsApi";
 import { useAiPrefsStore } from "../stores/useAiPrefsStore";
@@ -45,7 +46,9 @@ function SkillRow({ skill }: { skill: SkillInfo }) {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
           <span className="truncate">{skill.title ?? skill.name}</span>
-          {skill.title && <span className="font-mono text-xs text-muted-foreground">{skill.name}</span>}
+          <code className="font-mono text-xs text-muted-foreground" title={t("ai.skills.invokeHint")}>
+            /{skill.name}
+          </code>
           {skill.hasScripts && (
             <Badge variant="outline" title={t("ai.skills.scriptsHint")}>
               {t("ai.skills.scripts")}
@@ -127,6 +130,7 @@ export function SkillsSection() {
           </Button>
         </div>
       </div>
+      <BuiltinSkillsRow />
       {status === "ready" && items.length === 0 && (
         <div data-slot="setting-row" className="px-5 py-3 text-xs text-muted-foreground">
           {t("ai.skills.empty")}
@@ -136,5 +140,37 @@ export function SkillsSection() {
         <SkillRow key={s.name} skill={s} />
       ))}
     </>
+  );
+}
+
+/** 内置技能（只读）：按你说的话自动选用，也可以在对话框里输入 `/技能名` 点名使用。 */
+function BuiltinSkillsRow() {
+  const { t } = useTranslation();
+  return (
+    <div data-slot="setting-row" className="grid gap-2 px-5 py-3.5">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          {t("ai.skills.builtinTitle")}
+          <Badge variant="secondary">{t("ai.skills.builtinBadge")}</Badge>
+        </div>
+        <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t("ai.skills.builtinHint")}</div>
+      </div>
+      {/* 列表较长：固定高度、内部滚动（可用键盘聚焦后滚动） */}
+      <ul
+        tabIndex={0}
+        aria-label={t("ai.skills.builtinTitle")}
+        className="max-h-56 divide-y divide-border overflow-y-auto overscroll-contain rounded-md border border-border bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {BUILTIN_SKILL_NAMES.map((name) => (
+          <li key={name} className="min-w-0 px-3 py-2 text-xs">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-medium">{t(`ai.skills.builtin.${name}.title`)}</span>
+              <code className="font-mono text-[11px] text-muted-foreground">/{name}</code>
+            </div>
+            <div className="mt-0.5 leading-relaxed text-muted-foreground">{t(`ai.skills.builtin.${name}.desc`)}</div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

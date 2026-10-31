@@ -23,6 +23,7 @@ import {
   listCues,
   modelsVocab,
   outputText,
+  stageText,
   summarizeProject,
   templatesVocab,
 } from "./context";
@@ -37,7 +38,7 @@ import { buildMemory, type MemoryRef, type MemorySnapshot } from "./memory";
 import { chatSystemPrompt, draftSystemPrompt } from "./prompt";
 import { EXTERNAL_TOOLS_GUIDE } from "./mcpTools";
 import { recipesVocab } from "./recipes";
-import { readSkill, selectSkills, selectUserSkills, skillsText, type UserSkill } from "./skills";
+import { invokedSkills, readSkill, resolveInvoked, selectSkills, selectUserSkills, skillsText, type UserSkill } from "./skills";
 import type { PaletteName } from "./vocab";
 
 /**
@@ -318,6 +319,11 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
       inputSchema: portable(emptyInput),
       execute: async () => outputText(turn.project),
     }),
+    get_stage: tool({
+      description: "The stage preview layout: stage size, the position/height/facing of every fixture, and the set pieces (O#). Read it before moving fixtures.",
+      inputSchema: portable(emptyInput),
+      execute: async () => stageText(turn.project, turn.aliases),
+    }),
     propose_ops: tool({
       description: "Propose a change to the show as a list of operations. The user reviews it before it is applied. Returns errors to fix, or ok.",
       inputSchema: portable(aiOpsSchema),
@@ -352,7 +358,9 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
       const list = Array.isArray(options.prompt) ? options.prompt : (options.messages ?? null);
       request = typeof options.prompt === "string" ? options.prompt : lastUserText(list ?? []);
       turnSkills = skills ? (userSkills?.() ?? []) : [];
-      const picked = selectUserSkills(turnSkills, request);
+      // 用户在输入框里用 `/技能名` 点名的技能一定注入
+      const invoked = invokedSkills(request);
+      const picked = selectUserSkills(turnSkills, request, invoked);
       const guides = skills
         ? skillsText(
             selectSkills({
@@ -361,9 +369,11 @@ export function createShowAgent({ loaded, snapshot, onProposal, skills = true, m
               hasSelection: turn.env.selection.length > 0,
               hasMovers: moverIds(turn.project).length > 0,
               hasMusic: !!turn.env.analysis,
+              invoked,
             }),
             picked.injected,
             picked.listed,
+            resolveInvoked(invoked, turnSkills),
           )
         : "";
       const mem = memory ? buildMemory(memory(), request, "chat") : { text: "", used: [] };

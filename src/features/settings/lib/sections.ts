@@ -119,7 +119,20 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     descKey: "settings.descAi",
     icon: Sparkles,
     tileClass: "bg-chart-2/15 text-chart-2",
-    keywordKeys: ["ai.settings.apiKey", "ai.settings.model", "ai.settings.autoApply", "ai.settings.userMemory"],
+    keywordKeys: [
+      "ai.settings.apiKey",
+      "ai.settings.model",
+      "ai.settings.autoApply",
+      "ai.settings.userMemory",
+      "ai.settings.modalities",
+      "ai.skills.title",
+      "ai.skills.builtinTitle",
+      "ai.mcp.title",
+      "ai.mcp.allowedTitle",
+      "ai.reset.prefsTitle",
+      "ai.reset.memoryTitle",
+      "ai.reset.trashTitle",
+    ],
   },
   // 只在开发构建里渲染（见 `SettingsForm` / `visibleSections`）
   {

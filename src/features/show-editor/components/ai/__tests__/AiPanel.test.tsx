@@ -58,8 +58,10 @@ vi.mock("@/features/ai", async () => {
   const mcpStore = await import("@/features/ai/stores/useMcpStore");
   const mcp = await import("@/features/ai/lib/mcp");
   const mcpApi = await import("@/features/ai/lib/mcpApi");
+  const builtinSkills = await import("@/features/ai/lib/builtinSkills");
   return {
     ...errors,
+    ...builtinSkills,
     ...memory,
     ...memoryFile,
     ...memoryStore,
@@ -339,5 +341,33 @@ describe("AI 对话面板（assistant-ui）", () => {
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("menuitemradio", { name: /Other/ }));
     expect(useAiChatStore.getState().profileId).toBe("p2");
+  });
+
+  it("输入 / 弹出技能列表：Enter 插入 /技能名而不发送；发送后这一轮一定注入点名的技能", async () => {
+    mock.model = new MockLanguageModelV4({ doStream: [textStream("好的。")] });
+    renderPanel(11);
+    const input = (await screen.findByLabelText("给 AI 的消息")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/mov" } });
+    expect(await screen.findByText("/movers", { selector: "code" })).toBeTruthy();
+    expect(screen.queryByText("/song-structure", { selector: "code" })).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("/movers "));
+    const model = mock.model as MockLanguageModelV4;
+    expect(model.doStreamCalls).toHaveLength(0);
+    expect(screen.queryByText("/movers", { selector: "code" })).toBeNull();
+
+    // 底部的技能按钮：选中的插到开头
+    const button = screen.getByRole("button", { name: "技能" });
+    fireEvent.pointerDown(button, { button: 0, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /\/color-mood/ }));
+    await waitFor(() => expect(input.value).toBe("/color-mood /movers "));
+
+    // 工程里没有摇头灯，点名后仍然注入
+    fireEvent.change(input, { target: { value: "/movers 来点效果" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("好的。")).toBeTruthy();
+    const system = JSON.stringify(model.doStreamCalls[0].prompt[0]);
+    expect(system).toContain("slash command: /movers");
+    expect(system).toContain("### Moving heads");
   });
 });

@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useRef, type FC } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionBarPrimitive,
@@ -9,6 +9,7 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  useAui,
   useAuiState,
 } from "@assistant-ui/react";
 import { useAISDKChat, useAISDKError } from "@assistant-ui/react-ai-sdk";
@@ -22,6 +23,8 @@ import { MarkdownText } from "./MarkdownText";
 import { MemorySources } from "./MemorySources";
 import { ModelMenu } from "./ModelMenu";
 import { RewindButton } from "./RewindButton";
+import { SkillMenuButton, SkillTriggerPopover } from "./SkillCommands";
+import { useSlashSkills, withSkill, type SlashSkill } from "./slashSkills";
 import { ToolCallPart } from "./ToolStep";
 import { TooltipIconButton } from "./TooltipIconButton";
 
@@ -128,42 +131,72 @@ const ThreadError: FC = () => {
   );
 };
 
-/** 输入框：多行、Enter 发送、Shift+Enter 换行；底部是模型菜单、自动写入开关与发送 / 停止。 */
+/**
+ * 输入框：多行、Enter 发送、Shift+Enter 换行，打 `/` 点名技能；底部是技能按钮、模型菜单、自动写入开关与发送 / 停止。
+ */
 const Composer: FC = () => {
   const { t } = useTranslation();
+  const aui = useAui();
+  const input = useRef<HTMLTextAreaElement>(null);
+  const skills = useSlashSkills();
+  const pickSkill = (name: string) => {
+    const composer = aui.thread().composer();
+    const text = withSkill(composer.getState().text, name);
+    composer.setText(text);
+    // 菜单关闭后把焦点交给输入框，光标放在末尾接着写
+    requestAnimationFrame(() => {
+      const el = input.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
   return (
-    <ComposerPrimitive.Root
-      data-tour="ai-composer"
-      className="flex w-full flex-col rounded-xl border border-border bg-background p-1.5 shadow-sm transition-colors focus-within:border-ring/60"
-    >
-      <ComposerPrimitive.Input
-        data-ai-input
-        rows={1}
-        placeholder={t("editor.ai.inputPlaceholder")}
-        aria-label={t("editor.ai.inputLabel")}
-        className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/70"
-      />
-      <div className="flex items-center gap-1.5 pt-1">
-        <ModelMenu />
-        <div className="ms-auto flex items-center gap-1">
-          <AutoApplyToggle />
-          <AuiIf condition={(s) => !s.composer.canCancel}>
-            <ComposerPrimitive.Send asChild>
-              <TooltipIconButton tooltip={t("editor.ai.send")} variant="default" className="size-7 rounded-full">
-                <ArrowUp aria-hidden />
-              </TooltipIconButton>
-            </ComposerPrimitive.Send>
-          </AuiIf>
-          <AuiIf condition={(s) => s.composer.canCancel}>
-            <ComposerPrimitive.Cancel asChild>
-              <TooltipIconButton tooltip={t("editor.ai.stop")} variant="default" className="size-7 rounded-full">
-                <Square className="fill-current" aria-hidden />
-              </TooltipIconButton>
-            </ComposerPrimitive.Cancel>
-          </AuiIf>
-        </div>
+    <ComposerPrimitive.TriggerPopoverRoot>
+      <ComposerPrimitive.Root
+        data-tour="ai-composer"
+        className="relative flex w-full flex-col rounded-xl border border-border bg-background p-1.5 shadow-sm transition-colors focus-within:border-ring/60"
+      >
+        <SkillTriggerPopover skills={skills} />
+        <ComposerPrimitive.Input
+          ref={input}
+          data-ai-input
+          rows={1}
+          placeholder={t("editor.ai.inputPlaceholder")}
+          aria-label={t("editor.ai.inputLabel")}
+          className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/70"
+        />
+        <ComposerFooter onPickSkill={pickSkill} skills={skills} />
+      </ComposerPrimitive.Root>
+    </ComposerPrimitive.TriggerPopoverRoot>
+  );
+};
+
+/** 输入框底部：技能按钮、模型菜单、自动写入开关与发送 / 停止。 */
+const ComposerFooter: FC<{ skills: readonly SlashSkill[]; onPickSkill: (name: string) => void }> = ({ skills, onPickSkill }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-1 pt-1">
+      <SkillMenuButton skills={skills} onPick={onPickSkill} />
+      <ModelMenu />
+      <div className="ms-auto flex items-center gap-1">
+        <AutoApplyToggle />
+        <AuiIf condition={(s) => !s.composer.canCancel}>
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton tooltip={t("editor.ai.send")} variant="default" className="size-7 rounded-full">
+              <ArrowUp aria-hidden />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.composer.canCancel}>
+          <ComposerPrimitive.Cancel asChild>
+            <TooltipIconButton tooltip={t("editor.ai.stop")} variant="default" className="size-7 rounded-full">
+              <Square className="fill-current" aria-hidden />
+            </TooltipIconButton>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
       </div>
-    </ComposerPrimitive.Root>
+    </div>
   );
 };
 

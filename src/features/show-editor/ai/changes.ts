@@ -1,6 +1,10 @@
+import { footprint } from "@/features/fixtures";
+import { templateName } from "../lib/cueTemplates";
 import { effectName } from "../lib/effectLibrary";
-import type { Cue, OutputTarget, ShowProject } from "../lib/project";
+import type { Cue, FixtureInstance, OutputTarget, ShowProject, StagePlacement } from "../lib/project";
 import { formatTimecode } from "../lib/time";
+import { placeFixtures } from "../stage/stageGeometry";
+import type { LibraryChanges } from "./compile";
 
 /**
  * AI 改动的清单：比较改动前后的工程，逐项列出新增 / 删除 / 修改了什么（审阅卡片用）。
@@ -10,7 +14,21 @@ import { formatTimecode } from "../lib/time";
  */
 
 /** 清单里出现的对象种类。 */
-export type ChangeCollection = "cues" | "groups" | "fixtures" | "sections" | "markers" | "tempo" | "output" | "duration";
+export type ChangeCollection =
+  | "cues"
+  | "groups"
+  | "fixtures"
+  | "placements"
+  | "stageObjects"
+  | "stage"
+  | "sections"
+  | "markers"
+  | "tempo"
+  | "output"
+  | "duration"
+  | "libEffects"
+  | "libTemplates"
+  | "libModels";
 
 /** 一项改动。 */
 export interface ChangeEntry {
@@ -74,17 +92,34 @@ function diffBy<T extends { id: string }>(
  * @param base 改动前。
  * @param next 改动后。
  * @param lang 界面语言（特效名）。
+ * @param library 应用时写进用户库的内容。
  * @returns 改动，片段按时间排序在前，其它对象在后。
  */
-export function listChanges(base: ShowProject, next: ShowProject, lang: string): ChangeEntry[] {
+export function listChanges(base: ShowProject, next: ShowProject, lang: string, library?: LibraryChanges): ChangeEntry[] {
   const span = (c: Cue) => `${formatTimecode(c.startMs)} – ${formatTimecode(c.endMs)}`;
   const cues = diffBy(base.cues, next.cues, "cues", (c) => cueLabel(c, lang), span, (c) => c.startMs).sort(
     (a, b) => (a.atMs ?? 0) - (b.atMs ?? 0),
   );
+  // 只改了舞台位置的灯具单独列为“摆位”，不和配接改动混在一起
+  const fixtureChanges = diffBy(base.fixtures, next.fixtures, "fixtures", (f) => f.name, (f) => `U${f.universe}.${f.address}`);
+  const before = new Map(base.fixtures.map((f) => [f.id, f]));
+  const after = new Map(next.fixtures.map((f) => [f.id, f]));
+  // 第一次摆位时其它灯会被固定在原来的自动排布位置上：看起来没动的不列出
+  const auto = fixtureChanges.length > 0 ? placeFixtures(base.fixtures, base.stage) : new Map<string, StagePlacement>();
+  const fixtures = fixtureChanges.flatMap((c): ChangeEntry[] => {
+    const old = c.id ? before.get(c.id) : undefined;
+    const now = c.id ? after.get(c.id) : undefined;
+    if (c.op !== "changed" || !old || !now || !onlyPlacementChanged(old, now)) return [c];
+    const s = now.stage;
+    const was = old.stage ?? auto.get(old.id);
+    if (s && was && samePlacement(was, s)) return [];
+    return [{ ...c, collection: "placements", ...(s ? { detail: `${round1(s.x)}, ${round1(s.y)} m` } : {}) }];
+  });
   const out: ChangeEntry[] = [
     ...cues,
     ...diffBy(base.groups, next.groups, "groups", (g) => g.name, (g) => String(g.fixtureIds.length)),
-    ...diffBy(base.fixtures, next.fixtures, "fixtures", (f) => f.name, (f) => `U${f.universe}.${f.address}`),
+    ...fixtures,
+    ...diffBy(base.stage.objects, next.stage.objects, "stageObjects", (o) => o.label || o.kind, (o) => `${round1(o.x)}, ${round1(o.y)} m`),
     ...diffBy(base.sections, next.sections, "sections", (s) => s.name, (s) => `${formatTimecode(s.startMs)} – ${formatTimecode(s.endMs)}`),
     ...diffBy(base.markers, next.markers, "markers", (m) => m.label, (m) => formatTimecode(m.timeMs)),
   ];
@@ -97,7 +132,36 @@ export function listChanges(base: ShowProject, next: ShowProject, lang: string):
   if (base.durationMs !== next.durationMs) {
     out.push({ collection: "duration", op: "changed", label: "duration", detail: `${formatTimecode(base.durationMs)} → ${formatTimecode(next.durationMs)}` });
   }
+  if (base.stage.width !== next.stage.width || base.stage.depth !== next.stage.depth) {
+    out.push({ collection: "stage", op: "changed", label: "stage", detail: `${base.stage.width}×${base.stage.depth} → ${next.stage.width}×${next.stage.depth} m` });
+  }
+  for (const e of library?.effects ?? []) out.push({ collection: "libEffects", op: "added", id: e.id, label: effectName(e, lang), detail: e.id });
+  for (const tpl of library?.templates ?? []) out.push({ collection: "libTemplates", op: "added", id: tpl.id, label: templateName(tpl, lang), detail: tpl.id });
+  for (const m of library?.models ?? []) out.push({ collection: "libModels", op: "added", id: m.id, label: m.name, detail: `${footprint(m.properties)} ch` });
   return out;
+}
+
+/** 保留一位小数。 */
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+/** 两个摆位看起来一样（坐标差不到 1 cm，高度、朝向、吊挂相同）。 */
+function samePlacement(a: StagePlacement, b: StagePlacement): boolean {
+  return (
+    Math.abs(a.x - b.x) < 0.01 &&
+    Math.abs(a.y - b.y) < 0.01 &&
+    (a.z ?? 0) === (b.z ?? 0) &&
+    (a.rotation ?? 0) === (b.rotation ?? 0) &&
+    !!a.hanging === !!b.hanging
+  );
+}
+
+/** 两个灯具是否只有舞台位置不同。 */
+function onlyPlacementChanged(a: FixtureInstance, b: FixtureInstance): boolean {
+  const { stage: _a, ...restA } = a;
+  const { stage: _b, ...restB } = b;
+  void _a;
+  void _b;
+  return JSON.stringify(restA) === JSON.stringify(restB);
 }
 
 /**

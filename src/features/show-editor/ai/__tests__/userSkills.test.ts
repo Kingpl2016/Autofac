@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { builtinSkills, MAX_INJECTED, MAX_SKILL_CHARS, readSkill, selectUserSkills, skillsText, userSkillOf, type UserSkill } from "../skills";
+import { BUILTIN_SKILL_NAMES } from "@/features/ai/lib/builtinSkills";
+import {
+  builtinSkills,
+  invokedSkills,
+  MAX_INJECTED,
+  MAX_INVOKED,
+  MAX_SKILL_CHARS,
+  readSkill,
+  resolveInvoked,
+  selectSkills,
+  selectUserSkills,
+  skillsText,
+  userSkillOf,
+  type UserSkill,
+} from "../skills";
 import { parseSkillFile, skillTriggers } from "../skills/skillFile";
 
 const file = (name: string, triggers: string, body = "Body.") => `---\nname: ${name}\ndescription: "Does ${name}"\nmetadata:\n  title: ${name.toUpperCase()}\n  triggers: ${triggers}\n---\n${body}\n`;
@@ -9,7 +23,7 @@ const skill = (name: string, triggers: string, body?: string) => userSkillOf(fil
 describe("技能文件", () => {
   it("内置技能都是合规的 SKILL.md，正文不含前言", () => {
     const list = builtinSkills();
-    expect(list).toHaveLength(7);
+    expect(list).toHaveLength(9);
     for (const { file: f } of list) {
       expect(f.name).toMatch(/^[a-z0-9-]+$/);
       expect(f.description.length).toBeGreaterThan(20);
@@ -52,5 +66,34 @@ describe("用户技能", () => {
     const long = skill("long-one", "x", "a".repeat(MAX_SKILL_CHARS + 100));
     expect(readSkill([long], "long-one")).toContain("…(truncated)");
     expect(skillsText([], [], [])).toBe("");
+  });
+});
+
+describe("斜杠点名技能", () => {
+  const all: UserSkill[] = [skill("strobe-rules", "频闪, strobe"), skill("club-look", "club, 夜店, strobe"), skill("wedding", "婚礼")];
+
+  it("只认开头或空白后的 /名称，去重，最多 3 个；路径与分数不算", () => {
+    expect(invokedSkills("/movers 副歌 /Color-Mood /movers")).toEqual(["movers", "color-mood"]);
+    expect(invokedSkills("1/2 拍，见 /a/b 和 http://x/y")).toEqual([]);
+    expect(invokedSkills("/a /b /c /d")).toHaveLength(MAX_INVOKED);
+  });
+
+  it("点名的内置技能一定注入（即使规则不会选），草稿不受影响", () => {
+    const q = { text: "/movers 来点效果", hasSelection: false, hasMovers: false };
+    expect(selectSkills({ mode: "chat", ...q })).toEqual(["phrases"]);
+    expect(selectSkills({ mode: "chat", ...q, invoked: ["movers", "nope"] })).toEqual(["phrases", "movers"]);
+    expect(selectSkills({ mode: "draft", ...q, invoked: ["movers"] })).toEqual(["songStructure", "colorMood"]);
+  });
+
+  it("点名的用户技能排在触发词命中的前面，不占触发词的名额；提示词写明用户点了哪些", () => {
+    const { injected, listed } = selectUserSkills(all, "/wedding 夜店风格加点 strobe", ["wedding"]);
+    expect(injected.map((s) => s.name)).toEqual(["wedding", "club-look"]);
+    expect(listed.map((s) => s.name)).toEqual(["strobe-rules"]);
+    expect(resolveInvoked(["wedding", "movers", "nope"], all)).toEqual(["wedding", "movers"]);
+    expect(skillsText([], injected, [], ["wedding"])).toContain("The user picked these guides with a slash command: /wedding.");
+  });
+
+  it("设置页与对话框列出的内置技能名和技能文件一致", () => {
+    expect([...BUILTIN_SKILL_NAMES].sort()).toEqual(builtinSkills().map((s) => s.file.name).sort());
   });
 });

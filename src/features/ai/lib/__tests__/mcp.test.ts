@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import i18n from "@/shared/i18n";
-import { MAX_MCP_TOOLS, mcpErrorText, mcpToolName, pickMcpTools } from "../mcp";
+import { MAX_MCP_TOOLS, mcpErrorText, mcpToolName, pickMcpTools, splitMcpToolName } from "../mcp";
 import type { McpServerView, McpStatus } from "../mcpApi";
 
 const server = (id: string, over: Partial<McpServerView> = {}): McpServerView => ({
@@ -29,6 +29,13 @@ describe("MCP 工具名与挑选", () => {
     const long = mcpToolName("a".repeat(50), "b".repeat(80));
     expect(long.length).toBeLessThanOrEqual(64);
     expect(long).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("工具名拆回服务器名与工具名；服务器已删除时只给工具名", () => {
+    const servers = [server("files"), server("files_2")];
+    expect(splitMcpToolName(mcpToolName("files_2", "read"), servers)).toEqual({ server: "FILES_2", tool: "read" });
+    expect(splitMcpToolName("mcp__files__read_file", servers)).toEqual({ server: "FILES", tool: "read_file" });
+    expect(splitMcpToolName("mcp__gone__list", servers)).toEqual({ server: null, tool: "list" });
   });
 
   it("只给启用、已确认且已连接的服务器的工具，最多 20 个", () => {

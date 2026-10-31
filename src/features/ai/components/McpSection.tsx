@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Plug, PlugZap, Plus, ShieldCheck, Trash2, Unplug } from "lucide-react";
+import { Pencil, Plug, PlugZap, Plus, ShieldCheck, Trash2, Unplug, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { mcpErrorText } from "../lib/mcp";
+import { mcpErrorText, splitMcpToolName } from "../lib/mcp";
 import type { McpServerView } from "../lib/mcpApi";
+import { useAiPrefsStore } from "../stores/useAiPrefsStore";
 import { useMcpStore } from "../stores/useMcpStore";
 import { McpServerDialog } from "./McpServerDialog";
 
@@ -132,6 +133,60 @@ function ServerRow({ server, onEdit, onApprove }: { server: McpServerView; onEdi
   );
 }
 
+/** 在对话里选过“总是允许”的外部工具：逐个撤销或全部撤销（撤销后再调用时又会逐次确认）。没有时不显示。 */
+function AlwaysAllowRow({ servers }: { servers: readonly McpServerView[] }) {
+  const { t } = useTranslation();
+  const names = useAiPrefsStore((s) => s.mcpAlwaysAllow);
+  const setAllow = useAiPrefsStore((s) => s.setMcpAlwaysAllow);
+  if (names.length === 0) return null;
+  return (
+    <div data-slot="setting-row" className="grid gap-2 px-5 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{t("ai.mcp.allowedTitle")}</div>
+          <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t("ai.mcp.allowedHint")}</div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const prev = names;
+            useAiPrefsStore.setState({ mcpAlwaysAllow: [] });
+            toast.success(t("ai.mcp.allowedCleared"), {
+              action: { label: t("ai.skills.undo"), onClick: () => useAiPrefsStore.setState({ mcpAlwaysAllow: prev }) },
+            });
+          }}
+        >
+          {t("ai.mcp.allowedClear")}
+        </Button>
+      </div>
+      <ul className="flex flex-wrap gap-1.5">
+        {names.map((name) => {
+          const { server, tool } = splitMcpToolName(name, servers);
+          const label = server ? `${server} · ${tool}` : tool;
+          return (
+            <li key={name} className="flex items-center gap-1 rounded-md border border-border bg-muted/40 py-0.5 ps-2 pe-0.5 text-xs">
+              <span className="max-w-56 truncate font-mono" title={name}>
+                {label}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                aria-label={t("ai.mcp.allowedRemove", { name: label })}
+                title={t("ai.mcp.allowedRemove", { name: label })}
+                onClick={() => setAllow(name, false)}
+              >
+                <X />
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * 设置页里的“MCP 服务器”：AI 助手作为 MCP 客户端，可以连接本机命令（stdio）或远程地址（Streamable HTTP）。
  * 新的或改过的命令要先确认；每次工具调用在对话里还要再确认一次（可对单个工具选“总是允许”）。
@@ -168,6 +223,7 @@ export function McpSection() {
       {servers.map((s) => (
         <ServerRow key={s.id} server={s} onEdit={() => setEditing({ server: s, key: Date.now() })} onApprove={() => setApproving(s)} />
       ))}
+      <AlwaysAllowRow servers={servers} />
       {editing && <McpServerDialog key={editing.key} server={editing.server} open onOpenChange={(open) => !open && setEditing(null)} />}
       {approving && <ApproveDialog server={approving} onClose={() => setApproving(null)} />}
     </>

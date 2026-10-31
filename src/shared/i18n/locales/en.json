@@ -3922,7 +3922,7 @@
       "needsReview": "This AI change touches patching, output or deletes many clips, so it needs your confirmation",
       "noChanges": "No changes",
       "sensitive": "Needs confirmation",
-      "sensitiveHint": "Changes fixture patching, output settings, or deletes many clips. Check the list before applying",
+      "sensitiveHint": "Changes the patch or output, deletes many clips, or writes to the effect / template / fixture library. Check the list before applying",
       "changeList": "Changes",
       "showAll": "{{count}} more, show all",
       "warnings": "{{count}} notes",
@@ -3951,7 +3951,15 @@
         "createGroup": "Create group",
         "addFixtures": "Add fixtures",
         "patchFixtures": "Change patch",
-        "setOutput": "Change output"
+        "setOutput": "Change output",
+        "placeFixtures": "Arrange fixtures",
+        "setPlacement": "Adjust placement",
+        "setStage": "Stage size",
+        "addStageObject": "Add set piece",
+        "removeStageObjects": "Remove set pieces",
+        "defineEffect": "New effect",
+        "saveTemplate": "Save as template",
+        "defineFixtureModel": "New fixture model"
       },
       "kinds": {
         "cues": "Clip",
@@ -3961,7 +3969,13 @@
         "markers": "Marker",
         "tempo": "Tempo",
         "output": "Output",
-        "duration": "Length"
+        "duration": "Length",
+        "placements": "Place",
+        "stageObjects": "Set",
+        "stage": "Stage",
+        "libEffects": "Effects",
+        "libTemplates": "Templates",
+        "libModels": "Models"
       },
       "changes": {
         "cues": {
@@ -3997,6 +4011,26 @@
         },
         "duration": {
           "changed": "Show length extended"
+        },
+        "placements": {
+          "changed": "{{count}} fixtures moved"
+        },
+        "stageObjects": {
+          "added": "{{count}} set pieces added",
+          "removed": "{{count}} set pieces removed",
+          "changed": "{{count}} set pieces changed"
+        },
+        "stage": {
+          "changed": "stage size changed"
+        },
+        "libEffects": {
+          "added": "{{count}} effects saved to the library"
+        },
+        "libTemplates": {
+          "added": "{{count}} templates saved to the library"
+        },
+        "libModels": {
+          "added": "{{count}} fixture models added to the library"
         }
       },
       "openSettings": "Add an AI profile",
@@ -4007,7 +4041,7 @@
         "explain": "Which sections and fixtures does this show have?"
       },
       "inputLabel": "Message to the AI",
-      "inputPlaceholder": "Describe the lighting you want (Enter to send, Shift+Enter for a new line)",
+      "inputPlaceholder": "Describe the lighting you want, type / for skills (Enter to send, Shift+Enter for a new line)",
       "send": "Send",
       "stop": "Stop",
       "tools": {
@@ -4024,7 +4058,8 @@
         "listRecipes": "Looking at recipes",
         "analyzeMedia": "Looking at the music analysis",
         "listMediaEvents": "Looking at musical events",
-        "readSkill": "Read a skill"
+        "readSkill": "Read a skill",
+        "getStage": "Read the stage layout"
       },
       "dockTitle": "AI assistant",
       "newChat": "New chat",
@@ -4152,6 +4187,32 @@
         "doneReverted_other": "Rewound and reverted {{count}} AI changes (undoable)",
         "doneRevertedPartial_one": "Rewound and reverted {{count}} AI change; {{skipped}} part(s) edited later were left as they are",
         "doneRevertedPartial_other": "Rewound and reverted {{count}} AI changes; {{skipped}} part(s) edited later were left as they are"
+      },
+      "skills": {
+        "button": "Skills",
+        "popover": "Skills",
+        "popoverHint": "Pick a skill to use it for this request (↑↓ to choose, Enter to insert, Esc to close)",
+        "noMatch": "No matching skills",
+        "builtin": "Built-in skills",
+        "mine": "My skills",
+        "mineEmpty": "No skills of your own yet. Import one in Settings, or drop a skill package onto the chat.",
+        "manage": "Manage skills…",
+        "source": {
+          "builtin": "Built-in",
+          "user": "Mine"
+        }
+      },
+      "appliedNoCues": "AI change applied",
+      "library": {
+        "saved_one": "Saved {{count}} item to the library",
+        "saved_other": "Saved {{count}} items to the library",
+        "savedHint": "Kept in the effect / template / fixture library. Undoing the change does not remove them; delete them in the library",
+        "failed": "Could not save to the {{kinds}}",
+        "kinds": {
+          "effects": "effect library",
+          "templates": "template library",
+          "models": "fixture library"
+        }
       }
     },
     "guides": {
@@ -4292,7 +4353,12 @@
       "nothing": "There is nothing to send (no audio track or picture)",
       "done_one": "Tagged: {{genre}} · {{mood}}, {{count}} section role",
       "done_other": "Tagged: {{genre}} · {{mood}}, {{count}} section roles",
-      "always": "Don't ask again for any media in this show (you can turn this off here)"
+      "always": "Don't ask again for any media in this show (you can turn this off here)",
+      "dropped_audio": "“{{name}}” does not accept audio; this time only the video frames were used",
+      "dropped_image": "“{{name}}” does not accept images; this time only the audio was used",
+      "disableInput": "Turn it off in the profile",
+      "disabled_audio": "Audio turned off for “{{name}}”",
+      "disabled_image": "Images turned off for “{{name}}”"
     },
     "aiHistory": {
       "title": "AI history",
@@ -5413,7 +5479,8 @@
         "image": "Images (video keyframes)",
         "audio": "Audio (music excerpts)"
       },
-      "modalitiesHint": "When on, media analysis can send a few short excerpts to the model (after you agree) to tag genre, mood and section roles. Leave off if unsure"
+      "modalitiesHint": "When on, media analysis can send a few short excerpts to the model (after you agree) to tag genre, mood and section roles. Leave off if unsure",
+      "audioCompatWarn": "Most OpenAI-compatible services (DeepSeek, Kimi, GLM…) do not accept audio; only a few models do (such as gpt-4o-audio or qwen-omni). If unsure, leave it off or tagging will fail"
     },
     "errors": {
       "invalid_profile": "Invalid profile; check the endpoint, model and temperature",
@@ -5436,7 +5503,9 @@
       "http": "The model service returned {{status}}: {{message}}",
       "unauthorized": "The model service rejected the API key; check that it is correct",
       "http_status": "The model service returned an error; check the endpoint",
-      "bad_response": "The model service's response could not be read; check the endpoint and protocol"
+      "bad_response": "The model service's response could not be read; check the endpoint and protocol",
+      "unsupported_audio": "This model does not accept audio input (the service returned {{status}}). Edit this profile in Settings → AI assistant and turn off “Audio”, or use a model that can listen (for example Gemini)",
+      "unsupported_image": "This model does not accept image input (the service returned {{status}}). Edit this profile in Settings → AI assistant and turn off “Images”"
     },
     "memory": {
       "add": "Add",
@@ -5500,7 +5569,12 @@
         "secret": "The system credential manager is not available",
         "io": "Could not read or write the config",
         "unknown": "The operation failed ({{code}})"
-      }
+      },
+      "allowedTitle": "Always-allowed external tools",
+      "allowedHint": "These tools run without asking each time. After you revoke one, the next call asks again.",
+      "allowedRemove": "Stop always allowing “{{name}}”",
+      "allowedClear": "Revoke all",
+      "allowedCleared": "External tools ask for confirmation every time again"
     },
     "reset": {
       "prefsTitle": "Restore AI preferences",
@@ -5537,6 +5611,83 @@
         "mcp": "MCP",
         "memory": "Memory",
         "ai-prefs": "Preferences backup"
+      }
+    },
+    "skills": {
+      "title": "Skills",
+      "hint": "Skills are guides for the AI (Agent Skills SKILL.md files). They are used when your request contains one of their trigger words, or when you pick one with / in the chat. Scripts inside skills never run.",
+      "importFile": "Import zip / SKILL.md",
+      "importFolder": "Import folder",
+      "openFolder": "Open skills folder",
+      "fileFilter": "Skill package",
+      "empty": "No skills of your own yet. Import a zip, a folder or a SKILL.md, or drop a skill package onto the AI chat in the editor.",
+      "scripts": "Has scripts",
+      "scriptsHint": "This skill has a scripts/ folder. The assistant only reads the instructions and never runs scripts.",
+      "noTriggers": "No trigger words: the AI reads it when needed, or pick it with /",
+      "enable": "Enable {{name}}",
+      "reveal": "Show in file manager",
+      "export": "Export as zip",
+      "exported": "Skill exported",
+      "deleteHint": "Delete (moved to the trash, restorable for 30 days)",
+      "deleted": "Deleted “{{name}}”",
+      "undo": "Undo",
+      "imported": "Installed skill “{{name}}”",
+      "exists": "A skill with this name already exists",
+      "replace": "Replace",
+      "replaced": "Replaced skill “{{name}}”; the old version is in the trash",
+      "dropHint": "Drop to install the skill package (zip, folder or SKILL.md)",
+      "invokeHint": "Type this name in the chat to pick the skill",
+      "builtinTitle": "Built-in skills",
+      "builtinBadge": "Automatic",
+      "builtinHint": "Chosen automatically from what you say; nothing to set up. To force one, type / in the chat and pick it.",
+      "builtin": {
+        "phrases": {
+          "title": "Everyday wording",
+          "desc": "Turns wording like “faster”, “softer” or “a bit brighter” into fixed amounts. Used in every chat."
+        },
+        "song-structure": {
+          "title": "Song structure",
+          "desc": "Lights the song section by section (intro, verse, chorus, bridge, outro) with an energy and a recipe each."
+        },
+        "music-arrange": {
+          "title": "Lighting to the music",
+          "desc": "Follows the music analysis: energy per bar, accents, build-ups, drops and video cuts."
+        },
+        "color-mood": {
+          "title": "Colors and mood",
+          "desc": "Picks colors and palettes for the mood or style you describe."
+        },
+        "movers": {
+          "title": "Moving heads",
+          "desc": "Pan/tilt movement, sizes and spreads for moving heads."
+        },
+        "edit-clips": {
+          "title": "Editing clips",
+          "desc": "Changes the clips you selected or mention instead of rebuilding them."
+        },
+        "patch-output": {
+          "title": "Patch and output",
+          "desc": "Adds fixtures, patches addresses and sets the Art-Net / sACN output safely."
+        },
+        "stage-layout": {
+          "title": "Stage layout",
+          "desc": "Places fixtures in the stage preview: position, height, facing, hanging, plus trusses, risers and other set pieces."
+        },
+        "custom-content": {
+          "title": "Custom content",
+          "desc": "When nothing built-in fits: makes new effects, saves looks as templates and defines new fixture models."
+        }
+      },
+      "errors": {
+        "invalid": "Not a valid skill package: it needs a SKILL.md with a name and a description",
+        "too_large": "The skill package is too large",
+        "symlink": "Skill packages cannot contain symbolic links",
+        "unsafe_path": "The skill package contains an unsafe path",
+        "exists": "A skill with this name already exists",
+        "not_found": "Skill not found",
+        "io": "Could not read or write the skill files",
+        "zip": "Could not unpack this zip file",
+        "unknown": "The operation failed ({{code}})"
       }
     }
   }

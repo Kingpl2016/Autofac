@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 
 import { errorMessage } from "@/shared/lib/errors";
@@ -93,4 +94,15 @@ export function enabledSkills(): { info: SkillInfo; text: string }[] {
   const { items, texts } = useSkillStore.getState();
   const disabled = new Set(useAiPrefsStore.getState().disabledSkills);
   return items.filter((s) => !disabled.has(s.name) && texts[s.name]).map((info) => ({ info, text: texts[info.name] }));
+}
+
+/**
+ * 启用的用户技能列表（随导入、删除、启停更新；只有列表信息，不含全文）。
+ *
+ * @returns 启用的技能。
+ */
+export function useEnabledSkillInfos(): SkillInfo[] {
+  const items = useSkillStore((s) => s.items);
+  const disabled = useAiPrefsStore((s) => s.disabledSkills);
+  return useMemo(() => items.filter((s) => !disabled.includes(s.name)), [items, disabled]);
 }

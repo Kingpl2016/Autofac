@@ -1,6 +1,6 @@
-import { generateText, Output, type FilePart, type ImagePart, type TextPart } from "ai";
+import { generateText, Output, type FilePart, type TextPart } from "ai";
 
-import type { LoadedModel } from "@/features/ai";
+import { unsupportedInput, type LoadedModel } from "@/features/ai";
 import type { MediaTagsResult, TimelineAnalysis } from "../lib/mediaAnalysis";
 import { excerptPlan, tagAnswerSchema, tagPrompt, tagsFromAnswer, type TagExcerpt } from "./mediaTagsPlan";
 
@@ -20,25 +20,22 @@ export interface TagRequest {
   signal?: AbortSignal;
 }
 
-/**
- * 标注一个素材。
- *
- * @param req 模型、分析与取素材的函数。
- * @returns 标注结果；没有段落时为 `null`。
- * @throws 模型调用失败、回答不合结构或被取消。
- */
-export async function tagMedia(req: TagRequest): Promise<MediaTagsResult | null> {
-  const plan = excerptPlan(req.analysis);
-  if (plan.length === 0) return null;
-  const [audio, frames] = await Promise.all([req.excerpts?.(plan) ?? Promise.resolve([]), req.frames?.(plan) ?? Promise.resolve([])]);
+/** 标注的结果。 */
+export interface TagOutcome {
+  tags: MediaTagsResult;
+  /** 模型不接受、因而没有发送的输入（配置勾选了但模型其实不支持） */
+  dropped: ("audio" | "image")[];
+}
+
+/** 发一次请求。 */
+async function ask(req: TagRequest, plan: readonly TagExcerpt[], audio: readonly string[], frames: readonly string[]): Promise<MediaTagsResult> {
   const hasAudio = audio.some(Boolean);
   const hasFrames = frames.some(Boolean);
-  if (!hasAudio && !hasFrames) return null;
-  const content: (TextPart | FilePart | ImagePart)[] = [{ type: "text", text: tagPrompt(plan, hasAudio, hasFrames) }];
+  const content: (TextPart | FilePart)[] = [{ type: "text", text: tagPrompt(plan, hasAudio, hasFrames) }];
   plan.forEach((p, i) => {
     content.push({ type: "text", text: `Section ${p.index}:` });
     if (audio[i]) content.push({ type: "file", mediaType: "audio/wav", data: audio[i] });
-    if (frames[i]) content.push({ type: "image", mediaType: "image/jpeg", image: frames[i] });
+    if (frames[i]) content.push({ type: "file", mediaType: "image/jpeg", data: frames[i] });
   });
   const result = await generateText({
     model: req.loaded.model,
@@ -49,4 +46,31 @@ export async function tagMedia(req: TagRequest): Promise<MediaTagsResult | null>
     maxRetries: 1,
   });
   return tagsFromAnswer(result.output, plan);
+}
+
+/**
+ * 标注一个素材。模型拒绝音频（或图片）输入时，只要还有另一种输入，就去掉被拒绝的那种再试一次。
+ *
+ * @param req 模型、分析与取素材的函数。
+ * @returns 标注结果与没能发送的输入；没有段落或没有可发送的素材时为 `null`。
+ * @throws 模型调用失败、回答不合结构或被取消（两种输入都被拒绝时抛出最后一次的错误）。
+ */
+export async function tagMedia(req: TagRequest): Promise<TagOutcome | null> {
+  const plan = excerptPlan(req.analysis);
+  if (plan.length === 0) return null;
+  let [audio, frames] = await Promise.all([req.excerpts?.(plan) ?? Promise.resolve([]), req.frames?.(plan) ?? Promise.resolve([])]);
+  const dropped: TagOutcome["dropped"] = [];
+  for (;;) {
+    if (!audio.some(Boolean) && !frames.some(Boolean)) return null;
+    try {
+      return { tags: await ask(req, plan, audio, frames), dropped };
+    } catch (e) {
+      const rejected = unsupportedInput(e);
+      const other = rejected === "audio" ? frames : audio;
+      if (!rejected || dropped.includes(rejected) || !other.some(Boolean)) throw e;
+      dropped.push(rejected);
+      if (rejected === "audio") audio = [];
+      else frames = [];
+    }
+  }
 }

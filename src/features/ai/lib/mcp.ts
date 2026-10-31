@@ -34,7 +34,32 @@ const slug = (s: string, max: number) => s.replace(/[^A-Za-z0-9_-]+/g, "_").repl
  * @returns `mcp__<服务器>__<工具>`，最长 64 个字符。
  */
 export function mcpToolName(server: string, tool: string): string {
-  return `${MCP_PREFIX}${slug(server, 20)}__${slug(tool, 64 - MCP_PREFIX.length - 22)}`;
+  return `${mcpServerPrefix(server)}${slug(tool, 64 - MCP_PREFIX.length - 22)}`;
+}
+
+/**
+ * 一个服务器的工具名前缀。
+ *
+ * @param server 服务器 id。
+ * @returns `mcp__<服务器>__`。
+ */
+function mcpServerPrefix(server: string): string {
+  return `${MCP_PREFIX}${slug(server, 20)}__`;
+}
+
+/**
+ * 把给模型的工具名拆回“服务器名 + 工具名”（设置页列出“总是允许”的工具用）。
+ *
+ * @param name 工具名 `mcp__<服务器>__<工具>`。
+ * @param servers 服务器配置（找不到对应服务器时服务器名为 `null`，例如服务器已删除）。
+ * @returns 服务器名与工具名。
+ */
+export function splitMcpToolName(name: string, servers: readonly McpServerView[]): { server: string | null; tool: string } {
+  const owner = servers.find((s) => name.startsWith(mcpServerPrefix(s.id)));
+  if (owner) return { server: owner.name, tool: name.slice(mcpServerPrefix(owner.id).length) };
+  const rest = name.startsWith(MCP_PREFIX) ? name.slice(MCP_PREFIX.length) : name;
+  const at = rest.indexOf("__");
+  return { server: null, tool: at >= 0 ? rest.slice(at + 2) : rest };
 }
 
 /**

@@ -100,7 +100,7 @@ const nonEmpty = z.string().trim().min(1).max(80);
 const MAX_KELVIN = 20_000;
 
 /** 单个模板的校验（缺省的亮度为 100、淡入淡出为 0、分组为“我的”）。 */
-const templateSchema = z
+export const templateSchema = z
   .object({
     id: z.string().trim().min(1).max(64).regex(/^[\w.-]+$/),
     name: z.union([nonEmpty, z.object({ zh: nonEmpty.optional(), en: nonEmpty.optional() }).refine((n) => n.zh || n.en)]),
